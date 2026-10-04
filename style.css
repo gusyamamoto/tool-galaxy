@@ -79,3 +79,8 @@ user-select: none;
 #tool-panel h2 {
     margin-top: 0;
 }
+
+.tool-node.selected {
+    border-color: white;
+    box-shadow: 0 0 18px rgba(255, 255, 255, 0.7);
+}

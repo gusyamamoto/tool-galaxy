@@ -40,9 +40,15 @@ tools.forEach((tool) => {
     node.textContent = tool.name;
 
     node.addEventListener("click", () => {
+        document.querySelectorAll(".tool-node").forEach((node) => {
+            node.classList.remove("selected");
+        });
+    
+        node.classList.add("selected");
+    
         panelName.textContent = tool.name;
         panelDescription.textContent = tool.description;
-    });
+    });;
 
     node.style.left = `${tool.x}px`;
     node.style.top = `${tool.y}px`;
