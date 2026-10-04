@@ -10,19 +10,51 @@
 
 <body>
     <main id="galaxy">
-        <svg id="connections"></svg>
+        <svg id="connections" aria-hidden="true"></svg>
 
         <h1>Tool Galaxy</h1>
+        <p class="galaxy-subtitle">A space for the tools you build with.</p>
+        <button id="add-tool-button" type="button">Add Tool</button>
+        <p id="storage-status" role="status" hidden></p>
 
         <aside id="tool-panel">
+            <span class="panel-eyebrow">Tool details</span>
             <h2 id="panel-name">Select a tool</h2>
-            <p id="panel-description">
-                Click a node to see more information.
-            </p>
+            <p id="panel-description">Click a node to see more information.</p>
+            <p id="panel-category" hidden></p>
         </aside>
 
+        <p class="galaxy-hint">Drag to rearrange <span aria-hidden="true">&middot;</span> Select to explore</p>
     </main>
 
+    <dialog id="add-tool-dialog" aria-labelledby="add-tool-title">
+        <form id="add-tool-form">
+            <h2 id="add-tool-title">Add Tool</h2>
+
+            <label for="tool-name">Tool name</label>
+            <input id="tool-name" name="name" type="text" maxlength="60" required autofocus>
+
+            <label for="tool-description">Description</label>
+            <textarea id="tool-description" name="description" rows="4" maxlength="1000" required></textarea>
+
+            <label for="tool-category">Category</label>
+            <input id="tool-category" name="category" type="text" maxlength="60" required>
+
+            <fieldset>
+                <legend>Connect to existing tools (optional)</legend>
+                <div id="connection-options"></div>
+            </fieldset>
+
+            <div class="form-actions">
+                <button id="cancel-add-tool" type="button">Cancel</button>
+                <button type="submit">Add Tool</button>
+            </div>
+        </form>
+    </dialog>
+
+    <script src="storage.js"></script>
+    <script src="vendor/d3-force.bundle.min.js"></script>
+    <script src="physics.js"></script>
     <script src="script.js"></script>
 </body>
 </html>
