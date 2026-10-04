@@ -2,17 +2,20 @@ const tools = [
     {
         name: "GitHub",
         x: 300,
-        y: 250
+        y: 250,
+        description: "Stores and manages Git repositories online."
     },
     {
         name: "VS Code",
         x: 550,
-        y: 380
+        y: 380,
+        description: "Code editor used to build and manage the project."
     },
     {
         name: "Codex",
         x: 800,
-        y: 220
+        y: 220,
+        description: "AI coding assistant for writing and modifying code."
     }
 ];
 
@@ -25,6 +28,9 @@ const galaxy = document.getElementById("galaxy");
 
 const connectionsLayer = document.getElementById("connections");
 
+const panelName = document.getElementById("panel-name");
+const panelDescription = document.getElementById("panel-description");
+
 const nodes = {};
 
 tools.forEach((tool) => {
@@ -32,6 +38,11 @@ tools.forEach((tool) => {
 
     node.classList.add("tool-node");
     node.textContent = tool.name;
+
+    node.addEventListener("click", () => {
+        panelName.textContent = tool.name;
+        panelDescription.textContent = tool.description;
+    });
 
     node.style.left = `${tool.x}px`;
     node.style.top = `${tool.y}px`;

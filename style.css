@@ -62,3 +62,20 @@ user-select: none;
     stroke-width: 2;
     opacity: 0.5;
 }
+
+#tool-panel {
+    position: absolute;
+    top: 24px;
+    right: 24px;
+
+    width: 280px;
+    padding: 24px;
+
+    background: rgba(20, 28, 50, 0.9);
+    border: 1px solid #3d4f80;
+    border-radius: 12px;
+}
+
+#tool-panel h2 {
+    margin-top: 0;
+}
