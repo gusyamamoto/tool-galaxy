@@ -442,18 +442,21 @@ def main():
                 (screenshot_dir / f"{name}-form.png").write_bytes(base64.b64decode(result["data"]))
             evaluate("dialog.close()")
 
-        # The actual URL-driven development sample must never replace the saved galaxy.
+        # Load the actual development sample from its visible UI control. It must
+        # never replace the saved galaxy, and its activation URL must be transient.
         # Flush any responsive-layout movement before taking the byte-for-byte baseline;
         # pagehide would otherwise persist it during the navigation below.
         evaluate("physics.pause();saveGalaxy()")
         real_snapshot = evaluate("localStorage.getItem('galaxy:user-data')")
         cdp.call("Emulation.setDeviceMetricsOverride", width=1440, height=1000, deviceScaleFactor=1, mobile=False)
         started = time.monotonic()
-        cdp.call("Page.navigate", url=f"{origin}/?sample=large")
+        check(evaluate("!sampleMode && !loadSampleButton.disabled && removeSampleButton.disabled"), "development controls offer Load Sample Galaxy in the real galaxy")
+        evaluate("loadSampleButton.click()")
         wait_for("document.readyState==='complete' && typeof physics!=='undefined'")
         wait_for("physics.settled", timeout=15)
         density_settle = time.monotonic() - started
-        check(evaluate("sampleMode && !sampleModeBanner.hidden && entries.size===77 && [...entries.values()].filter(e=>e.role==='category').length===7 && [...entries.values()].filter(e=>e.role==='subcategory').length===21 && [...entries.values()].filter(e=>e.role==='entry').length===49"), "development sample loads 7 Suns, 21 Planets and 49 Moons")
+        check(evaluate("sampleMode && sampleControls.classList.contains('sample-active') && sampleModeLabel.textContent==='Sample galaxy' && entries.size===77 && [...entries.values()].filter(e=>e.role==='category').length===7 && [...entries.values()].filter(e=>e.role==='subcategory').length===21 && [...entries.values()].filter(e=>e.role==='entry').length===49"), "development sample loads 7 Suns, 21 Planets and 49 Moons")
+        check(evaluate("loadSampleButton.disabled && !removeSampleButton.disabled && !location.search.includes('sample')"), "sample mode exposes Remove Sample Galaxy and cannot survive a refresh")
         check(evaluate("connections.length===70 && connections.every(c=>c.kind==='hierarchy')"), "all 70 sample connections come from normal hierarchy data")
         check(evaluate("localStorage.getItem('galaxy:user-data')") == real_snapshot, "loading the sample leaves the saved galaxy untouched")
         check(density_settle < 15, f"77-body sample settles in a reasonable time ({density_settle:.2f}s)")
@@ -492,16 +495,20 @@ def main():
         wait_camera()
         check(evaluate("selectedNode.dataset.entryId==='sample-sun-music' && camera.view.scale>=1"), "search finds and focuses a sample Sun")
 
-        evaluate("resetSampleButton.click()")
-        wait_for("document.readyState==='complete' && typeof physics!=='undefined' && sampleMode")
-        wait_for("physics.settled", timeout=15)
-        check(evaluate("entries.size===77 && layout.size===0"), "Reset sample restores the original in-memory fixture")
-        check(evaluate("localStorage.getItem('galaxy:user-data')") == real_snapshot, "Reset sample leaves localStorage untouched")
-        evaluate("exitSampleButton.click()")
-        wait_for("document.readyState==='complete' && typeof physics!=='undefined' && !location.search.includes('sample')")
+        cdp.call("Page.reload", ignoreCache=True)
+        wait_for("document.readyState==='complete' && typeof physics!=='undefined' && !sampleMode")
         wait_for("physics.settled")
-        check(evaluate("!sampleMode && !entries.has('sample-sun-technology') && entries.has('github')"), "Exit sample returns to the saved galaxy")
-        check(evaluate("!JSON.parse(localStorage.getItem('galaxy:user-data')).entries.some(entry=>entry.id.startsWith('sample-'))"), "Exit sample never mixes sample entries into the saved galaxy")
+        check(evaluate("!entries.has('sample-sun-technology') && entries.has('github')"), "refreshing sample mode returns to the saved galaxy")
+        check(evaluate("!JSON.parse(localStorage.getItem('galaxy:user-data')).entries.some(entry=>entry.id.startsWith('sample-'))"), "refresh never mixes sample entries into the saved galaxy")
+
+        evaluate("loadSampleButton.click()")
+        wait_for("document.readyState==='complete' && typeof physics!=='undefined' && sampleMode")
+        check(evaluate("!removeSampleButton.disabled && entries.size===77"), "Load Sample Galaxy remains available for another manual session")
+        evaluate("removeSampleButton.click()")
+        wait_for("document.readyState==='complete' && typeof physics!=='undefined' && !sampleMode")
+        wait_for("physics.settled")
+        check(evaluate("!entries.has('sample-sun-technology') && entries.has('github')"), "Remove Sample Galaxy returns to the saved galaxy")
+        check(evaluate("!JSON.parse(localStorage.getItem('galaxy:user-data')).entries.some(entry=>entry.id.startsWith('sample-'))"), "Remove Sample Galaxy never mixes sample entries into persistent storage")
         evaluate("1")
         check(not cdp.errors, f"no browser exceptions: {cdp.errors}")
         print(f"{count} browser checks passed", flush=True)

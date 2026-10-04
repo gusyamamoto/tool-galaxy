@@ -38,12 +38,9 @@ browser, address and port to access the same saved galaxy.
 
 ## Development sample galaxy
 
-To open the large development sample, append `?sample=large` to the normal app
-address. For example:
-
-```text
-http://localhost:8000/?sample=large
-```
+Use **Load Sample Galaxy** in the development-data bar at the top center to open
+the large interactive sample. The active sample is clearly marked at the top of
+the viewport.
 
 The sample contains 77 entries: 7 Suns, 21 Planets and 49 Moons covering
 Technology, Food, Travel, Books, Fitness, Business and Music. Every relationship
@@ -52,9 +49,9 @@ dragging, selection and editing paths as regular entries.
 
 Sample mode does not read or write the saved Galaxy in localStorage. Edits, manual
 positions, pins and deletions remain in memory for the current page only. Use
-**Reset sample** in the sample banner to rebuild the original fixture, or **Exit
-sample** to remove the query parameter and return to the saved Galaxy. Refreshing
-the sample URL also resets it.
+**Remove Sample Galaxy**, or simply refresh the page, to return to the saved
+Galaxy. The internal activation query is removed as soon as the sample loads so
+it cannot survive a refresh or bookmarked URL.
 
 ## Data and hierarchy
 
