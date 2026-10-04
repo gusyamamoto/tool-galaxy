@@ -33,6 +33,13 @@ const initialConnections = [
 
 const entryRoles = galaxyModel.roles;
 const sampleMode = galaxySample.isRequested(window.location.search);
+if (sampleMode) {
+    // The query activates this page load only. Keeping it out of the address bar
+    // means a normal refresh always returns to the user's persisted Galaxy.
+    const realGalaxyUrl = new URL(window.location.href);
+    realGalaxyUrl.searchParams.delete("sample");
+    window.history.replaceState(null, "", realGalaxyUrl.href);
+}
 
 function normalizeRole(role) {
     return galaxyModel.normalizeRole(role);
@@ -70,10 +77,11 @@ const deleteDialog = document.getElementById("delete-entry-dialog");
 const searchField = document.getElementById("entry-search");
 const searchResults = document.getElementById("search-results");
 const searchResultList = document.getElementById("search-result-list");
-const sampleModeBanner = document.getElementById("sample-mode-banner");
+const sampleControls = document.getElementById("sample-controls");
+const sampleModeLabel = document.getElementById("sample-mode-label");
 const sampleModeCount = document.getElementById("sample-mode-count");
-const resetSampleButton = document.getElementById("reset-sample-button");
-const exitSampleButton = document.getElementById("exit-sample-button");
+const loadSampleButton = document.getElementById("load-sample-button");
+const removeSampleButton = document.getElementById("remove-sample-button");
 const fields = ["entry-name", "entry-description", "entry-category"].map((id) =>
     document.getElementById(id)
 );
@@ -235,11 +243,17 @@ function initializeGalaxy() {
     rebuildConnections();
 }
 
-resetSampleButton.addEventListener("click", () => window.location.reload());
-exitSampleButton.addEventListener("click", () => {
+loadSampleButton.addEventListener("click", () => {
+    if (sampleMode) return;
+    // Finish the real graph's pending layout save before leaving it behind.
+    physics.pause();
+    if (graphNeedsSave) saveGalaxy();
     const url = new URL(window.location.href);
-    url.searchParams.delete("sample");
-    window.location.replace(url.href);
+    url.searchParams.set("sample", galaxySample.queryValue);
+    window.location.assign(url.href);
+});
+removeSampleButton.addEventListener("click", () => {
+    if (sampleMode) window.location.reload();
 });
 
 function selectEntry(entry, node) {
@@ -760,9 +774,12 @@ document.addEventListener("pointerdown", (event) => {
 
 initializeGalaxy();
 if (sampleMode) {
-    sampleModeCount.textContent = `(${entries.size} entries)`;
-    sampleModeBanner.hidden = false;
+    sampleControls.classList.add("sample-active");
+    sampleModeLabel.textContent = "Sample galaxy";
+    sampleModeCount.textContent = `(${entries.size} temporary entries)`;
 }
+loadSampleButton.disabled = sampleMode;
+removeSampleButton.disabled = !sampleMode;
 updateGraphViewport();
 syncPhysicsGraph();
 
