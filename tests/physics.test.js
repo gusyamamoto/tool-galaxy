@@ -55,14 +55,13 @@ test("unconnected nodes repel rather than falling into the same center", () => {
     assertSeparated(nodes);
 });
 
-test("coincident nodes separate and stay finite inside the viewport", () => {
+test("coincident roots separate and stay finite inside the soft galaxy extent", () => {
     const physics = makePhysics(Array.from({ length: 12 }, (_, i) => ({ id: `node-${i}`, x: 600, y: 450 })));
     const nodes = advance(physics, 300);
     assertSeparated(nodes);
     nodes.forEach((node) => {
         assert.ok(Number.isFinite(node.x) && Number.isFinite(node.y));
-        assert.ok(node.x >= bounds.left && node.x <= bounds.right);
-        assert.ok(node.y >= bounds.top && node.y <= bounds.bottom);
+        assert.ok(distance(node, physics.origin) < physics.galaxyRadius);
     });
 });
 
@@ -97,7 +96,7 @@ test("collision pushes a free node away from a dragged node", () => {
     physics.simulation.stop();
 });
 
-test("release allows motion, then cooling and damping reduce it", () => {
+test("soft release permits local adjustment, then cooling and damping settle it", () => {
     const physics = makePhysics([
         { id: "a", x: 400, y: 400 }, { id: "b", x: 600, y: 400 }
     ], [{ from: "a", to: "b" }]);
@@ -108,11 +107,226 @@ test("release allows motion, then cooling and damping reduce it", () => {
     physics.endDrag("a", true);
     const initial = { ...physics.particles.get("a") };
     advance(physics, 10);
-    assert.ok(distance(physics.particles.get("a"), initial) > 1);
+    // Cross-system optional links no longer pull a soft root off its manual anchor.
+    assert.ok(distance(physics.particles.get("a"), initial) < 60);
     const nodes = advance(physics, 200);
     assert.ok(physics.simulation.alpha() < physics.simulation.alphaMin());
     assert.ok(nodes.every((node) => Math.hypot(node.vx, node.vy) < 0.1));
     assert.equal(physics.particles.get("a").fx, null);
+});
+
+vm.runInContext(fs.readFileSync(path.join(root, "sample-data.js"), "utf8"), context);
+const sample = vm.runInContext("galaxySample", context);
+
+function samplePhysics() {
+    const data = JSON.parse(JSON.stringify(sample.build()));
+    const sizes = { category: 1.35, subcategory: 1, entry: 0.66 };
+    const physics = makePhysics(data.entries.map(entry => ({ ...entry, sizeScale: sizes[entry.role] })), [], new Map());
+    physics.setViewport(bounds, 23);
+    advance(physics, 320);
+    return physics;
+}
+
+for (const [body, id, dx, dy] of [
+    ["Sun", "sample-sun-technology", 160, 80],
+    ["Planet", "sample-planet-0-0", 100, -70],
+    ["Moon", "sample-moon-0-0-0", 90, 45]
+]) {
+    test(`${body} release keeps inertia, avoids an energy kick and settles with a gentle response`, () => {
+        const physics = samplePhysics();
+        const node = physics.particles.get(id);
+        const members = physics.systems.get(node.systemId).members;
+        const before = new Map(members.map(member => [member.id, { x: member.x, y: member.y }]));
+        physics.beginDrag(id);
+        physics.moveDrag(id, node.x + dx, node.y + dy);
+        advance(physics, 12);
+        const releaseAlpha = physics.simulation.alpha();
+        const release = new Map(members.map(member => [member.id, { ...member }]));
+        physics.endDrag(id, true);
+        physics.simulation.stop();
+        assert.equal(physics.simulation.alpha(), releaseAlpha, "release must not increase restorative energy");
+        assert.equal(physics.simulation.alphaTarget(), 0, "last release should start cooling immediately");
+        members.forEach(member => {
+            assert.equal(member.vx, release.get(member.id).vx, "release must retain existing horizontal inertia");
+            assert.equal(member.vy, release.get(member.id).vy, "release must retain existing vertical inertia");
+        });
+        let peakSpeed = 0;
+        let peakAcceleration = 0;
+        let excursion = 0;
+        for (let tick = 0; tick < 240; tick++) {
+            const velocities = new Map(members.map(member => [member.id, { vx: member.vx, vy: member.vy }]));
+            advance(physics, 1);
+            members.forEach(member => {
+                if (tick < 12) {
+                    const velocity = velocities.get(member.id);
+                    peakSpeed = Math.max(peakSpeed, Math.hypot(member.vx, member.vy));
+                    peakAcceleration = Math.max(peakAcceleration, Math.hypot(member.vx - velocity.vx, member.vy - velocity.vy));
+                }
+                excursion = Math.max(excursion, distance(member, release.get(member.id)));
+            });
+        }
+        assert.ok(peakAcceleration < 0.5, `initial acceleration should stay gentle (${peakAcceleration}px/tick²)`);
+        assert.ok(peakSpeed > 0.01 && peakSpeed < 4, `the system should respond visibly without sharp recoil (${peakSpeed}px/tick)`);
+        assert.ok(excursion < 125, `post-release displacement should remain restrained (${excursion}px)`);
+        assert.ok(distance(node, node.placement) < 40, "dragged body should settle near its soft preference");
+        assert.ok(physics.simulation.alpha() < physics.simulation.alphaMin());
+        assert.ok(members.every(member => Math.hypot(member.vx, member.vy) < 0.02), "every connected body should settle");
+        const descendants = members.filter(member => member.parent === node || member.parent?.parent === node);
+        descendants.forEach(member => assert.ok(distance(member, before.get(member.id)) > 20, "automatic descendants should visibly follow their dragged parent"));
+    });
+}
+
+test("a held drag releases without reheating and keeps another active drag warm", () => {
+    const physics = samplePhysics();
+    const sun = physics.particles.get("sample-sun-technology");
+    const moon = physics.particles.get("sample-moon-0-0-0");
+    physics.beginDrag(sun.id);
+    physics.moveDrag(sun.id, sun.x + 160, sun.y + 80);
+    advance(physics, 120);
+    const alpha = physics.simulation.alpha();
+    physics.beginDrag(moon.id);
+    physics.endDrag(sun.id, true);
+    physics.simulation.stop();
+    assert.equal(physics.simulation.alpha(), alpha, "a held release must not kick the simulation awake");
+    assert.ok(physics.simulation.alphaTarget() > 0, "remaining drag must stay responsive");
+    assert.notEqual(moon.fx, null);
+    physics.endDrag(moon.id, false);
+    physics.simulation.stop();
+    assert.equal(physics.simulation.alpha(), alpha, "a click must not add energy");
+    assert.equal(physics.simulation.alphaTarget(), 0);
+});
+
+for (const [body, draggedId, siblingId] of [
+    ["Planet", "sample-planet-0-0", "sample-planet-0-1"],
+    ["Moon", "sample-moon-0-0-0", "sample-moon-0-0-1"]
+]) {
+    test(`${body} siblings separate after a coincident drop beside an exact pin`, () => {
+        const physics = samplePhysics();
+        const dragged = physics.particles.get(draggedId);
+        const sibling = physics.particles.get(siblingId);
+        const parentId = dragged.parentId;
+        const pin = { x: sibling.x, y: sibling.y, pinned: true };
+        physics.setPlacement(siblingId, pin);
+        advance(physics, 200);
+        physics.beginDrag(draggedId);
+        physics.moveDrag(draggedId, pin.x, pin.y);
+        advance(physics, 12);
+        const preference = physics.endDrag(draggedId, true);
+        const nodes = advance(physics, 240);
+        assert.ok(distance(dragged, sibling) >= dragged.radius + sibling.radius + 12,
+            "released siblings should have local breathing room");
+        assert.equal(sibling.x, pin.x);
+        assert.equal(sibling.y, pin.y);
+        assert.equal(dragged.placement.x, preference.x, "separation must not rewrite a manual preference");
+        assert.equal(dragged.placement.y, preference.y);
+        assert.equal(dragged.parentId, parentId);
+        assert.equal(sibling.parentId, parentId);
+        assert.ok(nodes.every(node => Number.isFinite(node.x) && Number.isFinite(node.y)));
+        assert.ok(nodes.every(node => Math.hypot(node.vx, node.vy) < 0.05), "local correction should settle");
+    });
+}
+
+test("sibling clearance opens angular space without radial/global displacement", () => {
+    const physics = samplePhysics();
+    const parent = physics.particles.get("sample-sun-technology");
+    const a = physics.particles.get("sample-planet-0-0");
+    const b = physics.particles.get("sample-planet-0-1");
+    physics.particles.forEach(node => { node.vx = node.vy = 0; });
+    a.x = parent.x + 180; a.y = parent.y;
+    b.x = parent.x + 180; b.y = parent.y + 40;
+    const unrelated = [...physics.particles.values()].filter(node => node.systemId !== parent.systemId);
+    const homes = JSON.stringify([...physics.systems.values()].map(system => system.home));
+    physics.separateSiblings(0.1);
+    assert.ok(a.vy < 0 && b.vy > 0, "nearby siblings should gently open their angular gap");
+    assert.ok(Math.abs(a.vx) < 0.0001, "the correction should not push a body radially onto a track");
+    assert.ok(Math.hypot(a.vx, a.vy) < 0.3 && Math.hypot(b.vx, b.vy) < 0.3,
+        "clearance should add a bounded, gentle impulse");
+    assert.ok(unrelated.every(node => Math.hypot(node.vx, node.vy) === 0), "unrelated systems should receive no impulse");
+    assert.equal(parent.vx, 0);
+    assert.equal(parent.vy, 0);
+    assert.equal(JSON.stringify([...physics.systems.values()].map(system => system.home)), homes);
+    physics.particles.forEach(node => { node.vx = node.vy = 0; });
+    b.x = parent.x + 400; b.y = parent.y;
+    physics.separateSiblings(0.1);
+    assert.equal(b.vx, 0);
+    assert.equal(b.vy, 0, "siblings in separate radial regions should remain freely arranged");
+});
+
+test("77 bodies form seven separated, contained systems with distinct local orbits", () => {
+    const physics = samplePhysics();
+    assert.equal(physics.systems.size, 7);
+    const systems = [...physics.systems.values()];
+    systems.forEach((system, index) => {
+        assert.equal(system.members.length, 11);
+        assert.ok(distance(system.root, physics.origin) < physics.galaxyRadius);
+        systems.slice(index + 1).forEach(other => assert.ok(
+            distance(system.root, other.root) > (system.radius + other.radius) * 0.85,
+            "systems must retain distinct footprints"));
+        system.members.filter(node => node.parent).forEach(node => {
+            assert.equal(node.systemId, system.id);
+            const radius = distance(node, node.parent);
+            assert.ok(Math.abs(radius - node.orbitRadius) < 45, "automatic branch stays in its radial band");
+            assert.ok(radius < (node.role === "entry" ? 125 : 240));
+        });
+    });
+    assert.ok(Math.min(...systems.map(system => distance(system.root, physics.origin))) < 260,
+        "the galaxy center should be occupied");
+    assertSeparated([...physics.particles.values()], 28);
+});
+
+test("unrelated Moon motion and semantic links do not exert global repulsion", () => {
+    const physics = samplePhysics();
+    const unrelated = physics.particles.get("sample-sun-food");
+    const control = samplePhysics();
+    control.reheat(0.28);
+    advance(control, 260);
+    const moon = physics.particles.get("sample-moon-0-0-0");
+    physics.setPlacement(moon.id, { x: 8000, y: -7000, pinned: true });
+    physics.linkForce.links([{ source: moon.id, target: unrelated.id }]);
+    advance(physics, 260);
+    assert.ok(distance(unrelated, control.particles.get(unrelated.id)) < 25,
+        "unrelated system must not chase the remote Moon beyond ordinary reheating adjustment");
+    assert.equal(moon.x, 8000);
+    assert.equal(moon.y, -7000);
+});
+
+test("Sun dragging transports automatic and soft descendants while respecting exact pins", () => {
+    const physics = samplePhysics();
+    const root = physics.particles.get("sample-sun-technology");
+    const moon = physics.particles.get("sample-moon-0-0-0");
+    const pinned = physics.particles.get("sample-moon-0-1-0");
+    const pin = { x: pinned.x, y: pinned.y, pinned: true };
+    physics.setPlacement(pinned.id, pin);
+    physics.setPlacement(moon.id, { x: moon.x, y: moon.y, pinned: false });
+    const before = { x: moon.x, y: moon.y };
+    const stored = { ...moon.placement };
+    let translated;
+    physics.onPlacementChange = (id, placement) => { if (id === moon.id) translated = placement; };
+    physics.beginDrag(root.id);
+    physics.moveDrag(root.id, root.x + 220, root.y - 120);
+    assert.ok(Math.abs(moon.x - before.x - 220) < 0.01);
+    assert.ok(Math.abs(moon.y - before.y + 120) < 0.01);
+    assert.equal(translated.x, stored.x + 220);
+    assert.equal(translated.y, stored.y - 120);
+    assert.equal(pinned.x, pin.x);
+    assert.equal(pinned.y, pin.y);
+    physics.endDrag(root.id, true);
+    advance(physics, 260);
+    assert.ok(distance(root, root.placement) < 70);
+});
+
+test("containment brings an automatic remote system home but permits an intentional remote pin", () => {
+    const physics = samplePhysics();
+    const root = physics.particles.get("sample-sun-technology");
+    root.x = 6000;
+    root.y = -5000;
+    physics.reheat(0.8);
+    advance(physics, 320);
+    assert.ok(distance(root, physics.origin) < physics.galaxyRadius);
+    physics.setPlacement(root.id, { x: 6000, y: -5000, pinned: true });
+    advance(physics, 260);
+    assert.equal(root.x, 6000);
+    assert.equal(root.y, -5000);
 });
 
 test("adding a node reheats, preserves particle identity, and does not mutate app records", () => {
@@ -154,8 +368,7 @@ test("resizing a desktop graph to a narrow viewport keeps nodes apart", () => {
     const nodes = advance(physics, 220);
     assertSeparated(nodes, 88);
     nodes.forEach((node) => {
-        assert.ok(node.x >= narrowBounds.left && node.x <= narrowBounds.right);
-        assert.ok(node.y >= narrowBounds.top && node.y <= narrowBounds.bottom);
+        assert.ok(distance(node, physics.origin) < physics.galaxyRadius);
     });
 });
 

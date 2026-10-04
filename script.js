@@ -95,6 +95,8 @@ let connections = [];
 const builtInIds = new Set(initialEntries.map((entry) => entry.id));
 const nodes = new Map();
 const lines = [];
+const orbitGuides = [];
+let hoveredSystemId = null;
 let selectedNode = null;
 let nextEntryId = 1;
 let storageAvailable = true;
@@ -102,16 +104,36 @@ let graphNeedsSave = false;
 let editingId = null;
 let deletingId = null;
 let searchOpen = false;
+let keyboardNavigation = false;
+document.addEventListener("keydown", event => {
+    if (event.key === "Tab") keyboardNavigation = true;
+});
+document.addEventListener("pointerdown", () => { keyboardNavigation = false; }, true);
+let autoFitPending = true;
+let baseNodeRadius = 23;
+const smoothDetail = (scale, start, end) => {
+    const t = Math.max(0, Math.min(1, (scale - start) / (end - start)));
+    return t * t * (3 - 2 * t);
+};
 const renderBackground = createUniverseBackground(galaxy);
 const camera = new GraphCamera({
     onChange({ x, y, scale }) {
         graphWorld.style.transform = `translate(${x}px, ${y}px) scale(${scale})`;
-        // Labels remain readable nearby, then shrink with the graph for a useful overview.
-        graphWorld.style.setProperty("--label-scale", 1 / Math.max(scale, 0.62));
-        graphWorld.style.setProperty("--landmark-label-scale", 1 / Math.max(scale, 0.45));
-        graphWorld.style.setProperty("--selected-label-scale", 1 / scale);
-        galaxy.dataset.detailLevel = scale < 0.5 ? "far" : scale < 0.8 ? "medium" : "near";
+        // SVG geometry stays in world space. Bodies are sized and projected in
+        // screen space, so zoom paints gradients and text at native resolution
+        // instead of magnifying a previously composited DOM world layer.
+        graphViewport.style.setProperty("--camera-scale", scale);
+        graphViewport.style.setProperty("--native-label-scale", Math.min(1, scale / 0.62));
+        graphViewport.style.setProperty("--sun-render-scale", Math.max(scale, 0.3));
+        graphViewport.style.setProperty("--planet-detail", smoothDetail(scale, 0.35, 0.65));
+        graphViewport.style.setProperty("--moon-detail", smoothDetail(scale, 0.45, 0.85));
+        graphViewport.style.setProperty("--moon-label-detail", smoothDetail(scale, 0.8, 1.05));
+        graphViewport.style.setProperty("--surface-detail", smoothDetail(scale, 0.5, 1));
+        graphViewport.style.setProperty("--orbit-detail", smoothDetail(scale, 0.5, 0.85));
+        galaxy.dataset.detailLevel = scale < 0.5 ? "far" : scale < 0.95 ? "medium" : "near";
         zoomLevel.textContent = `${Math.round(scale * 100)}%`;
+        entries.forEach(entry => renderNode(entry, nodes.get(entry.id)));
+        updateOrbitGuides();
     }
 });
 let pan = null;
@@ -125,6 +147,7 @@ function pointerInWorld(event) {
 graphViewport.addEventListener("wheel", (event) => {
     event.preventDefault();
     if (activeNodeDrags || pan) return;
+    autoFitPending = false;
     const rect = graphViewport.getBoundingClientRect();
     const units = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? rect.height : 1;
     const delta = Math.max(-240, Math.min(240, event.deltaY * units));
@@ -133,6 +156,7 @@ graphViewport.addEventListener("wheel", (event) => {
 
 graphViewport.addEventListener("pointerdown", (event) => {
     if (event.button !== 0 || pan || activeNodeDrags || event.target.closest(".entry-node")) return;
+    autoFitPending = false;
     camera.stopAnimation();
     pan = { id: event.pointerId, x: event.clientX, y: event.clientY, view: { ...camera.view } };
     graphViewport.setPointerCapture(event.pointerId);
@@ -149,10 +173,15 @@ function endPan(event) {
     if (graphViewport.hasPointerCapture(event.pointerId)) graphViewport.releasePointerCapture(event.pointerId);
 }
 ["pointerup", "pointercancel", "lostpointercapture"].forEach((type) => graphViewport.addEventListener(type, endPan));
-document.getElementById("reset-view-button").addEventListener("click", () => camera.reset());
+document.getElementById("reset-view-button").addEventListener("click", () => {
+    autoFitPending = !physics.settled;
+    fitGalaxy();
+});
 
 const physics = new GalaxyPhysics({
+    onPlacementChange(id, placement) { layout.set(id, placement); },
     onTick(particles) {
+        if (!galaxy.classList.contains("is-settling")) galaxy.classList.add("is-settling");
         particles.forEach((particle, id) => {
             const entry = entries.get(id);
             if (entry.x !== particle.x || entry.y !== particle.y) {
@@ -164,9 +193,11 @@ const physics = new GalaxyPhysics({
         renderGraph();
     },
     onSettle() {
+        galaxy.classList.remove("is-settling");
         if (graphNeedsSave) {
             saveGalaxy();
         }
+        if (autoFitPending) { autoFitPending = false; fitGalaxy(); }
     }
 });
 
@@ -279,13 +310,44 @@ function selectEntry(entry, node) {
     deleteEntryButton.hidden = builtInIds.has(entry.id);
     actionStatus.hidden = true;
     updatePlacementControls();
+    updateHierarchyEmphasis();
+}
+
+function updateHierarchyEmphasis() {
+    const id = selectedNode?.dataset.entryId;
+    const selected = physics.particles.get(id);
+    galaxy.classList.toggle("has-selection", !!selected);
     const relatedIds = new Set();
-    lines.forEach(({ from, to, element }) => {
-        element.classList.toggle("selected", from === entry.id || to === entry.id);
-        if (from === entry.id) relatedIds.add(to);
-        if (to === entry.id) relatedIds.add(from);
+    if (selected) {
+        const system = physics.systems.get(selected.systemId);
+        relatedIds.add(system.root.id);
+        physics.children.get(system.root.id).forEach(node => relatedIds.add(node.id));
+        if (selected.role === "subcategory") physics.children.get(id).forEach(node => relatedIds.add(node.id));
+        if (selected.parent) relatedIds.add(selected.parent.id);
+        // Optional relationships retain their explicit connection emphasis.
+        connections.filter(link => link.kind === "relationship").forEach(({ from, to }) => {
+            if (from === id) relatedIds.add(to);
+            if (to === id) relatedIds.add(from);
+        });
+    }
+    nodes.forEach((element, nodeId) => {
+        const particle = physics.particles.get(nodeId);
+        element.classList.toggle("related", relatedIds.has(nodeId));
+        element.classList.toggle("in-system", !!selected && particle?.systemId === selected.systemId);
+        element.dataset.systemRoot = String(!particle?.parent);
     });
-    nodes.forEach((element, id) => element.classList.toggle("related", relatedIds.has(id)));
+    lines.forEach(({ from, to, element }) => {
+        const parent = physics.particles.get(from);
+        const child = physics.particles.get(to);
+        const ancestry = element.dataset.kind === "hierarchy" && selected &&
+            child?.systemId === selected.systemId &&
+            (selected.role === "category" || child?.role === "subcategory" ||
+                from === id || to === id || to === selected.parentId);
+        element.classList.toggle("selected", !!ancestry || from === id || to === id);
+        element.classList.toggle("in-system", !!selected && parent?.systemId === selected.systemId && child?.systemId === selected.systemId);
+    });
+    updateConnections();
+    updateOrbitGuides();
 }
 
 // Initial entries and form submissions share all rendering and interactions.
@@ -300,7 +362,19 @@ function createEntryNode(entry) {
     node.dataset.entryId = entry.id;
     node.setAttribute("aria-pressed", "false");
     node.addEventListener("click", () => selectEntry(entry, node));
-    node.addEventListener("focus", () => revealEntry(entry));
+    node.addEventListener("focus", () => {
+        // Browsers can restore old focus when a window receives pointer input.
+        // Only intentional keyboard navigation should move the camera on focus.
+        if (!activeNodeDrags && keyboardNavigation) focusEntry(entry.id);
+    });
+    node.addEventListener("pointerenter", () => {
+        hoveredSystemId = physics.particles.get(entry.id)?.systemId || null;
+        updateOrbitGuides();
+    });
+    node.addEventListener("pointerleave", () => {
+        hoveredSystemId = null;
+        updateOrbitGuides();
+    });
 
     let dragPointerId = null;
     let didMove = false;
@@ -314,6 +388,7 @@ function createEntryNode(entry) {
         offsetX = point.x - entry.x;
         offsetY = point.y - entry.y;
         physics.beginDrag(entry.id);
+        autoFitPending = false;
         activeNodeDrags++;
         dragPointerId = event.pointerId;
         didMove = false;
@@ -372,7 +447,7 @@ function updateEntryNode(entry, node) {
     node.style.setProperty("--body-hue", hues[surface] + (hash % 13) - 6);
     node.style.setProperty("--surface-angle", `${hash % 360}deg`);
     // A static, seeded SVG noise field supplies uneven terrain, never discrete circles.
-    const texture = `<svg xmlns="http://www.w3.org/2000/svg" width="180" height="180"><filter id="terrain"><feTurbulence type="fractalNoise" baseFrequency=".045 .07" numOctaves="4" seed="${hash % 997}" stitchTiles="stitch"/><feColorMatrix type="saturate" values="0"/><feComponentTransfer><feFuncR type="linear" slope="1.5" intercept="-.25"/><feFuncG type="linear" slope="1.5" intercept="-.25"/><feFuncB type="linear" slope="1.5" intercept="-.25"/></feComponentTransfer></filter><rect width="100%" height="100%" filter="url(#terrain)"/></svg>`;
+    const texture = `<svg xmlns="http://www.w3.org/2000/svg" width="180" height="180"><filter id="terrain"><feTurbulence type="fractalNoise" baseFrequency=".075 .11" numOctaves="3" seed="${hash % 997}" stitchTiles="stitch"/><feColorMatrix type="saturate" values="0"/><feComponentTransfer><feFuncR type="linear" slope="1.8" intercept="-.4"/><feFuncG type="linear" slope="1.8" intercept="-.4"/><feFuncB type="linear" slope="1.8" intercept="-.4"/></feComponentTransfer></filter><rect width="100%" height="100%" filter="url(#terrain)"/></svg>`;
     node.style.setProperty("--surface-map", `url("data:image/svg+xml,${encodeURIComponent(texture)}")`);
     node.querySelector(".node-label").textContent = entry.name;
     node.title = entry.name;
@@ -390,11 +465,8 @@ function getNewEntryPosition(targetIds, role) {
     for (let ring = 1; ring <= 3; ring++) {
         for (let step = 0; step < 12; step++) {
             const angle = entries.size * 2.4 + step * Math.PI / 6;
-            const point = physics.clampPosition(
-                center.x + Math.cos(angle) * spacing * ring,
-                center.y + Math.sin(angle) * spacing * ring,
-                radius
-            );
+            const point = { x: center.x + Math.cos(angle) * spacing * ring,
+                y: center.y + Math.sin(angle) * spacing * ring };
             if ([...entries.values()].every((entry) =>
                 Math.hypot(point.x - entry.x, point.y - entry.y) >= radius + getNodeRadius(entry) + 24
             )) {
@@ -402,30 +474,51 @@ function getNewEntryPosition(targetIds, role) {
             }
         }
     }
-    return physics.clampPosition(center.x, center.y, radius);
+    return center;
 }
 
 function getNodeRadius(entry) {
-    const baseRadius = parseFloat(getComputedStyle(galaxy).getPropertyValue("--node-size")) / 2;
-    return baseRadius * (entry ? entryRoles[normalizeRole(entry.role)].scale : 1);
+    return baseNodeRadius * (entry ? entryRoles[normalizeRole(entry.role)].scale : 1);
 }
 
 function syncPhysicsGraph() {
     physics.setGraph([...entries.values()].map(({ id, role, parentId, x, y }) =>
         ({ id, role, parentId, x, y, sizeScale: entryRoles[role].scale })
     ), connections, layout);
+    rebuildOrbitGuides();
+    updateHierarchyEmphasis();
+    renderGraph();
 }
 
 function updateGraphViewport() {
     const rect = galaxy.getBoundingClientRect();
     const panelRect = panel.getBoundingClientRect();
+    baseNodeRadius = parseFloat(getComputedStyle(galaxy).getPropertyValue("--node-size")) / 2;
     const radius = getNodeRadius();
     const narrow = window.matchMedia("(max-width: 760px)").matches;
     const left = radius + 24;
-    const top = radius + (narrow ? 192 : 200);
+    const top = radius + (narrow ? 234 : 200);
     const right = Math.max(left, (narrow ? rect.width - 24 : panelRect.left - rect.left - 24) - radius);
     const bottom = Math.max(top, (narrow ? panelRect.top - rect.top - 48 : rect.height - 76) - radius);
     physics.setViewport({ left, right, top, bottom }, radius);
+}
+
+function galaxyBounds() {
+    if (!entries.size) return null;
+    const bounds = { left: Infinity, right: -Infinity, top: Infinity, bottom: -Infinity };
+    // Include simplified/hidden descendants too: changing zoom must not crop them.
+    entries.forEach(entry => {
+        const radius = getNodeRadius(entry);
+        bounds.left = Math.min(bounds.left, entry.x - radius - 28);
+        bounds.right = Math.max(bounds.right, entry.x + radius + 28);
+        bounds.top = Math.min(bounds.top, entry.y - radius - 12);
+        bounds.bottom = Math.max(bounds.bottom, entry.y + radius + 44);
+    });
+    return bounds;
+}
+
+function fitGalaxy(animate = true) {
+    camera.fitBounds(galaxyBounds(), physics.bounds, { padding: 32, animate });
 }
 
 // Keep new entries and keyboard-focused bodies visible even after panning away.
@@ -448,22 +541,83 @@ function revealEntry(entry) {
 }
 
 function renderNode(entry, node) {
-    node.style.transform = `translate(${entry.x}px, ${entry.y}px) translate(-50%, -50%)`;
+    const point = camera.worldToScreen(entry.x, entry.y);
+    if (node.renderX === point.x && node.renderY === point.y) return;
+    node.style.transform = `translate(${point.x}px, ${point.y}px) translate(-50%, -50%)`;
+    node.renderX = point.x;
+    node.renderY = point.y;
 }
 
 function renderGraph() {
     entries.forEach((entry) => renderNode(entry, nodes.get(entry.id)));
     updateConnections();
+    updateOrbitGuides();
+}
+
+function rebuildOrbitGuides() {
+    orbitGuides.forEach(({ element }) => element.remove());
+    orbitGuides.length = 0;
+    physics.particles.forEach(node => {
+        if (!node.childOrbit) return;
+        const element = document.createElementNS("http://www.w3.org/2000/svg", "ellipse");
+        element.classList.add("orbit-guide");
+        element.dataset.role = node.role;
+        connectionsLayer.prepend(element);
+        orbitGuides.push({ id: node.id, element });
+    });
+}
+
+function updateOrbitGuides() {
+    const selected = physics.particles.get(selectedNode?.dataset.entryId);
+    const systemId = selected?.systemId || hoveredSystemId;
+    const moonParent = selected?.role === "subcategory" ? selected.id :
+        selected?.role === "entry" ? selected.parentId : null;
+    orbitGuides.forEach(({ id, element }) => {
+        const parent = physics.particles.get(id);
+        const active = !!parent && camera.view.scale > 0.5 && parent.systemId === systemId &&
+            (parent.role === "category" || (camera.view.scale >= 0.95 && id === moonParent));
+        if (element.dataset.active !== String(active)) element.dataset.active = String(active);
+        if (!active) return;
+        // One preferred band per parent, never a separate arc/ring per child.
+        // Manual bodies can freely leave the band; guides do not constrain them.
+        if (element.renderX !== parent.x || element.renderY !== parent.y || element.renderRadius !== parent.childOrbit) {
+            element.setAttribute("cx", parent.x);
+            element.setAttribute("cy", parent.y);
+            element.setAttribute("rx", parent.childOrbit);
+            element.setAttribute("ry", parent.childOrbit);
+            element.renderX = parent.x;
+            element.renderY = parent.y;
+            element.renderRadius = parent.childOrbit;
+        }
+    });
 }
 
 function updateConnections() {
+    const selected = physics.particles.get(selectedNode?.dataset.entryId);
     lines.forEach(({ from, to, element }) => {
         const fromEntry = entries.get(from);
         const toEntry = entries.get(to);
-        element.setAttribute("x1", fromEntry.x);
-        element.setAttribute("y1", fromEntry.y);
-        element.setAttribute("x2", toEntry.x);
-        element.setAttribute("y2", toEntry.y);
+        // Selection clears during deletion before the derived edge list rebuilds.
+        if (!fromEntry || !toEntry) return;
+        if (element.renderFromX !== fromEntry.x || element.renderFromY !== fromEntry.y ||
+            element.renderToX !== toEntry.x || element.renderToY !== toEntry.y) {
+            element.setAttribute("x1", fromEntry.x);
+            element.setAttribute("y1", fromEntry.y);
+            element.setAttribute("x2", toEntry.x);
+            element.setAttribute("y2", toEntry.y);
+            element.renderFromX = fromEntry.x;
+            element.renderFromY = fromEntry.y;
+            element.renderToX = toEntry.x;
+            element.renderToY = toEntry.y;
+        }
+        if (element.dataset.kind === "hierarchy") {
+            const child = physics.particles.get(to);
+            const selectedAncestry = selected?.role === "entry" &&
+                (to === selected.id || to === selected.parentId);
+            const stretched = selected && (from === selected.id || to === selected.id) && child &&
+                Math.hypot(toEntry.x - fromEntry.x, toEntry.y - fromEntry.y) > child.orbitRadius * 1.6;
+            element.classList.toggle("context-link", !!selectedAncestry || !!stretched || physics.dragging.has(to));
+        }
     });
 }
 
@@ -638,6 +792,7 @@ function clearSelection() {
         node.setAttribute("aria-pressed", "false");
     });
     lines.forEach(({ element }) => element.classList.remove("selected"));
+    updateHierarchyEmphasis();
 }
 
 function updatePlacementControls() {
@@ -719,9 +874,10 @@ document.getElementById("delete-entry-form").addEventListener("submit", (event) 
 function focusEntry(id) {
     const entry = entries.get(id);
     if (!entry || activeNodeDrags || pan) return;
+    autoFitPending = false;
     selectEntry(entry, nodes.get(id));
     const { left, right, top, bottom } = physics.bounds;
-    const usefulScale = Math.max(1, Math.min(1.5, camera.view.scale));
+    const usefulScale = Math.max(entry.role === "entry" ? 1.15 : 1, Math.min(1.5, camera.view.scale));
     // Center in the usable graph area, leaving the fixed panel and controls visible.
     camera.setView({ x: (left + right) / 2 - entry.x * usefulScale,
         y: (top + bottom) / 2 - entry.y * usefulScale, scale: usefulScale });
@@ -733,6 +889,8 @@ function focusEntry(id) {
 function refreshSearchResults() {
     searchResultList.replaceChildren();
     const matches = galaxyModel.search(entries, searchField.value);
+    const matchIds = new Set(matches.map(entry => entry.id));
+    nodes.forEach((node, id) => node.classList.toggle("search-match", matchIds.has(id)));
     searchResults.hidden = !searchOpen || !searchField.value.trim();
     matches.slice(0, 8).forEach((entry) => {
         const item = document.createElement("li");
@@ -782,6 +940,7 @@ loadSampleButton.disabled = sampleMode;
 removeSampleButton.disabled = !sampleMode;
 updateGraphViewport();
 syncPhysicsGraph();
+fitGalaxy(false);
 
 const motionPreference = window.matchMedia("(prefers-reduced-motion: reduce)");
 physics.setReducedMotion(motionPreference.matches);
@@ -794,6 +953,7 @@ motionPreference.addEventListener("change", (event) => {
 window.addEventListener("resize", () => {
     renderBackground();
     updateGraphViewport();
+    updateOrbitGuides();
 });
 window.addEventListener("pagehide", () => {
     if (graphNeedsSave) {

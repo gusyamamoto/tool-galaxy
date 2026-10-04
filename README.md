@@ -25,8 +25,9 @@ browser, address and port to access the same saved galaxy.
   Click a result or press Enter to select it, open details and smoothly focus the
   view. Arrow Down reaches the result buttons; Escape dismisses the results.
 - **Explore:** drag a body to move it, drag empty space to pan, or scroll over the
-  graph to zoom toward the cursor (30%–240%). Reset view restores the original
-  camera. Panel and form scrolling do not zoom the graph.
+  graph to zoom toward the cursor (8%–240%, with wider fitting for remote pins).
+  Fit Galaxy centers all bodies in the usable viewport with padding.
+  Panel and form scrolling do not zoom the graph.
 - **Position:** dragging gives a body a soft preferred location. It stays nearby
   while connections, repulsion and collisions can still adjust it. Entry Details
   shows Automatic, Soft positioned or Pinned. Pin position holds exact coordinates;
@@ -90,52 +91,143 @@ optional relationships. Hierarchy rules prevent self-parenting and cycles.
 the same appearance renderer when editing or restoring entries. D3 particles and
 DOM elements remain separate from the persistent records.
 
-`physics.js` wraps the existing locally vendored D3 Force runtime. Hierarchy
-springs are stronger than optional relationship springs, with shorter gaps for
-Moons than Planets. Soft parent attraction assists children that wander far away.
-Suns repel more strongly to separate systems; circle collision, weak centering,
-velocity damping and cooling keep the layout usable. Dragging temporarily pins
-a body; children and parents remain free to react. Reparenting rebuilds the forces
-without rewriting ancestry during motion. No continuous orbit animation is used.
+`physics.js` uses two levels of layout inside one cooling D3 simulation:
 
-Automatic hierarchy link strength is now 0.18 for Planets and 0.36 for Moons
-(formerly 0.48 for both). Moons keep closer automatic clusters even when they have
-additional optional links. A manually
-positioned child uses 0.014, allowing a deliberately longer link; automatic
-children follow manually placed parents with a gentler 0.14 spring, so they cannot
-overpower the parent's anchor. Optional links use 0.08, or 0.008
-when either endpoint has a preference. Extra parent gravity is 0.018 for automatic
-children and 0.0015 for manually positioned children. A soft anchor applies a
-velocity force toward its preferred coordinates (0.2 times simulation alpha),
-with reduced global centering (0.001). Suns get extra short-range separation so
-gentler springs do not crowd systems together. Normal velocity decay increases
-from 0.32 to 0.38; alpha decay remains 0.035. Release reheats gently at 0.28 without
-rebuilding or stopping the simulation. Hard pins use D3's `fx`/`fy`, and collisions
-move free bodies around them. Automatic nodes retain the existing viewport bounds;
-manually positioned bodies and their descendants remain free to occupy the wider
-world. A viewport edge must not trap a child and pull its arranged parent back.
+- **Local systems:** every Sun and its descendants form one indexed system.
+  Unassigned legacy entries remain visible as independent roots, with their
+  valid descendants, rather than being assigned invented parents.
+- **Orbital hierarchy:** branch footprints are estimated bottom-up from body
+  radii and label clearance. Planets prefer a radial band around their Sun;
+  Moons prefer a smaller band around their Planet. Stable ID-based angles spread
+  siblings. Radial attraction is stronger than angular preference, allowing
+  collisions and dragging to adjust positions. There are no rotating orbits.
+- **Sibling clearance:** nearby children of the same parent receive a small
+  tangential impulse before body collision. Clearance uses body radii plus 24px,
+  multiplied by 1.35 for Planets or 1.15 for Moons. Strength is 0.06, capped at
+  `2 * alpha` per pair; soft placements have 0.35 mobility and exact pins have
+  zero mobility. Separate radial regions are left alone. This force never
+  changes system homes, envelopes, preferred coordinates or global packing.
+- **Galaxy layout:** system centers have soft homes in a filled sunflower
+  distribution. D3 collision operates on system footprint proxies, while
+  many-body repulsion operates separately inside each system. Individual Moons
+  have no global charge. Short-range body collisions still prevent overlap
+  where two systems meet.
+- **Containment:** automatic roots receive a gentle additional restoring force
+  outside a galaxy radius derived from system count and footprint size. There
+  are no viewport walls and no global attraction on each child. Manual roots
+  bypass containment and home attraction; pins remain exact.
+- **Relationships:** hierarchy springs are replaced by the orbital force.
+  Optional semantic links remain explicit SVG connections. Within a system
+  they have a weak spring; between systems they are visual only, avoiding
+  unrelated clusters pulling each other across the galaxy.
 
-`camera.js` owns a view transform shared by nodes and SVG connections. Pointer
+Dragging a Sun transports its movable subtree; dragging a Planet transports its
+Moons. Automatic descendants then settle locally. Soft descendants' preferred
+coordinates travel by the same deliberate drag offset and are saved together.
+Pinned descendants stay at their exact world coordinates; a pinned Planet also
+keeps its branch behind when its Sun moves. Ordinary physics motion does not
+rewrite any preferences. A manually positioned child uses only a very small
+residual radial pull, allowing intentional stretching. Unpin preserves its current
+world position as a soft preference; Release clears the preference and rejoins the
+automatic orbital layout. Existing version 4 placements retain their world-space
+meaning and require no data migration.
+
+System membership, child lists, footprints and D3 force caches rebuild on structural
+changes or body-size changes. Tick work uses those indexes, local quadtrees and
+system proxy collision instead of global body repulsion. Rendered transforms
+and orbital bands skip identical writes. Zoom updates inherited detail/size
+properties and projects body centers through the camera. The simulation stops
+after settling and pauses while dialogs are open or the page is hidden.
+During settling, compositor hints let the browser reuse painted celestial
+surfaces while their transforms change. The hints are released after settling;
+routine hidden Moons at Galaxy scale do not receive them.
+
+Drag release cools from the current simulation alpha without adding a new heat
+impulse. Drag movement reheats to at least `0.22`, with an active-drag alpha target
+of `0.10`; the last release sets the target to zero. Automatic radial strengths
+are `0.10` for Planets and `0.17` for Moons, with angular preferences of `0.025`
+and `0.06` respectively. Soft-position attraction is `0.15` and same-system
+semantic-link strength is `0.015`. Normal alpha decay is `0.032`, allowing a
+slightly longer cooling tail. Velocity decay remains `0.42`: gentler restoration,
+rather than extra damping, softens recoil while retaining the existing inertia.
+Reduced-motion settings, home attraction, containment, collisions and the tiny
+manual radial pull remain unchanged.
+
+`camera.js` owns the shared world-to-screen mapping. SVG connections and orbital
+bands use its world transform. Body buttons live in an unscaled screen layer;
+their dimensions change with zoom and their centers are projected by the camera.
+Labels use native CSS font sizes and translation only, avoiding magnification
+of already painted text. Selected/context labels and Sun/root names stay
+at 10px; routine distant labels shrink using font size before fading. Pointer
 positions are converted to world coordinates before dragging. Camera changes
 never modify stored coordinates. Search centers in the usable graph area and
 chooses a readable scale. Wheel zoom and pan work normally afterward. Reduced
 motion shortens physics settling and skips camera animation.
 
 The base desktop body diameter is 46px: Suns render at about 62px, Planets at
-46px and Moons at about 30px. Mobile uses a 42px base. At 50–79% zoom, surface
-texture, labels and ordinary connections become quieter. Below 50%, routine Moon
-labels disappear, Planet labels recede, textures simplify, and Suns remain visible
-as landmarks. Sun labels receive extra compensation at the far tier, while a
-selected label stays at its normal screen size. Selected and directly related
-labels remain visible at every scale.
-Labels only counter-scale down to 62%, so distant labels shrink with the graph
-instead of staying full-sized. Thin non-scaling SVG lines remain subtle while a
-selected relationship receives stronger emphasis.
+46px and Moons at about 30px. Mobile uses a 42px base.
+
+Semantic zoom interpolates detail with smoothstep fades. Sun bodies retain a
+minimum screen diameter of about 18px (17px on mobile), while their labels stay
+at normal screen size even at very distant fitted zoom. This affects rendering
+and hit targets only; world-space physics radii and saved positions stay stable:
+
+| Approximate scale | Information |
+| --- | --- |
+| Below 50% | Sun/system names at readable screen size; simplified Planets; routine Moons and labels fade away |
+| 50–95% | Planet names and orbital grouping; Moon bodies gradually appear; selected/relevant Moon names |
+| Above 95% | Individual entries and surface detail; all routine Moon labels reach full opacity at 105% |
+
+Planet detail fades in across 35–65%, Moon bodies across 45–85%, Moon labels
+across 80–105%, surface detail across 50–100%, and contextual orbit guides across 50–85%.
+The named tiers are descriptive; the fades are continuous. Legacy unassigned roots
+remain landmarks regardless of role. Selected entries, relevant ancestry and
+all current search matches remain discoverable at every scale. Searching for a
+Moon selects it, opens details and smoothly focuses at at least 115%; other
+entries focus at at least 100%. Keyboard focus also reveals an entry.
+
+Selection emphasizes the local system and slightly dims unrelated systems.
+Selecting a Planet reveals its Sun, sibling Planets and Moons. Selecting a Moon
+shows its parent and Sun context. Ordinary straight hierarchy lines are hidden.
+Only a selected Moon's ancestry, a selected stretched branch (beyond 1.6 times
+its preferred orbital radius), or a dragged child retains a 0.10-opacity direct
+line. Semantic relationship lines retain their separate presentation.
+
+Decorative partial orbit paths have been removed. Above 50% zoom, the selected
+system (or a hovered system when nothing is selected) shows one thin circular
+Sun band. At 95% and closer, a selected Planet or Moon also reveals its Planet's
+Moon band. Guide opacity fades across 50-85% zoom, capped at 0.09 for Sun bands
+and 0.07 for Moon bands, with a 0.65px non-scaling stroke. There are at most two
+visible guides, and none at far zoom. These circles show preferred regions;
+manual bodies need not sit on them.
+
+**Fit Galaxy** replaces the old Reset View control. It computes world bounds
+from every body, including descendants currently faded by semantic zoom, and
+includes body radii and label allowances. The camera selects the smaller width/
+height fit ratio, adds 32px screen padding and centers inside the usable area.
+That area excludes the right details panel on desktop and the bottom panel on
+mobile, plus the top controls. Fitting never changes saved positions. A small
+galaxy is not enlarged beyond 100%; intentionally remote pins can fit below the
+normal 8% zoom limit. The initial view is fitted again once physics settles;
+wheel input, dragging, search or pan cancel that pending automatic fit.
+
+The footprint estimates describe the automatic orbital layout. Deliberately
+stretched branches and conflicting pins can overlap another system; local body
+collision helps, but it does not expand every system's global envelope to include
+a remote manual Moon. This keeps one stretched entry from evacuating neighboring
+systems. Large sibling counts expand radial bands, and this version has no label
+overlap solver. Selected labels can crowd at extreme overview scales; search
+focuses close enough to read and explore them. Physics uses one shared clock and
+cooling schedule, so interacting reheats all systems even though their forces
+are scoped locally. Desktop/browser performance should still be checked with
+your own data and hardware; headless Chrome's software rendering is a smoke check.
 
 The universe keeps its dark gradients, small seeded background stars and subtle
 clouds. Suns use a warm white core, yellow-gold falloff, a restrained corona and
-soft bloom rather than a planet-style shadowed surface. Planets and Moons retain
-directional lighting, atmospheric rims and seeded surface noise. ID-based variants
+soft bloom rather than a planet-style shadowed surface. The Sun bloom is reduced
+to 5px/12px glows, with a tight luminous edge. Planets and Moons use tighter
+inset shadows, stronger limb definition, directional lighting, restrained
+atmospheric rims and finer seeded surface noise. ID-based variants
 stay stable across refreshes and metadata edits. `background.js` runs only on
 load/resize.
 
@@ -233,11 +325,25 @@ server; it never touches your normal browser's saved entries. Set `GALAXY_BROWSE
 to an executable path if the browser is not found. Add `--screenshots` to save
 desktop/mobile previews in a temporary directory printed in the output.
 
+For focused visual and interaction checks, run
+`python tests/browser-check.py --visual-only --screenshots`. It captures normal
+and Sample Galaxies at 30%, 65% and 170%, plus a 2x-display close-up; checks native
+body/text transforms during animated zoom and selective guide counts; and drops
+Planet/Moon siblings onto pinned neighbors to verify local separation and pins.
+
 The browser suite opens the actual development sample in its isolated profile. It
-checks settlement time, all 70 hierarchy edges, rendered body sizes, label density
-at 100%, 60% and 30%, selected-node visibility, dragging, search/focus, Reset and
-Exit. It also verifies that loading and interacting with the sample leaves the
-saved localStorage snapshot byte-for-byte unchanged.
+checks settling, all 70 hierarchy edges, local parent distances, system
+separation and containment, label/body visibility at Galaxy/system/entry scales,
+selection, parent and child dragging, search reveal, panel-aware fitting, and
+temporary sample isolation. Unit checks cover remote system containment,
+cross-system independence, pin exceptions and migrating manual preferences
+unchanged. Sample interactions leave the saved localStorage snapshot byte-for-byte
+unchanged.
+
+Release regressions cover a Sun with descendants, a Planet with Moons and an
+individual Moon. They check that release preserves velocities and alpha, initial
+acceleration and displacement stay restrained, descendants react and the whole
+system settles. A held drag and simultaneous drags also verify the cooling handoff.
 
 Before committing, also try a Sun → Planet → Moon family with your own data,
 edit and reparent it, drag a parent and a child at different zoom levels, confirm

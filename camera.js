@@ -5,7 +5,7 @@ class GraphCamera {
         this.onChange = onChange;
         this.requestFrame = requestFrame;
         this.cancelFrame = cancelFrame;
-        this.minScale = 0.3;
+        this.minScale = 0.08;
         this.maxScale = 2.4;
         this.view = { x: 0, y: 0, scale: 1 };
         this.target = { ...this.view };
@@ -70,6 +70,19 @@ class GraphCamera {
 
     reset() {
         this.setView({ x: 0, y: 0, scale: 1 });
+    }
+
+    fitBounds(bounds, viewport, { padding = 32, maxScale = 1, animate = true } = {}) {
+        if (!bounds || ![bounds.left, bounds.right, bounds.top, bounds.bottom].every(Number.isFinite)) return;
+        const width = Math.max(1, viewport.right - viewport.left - padding * 2);
+        const height = Math.max(1, viewport.bottom - viewport.top - padding * 2);
+        const scale = Math.min(maxScale, width / Math.max(1, bounds.right - bounds.left),
+            height / Math.max(1, bounds.bottom - bounds.top));
+        // Deliberately remote pins must also fit. Wheel zoom can return to this scale.
+        this.minScale = Math.min(this.minScale, scale);
+        this.setView({ x: (viewport.left + viewport.right) / 2 - (bounds.left + bounds.right) / 2 * scale,
+            y: (viewport.top + viewport.bottom) / 2 - (bounds.top + bounds.bottom) / 2 * scale,
+            scale }, animate);
     }
 
     setReducedMotion(enabled) {

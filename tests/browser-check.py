@@ -105,6 +105,7 @@ def find_browser():
 def main():
     args = argparse.ArgumentParser()
     args.add_argument("--screenshots", action="store_true")
+    args.add_argument("--visual-only", action="store_true", help="Capture normal/sample zoom levels without the CRUD regression prelude")
     options = args.parse_args()
     browser = find_browser()
     server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), functools.partial(QuietHandler, directory=str(ROOT)))
@@ -127,6 +128,7 @@ def main():
     ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, **popen_options)
     cdp = None
     count = 0
+    screenshot_dir = Path(tempfile.mkdtemp(prefix="galaxy-preview-")) if options.screenshots else None
     try:
         until = time.monotonic() + 15
         while True:
@@ -169,11 +171,19 @@ def main():
             count += 1
             print(f"PASS {title}", flush=True)
 
-        def wait_for(code, timeout=8):
+        def wait_for(code, timeout=15):
             until = time.monotonic() + timeout
             while not evaluate(code):
-                assert time.monotonic() < until, f"Timed out: {code}"
+                if time.monotonic() >= until:
+                    state = evaluate("typeof physics==='undefined' ? null : ({alpha:physics.simulation.alpha(),target:physics.simulation.alphaTarget(),paused:physics.paused,settled:physics.settled,dragging:[...physics.dragging],hidden:document.hidden,dialog:dialog.open,deleteDialog:deleteDialog.open})")
+                    raise AssertionError(f"Timed out: {code}; state: {state}")
                 time.sleep(0.1)
+
+        def check_rendered(code, title):
+            # Headless rendering can present opacity transitions after a fixed
+            # sleep has elapsed. Wait for the existing visual assertion itself.
+            wait_for(code)
+            check(evaluate(code), title)
 
         def load():
             wait_for("document.readyState==='complete' && typeof physics!=='undefined'")
@@ -230,8 +240,91 @@ def main():
                 });
             })""")
 
+        def check_native_rendering(title):
+            check(evaluate("nodesLayer.parentElement===graphViewport && getComputedStyle(nodesLayer).transform==='none' && [...nodes.values()].every(n=>{const b=new DOMMatrix(getComputedStyle(n).transform),t=new DOMMatrix(getComputedStyle(n.querySelector('.node-label')).transform);return b.a===1 && b.d===1 && t.a===1 && t.d===1;})"), title)
+
+        def visible_guides():
+            return evaluate("orbitGuides.filter(g=>getComputedStyle(g.element).display!=='none' && parseFloat(getComputedStyle(g.element).opacity)>0).length")
+
         cdp.call("Page.navigate", url=origin)
         load()
+        if options.visual_only:
+            assert screenshot_dir, "Use --screenshots with --visual-only"
+
+            def capture_levels(prefix, sun_id, planet_id):
+                for scale, level in [(0.3, "far"), (0.65, "medium"), (1.7, "close")]:
+                    select(planet_id if level == "close" else sun_id)
+                    center = evaluate(f"({{...entries.get({json.dumps(planet_id if level == 'close' else sun_id)})}})")
+                    evaluate(f"camera.setView({{x:(physics.bounds.left+physics.bounds.right)/2-({center['x']})*{scale},y:(physics.bounds.top+physics.bounds.bottom)/2-({center['y']})*{scale},scale:{scale}}},false)")
+                    time.sleep(0.35)
+                    result = cdp.call("Page.captureScreenshot", format="png", captureBeyondViewport=False)
+                    (screenshot_dir / f"{prefix}-{level}.png").write_bytes(base64.b64decode(result["data"]))
+                    check(aligned(), f"{prefix} connections align at {level} zoom")
+                    check_native_rendering(f"{prefix} bodies and text use native dimensions at {level} zoom")
+                    check(visible_guides() == {"far": 0, "medium": 1, "close": 2}[level], f"{prefix} shows only contextual orbital bands at {level} zoom")
+                    check(evaluate("orbitGuides.every(g=>g.element.tagName==='ellipse') && !connectionsLayer.querySelector('path.orbit-guide')"), f"{prefix} has no partial decorative orbit paths")
+                    print(f"CAPTURE {prefix}-{level}: " + json.dumps(evaluate("({scale:camera.view.scale,worldTransform:getComputedStyle(graphWorld).transform,nodeTransform:getComputedStyle(selectedNode).transform,labelTransform:getComputedStyle(selectedNode.querySelector('.node-label')).transform,guides:orbitGuides.length})")), flush=True)
+
+                metrics = evaluate("""new Promise(resolve=>{
+                    const widths=[],frames=[],native=[],label=selectedNode.querySelector('.node-label');let last;
+                    const original=camera.onChange,costs=[];
+                    camera.onChange=view=>{const start=performance.now();original(view);costs.push(performance.now()-start);};
+                    camera.zoomAt((physics.bounds.left+physics.bounds.right)/2,(physics.bounds.top+physics.bounds.bottom)/2,1.12);
+                    const frame=t=>{if(last!==undefined)frames.push(t-last);last=t;
+                        widths.push(label.getBoundingClientRect().width);
+                        const m=new DOMMatrix(getComputedStyle(label).transform);native.push(m.a===1 && m.d===1);
+                        if(camera.frame!==null)requestAnimationFrame(frame);else{
+                            camera.onChange=original;costs.sort((a,b)=>a-b);
+                            resolve({native:native.every(Boolean),widthChange:Math.max(...widths)-Math.min(...widths),frames:frames.length,renderP95:costs[Math.floor(costs.length*.95)]||0});}};
+                    requestAnimationFrame(frame);
+                })""")
+                check(metrics["native"] and metrics["widthChange"] < 0.2 and metrics["frames"] > 2, f"{prefix} labels stay at native resolution throughout animated zoom")
+                check(metrics["renderP95"] < 20, f"{prefix} camera projection remains responsive ({metrics['renderP95']:.1f}ms p95)")
+
+                evaluate(f"(()=>{{const s=entries.get({json.dumps(sun_id)});camera.setView({{x:(physics.bounds.left+physics.bounds.right)/2-s.x*.65,y:(physics.bounds.top+physics.bounds.bottom)/2-s.y*.65,scale:.65}},false);clearSelection();}})()")
+                mouse("mouseMoved", 1070, 940)
+                point = evaluate(f"(()=>{{const r=nodes.get({json.dumps(sun_id)}).getBoundingClientRect();return {{x:r.x+r.width/2,y:r.y+r.height/2}};}})()")
+                mouse("mouseMoved", **point)
+                wait_for("orbitGuides.filter(g=>g.element.dataset.active==='true').length===1")
+                check(visible_guides() == 1, f"{prefix} hover reveals only the nearby system's Sun band")
+                mouse("mouseMoved", 1070, 940)
+                wait_for("orbitGuides.every(g=>g.element.dataset.active==='false')")
+                check(visible_guides() == 0, f"{prefix} guides disappear when neither selected nor hovered")
+                select(planet_id)
+                evaluate(f"(()=>{{const p=entries.get({json.dumps(planet_id)});camera.setView({{x:(physics.bounds.left+physics.bounds.right)/2-p.x*1.7,y:(physics.bounds.top+physics.bounds.bottom)/2-p.y*1.7,scale:1.7}},false);}})()")
+
+            def drop_beside_pin(entry_id, sibling_id, title):
+                select(sibling_id)
+                evaluate("pinPositionButton.click()")
+                wait_for("physics.settled", timeout=15)
+                pin = evaluate(f"({{...entries.get({json.dumps(sibling_id)})}})")
+                drag_to(entry_id, pin["x"], pin["y"])
+                check(evaluate(f"(()=>{{const a=physics.particles.get({json.dumps(entry_id)}),b=physics.particles.get({json.dumps(sibling_id)});return Math.hypot(a.x-b.x,a.y-b.y)>=a.radius+b.radius+12 && b.x===({pin['x']}) && b.y===({pin['y']}) && a.parentId===b.parentId;}})()"), title)
+
+            sun = add("Visual Sun", "category")
+            planet = add("Visual Planet", "subcategory", sun)
+            sibling_planet = add("Sibling Planet", "subcategory", sun)
+            moon = add("Visual Moon", "entry", planet)
+            sibling_moon = add("Sibling Moon", "entry", planet)
+            wait_for("physics.settled", timeout=15)
+            capture_levels("normal", sun, planet)
+            drop_beside_pin(planet, sibling_planet, "normal Planet siblings separate after an overlapping drop beside a pin")
+            drop_beside_pin(moon, sibling_moon, "normal Moon siblings separate after an overlapping drop beside a pin")
+            evaluate("loadSampleButton.click()")
+            wait_for("document.readyState==='complete' && typeof physics!=='undefined' && sampleMode")
+            wait_for("physics.settled", timeout=15)
+            capture_levels("sample", "sample-sun-technology", "sample-planet-0-0")
+            cdp.call("Emulation.setDeviceMetricsOverride", width=1440, height=1000, deviceScaleFactor=2, mobile=False)
+            time.sleep(.35)
+            check_native_rendering("native body and label transforms also hold on a 2x display")
+            result = cdp.call("Page.captureScreenshot", format="png", captureBeyondViewport=False)
+            (screenshot_dir / "sample-close-2x.png").write_bytes(base64.b64decode(result["data"]))
+            cdp.call("Emulation.setDeviceMetricsOverride", width=1440, height=1000, deviceScaleFactor=1, mobile=False)
+            drop_beside_pin("sample-planet-0-0", "sample-planet-0-1", "sample Planet siblings separate without moving an exact pin")
+            drop_beside_pin("sample-moon-0-0-0", "sample-moon-0-0-1", "sample Moon siblings separate without moving an exact pin")
+            check(not cdp.errors, f"no browser exceptions: {cdp.errors}")
+            print(f"{count} visual checks passed", flush=True)
+            return
         check(evaluate("entryRoles.category.name==='Sun' && entryRoles.category.body==='sun' && [...roleField.options].every(o=>!o.textContent.includes('Star')) && document.getElementById('role-help').textContent.includes('Sun')"), "hierarchy UI consistently presents top-level entries as Suns")
         check(evaluate("entries.size===5 && entries.get('old-star').role==='category' && entries.get('old-moon').parentId===null"), "legacy roles and unassigned entries remain usable")
         check(evaluate("relationships.length===3"), "legacy optional and built-in connections remain")
@@ -360,6 +453,8 @@ def main():
         hit = evaluate(f"document.elementFromPoint({point['x']},{point['y']})?.closest('.entry-node')?.dataset.entryId")
         check(hit == s2, "focused parent is reachable at its center")
         mouse("mouseMoved", **point)
+        wait_camera()
+        check(evaluate(f"document.elementFromPoint({point['x']},{point['y']})?.closest('.entry-node')?.dataset.entryId") == s2, "browser focus restoration does not redirect the camera during pointer input")
         mouse("mousePressed", **point, button="left", clickCount=1)
         mouse("mouseMoved", point["x"] + 35, point["y"] + 25, button="left", buttons=1)
         drag_error = evaluate(f"Math.abs(entries.get({json.dumps(s2)}).x-dragStart.x-35/{scale})")
@@ -412,7 +507,7 @@ def main():
         check(evaluate("Math.abs(camera.view.x-panBefore.x-40)<0.5 && Math.abs(camera.view.y-panBefore.y-20)<0.5"), "normal background panning continues after search focus")
         evaluate("document.getElementById('reset-view-button').click()")
         wait_camera()
-        check(evaluate("camera.view.scale===1 && camera.view.x===0 && camera.view.y===0"), "Reset View remains functional")
+        check(evaluate("(()=>{const b=galaxyBounds(),a=camera.worldToScreen(b.left,b.top),z=camera.worldToScreen(b.right,b.bottom);return a.x>=physics.bounds.left+31 && a.y>=physics.bounds.top+31 && z.x<=physics.bounds.right-31 && z.y<=physics.bounds.bottom-31;})()"), "Fit Galaxy centers and fits the small dataset beside panels")
 
         edit("github", name="Repositories", role="category")
         check(evaluate("deleteEntryButton.hidden && panelName.textContent==='Repositories'"), "built-in entries can be edited but stay protected from deletion")
@@ -423,7 +518,6 @@ def main():
         check(evaluate("localStorage.getItem('galaxy:user-data:pre-hierarchy')") == old_raw, "later saves keep the original migration backup unchanged")
         check(aligned(), "connections load correctly after edited/deleted hierarchy refresh")
 
-        screenshot_dir = Path(tempfile.mkdtemp(prefix="galaxy-preview-")) if options.screenshots else None
         for width, height, name in [(1440, 1000, "desktop"), (430, 932, "mobile")]:
             cdp.call("Emulation.setDeviceMetricsOverride", width=width, height=height, deviceScaleFactor=1, mobile=width < 760)
             time.sleep(0.2)
@@ -446,9 +540,11 @@ def main():
         # never replace the saved galaxy, and its activation URL must be transient.
         # Flush any responsive-layout movement before taking the byte-for-byte baseline;
         # pagehide would otherwise persist it during the navigation below.
+        cdp.call("Emulation.setDeviceMetricsOverride", width=1440, height=1000, deviceScaleFactor=1, mobile=False)
+        time.sleep(0.2)
+        wait_for("physics.settled")
         evaluate("physics.pause();saveGalaxy()")
         real_snapshot = evaluate("localStorage.getItem('galaxy:user-data')")
-        cdp.call("Emulation.setDeviceMetricsOverride", width=1440, height=1000, deviceScaleFactor=1, mobile=False)
         started = time.monotonic()
         check(evaluate("!sampleMode && !loadSampleButton.disabled && removeSampleButton.disabled"), "development controls offer Load Sample Galaxy in the real galaxy")
         evaluate("loadSampleButton.click()")
@@ -460,40 +556,118 @@ def main():
         check(evaluate("connections.length===70 && connections.every(c=>c.kind==='hierarchy')"), "all 70 sample connections come from normal hierarchy data")
         check(evaluate("localStorage.getItem('galaxy:user-data')") == real_snapshot, "loading the sample leaves the saved galaxy untouched")
         check(density_settle < 15, f"77-body sample settles in a reasonable time ({density_settle:.2f}s)")
+        wait_camera()
+        check(evaluate("physics.systems.size===7 && [...physics.systems.values()].every(s=>s.members.length===11)"), "77 bodies are grouped into seven independent solar systems")
+        metrics = evaluate("""(()=>{const systems=[...physics.systems.values()];return {
+            maxSunExtent:Math.max(...systems.map(s=>Math.hypot(s.root.x-physics.origin.x,s.root.y-physics.origin.y))),
+            galaxyRadius:physics.galaxyRadius,
+            minSeparation:Math.min(...systems.flatMap((s,i)=>systems.slice(i+1).map(t=>Math.hypot(s.root.x-t.root.x,s.root.y-t.root.y)/(s.radius+t.radius)))),
+            maxPlanetDistance:Math.max(...[...physics.particles.values()].filter(n=>n.role==='subcategory').map(n=>Math.hypot(n.x-n.parent.x,n.y-n.parent.y))),
+            maxMoonDistance:Math.max(...[...physics.particles.values()].filter(n=>n.parent && n.role==='entry').map(n=>Math.hypot(n.x-n.parent.x,n.y-n.parent.y))),
+            fitScale:camera.view.scale};})()""")
+        check(metrics["minSeparation"] > .85, f"solar systems remain separated ({metrics['minSeparation']:.2f} footprint ratio)")
+        check(metrics["maxSunExtent"] < metrics["galaxyRadius"], f"system centers stay in the soft galaxy extent ({metrics['maxSunExtent']:.0f}px)")
+        check(metrics["maxPlanetDistance"] < 240 and metrics["maxMoonDistance"] < 125, f"Planets and Moons retain local hierarchy ({metrics['maxPlanetDistance']:.0f}/{metrics['maxMoonDistance']:.0f}px maximum parent distances)")
+        check(evaluate("(()=>{const b=galaxyBounds(),a=camera.worldToScreen(b.left,b.top),z=camera.worldToScreen(b.right,b.bottom);return a.x>=physics.bounds.left+31 && a.y>=physics.bounds.top+31 && z.x<=physics.bounds.right-31 && z.y<=physics.bounds.bottom-31;})()"), "initial Fit Galaxy shows every sample body inside the usable viewport")
+        if screenshot_dir:
+            result = cdp.call("Page.captureScreenshot", format="png", captureBeyondViewport=False)
+            (screenshot_dir / "sample-fit-galaxy.png").write_bytes(base64.b64decode(result["data"]))
 
-        evaluate("camera.setView({x:0,y:0,scale:1},false)")
+        evaluate("(()=>{const s=entries.get('sample-sun-technology');camera.setView({x:(physics.bounds.left+physics.bounds.right)/2-s.x,y:(physics.bounds.top+physics.bounds.bottom)/2-s.y,scale:1},false);})()")
         sizes = evaluate("(()=>Object.fromEntries(['category','subcategory','entry'].map(role=>{const r=nodes.get([...entries.values()].find(e=>e.role===role).id).getBoundingClientRect();return [role,r.width];})))()")
         check(58 <= sizes["category"] <= 66 and 43 <= sizes["subcategory"] <= 49 and 27 <= sizes["entry"] <= 33 and sizes["category"] > sizes["subcategory"] > sizes["entry"], f"compact hierarchy renders at Sun/Planet/Moon {sizes['category']:.1f}/{sizes['subcategory']:.1f}/{sizes['entry']:.1f}px")
         check(evaluate("[...nodes.values()].every(n=>n.querySelector('.node-label').getBoundingClientRect().width<=n.getBoundingClientRect().width+23)"), "normal labels stay compact relative to their bodies")
         check(evaluate("nodes.get('sample-sun-technology').dataset.body==='sun' && getComputedStyle(nodes.get('sample-sun-technology')).backgroundImage.includes('radial-gradient') && getComputedStyle(nodes.get('sample-sun-technology')).boxShadow!=='none'"), "sample Suns use their distinct luminous rendering")
+        time.sleep(.25)
         if screenshot_dir:
             result = cdp.call("Page.captureScreenshot", format="png", captureBeyondViewport=False)
             (screenshot_dir / "sample-overview-100-percent.png").write_bytes(base64.b64decode(result["data"]))
 
-        evaluate("camera.setView({x:260,y:150,scale:.6},false)")
+        evaluate("(()=>{const s=entries.get('sample-sun-technology');camera.setView({x:(physics.bounds.left+physics.bounds.right)/2-s.x*.65,y:(physics.bounds.top+physics.bounds.bottom)/2-s.y*.65,scale:.65},false);})()")
         time.sleep(0.25)
-        check(evaluate("galaxy.dataset.detailLevel==='medium' && parseFloat(getComputedStyle(nodes.get('sample-moon-0-0-0').querySelector('.node-label')).opacity)>0"), "60% zoom keeps all names with reduced Moon prominence")
+        check_rendered("galaxy.dataset.detailLevel==='medium' && getComputedStyle(nodes.get('sample-moon-0-0-0').querySelector('.node-label')).opacity==='0' && parseFloat(getComputedStyle(nodes.get('sample-planet-0-0').querySelector('.node-label')).opacity)>.9", "65% system zoom prioritizes Planet names and suppresses routine Moon labels")
+        select("sample-planet-0-0")
+        time.sleep(.25)
+        check_rendered("parseFloat(getComputedStyle(nodes.get('sample-moon-0-0-0').querySelector('.node-label')).opacity)>.9 && nodes.get('sample-sun-technology').classList.contains('related') && nodes.get('sample-planet-0-1').classList.contains('related')", "Planet selection reveals its Moons, sibling Planets and Sun")
+        evaluate("clearSelection()")
+        time.sleep(.25)
         if screenshot_dir:
             result = cdp.call("Page.captureScreenshot", format="png", captureBeyondViewport=False)
             (screenshot_dir / "sample-overview-60-percent.png").write_bytes(base64.b64decode(result["data"]))
-        evaluate("camera.setView({x:430,y:260,scale:.3},false)")
+        evaluate("fitGalaxy(false)")
         time.sleep(0.25)
-        check(evaluate("galaxy.dataset.detailLevel==='far' && getComputedStyle(nodes.get('sample-moon-0-0-0').querySelector('.node-label')).opacity==='0' && parseFloat(getComputedStyle(nodes.get('sample-sun-technology').querySelector('.node-label')).opacity)>.8"), "30% overview hides routine Moon names while retaining Sun landmarks")
-        check(evaluate("parseFloat(getComputedStyle(lines.find(l=>!l.element.classList.contains('selected')).element).opacity)<=.1"), "30% overview keeps unselected connections restrained")
+        check_rendered("galaxy.dataset.detailLevel==='far' && getComputedStyle(nodes.get('sample-moon-0-0-0').querySelector('.node-label')).opacity==='0' && parseFloat(getComputedStyle(nodes.get('sample-moon-0-0-0')).opacity)<.03 && parseFloat(getComputedStyle(nodes.get('sample-sun-technology').querySelector('.node-label')).opacity)>.8", "Galaxy overview hides routine Moons while retaining readable Sun landmarks")
+        check(evaluate("parseFloat(getComputedStyle(lines.find(l=>!l.element.classList.contains('selected')).element).opacity)<=.1"), "Galaxy overview keeps unselected connections restrained")
+        check(evaluate("nodes.get('sample-sun-technology').getBoundingClientRect().width>=18"), "Sun landmarks retain a usable screen size at far zoom")
         select("sample-moon-0-0-0")
         time.sleep(0.25)
-        check(evaluate("getComputedStyle(nodes.get('sample-moon-0-0-0').querySelector('.node-label')).opacity==='1' && nodes.get('sample-moon-0-0-0').querySelector('.node-label').getBoundingClientRect().height>=9 && parseFloat(getComputedStyle(lines.find(l=>l.element.classList.contains('selected')).element).opacity)>.5"), "selected sample Moon and its relationship remain identifiable at 30%")
+        check_rendered("getComputedStyle(nodes.get('sample-moon-0-0-0').querySelector('.node-label')).opacity==='1' && nodes.get('sample-moon-0-0-0').querySelector('.node-label').getBoundingClientRect().height>=9 && lines.some(l=>l.element.classList.contains('context-link') && parseFloat(getComputedStyle(l.element).opacity)>0 && parseFloat(getComputedStyle(l.element).opacity)<=.12) && nodes.get('sample-sun-technology').classList.contains('related')", "selected sample Moon and its ancestry remain identifiable with subtle contextual links at Galaxy zoom")
         if screenshot_dir:
             result = cdp.call("Page.captureScreenshot", format="png", captureBeyondViewport=False)
             (screenshot_dir / "sample-overview-30-percent.png").write_bytes(base64.b64decode(result["data"]))
 
+        evaluate("clearSelection();searchField.value='Visual Studio';searchField.dispatchEvent(new Event('input'))")
+        time.sleep(.25)
+        check_rendered("nodes.get('sample-moon-0-0-0').classList.contains('search-match') && getComputedStyle(nodes.get('sample-moon-0-0-0')).opacity==='1'", "search matches reveal a hidden Moon even before focusing")
+        evaluate("searchResultList.querySelector('button').click()")
+        wait_camera()
+        time.sleep(.25)
+        check(evaluate("selectedNode.dataset.entryId==='sample-moon-0-0-0' && panelName.textContent==='Visual Studio Code' && camera.view.scale>=1.15 && galaxy.dataset.detailLevel==='near' && nodes.get('sample-planet-0-0').classList.contains('related') && nodes.get('sample-sun-technology').classList.contains('related')"), "Moon search smoothly reveals entry details and ancestry at close zoom")
+        check_rendered("getComputedStyle(nodes.get('sample-moon-0-0-1').querySelector('.node-label')).opacity==='1'", "close zoom makes routine Moon labels usable")
+        evaluate("searchField.value='';refreshSearchResults()")
+        if screenshot_dir:
+            result = cdp.call("Page.captureScreenshot", format="png", captureBeyondViewport=False)
+            (screenshot_dir / "sample-entry-focus.png").write_bytes(base64.b64decode(result["data"]))
+
+        sun_before = evaluate("({...entries.get('sample-sun-technology')})")
+        moon_before = evaluate("({...entries.get('sample-moon-0-0-0')})")
+        drag_to("sample-sun-technology", sun_before["x"] + 160, sun_before["y"] + 80)
+        check(evaluate("layout.has('sample-sun-technology') && Math.hypot(entries.get('sample-sun-technology').x-layout.get('sample-sun-technology').x,entries.get('sample-sun-technology').y-layout.get('sample-sun-technology').y)<75"), "sample Sun retains its soft system position after dragging")
+        check(evaluate(f"Math.hypot(entries.get('sample-moon-0-0-0').x-({moon_before['x']}),entries.get('sample-moon-0-0-0').y-({moon_before['y']}))>80"), "sample Sun dragging carries its descendants")
+        planet_before = evaluate("({...entries.get('sample-planet-0-0')})")
+        drag_to("sample-planet-0-0", planet_before["x"] + 100, planet_before["y"] - 70)
+        check(evaluate("layout.has('sample-planet-0-0') && Math.hypot(entries.get('sample-moon-0-0-0').x-entries.get('sample-planet-0-0').x,entries.get('sample-moon-0-0-0').y-entries.get('sample-planet-0-0').y)<125"), "sample Planet dragging maintains its local Moon cluster")
+
         dense_moon = evaluate("({...entries.get('sample-moon-0-0-0')})")
         drag_to("sample-moon-0-0-0", dense_moon["x"] + 90, dense_moon["y"] + 45)
         check(evaluate("layout.has('sample-moon-0-0-0') && entries.get('sample-moon-0-0-0').parentId==='sample-planet-0-0'"), "dragging and soft positioning remain functional in sample mode")
+        evaluate("pinPositionButton.click();window.samplePin={...entries.get('sample-moon-0-0-0')}")
+        sun_before = evaluate("({...entries.get('sample-sun-technology')})")
+        drag_to("sample-sun-technology", sun_before["x"] + 100, sun_before["y"] - 40)
+        check(evaluate("layout.get('sample-moon-0-0-0').pinned && entries.get('sample-moon-0-0-0').x===samplePin.x && entries.get('sample-moon-0-0-0').y===samplePin.y"), "sample Moon pin remains exact while its Sun moves")
+        select("sample-moon-0-0-0")
+        evaluate("releasePositionButton.click()")
+        wait_for("physics.settled")
+        check(evaluate("!layout.has('sample-moon-0-0-0') && Math.hypot(entries.get('sample-moon-0-0-0').x-entries.get('sample-planet-0-0').x,entries.get('sample-moon-0-0-0').y-entries.get('sample-planet-0-0').y)<125"), "sample Release to physics returns a Moon to its local orbit")
         check(evaluate("localStorage.getItem('galaxy:user-data')") == real_snapshot, "sample interactions still do not write localStorage")
         evaluate("searchField.value='Music';searchField.dispatchEvent(new Event('input'));searchResultList.querySelector('button').click()")
         wait_camera()
         check(evaluate("selectedNode.dataset.entryId==='sample-sun-music' && camera.view.scale>=1"), "search finds and focuses a sample Sun")
+
+        performance = evaluate("""new Promise(resolve=>{
+            const originalTick=physics.onTick, costs=[], frames=[];
+            physics.onTick=p=>{const start=performance.now();originalTick(p);costs.push(performance.now()-start);};
+            physics.reheat(.3);let last;
+            const frame=t=>{if(last!==undefined)frames.push(t-last);last=t;
+                if(frames.length<60)requestAnimationFrame(frame);else{
+                    physics.onTick=originalTick;costs.sort((a,b)=>a-b);frames.sort((a,b)=>a-b);
+                    resolve({renderP95:costs[Math.floor(costs.length*.95)]||0,frameMedian:frames[30],frameP95:frames[57],samples:costs.length});}};
+            requestAnimationFrame(frame);
+        })""")
+        check(performance["renderP95"] < 20 and performance["frameMedian"] < 35 and performance["frameP95"] < 80 and performance["samples"] > 10, f"77-body motion remains responsive (render p95 {performance['renderP95']:.1f}ms; frame median/p95 {performance['frameMedian']:.1f}/{performance['frameP95']:.1f}ms)")
+        wait_for("physics.settled")
+        evaluate("clearSelection();searchField.value='';refreshSearchResults();fitGalaxy()")
+        wait_camera()
+        for width, height, name in [(1440, 1000, "desktop"), (430, 932, "mobile")]:
+            cdp.call("Emulation.setDeviceMetricsOverride", width=width, height=height, deviceScaleFactor=1, mobile=width < 760)
+            wait_for("physics.settled")
+            evaluate("fitGalaxy()")
+            wait_camera()
+            check(evaluate("(()=>{const b=galaxyBounds(),a=camera.worldToScreen(b.left,b.top),z=camera.worldToScreen(b.right,b.bottom);return a.x>=physics.bounds.left+31 && a.y>=physics.bounds.top+31 && z.x<=physics.bounds.right-31 && z.y<=physics.bounds.bottom-31;})()"), f"{name} Fit Galaxy includes the dragged sample and avoids UI panels")
+            check(evaluate("nodes.get('sample-sun-technology').getBoundingClientRect().width>=17 && nodes.get('sample-sun-technology').querySelector('.node-label').getBoundingClientRect().height>=10"), f"{name} Sun landmarks and names remain readable at fitted zoom")
+            if screenshot_dir:
+                result = cdp.call("Page.captureScreenshot", format="png", captureBeyondViewport=False)
+                (screenshot_dir / f"sample-fit-{name}.png").write_bytes(base64.b64decode(result["data"]))
 
         cdp.call("Page.reload", ignoreCache=True)
         wait_for("document.readyState==='complete' && typeof physics!=='undefined' && !sampleMode")
@@ -512,10 +686,15 @@ def main():
         evaluate("1")
         check(not cdp.errors, f"no browser exceptions: {cdp.errors}")
         print(f"{count} browser checks passed", flush=True)
-        if screenshot_dir:
-            print(f"Screenshots: {screenshot_dir}", flush=True)
     finally:
         if cdp:
+            if screenshot_dir:
+                try:
+                    result = cdp.call("Page.captureScreenshot", format="png", captureBeyondViewport=False)
+                    (screenshot_dir / "last-state.png").write_bytes(base64.b64decode(result["data"]))
+                    print(f"Screenshots: {screenshot_dir}", flush=True)
+                except (OSError, AssertionError):
+                    pass
             cdp.sock.close()
         process.terminate()
         try:
