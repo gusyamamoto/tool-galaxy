@@ -49,3 +49,16 @@ user-select: none;
     transform: translate(-50%, -50%);
 
 }
+
+#connections {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+}
+
+.connection-line {
+    stroke: #6f86d6;
+    stroke-width: 2;
+    opacity: 0.5;
+}

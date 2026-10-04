@@ -16,7 +16,16 @@ const tools = [
     }
 ];
 
+const connections = [
+    ["GitHub", "VS Code"],
+    ["VS Code", "Codex"]
+];
+
 const galaxy = document.getElementById("galaxy");
+
+const connectionsLayer = document.getElementById("connections");
+
+const nodes = {};
 
 tools.forEach((tool) => {
     const node = document.createElement("div");
@@ -54,7 +63,51 @@ tools.forEach((tool) => {
 
         node.style.left = `${pointerX - offsetX}px`;
         node.style.top = `${pointerY - offsetY}px`;
+
+        updateConnections();
     });
+
+    nodes[tool.name] = node;
 
     galaxy.appendChild(node);
 });
+
+const lines = [];
+
+connections.forEach(([from, to]) => {
+    const line = document.createElementNS(
+        "http://www.w3.org/2000/svg",
+        "line"
+    );
+
+    line.classList.add("connection-line");
+
+    connectionsLayer.appendChild(line);
+
+    lines.push({
+        from,
+        to,
+        element: line
+    });
+});
+
+function updateConnections() {
+    lines.forEach((connection) => {
+        const fromNode = nodes[connection.from];
+        const toNode = nodes[connection.to];
+
+        const fromX = parseFloat(fromNode.style.left);
+        const fromY = parseFloat(fromNode.style.top);
+
+        const toX = parseFloat(toNode.style.left);
+        const toY = parseFloat(toNode.style.top);
+
+        connection.element.setAttribute("x1", fromX);
+        connection.element.setAttribute("y1", fromY);
+
+        connection.element.setAttribute("x2", toX);
+        connection.element.setAttribute("y2", toY);
+    });
+}
+
+updateConnections();
