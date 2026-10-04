@@ -3,58 +3,135 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Tool Galaxy</title>
+    <title>Galaxy</title>
 
     <link rel="stylesheet" href="style.css">
 </head>
 
 <body>
-    <main id="galaxy">
-        <svg id="connections" aria-hidden="true"></svg>
+    <main id="galaxy" data-detail-level="near">
+        <div class="universe-background" aria-hidden="true">
+            <div class="nebula-layer"></div>
+            <div class="star-layer star-layer--far"></div>
+            <div class="star-layer star-layer--middle"></div>
+            <div class="star-layer star-layer--near"></div>
+        </div>
+        <div id="graph-viewport">
+            <div id="graph-world">
+                <svg id="connections" aria-hidden="true"></svg>
+                <div id="nodes-layer"></div>
+            </div>
+        </div>
 
-        <h1>Tool Galaxy</h1>
-        <p class="galaxy-subtitle">A space for the tools you build with.</p>
-        <button id="add-tool-button" type="button">Add Tool</button>
+        <h1>Galaxy</h1>
+        <p class="galaxy-subtitle">Ideas, places, resources. Connected.</p>
+        <button id="add-entry-button" type="button">Add Entry</button>
+        <div class="view-controls">
+            <button id="reset-view-button" type="button">Reset view</button>
+            <output id="zoom-level" aria-label="Zoom level">100%</output>
+        </div>
+        <div class="entry-search">
+            <label class="visually-hidden" for="entry-search">Search entries by name</label>
+            <input id="entry-search" type="search" placeholder="Search entries…" autocomplete="off" aria-controls="search-results">
+            <div id="search-results" hidden>
+                <ul id="search-result-list"></ul>
+                <p id="search-status" role="status"></p>
+            </div>
+        </div>
         <p id="storage-status" role="status" hidden></p>
-
-        <aside id="tool-panel">
-            <span class="panel-eyebrow">Tool details</span>
-            <h2 id="panel-name">Select a tool</h2>
-            <p id="panel-description">Click a node to see more information.</p>
-            <p id="panel-category" hidden></p>
+        <aside id="sample-mode-banner" aria-label="Development sample" hidden>
+            <span><strong>Sample galaxy</strong> <span id="sample-mode-count"></span></span>
+            <span>Changes stay in this tab.</span>
+            <div>
+                <button id="reset-sample-button" type="button">Reset sample</button>
+                <button id="exit-sample-button" type="button">Exit sample</button>
+            </div>
         </aside>
 
-        <p class="galaxy-hint">Drag to rearrange <span aria-hidden="true">&middot;</span> Select to explore</p>
+        <aside id="entry-panel">
+            <div class="panel-content">
+                <span class="panel-eyebrow">Entry details</span>
+                <h2 id="panel-name">Select an entry</h2>
+                <p id="panel-description">Click a node to see more information.</p>
+                <p id="panel-category" hidden></p>
+                <p id="panel-role" hidden></p>
+                <p id="panel-parent" hidden></p>
+            </div>
+            <p id="panel-placement" role="status" hidden></p>
+            <div id="entry-actions" hidden>
+                <div class="entry-action-row">
+                    <button id="edit-entry-button" type="button">Edit</button>
+                    <button id="delete-entry-button" type="button">Delete</button>
+                </div>
+                <div class="entry-action-row placement-actions">
+                    <button id="pin-position-button" type="button">Pin position</button>
+                    <button id="release-position-button" type="button">Release to physics</button>
+                </div>
+            </div>
+            <p id="entry-action-status" role="status" hidden></p>
+        </aside>
+
+        <p class="galaxy-hint">Scroll to zoom <span aria-hidden="true">&middot;</span> Drag space to pan <span aria-hidden="true">&middot;</span> Select to explore</p>
     </main>
 
-    <dialog id="add-tool-dialog" aria-labelledby="add-tool-title">
-        <form id="add-tool-form">
-            <h2 id="add-tool-title">Add Tool</h2>
+    <dialog id="add-entry-dialog" aria-labelledby="add-entry-title">
+        <form id="add-entry-form">
+            <h2 id="add-entry-title">Add Entry</h2>
 
-            <label for="tool-name">Tool name</label>
-            <input id="tool-name" name="name" type="text" maxlength="60" required autofocus>
+            <label for="entry-name">Entry name</label>
+            <input id="entry-name" name="name" type="text" maxlength="60" required autofocus>
 
-            <label for="tool-description">Description</label>
-            <textarea id="tool-description" name="description" rows="4" maxlength="1000" required></textarea>
+            <label for="entry-description">Description</label>
+            <textarea id="entry-description" name="description" rows="4" maxlength="1000" required></textarea>
 
-            <label for="tool-category">Category</label>
-            <input id="tool-category" name="category" type="text" maxlength="60" required>
+            <label for="entry-category">Category / label (optional)</label>
+            <input id="entry-category" name="category" type="text" maxlength="60">
+
+            <label for="entry-role">Hierarchy role</label>
+            <select id="entry-role" name="role" aria-describedby="role-help">
+                <option value="category">Sun — main category, no parent</option>
+                <option value="subcategory">Planet — child of a Sun</option>
+                <option value="entry">Moon — child of a Planet</option>
+            </select>
+            <p id="role-help">A Sun starts a system. Its Planets contain Moons.</p>
+            <div id="parent-field" hidden>
+                <label id="parent-label" for="entry-parent">Parent</label>
+                <select id="entry-parent" name="parentId" aria-describedby="parent-help"></select>
+                <p id="parent-help"></p>
+            </div>
+            <p id="entry-form-error" role="alert" hidden></p>
 
             <fieldset>
-                <legend>Connect to existing tools (optional)</legend>
+                <legend>Other connections (optional)</legend>
+                <p class="form-help">The parent connection is created automatically.</p>
                 <div id="connection-options"></div>
             </fieldset>
 
             <div class="form-actions">
-                <button id="cancel-add-tool" type="button">Cancel</button>
-                <button type="submit">Add Tool</button>
+                <button id="cancel-add-entry" type="button">Cancel</button>
+                <button id="entry-submit" type="submit">Add Entry</button>
             </div>
         </form>
     </dialog>
 
+    <dialog id="delete-entry-dialog" aria-labelledby="delete-entry-title">
+        <form id="delete-entry-form">
+            <h2 id="delete-entry-title">Delete entry?</h2>
+            <p id="delete-entry-message"></p>
+            <div class="form-actions">
+                <button id="cancel-delete-entry" type="button" autofocus>Cancel</button>
+                <button id="confirm-delete-entry" type="submit">Delete entry</button>
+            </div>
+        </form>
+    </dialog>
+
+    <script src="model.js"></script>
+    <script src="sample-data.js"></script>
     <script src="storage.js"></script>
     <script src="vendor/d3-force.bundle.min.js"></script>
     <script src="physics.js"></script>
+    <script src="background.js"></script>
+    <script src="camera.js"></script>
     <script src="script.js"></script>
 </body>
 </html>
