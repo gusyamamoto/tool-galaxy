@@ -319,28 +319,29 @@ button:disabled { opacity: 0.45; cursor: default; }
 
 .entry-node {
     --body-scale: 1;
+    --body-render-scale: var(--camera-scale, 1);
     --body-hue: 218;
     /* Static monochrome grain adds surface detail without a raster asset or animation. */
     --surface-grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='grain'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.55' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23grain)' opacity='.4'/%3E%3C/svg%3E");
     position: absolute;
     top: 0;
     left: 0;
-    width: calc(var(--node-size) * var(--body-scale));
-    height: calc(var(--node-size) * var(--body-scale));
+    width: calc(var(--node-size) * var(--body-scale) * var(--body-render-scale));
+    height: calc(var(--node-size) * var(--body-scale) * var(--body-render-scale));
     display: flex;
     align-items: center;
     justify-content: center;
     border-radius: 50%;
     background: radial-gradient(circle at 29% 26%,
-        hsl(var(--body-hue) 24% 68%) 0%,
-        hsl(var(--body-hue) 28% 43%) 25%,
-        hsl(var(--body-hue) 34% 23%) 52%, #03060e 80%);
-    border: 1px solid hsl(var(--body-hue) 35% 70% / 0.24);
+        hsl(var(--body-hue) 24% 74%) 0%,
+        hsl(var(--body-hue) 28% 46%) 27%,
+        hsl(var(--body-hue) 34% 24%) 49%, #070c17 65%, #02050b 82%);
+    border: 1px solid hsl(var(--body-hue) 35% 70% / 0.42);
     box-shadow:
-        inset 1px 1px 2px rgba(210, 235, 255, 0.36),
-        inset -8px -5px 13px rgba(0, 1, 7, 0.8),
-        0 0 7px hsl(var(--body-hue) 40% 65% / 0.08),
-        4px 7px 13px rgba(0, 0, 0, 0.48);
+        inset 1px 1px 0 rgba(210, 235, 255, 0.4),
+        inset -3px -2px 5px rgba(0, 1, 7, 0.7),
+        0 0 3px hsl(var(--body-hue) 40% 65% / 0.06),
+        2px 4px 6px rgba(0, 0, 0, 0.4);
     color: #ecf1f7;
     font-size: 11px;
     font-weight: 500;
@@ -350,6 +351,7 @@ button:disabled { opacity: 0.45; cursor: default; }
     user-select: none;
     touch-action: none;
     z-index: 1;
+    transition: opacity 180ms ease;
 }
 
 .entry-node::before {
@@ -374,8 +376,8 @@ button:disabled { opacity: 0.45; cursor: default; }
     border-radius: inherit;
     pointer-events: none;
     background: radial-gradient(ellipse 74% 85% at 16% 30%,
-        transparent 34%, rgba(1, 3, 8, 0.15) 55%, rgba(0, 2, 7, 0.75) 82%);
-    box-shadow: inset 2px 1px 1px rgba(216, 233, 255, 0.3), inset -1px -1px 0 rgba(156, 180, 219, 0.15);
+        transparent 37%, rgba(1, 3, 8, 0.12) 48%, rgba(0, 2, 7, 0.72) 71%);
+    box-shadow: inset 1px 1px 0 rgba(216, 233, 255, 0.3), inset -1px -1px 0 rgba(156, 180, 219, 0.12);
 }
 
 .entry-node[data-body="planet"][data-surface="gaseous"]::before {
@@ -405,11 +407,11 @@ button:disabled { opacity: 0.45; cursor: default; }
     background: radial-gradient(circle at 38% 34%, #fffdf2 0%, #fff4c5 24%, #f6cf69 58%, #cf842b 83%, #783716 100%);
     border-color: rgba(255, 231, 161, 0.76);
     box-shadow:
-        inset 0 0 7px rgba(255, 255, 238, 0.9),
-        inset -4px -3px 8px rgba(155, 69, 18, 0.28),
-        0 0 0 2px rgba(255, 211, 105, 0.08),
-        0 0 11px rgba(255, 199, 82, 0.32),
-        0 0 24px rgba(235, 150, 52, 0.13);
+        inset 1px 1px 1px rgba(255, 255, 238, 0.75),
+        inset -2px -2px 4px rgba(155, 69, 18, 0.35),
+        0 0 0 1px rgba(255, 211, 105, 0.08),
+        0 0 5px rgba(255, 199, 82, 0.22),
+        0 0 12px rgba(235, 150, 52, 0.1);
     font-size: 12px;
     font-weight: 600;
 }
@@ -423,9 +425,9 @@ button:disabled { opacity: 0.45; cursor: default; }
 }
 
 .entry-node[data-body="sun"]::after {
-    inset: -3px;
-    background: radial-gradient(circle, transparent 54%, rgba(255, 218, 125, 0.16) 66%, transparent 74%);
-    box-shadow: inset 0 0 4px rgba(255, 250, 218, 0.72);
+    inset: -1px;
+    background: radial-gradient(circle, transparent 64%, rgba(255, 218, 125, 0.12) 69%, transparent 73%);
+    box-shadow: inset 0 0 1px rgba(255, 250, 218, 0.5);
 }
 
 .entry-node[data-body="sun"][data-surface="golden"] {
@@ -434,8 +436,8 @@ button:disabled { opacity: 0.45; cursor: default; }
 
 .entry-node[data-body="moon"] {
     background: radial-gradient(circle at 26% 24%, hsl(var(--body-hue) 5% 70%) 0%, hsl(var(--body-hue) 7% 50%) 27%, hsl(var(--body-hue) 9% 27%) 51%, #10151b 78%, #05080e 97%);
-    border-color: rgba(178, 192, 210, 0.27);
-    box-shadow: inset 1px 1px 1px rgba(233, 237, 243, 0.32), inset -5px -4px 8px rgba(0, 2, 8, 0.65), 3px 5px 9px rgba(0, 0, 0, 0.38);
+    border-color: rgba(178, 192, 210, 0.4);
+    box-shadow: inset 1px 1px 0 rgba(233, 237, 243, 0.38), inset -2px -2px 4px rgba(0, 2, 8, 0.65), 2px 3px 5px rgba(0, 0, 0, 0.32);
     font-size: 10px;
     font-weight: 400;
 }
@@ -456,7 +458,7 @@ button:disabled { opacity: 0.45; cursor: default; }
     position: absolute;
     top: calc(100% + 5px);
     left: 50%;
-    transform: translateX(-50%) scale(var(--label-scale, 1));
+    transform: translateX(-50%);
     transform-origin: 50% 0;
     width: max-content;
     max-width: calc(var(--node-size) * var(--body-scale) + 22px);
@@ -467,9 +469,9 @@ button:disabled { opacity: 0.45; cursor: default; }
     overflow: hidden;
     overflow-wrap: anywhere;
     text-align: center;
-    font-size: 10px;
+    font-size: calc(10px * var(--native-label-scale, 1));
     line-height: 1.2;
-    text-shadow: 0 1px 5px rgba(0, 0, 0, 0.85), 0 0 9px rgba(0, 0, 0, 0.4);
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.85);
     pointer-events: none;
     transition: opacity 180ms ease;
 }
@@ -492,7 +494,6 @@ button:disabled { opacity: 0.45; cursor: default; }
     color: #fff;
     font-weight: 600;
     max-width: calc(var(--node-size) * var(--body-scale) + 52px);
-    transform: translateX(-50%) scale(var(--selected-label-scale, var(--label-scale, 1)));
 }
 
 .entry-node:focus-visible {
@@ -506,6 +507,11 @@ button:disabled { opacity: 0.45; cursor: default; }
     transition: none;
 }
 
+/* Reuse painted celestial surfaces while physics moves them. Release compositor
+   hints after settling; distant, irrelevant Moons need no dedicated layer. */
+#galaxy.is-settling .entry-node { will-change: transform; }
+#galaxy.is-settling[data-detail-level="far"] .entry-node[data-body="moon"]:not([data-system-root="true"]):not(.selected):not(.related):not(.search-match) { will-change: auto; }
+
 #connections {
     position: absolute;
     width: 100%;
@@ -518,7 +524,7 @@ button:disabled { opacity: 0.45; cursor: default; }
     stroke: #93a8c0;
     stroke-width: 0.65;
     stroke-linecap: round;
-    opacity: 0.18;
+    opacity: 0.22;
     vector-effect: non-scaling-stroke;
     transition: opacity 180ms, stroke 180ms;
 }
@@ -526,35 +532,57 @@ button:disabled { opacity: 0.45; cursor: default; }
 .connection-line.selected {
     stroke: #bccfe5;
     stroke-width: 1;
-    opacity: 0.62;
+    opacity: 0.58;
 }
 
-/* Semantic zoom changes detail only; graph positions and hit targets stay intact. */
-#galaxy[data-detail-level="medium"] .entry-node::before { opacity: 0.42; }
-#galaxy[data-detail-level="medium"] .entry-node[data-body="sun"]::before { opacity: 0.2; }
-#galaxy[data-detail-level="medium"] .node-label { opacity: 0.76; }
-#galaxy[data-detail-level="medium"] .entry-node[data-body="moon"] .node-label { opacity: 0.48; }
-#galaxy[data-detail-level="medium"] .entry-node.selected .node-label,
-#galaxy[data-detail-level="medium"] .entry-node.related .node-label { opacity: 1; }
-#galaxy[data-detail-level="medium"] .connection-line:not(.selected) { opacity: 0.14; }
-
-#galaxy[data-detail-level="far"] .entry-node::before { opacity: 0.12; }
-#galaxy[data-detail-level="far"] .entry-node::after { opacity: 0.72; }
-#galaxy[data-detail-level="far"] .entry-node[data-body="sun"]::before { opacity: 0.14; }
-#galaxy[data-detail-level="far"] .entry-node[data-body="sun"]::after { opacity: 1; }
-#galaxy[data-detail-level="far"] .node-label { opacity: 0.45; }
-#galaxy[data-detail-level="far"] .entry-node[data-body="sun"] .node-label {
-    opacity: 0.9;
-    transform: translateX(-50%) scale(var(--landmark-label-scale, var(--label-scale, 1)));
+/* Continuous semantic detail fades. Tiers only gate irrelevant far hit targets.
+   Selection, search matches, ancestry and legacy roots override these fades. */
+.entry-node[data-body="planet"] { opacity: calc(0.38 + var(--planet-detail, 1) * 0.62); }
+.entry-node[data-body="moon"] { opacity: var(--moon-detail, 1); }
+.entry-node[data-body="planet"] .node-label { opacity: var(--planet-detail, 1); }
+.entry-node[data-body="moon"] .node-label { opacity: var(--moon-label-detail, 1); }
+.entry-node[data-body="sun"] {
+    --texture-opacity: 0.24;
+    --body-render-scale: var(--sun-render-scale, 1);
 }
-#galaxy[data-detail-level="far"] .entry-node[data-body="moon"]:not(.selected):not(.related) .node-label { opacity: 0; }
-#galaxy[data-detail-level="far"] .entry-node.selected .node-label,
-#galaxy[data-detail-level="far"] .entry-node.related .node-label { opacity: 1; }
-#galaxy[data-detail-level="far"] .entry-node.selected .node-label {
-    transform: translateX(-50%) scale(var(--selected-label-scale, var(--label-scale, 1)));
+.entry-node[data-body="moon"] { --texture-opacity: 0.85; }
+.entry-node[data-body="planet"][data-surface="gaseous"] { --texture-opacity: 0.8; }
+.entry-node[data-body="planet"][data-surface="earthy"] { --texture-opacity: 0.85; }
+.entry-node[data-surface="icy"] { --texture-opacity: 0.55; }
+.entry-node[data-body="moon"][data-surface="earthy"] { --texture-opacity: 0.95; }
+#nodes-layer .entry-node::before { opacity: calc(var(--surface-detail, 1) * var(--texture-opacity, 0.7)); }
+.entry-node[data-body="sun"] .node-label,
+.entry-node[data-system-root="true"] .node-label {
+    opacity: 1;
+    font-size: 10px;
 }
-#galaxy[data-detail-level="far"] .entry-node.selected { outline-width: 3px; outline-offset: 7px; }
-#galaxy[data-detail-level="far"] .connection-line:not(.selected) { opacity: 0.1; }
+.entry-node[data-system-root="true"],
+.entry-node.selected, .entry-node.related, .entry-node.search-match { opacity: 1; }
+.entry-node.selected .node-label, .entry-node.related .node-label,
+.entry-node.search-match .node-label { opacity: 1; }
+.entry-node.selected .node-label, .entry-node.related .node-label, .entry-node.search-match .node-label {
+    font-size: 10px;
+}
+#galaxy[data-detail-level="far"] .entry-node[data-body="moon"]:not([data-system-root="true"]):not(.selected):not(.related):not(.search-match) { pointer-events: none; }
+#galaxy.has-selection .entry-node:not(.in-system):not(.selected):not(.related):not(.search-match) { opacity: 0.65; }
+#galaxy.has-selection .entry-node[data-body="moon"]:not(.in-system):not([data-system-root="true"]):not(.related):not(.search-match) { opacity: calc(var(--moon-detail, 1) * 0.65); }
+.entry-node.in-system[data-body="moon"] { opacity: calc(0.18 + var(--moon-detail, 1) * 0.82); }
+.entry-node.in-system.selected, .entry-node.in-system.related,
+.entry-node.in-system.search-match { opacity: 1; }
+.connection-line[data-kind="hierarchy"] { opacity: 0; }
+.connection-line[data-kind="hierarchy"].context-link { opacity: 0.1; stroke-width: 0.65; }
+#galaxy[data-detail-level="far"] .connection-line[data-kind="relationship"]:not(.selected) { opacity: 0.08; }
+.orbit-guide {
+    fill: none;
+    stroke: #859ab5;
+    stroke-width: 0.65;
+    vector-effect: non-scaling-stroke;
+    opacity: calc(var(--orbit-detail, 0) * 0.09);
+    pointer-events: none;
+    transition: opacity 180ms ease;
+}
+.orbit-guide[data-role="subcategory"] { opacity: calc(var(--orbit-detail, 0) * 0.07); }
+.orbit-guide:not([data-active="true"]) { display: none; }
 
 #entry-panel {
     position: absolute;
@@ -815,6 +843,7 @@ button:disabled { opacity: 0.45; cursor: default; }
 @media (prefers-reduced-motion: reduce) {
     button,
     .connection-line,
+    .orbit-guide,
     .node-label {
         transition: none;
     }

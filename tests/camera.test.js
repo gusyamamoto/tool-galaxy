@@ -70,7 +70,7 @@ test("repeated wheel input accumulates and respects both zoom limits", () => {
     assert.equal(camera.view.scale, 2.4);
     camera.zoomAt(300, 200, 0.001);
     settle();
-    assert.equal(camera.view.scale, 0.3);
+    assert.equal(camera.view.scale, 0.08);
 });
 
 test("starting a drag cancels pending zoom at its visible position", () => {
@@ -122,4 +122,32 @@ test("default animation callbacks invoke browser APIs on the global object", () 
         camera.zoomAt(300, 200, 1.2);
         camera.stopAnimation();
     `, browser));
+});
+
+test("Fit Galaxy includes asymmetric world bounds with panel space and padding", () => {
+    const { camera, settle } = makeCamera();
+    const bounds = { left: -900, right: 1700, top: -600, bottom: 1200 };
+    const viewport = { left: 45, right: 1080, top: 220, bottom: 900 };
+    camera.fitBounds(bounds, viewport, { padding: 32 });
+    settle();
+    const topLeft = camera.worldToScreen(bounds.left, bounds.top);
+    const bottomRight = camera.worldToScreen(bounds.right, bounds.bottom);
+    assert.ok(topLeft.x >= viewport.left + 32);
+    assert.ok(topLeft.y >= viewport.top + 32);
+    assert.ok(bottomRight.x <= viewport.right - 32);
+    assert.ok(bottomRight.y <= viewport.bottom - 32);
+    near((topLeft.x + bottomRight.x) / 2, (viewport.left + viewport.right) / 2);
+    near((topLeft.y + bottomRight.y) / 2, (viewport.top + viewport.bottom) / 2);
+});
+
+test("Fit Galaxy handles deliberately remote pins and avoids magnifying tiny galaxies", () => {
+    const { camera, settle } = makeCamera();
+    const viewport = { left: 20, right: 400, top: 240, bottom: 600 };
+    camera.fitBounds({ left: -100000, right: 100000, top: -5000, bottom: 8000 }, viewport);
+    settle();
+    assert.ok(camera.view.scale < 0.08);
+    assert.ok(camera.worldToScreen(100000, 8000).x <= viewport.right - 32);
+    camera.fitBounds({ left: 10, right: 40, top: 20, bottom: 50 }, viewport);
+    settle();
+    assert.equal(camera.view.scale, 1);
 });
