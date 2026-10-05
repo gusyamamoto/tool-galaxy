@@ -54,12 +54,25 @@ test('layout migration uses restored parent coordinates independent of layout re
     assert.equal(layout.get('e2').radius,100);assert.equal(layout.get('e2').angle,0);
     assert.equal(entries.get('e1').x,500);
 });
-test('old soft positions become initial positions and relative influences; pins stay exact', () => {
+test('old soft positions and pins retain initial coordinates with only flowing influences', () => {
     const entries=chain(); const layout=model.normalizeLayout([{id:'e1',x:900,y:600,pinned:false},
         {id:'e2',x:-8000,y:7000,pinned:true},{id:'missing',x:5,y:5},{id:'e4',x:Infinity,y:5}],entries);
     assert.equal(layout.size,2); assert.equal(layout.get('e1').x,undefined);
     assert.equal(layout.get('e1').parentId,'e0'); assert.equal(entries.get('e1').x,900);
-    assert.deepEqual(plain(layout.get('e2')),{x:-8000,y:7000,pinned:true});
+    assert.equal(entries.get('e2').x,-8000);assert.equal(entries.get('e2').y,7000);
+    assert.equal(layout.get('e2').parentId,'e1');assert.equal(layout.get('e2').radius,Math.hypot(-8900,6400));
+    assert.ok([...layout.values()].every(p=>!('pinned' in p)&&!('x' in p)));
+});
+
+test('root pins release without changing content, ancestry or semantic relationships',()=>{
+    const entries=chain(5),before=plain([...entries.values()]),links=[{from:'e0',to:'e4'}];
+    const layout=model.normalizeLayout([{id:'e0',x:500,y:400,pinned:true},
+        {id:'e4',x:900,y:600,pinned:true}],entries);
+    assert.equal(entries.get('e0').x,500);assert.equal(entries.get('e0').y,400);assert.equal(layout.has('e0'),false);
+    assert.equal(layout.get('e4').parentId,'e3');
+    entries.forEach((e,id)=>{const old=before.find(e=>e.id===id);assert.equal(e.parentId,old.parentId);assert.equal(e.name,old.name);assert.equal(e.description,old.description);});
+    assert.ok(model.buildConnections(entries,links).some(e=>e.kind==='relationship'&&e.from==='e0'&&e.to==='e4'));
+    assert.deepEqual(plain([...model.normalizeLayout([...layout].map(([id,p])=>({id,...p})),entries)]),plain([...layout]));
 });
 test('derived hierarchy edges override duplicate semantic edges but preserve independent relationships', () => {
     const entries=chain(4), links=[{from:'e1',to:'e0'},{from:'e0',to:'e3'},{from:'e0',to:'e0'},{from:'e0',to:'missing'}];

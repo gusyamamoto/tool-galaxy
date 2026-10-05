@@ -9,7 +9,7 @@ function make(records,layout=new Map(),links=[]){
     const entries=new Map(records.map(r=>[r.id,{name:r.id,description:'Description',category:'',x:400,y:400,...r}]));
     model.normalizeHierarchy(entries);
     const data=[...entries.values()].map(e=>({...e,sizeScale:model.roles[e.role].scale}));
-    const physics=new Physics({onTick(){},onSettle(){}});physics.setViewport(bounds,23);
+    const physics=new Physics({onTick(){},onSettle(){}});physics.setViewport(bounds,13);
     physics.setGraph(data,links,layout);physics.simulation.stop();return physics;
 }
 function advance(p,ticks=300){p.simulation.stop().tick(ticks);return [...p.particles.values()];}
@@ -64,9 +64,8 @@ test('relative arrangement survives a graph rebuild and moves with its parent',(
     assert.ok(Math.abs(moon.x-before.x-220)<.001);assert.ok(Math.abs(moon.y-before.y+120)<.001);
     assert.equal(moon.placement.angle,placement.angle);p.endDrag('p',true);p.simulation.stop();
 });
-test('unpinned drag influences a radial region and yields rather than anchoring coordinates',()=>{
+test('drag influences a radial region and yields rather than anchoring coordinates',()=>{
     const p=family();advance(p);const planet=p.particles.get('p'),sun=p.particles.get('s');
-    p.setPlacement('s',{x:sun.x,y:sun.y,pinned:true});
     p.beginDrag('p');p.moveDrag('p',sun.x+600,sun.y+100);const released={x:planet.x,y:planet.y};
     const placement=p.endDrag('p',true);advance(p,350);
     assert.equal(placement.x,undefined);assert.equal(planet.fx,null);
@@ -74,10 +73,10 @@ test('unpinned drag influences a radial region and yields rather than anchoring 
     assert.ok(distance(planet,sun)>planet.orbitRadius,'drag should still influence arrangement');
 });
 for(const [kind,aId,bId] of [['Planet','sample-planet-0-0','sample-planet-0-1'],['Moon','sample-moon-0-0-0','sample-moon-0-0-1'],['Satellite','sample-satellite-0-0-0-0','sample-satellite-0-0-0-1']]){
-    test(`${kind} siblings separate after an overlapping drop beside an exact pin`,()=>{
-        const p=fixture();advance(p,400);const a=p.particles.get(aId),b=p.particles.get(bId),pin={x:b.x,y:b.y,pinned:true};
-        p.setPlacement(bId,pin);advance(p);p.beginDrag(aId);p.moveDrag(aId,pin.x,pin.y);advance(p,12);p.endDrag(aId,true);advance(p,350);
-        assert.equal(b.x,pin.x);assert.equal(b.y,pin.y);assert.equal(a.parentId,b.parentId);
+    test(`${kind} siblings separate after an overlapping drop while both remain movable`,()=>{
+        const p=fixture();advance(p,400);const a=p.particles.get(aId),b=p.particles.get(bId);
+        p.beginDrag(aId);p.moveDrag(aId,b.x,b.y);advance(p,12);p.endDrag(aId,true);advance(p,350);
+        assert.equal(b.fx,null);assert.equal(a.parentId,b.parentId);
         assert.ok(distance(a,b)>=a.radius+b.radius+12);assert.equal(a.fx,null);
     });
 }
@@ -89,33 +88,37 @@ test('local sibling impulses do not enlarge or accelerate unrelated Galaxies',()
     assert.ok(p.ordered.filter(n=>n.galaxyId!==parent.galaxyId).every(n=>n.vx===0&&n.vy===0));
     assert.equal(JSON.stringify([...p.galaxies.values()].map(g=>g.radius)),sizes);
 });
-test('Galaxy dragging carries entire movable subtrees and respects pinned branch world coordinates',()=>{
-    const p=fixture();advance(p);const root=p.particles.get('sample-galaxy-0'),moon=p.particles.get('sample-moon-0-0-0'),pin={x:moon.x,y:moon.y,pinned:true};
-    p.setPlacement(moon.id,pin);advance(p);
+test('Galaxy dragging carries all descendants without fixed branches',()=>{
+    const p=fixture();advance(p);const root=p.particles.get('sample-galaxy-0'),moon=p.particles.get('sample-moon-0-0-0'),position={x:moon.x,y:moon.y};
     const sun=p.particles.get('sample-sun-0'),before={x:sun.x,y:sun.y};
     p.beginDrag(root.id);p.moveDrag(root.id,root.x+220,root.y-120);
-    assert.ok(Math.abs(sun.x-before.x-220)<.001);assert.equal(moon.x,pin.x);assert.equal(moon.y,pin.y);
-    p.endDrag(root.id,true);advance(p);assert.equal(moon.x,pin.x);assert.equal(moon.y,pin.y);
+    assert.ok(Math.abs(sun.x-before.x-220)<.001);assert.equal(moon.x,position.x+220);assert.equal(moon.y,position.y-120);
+    p.endDrag(root.id,true);advance(p);assert.equal(moon.fx,null);
 });
-test('pins remain exact through resize, graph rebuild, dragging and unpin resumes flowing',()=>{
-    const p=family(),pin={x:1300,y:-700,pinned:true};p.setPlacement('m',pin);advance(p);
-    const moon=p.particles.get('m');assert.equal(moon.x,pin.x);assert.equal(moon.y,pin.y);
-    p.setViewport({left:20,right:400,top:200,bottom:500},21);advance(p);assert.equal(moon.x,pin.x);
-    p.beginDrag('m');p.moveDrag('m',1500,-600);const moved=p.endDrag('m',true);advance(p);assert.equal(moved.pinned,true);assert.equal(moon.x,1500);
-    const influence=p.setPlacement('m',null);assert.equal(moon.fx,null);assert.equal(influence.x,undefined);advance(p);
-    assert.ok(distance(moon,{x:1500,y:-600})>10);assert.ok(Math.abs(p.simulation.velocityDecay()-.42)<1e-12);
+test('legacy pins normalize to flowing motion through resize, rebuild and subsequent dragging',()=>{
+    const records=[{id:'g'},{id:'s',parentId:'g'},{id:'p',parentId:'s'},{id:'m',parentId:'p'}];
+    const entries=new Map(records.map(r=>[r.id,{x:400,y:400,...r}]));model.normalizeHierarchy(entries);
+    const layout=model.normalizeLayout([{id:'m',x:1300,y:-700,pinned:true}],entries);
+    const p=make([...entries.values()],layout),moon=p.particles.get('m');
+    assert.equal(moon.x,1300);assert.equal(moon.y,-700);assert.equal(moon.fx,null);assert.equal(moon.placement.pinned,undefined);
+    advance(p,1000);assert.ok(distance(moon,{x:1300,y:-700})>100);
+    p.setViewport({left:20,right:400,top:200,bottom:500},12);advance(p);assert.equal(moon.fx,null);
+    const data=p.ordered.map(n=>({...n,seedLayout:false}));p.setGraph(data,[],layout);advance(p);
+    p.beginDrag('m');p.moveDrag('m',1500,-600);const moved=p.endDrag('m',true);advance(p,1000);
+    assert.equal(moved.pinned,undefined);assert.equal(moon.fx,null);assert.ok(distance(moon,{x:1500,y:-600})>100);
+    assert.ok(Math.abs(p.simulation.velocityDecay()-.42)<1e-12);
 });
 test('reparenting keeps stable particle identity, changes systems and clears obsolete influence',()=>{
-    const p=family();advance(p);const moon=p.particles.get('m');p.setPlacement('m',null);
+    const p=family();advance(p);const moon=p.particles.get('m');moon.placement=p.influenceFor(moon);
     const data=p.ordered.map(({id,parentId,role,depth,x,y,sizeScale})=>({id,parentId,role,depth,x,y,sizeScale}));
     data.find(n=>n.id==='m').parentId='s';
     const entries=new Map(data.map(e=>[e.id,e]));model.normalizeHierarchy(entries);
     p.setGraph([...entries.values()],[],new Map([['m',moon.placement]]));advance(p);
     assert.equal(p.particles.get('m'),moon);assert.equal(moon.parentId,'s');assert.equal(moon.role,'planet');assert.equal(moon.placement,null);
 });
-test('semantic relationships between systems never drag a remote pinned branch across Galaxies',()=>{
+test('semantic relationships between systems never drag a remote branch across Galaxies',()=>{
     const p=fixture(),control=fixture();advance(p);advance(control);
-    p.setPlacement('sample-moon-0-0-0',{x:8000,y:-7000,pinned:true});
+    p.beginDrag('sample-moon-0-0-0');p.moveDrag('sample-moon-0-0-0',8000,-7000);p.endDrag('sample-moon-0-0-0',true);
     p.linkForce.links([{source:'sample-moon-0-0-0',target:'sample-sun-6'}]);
     assert.equal(p.linkForce.strength()(p.linkForce.links()[0]),0);
     control.reheat(.28);advance(p);advance(control);
@@ -139,10 +142,26 @@ test('sparse systems stay compact and wide sibling sets grow enough to separate'
         ...Array.from({length:count},(_,i)=>({id:`p${i}`,parentId:'s',seedLayout:true}))]);
     const sparse=system(3),wide=system(12);advance(sparse,450);advance(wide,450);
     const sparseSun=sparse.particles.get('s'),wideSun=wide.particles.get('s');
-    assert.ok(sparseSun.childOrbit<110);assert.ok(wideSun.childOrbit>sparseSun.childOrbit*2);
+    assert.ok(sparseSun.childOrbit<120);assert.ok(wideSun.childOrbit>sparseSun.childOrbit*2);
     assert.ok(sparse.ordered.filter(n=>n.depth===2).every(n=>distance(n,sparseSun)<150));
     separated(sparse.ordered);separated(wide.ordered);
 });
+
+for(const [kind,depth] of [['Moon',3],['Satellite',4]]){
+    test(`${kind} spacing adapts from two to eight siblings with collision clearance`,()=>{
+        const system=count=>make([...Array.from({length:depth},(_,i)=>({id:`n${i}`,parentId:i?`n${i-1}`:null,seedLayout:true})),
+            ...Array.from({length:count},(_,i)=>({id:`child${i}`,parentId:`n${depth-1}`,seedLayout:true}))]);
+        const sparse=system(2),wide=system(8);advance(sparse,450);advance(wide,450);
+        const parent=`n${depth-1}`,a=sparse.particles.get(parent),b=wide.particles.get(parent);
+        assert.ok(b.childOrbit>a.childOrbit*1.3);assert.ok(b.childOrbit<150);
+        for(const p of [sparse,wide]){
+            const children=p.children.get(parent);children.forEach((a,i)=>children.slice(i+1).forEach(b=>assert.ok(distance(a,b)>a.radius+b.radius+12)));
+            // The band has a dead zone; collisions still preserve its 24px clearance.
+            assert.ok(children.every(n=>distance(n,n.parent)-n.radius-n.parent.radius>22));
+        }
+        separated(sparse.ordered);separated(wide.ordered);
+    });
+}
 
 test('deep branches do not recursively enlarge their Sun orbital band',()=>{
     const p=fixture();advance(p,450);
@@ -151,14 +170,36 @@ test('deep branches do not recursively enlarge their Sun orbital band',()=>{
     assert.ok(distance(food.systems[0].root,food.systems[1].root)<1200);
 });
 
-test('extreme Flowing drops return locally while old oversized preferences are bounded and pins stay exact',()=>{
+test('extreme drops return locally while old oversized preferences remain bounded',()=>{
     const p=family();advance(p);const sun=p.particles.get('s'),planet=p.particles.get('p');
-    p.setPlacement('s',{x:sun.x,y:sun.y,pinned:true});
     p.beginDrag('p');p.moveDrag('p',sun.x+2000,sun.y);const placement=p.endDrag('p',true);
-    assert.ok(placement.radius<250);assert.equal(planet.fx,null);
-    advance(p,1000);assert.ok(distance(planet,sun)<200);assert.ok(p.simulation.alpha()<p.simulation.alphaMin());
+    assert.equal(placement.radius,p.orbitalRange(planet).max);assert.equal(planet.fx,null);
+    const limit=p.orbitalRange(planet).max*1.12+16;
+    advance(p,1000);assert.ok(distance(planet,sun)<limit);assert.ok(p.simulation.alpha()<p.simulation.alphaMin());
     planet.placement={parentId:'s',angle:0,radius:100000};p.reheat(.3);advance(p,450);
-    assert.ok(distance(planet,sun)<200,'legacy preferences must not stretch an orbit');
-    p.setPlacement('p',{x:sun.x+2000,y:sun.y,pinned:true});advance(p,450);
-    assert.equal(planet.x,sun.x+2000);
+    assert.ok(distance(planet,sun)<limit,'legacy preferences must not stretch an orbit');
 });
+
+for(const [kind,id] of [['Planet','p'],['Moon','m']]){
+    for(const factor of [1.5,2]) test(`${kind} respects a ${factor}x radial drag and its new angle without default blending`,()=>{
+        const p=family();advance(p,450);const node=p.particles.get(id),parent=node.parent,original=distance(node,parent);
+        const angle=Math.atan2(node.y-parent.y,node.x-parent.x)+.3,requested=original*factor;
+        p.beginDrag(id);p.moveDrag(id,parent.x+Math.cos(angle)*requested,parent.y+Math.sin(angle)*requested);
+        const released=distance(node,parent),placement=p.endDrag(id,true);p.simulation.stop();
+        assert.ok(Math.abs(placement.radius-released)<.001,'reasonable release must be saved directly');
+        assert.ok(Math.abs(placement.angle-angle)<1e-12);
+        advance(p,500);const settled=distance(node,parent);
+        assert.ok(settled>=released*.85&&settled<=released*1.15,`${kind}: original ${original}, release ${released}, settled ${settled}`);
+        const settledAngle=Math.atan2(node.y-parent.y,node.x-parent.x);
+        assert.ok(Math.abs(Math.atan2(Math.sin(settledAngle-angle),Math.cos(settledAngle-angle)))<.3);
+        assert.equal(node.fx,null);assert.equal(node.parentId,parent.id);
+    });
+    test(`${kind} extreme drop returns to the safety boundary, not the default band`,()=>{
+        const p=family();advance(p,450);const node=p.particles.get(id),parent=node.parent,range=p.orbitalRange(node);
+        p.beginDrag(id);p.moveDrag(id,parent.x+5000,parent.y);const release=node.x;
+        const placement=p.endDrag(id,true);p.simulation.stop();assert.equal(node.x,release,'release must not snap coordinates');
+        assert.equal(placement.radius,range.max);advance(p,1800);
+        assert.ok(distance(node,parent)<=range.max*1.12+16);assert.ok(distance(node,parent)>node.orbitRadius*1.7);
+        assert.equal(node.fx,null);assert.ok(p.simulation.alpha()<p.simulation.alphaMin());
+    });
+}

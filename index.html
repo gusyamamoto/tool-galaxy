@@ -24,9 +24,15 @@
             <div id="nodes-layer"></div>
         </div>
 
-        <button id="sidebar-toggle" type="button" aria-controls="hierarchy-sidebar" aria-expanded="true" title="Hide hierarchy" aria-label="Hide hierarchy"><svg aria-hidden="true" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M10 4v16"/></svg></button>
-        <aside id="hierarchy-sidebar" aria-label="Hierarchy navigation">
-            <header class="hierarchy-header"><span>Hierarchy</span><span id="hierarchy-count"></span></header>
+        <button id="sidebar-toggle" type="button" aria-controls="hierarchy-sidebar" aria-expanded="true" title="Hide navigation" aria-label="Hide navigation"><svg aria-hidden="true" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M10 4v16"/></svg></button>
+        <aside id="hierarchy-sidebar" aria-label="Navigation">
+            <header class="sidebar-brand"><h1>Galaxy</h1><span id="sample-indicator" hidden>Sample</span></header>
+            <div class="sidebar-controls">
+                <div class="sidebar-actions">
+                    <button id="add-entry-button" type="button">+ Add Galaxy</button>
+                    <button id="reset-view-button" type="button">Fit Galaxy</button>
+                </div>
+            </div>
             <div class="entry-search">
                 <label class="visually-hidden" for="entry-search">Search entries by name</label>
                 <input id="entry-search" type="search" placeholder="Search entries…" autocomplete="off" aria-controls="search-results">
@@ -36,53 +42,48 @@
                 </div>
             </div>
             <div id="hierarchy-tree" role="tree" aria-label="Cosmos hierarchy"></div>
-            <p class="hierarchy-help">Select to explore · + to add a child</p>
+            <details id="sidebar-tools">
+                <summary>More tools</summary>
+                <div class="view-controls"><span id="hierarchy-count"></span><output id="zoom-level" aria-label="Zoom level">100%</output></div>
+                <p class="galaxy-hint">Scroll to zoom · Drag space to pan</p>
+                <aside id="sample-controls" aria-label="Development sample controls">
+                    <span><strong id="sample-mode-label">Development data</strong> <span id="sample-mode-count">Temporary stress test</span></span>
+                    <button id="load-sample-button" type="button">Load Sample Galaxy</button>
+                    <button id="remove-sample-button" type="button">Remove Sample Galaxy</button>
+                </aside>
+            </details>
+            <p id="storage-status" role="status" hidden></p>
             <div id="sidebar-resize" role="separator" aria-label="Resize hierarchy" aria-orientation="vertical" tabindex="0"></div>
         </aside>
-        <h1>Galaxy</h1>
-        <p class="galaxy-subtitle">Ideas, places, resources. Connected.</p>
-        <button id="add-entry-button" type="button">+ Add Galaxy</button>
-        <div class="view-controls">
-            <button id="reset-view-button" type="button">Fit Galaxy</button>
-            <output id="zoom-level" aria-label="Zoom level">100%</output>
-        </div>
-        <p id="storage-status" role="status" hidden></p>
-        <aside id="sample-controls" aria-label="Development sample controls">
-            <span><strong id="sample-mode-label">Development data</strong> <span id="sample-mode-count">Temporary stress test</span></span>
-            <button id="load-sample-button" type="button">Load Sample Galaxy</button>
-            <button id="remove-sample-button" type="button">Remove Sample Galaxy</button>
-        </aside>
 
-        <aside id="entry-panel">
+        <aside id="entry-panel" aria-labelledby="panel-name" hidden>
+            <header class="inspector-header"><span class="panel-eyebrow">Details</span><button id="close-inspector-button" type="button" aria-label="Close details" title="Close details">&times;</button></header>
             <div class="panel-content">
-                <span class="panel-eyebrow">Entry details</span>
                 <h2 id="panel-name">Select an entry</h2>
                 <p id="panel-description">Click a node to see more information.</p>
-                <p id="panel-category" hidden></p>
-                <p id="panel-role" hidden></p>
-                <p id="panel-parent" hidden></p>
             </div>
             <nav id="panel-ancestry" aria-label="Entry ancestry" hidden></nav>
-            <p id="panel-placement" role="status" hidden></p>
+            <p id="panel-parent" hidden></p>
             <div id="entry-actions" hidden>
-                <button id="add-child-button" type="button">+ Add child</button>
-                <div class="entry-action-row">
+                <div class="inspector-main-actions">
+                    <button id="add-child-button" type="button">+ Add child</button>
                     <button id="edit-entry-button" type="button">Edit</button>
-                    <button id="delete-entry-button" type="button">Delete</button>
                 </div>
-                <div class="entry-action-row placement-actions">
-                    <button id="pin-position-button" type="button">Pin position</button>
+                <details id="inspector-metadata">
+                    <summary>More</summary>
+                    <p id="panel-category" hidden></p>
+                </details>
+                <div class="inspector-utility-actions">
+                    <button id="delete-entry-button" type="button">Delete</button>
                 </div>
             </div>
             <p id="entry-action-status" role="status" hidden></p>
         </aside>
 
-        <p class="galaxy-hint">Scroll to zoom <span aria-hidden="true">&middot;</span> Drag space to pan <span aria-hidden="true">&middot;</span> Select to explore</p>
         <div id="entry-context-menu" role="menu" aria-label="Entry actions" hidden>
             <span id="context-entry-name" class="context-entry-name" aria-hidden="true"></span>
             <button type="button" role="menuitem" data-action="create">Add child</button>
             <button type="button" role="menuitem" data-action="edit">Edit</button>
-            <button type="button" role="menuitem" data-action="pin">Pin position</button>
             <button type="button" role="menuitem" data-action="delete">Delete</button>
         </div>
     </main>
@@ -109,12 +110,6 @@
                 <p id="parent-help"></p>
             </div>
             <p id="entry-form-error" role="alert" hidden></p>
-
-            <fieldset>
-                <legend>Other connections (optional)</legend>
-                <p class="form-help">The parent connection is created automatically.</p>
-                <div id="connection-options"></div>
-            </fieldset>
 
             <div class="form-actions">
                 <button id="cancel-add-entry" type="button">Cancel</button>

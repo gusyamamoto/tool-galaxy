@@ -51,14 +51,11 @@ const panel = document.getElementById("entry-panel");
 const panelName = document.getElementById("panel-name");
 const panelDescription = document.getElementById("panel-description");
 const panelCategory = document.getElementById("panel-category");
-const panelRole = document.getElementById("panel-role");
 const panelParent = document.getElementById("panel-parent");
 const entryActions = document.getElementById("entry-actions");
 const editEntryButton = document.getElementById("edit-entry-button");
 const deleteEntryButton = document.getElementById("delete-entry-button");
 const actionStatus = document.getElementById("entry-action-status");
-const panelPlacement = document.getElementById("panel-placement");
-const pinPositionButton = document.getElementById("pin-position-button");
 const panelAncestry = document.getElementById("panel-ancestry");
 const regionsLayer = document.getElementById("regions-layer");
 const regions = new Map();
@@ -72,7 +69,6 @@ const contextMenu = document.getElementById("entry-context-menu");
 const creationContext = document.getElementById("creation-context");
 const dialog = document.getElementById("add-entry-dialog");
 const form = document.getElementById("add-entry-form");
-const connectionOptions = document.getElementById("connection-options");
 const storageStatus = document.getElementById("storage-status");
 const deleteDialog = document.getElementById("delete-entry-dialog");
 const searchField = document.getElementById("entry-search");
@@ -89,7 +85,7 @@ const fields = ["entry-name", "entry-description", "entry-category"].map((id) =>
 
 // Plain entry/connection data is kept separate from the rendered DOM.
 const entries = new Map();
-// Parent-relative arrangement influences and exact pins are separate from content.
+// Parent-relative arrangement influences are separate from content.
 let layout = new Map();
 const relationships = [];
 let connections = [];
@@ -113,7 +109,7 @@ document.addEventListener("keydown", event => {
 });
 document.addEventListener("pointerdown", () => { keyboardNavigation = false; }, true);
 let autoFitPending = true;
-let baseNodeRadius = 23;
+let baseNodeRadius = 13;
 let cameraViewReady = false;
 let lastRegionSample = -Infinity, lastRegionFrame = 0;
 let semanticDetail = cosmosView.detail(1);
@@ -192,11 +188,13 @@ graphViewport.addEventListener("pointermove", (event) => {
 });
 function endPan(event) {
     if (event.pointerId !== pan?.id) return;
-    const galaxyId = event.type === "pointerup" && !pan.moved ? pan.galaxyId : null;
+    const clicked = event.type === "pointerup" && !pan.moved;
+    const galaxyId = clicked ? pan.galaxyId : null;
     pan = null;
     graphViewport.classList.remove("is-panning");
     if (graphViewport.hasPointerCapture(event.pointerId)) graphViewport.releasePointerCapture(event.pointerId);
     if (galaxyId) focusEntry(galaxyId);
+    else if (clicked) closeInspector();
 }
 ["pointerup", "pointercancel", "lostpointercapture"].forEach((type) => graphViewport.addEventListener(type, endPan));
 function galaxyAtScreen(point) {
@@ -216,11 +214,10 @@ function openContextMenu(id, x, y) {
     const entry = entries.get(id);
     contextReturnFocus = nodes.get(id);
     contextEntryId = id; contextMenu.dataset.entryId = id;
-    selectEntry(entry, nodes.get(id));
+    selectEntry(entry, nodes.get(id), { openInspector: false });
     contextMenu.setAttribute("aria-label", `Actions for ${entry.name}`);
     document.getElementById("context-entry-name").textContent = entry.name;
     contextMenu.querySelector('[data-action="create"]').textContent = cosmosHierarchy.childContext(entries, id).action;
-    contextMenu.querySelector('[data-action="pin"]').textContent = layout.get(id)?.pinned ? "Unpin position" : "Pin position";
     contextMenu.querySelector('[data-action="delete"]').disabled = builtInIds.has(id);
     contextMenu.hidden = false;
     const bounds = contextMenu.getBoundingClientRect();
@@ -240,10 +237,9 @@ function closeContextMenu(restoreFocus = false) {
 contextMenu.addEventListener("click", event => {
     const action = event.target.closest("button")?.dataset.action, id = contextEntryId;
     if (!action || !entries.has(id)) return;
-    closeContextMenu(action === "pin" || action === "delete");
+    closeContextMenu(action === "delete");
     if (action === "create") createChildEntry(id);
     else if (action === "edit") openEntryForm(entries.get(id));
-    else if (action === "pin") toggleEntryPin(id);
     else if (action === "delete") requestEntryDelete(id);
 });
 contextMenu.addEventListener("keydown", event => {
@@ -358,6 +354,7 @@ function initializeGalaxy() {
     } else galaxyModel.normalizeHierarchy(entries);
     if (sampleMode) entries.forEach(entry => { entry.seedLayout = true; });
     layout = galaxyModel.normalizeLayout(saved?.layout || [], entries);
+    if (!sampleMode && saved?.layout?.some(record => record?.pinned === true)) graphNeedsSave = true;
     [...entries.values()].forEach(createEntryNode);
     const storedLinks = sampleMode ? saved.connections :
         (!saved || saved.legacy) ? [...initialConnections, ...(saved?.connections || [])] : saved.connections;
@@ -385,7 +382,7 @@ removeSampleButton.addEventListener("click", () => {
     if (sampleMode) window.location.reload();
 });
 
-function selectEntry(entry, node) {
+function selectEntry(entry, node, { openInspector = true, reframe = true } = {}) {
     if (selectedNode) {
         selectedNode.classList.remove("selected");
         selectedNode.setAttribute("aria-pressed", "false");
@@ -396,12 +393,11 @@ function selectEntry(entry, node) {
     node.setAttribute("aria-pressed", "true");
     panelName.textContent = entry.name;
     panelDescription.textContent = entry.description;
-    panelCategory.textContent = `Category: ${entry.category}`;
+    panelCategory.textContent = `Label: ${entry.category}`;
     panelCategory.hidden = !entry.category;
-    panelRole.textContent = `Role: ${entryRoles[entry.role].label}`;
-    panelRole.hidden = false;
+    document.getElementById("inspector-metadata").hidden = !entry.category;
     const parent = entries.get(entry.parentId);
-    panelParent.textContent = parent ? `Parent: ${parent.name}` : "Universe · Top-level Galaxy";
+    panelParent.textContent = parent ? `In ${parent.name}` : "In the Universe";
     panelAncestry.replaceChildren();
     [...galaxyModel.ancestors(entries, entry.id)].reverse().forEach(ancestor => {
         const button = document.createElement("button");
@@ -411,14 +407,43 @@ function selectEntry(entry, node) {
     });
     panelAncestry.hidden = !parent;
     addChildButton.textContent = `+ ${cosmosHierarchy.childContext(entries, entry.id).action}`;
-    panelParent.hidden = false;
+    panelParent.hidden = !!parent;
     entryActions.hidden = false;
     deleteEntryButton.hidden = builtInIds.has(entry.id);
     actionStatus.hidden = true;
-    updatePlacementControls();
     updateHierarchyEmphasis();
     hierarchySidebar.select(entry.id);
+    if (openInspector && !activeNodeDrags) setInspectorOpen(true, { reframe });
+    else if (!activeNodeDrags) updateGraphViewport();
 }
+
+function setInspectorOpen(open, { reframe = true } = {}) {
+    if (activeNodeDrags || (open && !selectedNode)) return;
+    if (open && hierarchySidebar.narrow) hierarchySidebar.setCollapsed(true);
+    const previous = { ...physics.bounds };
+    panel.hidden = !open;
+    galaxy.classList.toggle("inspector-open", open);
+    // Content height can change between selections or when More is expanded.
+    // Measure final panel geometry before fitting, without rebuilding physics.
+    if (!reframe) { updateGraphViewport(); return; }
+    navigationViewportChanged(true, { keepSelectedVisible: open, previous });
+}
+function closeInspector(restoreFocus = false) {
+    if (panel.hidden) return;
+    const hadFocus = panel.contains(document.activeElement);
+    setInspectorOpen(false);
+    if (restoreFocus || hadFocus) {
+        keyboardNavigation = false;
+        const row = hierarchySidebar.rows.get(selectedNode?.dataset.entryId);
+        const target = selectedNode && !selectedNode.inert && selectedNode.dataset.culled !== "true" ? selectedNode :
+            !hierarchySidebar.collapsed && hierarchySidebar.tree.contains(row) ? row : hierarchySidebar.toggle;
+        target.focus({ preventScroll: true });
+    }
+}
+document.getElementById("close-inspector-button").addEventListener("click", () => closeInspector(true));
+document.getElementById("inspector-metadata").addEventListener("toggle", () => {
+    if (!panel.hidden) navigationViewportChanged(true, { keepSelectedVisible: true });
+});
 
 function updateHierarchyEmphasis() {
     const id = selectedNode?.dataset.entryId, selected = physics.particles.get(id);
@@ -528,8 +553,8 @@ function createEntryNode(entry) {
         if (node.hasPointerCapture(event.pointerId)) node.releasePointerCapture(event.pointerId);
         if (didMove) {
             if (placement) layout.set(entry.id, placement); else layout.delete(entry.id);
-            updatePlacementControls();
             saveGalaxy();
+            setInspectorOpen(true);
         }
     }
     ["pointerup", "pointercancel", "lostpointercapture"].forEach((type) => node.addEventListener(type, endDrag));
@@ -605,7 +630,7 @@ function syncPhysicsGraph() {
     entries.forEach(entry => updateEntryNode(entry, nodes.get(entry.id)));
     physics.setGraph([...entries.values()].map(({ id, role, depth, parentId, x, y, seedLayout }) =>
         ({ id, role, depth, parentId, x, y, seedLayout, sizeScale: entryRoles[role].scale })), connections, layout);
-    // Seeding and restoring pins can move fresh particles synchronously. Use the
+    // Seeding can move fresh particles synchronously. Use the
     // actual coordinates for the first render, save and Add/focus handoff.
     physics.particles.forEach((particle, id) => {
         const entry = entries.get(id);
@@ -613,9 +638,9 @@ function syncPhysicsGraph() {
         entry.x = particle.x; entry.y = particle.y;
     });
     entries.forEach(entry => { entry.seedLayout = false; });
-    // Reparenting invalidates only relative influences, never exact pins.
+    // Reparenting invalidates only that entry's parent-relative influence.
     layout.forEach((placement, id) => {
-        if (!placement.pinned && placement.parentId !== entries.get(id)?.parentId) layout.delete(id);
+        if (placement.parentId !== entries.get(id)?.parentId) layout.delete(id);
     });
     updateRegionFootprints(true);
     hierarchySidebar.setEntries(entries);
@@ -631,23 +656,37 @@ function updateGraphViewport() {
     const narrow = window.matchMedia("(max-width: 760px)").matches;
     const sidebarRight = hierarchySidebar.collapsed ? 0 : hierarchySidebar.sidebar.getBoundingClientRect().right - rect.left;
     const left = sidebarRight + radius + 24;
-    const top = radius + (narrow ? 234 : 200);
-    const right = Math.max(left, (narrow ? rect.width - 24 : panelRect.left - rect.left - 24) - radius);
-    const bottom = Math.max(top, (narrow ? panelRect.top - rect.top - 48 : rect.height - 76) - radius);
+    const top = radius + 24;
+    const rightEdge = !panel.hidden && !narrow ? panelRect.left - rect.left : rect.width;
+    const bottomEdge = !panel.hidden && narrow ? panelRect.top - rect.top : rect.height;
+    const right = Math.max(left, rightEdge - radius - 24);
+    const bottom = Math.max(top, bottomEdge - radius - 24);
     const bounds = { left, right, top, bottom };
     // Sidebar chrome changes the usable screen, never orbital targets or forces.
     if (physics.baseNodeRadius !== radius) physics.setViewport(bounds, radius);
     else physics.bounds = bounds;
 }
 
-function navigationViewportChanged(animate = true) {
+function navigationViewportChanged(animate = true, { keepSelectedVisible = false, previous = physics.bounds } = {}) {
     autoFitPending = false;
     closeContextMenu(); dismissTemporaryReveal();
-    const previous = physics.bounds, before = { x: (previous.left + previous.right) / 2, y: (previous.top + previous.bottom) / 2 };
+    if (hierarchySidebar.narrow && !hierarchySidebar.collapsed) {
+        panel.hidden = true; galaxy.classList.remove("inspector-open");
+    }
+    const before = { x: (previous.left + previous.right) / 2, y: (previous.top + previous.bottom) / 2 };
     updateGraphViewport();
     const bounds = physics.bounds;
-    camera.setView({ x: camera.view.x + (bounds.left + bounds.right) / 2 - before.x,
-        y: camera.view.y + (bounds.top + bounds.bottom) / 2 - before.y, scale: camera.view.scale }, animate);
+    const view = { x: camera.view.x + (bounds.left + bounds.right) / 2 - before.x,
+        y: camera.view.y + (bounds.top + bounds.bottom) / 2 - before.y, scale: camera.view.scale };
+    const entry = entries.get(selectedNode?.dataset.entryId);
+    if (keepSelectedVisible && entry?.depth > 0) {
+        const margin = Math.max(24, getNodeRadius(entry) * view.scale);
+        const padX = Math.min(margin, (bounds.right - bounds.left) / 3), padY = Math.min(margin, (bounds.bottom - bounds.top) / 3);
+        const x = entry.x * view.scale + view.x, y = entry.y * view.scale + view.y;
+        view.x += Math.max(bounds.left + padX, Math.min(bounds.right - padX, x)) - x;
+        view.y += Math.max(bounds.top + padY, Math.min(bounds.bottom - padY, y)) - y;
+    }
+    if (view.x !== camera.view.x || view.y !== camera.view.y) camera.setView(view, animate);
 }
 
 function galaxyBounds() {
@@ -680,6 +719,7 @@ function galaxyBounds() {
 
 function fitGalaxy(animate = true) {
     dismissTemporaryReveal();
+    updateGraphViewport();
     camera.fitBounds(galaxyBounds(), physics.bounds, { padding: 32, animate });
 }
 
@@ -865,25 +905,6 @@ function rebuildConnections() {
     updateConnections();
 }
 
-function populateConnectionOptions() {
-    connectionOptions.replaceChildren();
-    entries.forEach((entry) => {
-        if (entry.id === editingId) return;
-        const label = document.createElement("label");
-        const checkbox = document.createElement("input");
-        checkbox.type = "checkbox";
-        checkbox.name = "connections";
-        checkbox.value = entry.id;
-        checkbox.checked = editingId !== null && relationships.some(({ from, to }) =>
-            (from === editingId && to === entry.id) || (to === editingId && from === entry.id));
-        const text = document.createElement("span");
-        text.textContent = `${entry.name} · ${entryRoles[entry.role].name}${entry.category ? ` (${entry.category})` : ""}`;
-        label.append(checkbox, text);
-        connectionOptions.appendChild(label);
-    });
-    updateParentConnectionOption();
-}
-
 function getNewEntryId() {
     if (typeof crypto.randomUUID === "function") return `entry-${crypto.randomUUID()}`;
     while (entries.has(`custom-${nextEntryId}`)) {
@@ -897,25 +918,17 @@ function clearFormError() {
     parentField.setCustomValidity("");
 }
 
-function updateParentConnectionOption() {
-    connectionOptions.querySelectorAll("input").forEach((checkbox) => {
-        checkbox.disabled = checkbox.value === parentField.value;
-        if (checkbox.disabled) checkbox.checked = false;
-    });
-}
-
 function updateFormRole() {
     const parent = entries.get(parentField.value), context = cosmosHierarchy.childContext(entries, parentField.value);
-    const { depth, role } = context;
+    const { role } = context;
     roleField.dataset.role = role;
-    roleField.textContent = `${entryRoles[roleField.dataset.role].name} · Depth ${depth}`;
+    roleField.textContent = entryRoles[roleField.dataset.role].name;
     document.getElementById("parent-help").textContent = parent ? `Child of ${parent.name}. Its descendants move with this branch.` : "A top-level Galaxy in the Universe.";
     if (!editingId) {
         document.getElementById("add-entry-title").textContent = context.action;
         submitButton.textContent = context.action;
     }
     creationContext.querySelector("span").textContent = parent ? `${entryRoles[role].name} under ${parent.name}` : "A new Galaxy in the Universe";
-    updateParentConnectionOption();
 }
 function updateParentOptions(preferredId = parentField.value) {
     clearFormError(); parentField.required = false;
@@ -949,7 +962,6 @@ function openEntryForm(entry = null, parentId = null, contextual = false) {
         fields[2].value = entry.category;
     }
     updateParentOptions(entry ? entry.parentId || "" : parentId || "");
-    populateConnectionOptions();
     physics.pause();
     dialog.showModal();
 }
@@ -1009,23 +1021,17 @@ form.addEventListener("submit", (event) => {
         return;
     }
     if (!form.reportValidity()) return;
-    const targetIds = [...connectionOptions.querySelectorAll("input:checked:not(:disabled)")]
-        .map((checkbox) => checkbox.value);
     const entry = editingId ? entries.get(editingId) : {
-        ...getNewEntryPosition(data.parentId ? [data.parentId] : targetIds, roleField.dataset.role), seedLayout: true
+        ...getNewEntryPosition(data.parentId ? [data.parentId] : [], roleField.dataset.role), seedLayout: true
     };
     const oldParentId = entry.parentId;
     Object.assign(entry, data);
     entries.set(entry.id, entry);
-    if (oldParentId !== data.parentId && !layout.get(entry.id)?.pinned) layout.delete(entry.id);
+    if (oldParentId !== data.parentId) layout.delete(entry.id);
     galaxyModel.normalizeHierarchy(entries);
     const node = editingId ? nodes.get(editingId) : createEntryNode(entry);
     updateEntryNode(entry, node);
-    // Replace only this entry's optional relationships. All other relationships stay intact.
-    for (let i = relationships.length - 1; i >= 0; i--) {
-        if (relationships[i].from === entry.id || relationships[i].to === entry.id) relationships.splice(i, 1);
-    }
-    targetIds.forEach((to) => relationships.push({ from: entry.id, to }));
+    // Editing or reparenting changes the tree, never existing semantic relationships.
     rebuildConnections();
     syncPhysicsGraph();
     saveGalaxy();
@@ -1040,11 +1046,12 @@ form.addEventListener("submit", (event) => {
 function clearSelection() {
     focusRevealIds.clear();
     selectedNode = null;
+    setInspectorOpen(false);
     hierarchySidebar.select(null);
     panelAncestry.hidden = true;
     panelName.textContent = "Select an entry";
     panelDescription.textContent = "Click a node to see more information.";
-    [panelCategory, panelRole, panelParent, panelPlacement, entryActions, actionStatus].forEach((element) => { element.hidden = true; });
+    [panelCategory, panelParent, entryActions, actionStatus].forEach((element) => { element.hidden = true; });
     nodes.forEach((node) => {
         node.classList.remove("related", "selected");
         node.setAttribute("aria-pressed", "false");
@@ -1053,26 +1060,10 @@ function clearSelection() {
     updateHierarchyEmphasis();
 }
 
-function updatePlacementControls() {
-    const id = selectedNode?.dataset.entryId;
-    if (!id) return;
-    const pinned = layout.get(id)?.pinned === true;
-    panelPlacement.textContent = pinned ? "Position: Pinned" : "Position: Flowing";
-    panelPlacement.hidden = false;
-    pinPositionButton.textContent = pinned ? "Unpin position" : "Pin position";
-}
-function toggleEntryPin(id) {
-    const entry = entries.get(id);
-    if (!entry || activeNodeDrags) return;
-    const placement = physics.setPlacement(entry.id, layout.get(entry.id)?.pinned ? null : { x: entry.x, y: entry.y, pinned: true });
-    if (placement) layout.set(entry.id, placement); else layout.delete(entry.id);
-    updatePlacementControls(); saveGalaxy();
-}
-pinPositionButton.addEventListener("click", () => toggleEntryPin(selectedNode?.dataset.entryId));
-
 function reportAction(message) {
     actionStatus.textContent = message;
     actionStatus.hidden = false;
+    if (panel.hidden) setInspectorOpen(true);
 }
 
 function requestEntryDelete(id) {
@@ -1134,7 +1125,7 @@ function focusEntry(id) {
         focusRevealIds.add(id);
         galaxyModel.ancestors(entries, id).forEach(ancestor => focusRevealIds.add(ancestor.id));
     }
-    selectEntry(entry, nodes.get(id));
+    selectEntry(entry, nodes.get(id), { reframe: false });
     const { left, right, top, bottom } = physics.bounds;
     const particle = physics.particles.get(id);
     if (entry.depth <= 1) {
@@ -1196,8 +1187,10 @@ searchField.addEventListener("keydown", (event) => {
     }
 });
 document.addEventListener("keydown", (event) => {
-    if (event.key === "Escape" && !dialog.open && !deleteDialog.open) {
+    if (event.key === "Escape" && !event.defaultPrevented && !dialog.open && !deleteDialog.open) {
+        const dismissingSearch = searchOpen;
         dismissTemporaryReveal();
+        if (!dismissingSearch) closeInspector(true);
     }
 });
 document.addEventListener("pointerdown", (event) => {
@@ -1209,6 +1202,7 @@ document.addEventListener("pointerdown", (event) => {
 
 initializeGalaxy();
 if (sampleMode) {
+    document.getElementById("sample-indicator").hidden = false;
     sampleControls.classList.add("sample-active");
     sampleModeLabel.textContent = "Sample galaxy";
     sampleModeCount.textContent = `(${entries.size} temporary entries)`;

@@ -6,7 +6,7 @@ class GalaxyPhysics {
         this.particles = new Map(); this.systems = new Map(); this.galaxies = new Map();
         this.children = new Map(); this.dragging = new Set();
         this.bounds = { left: 60, right: 900, top: 140, bottom: 700 };
-        this.baseNodeRadius = 23; this.paused = false; this.settled = true; this.origin = null;
+        this.baseNodeRadius = 13; this.paused = false; this.settled = true; this.origin = null;
         this.collisionForce = d3.forceCollide(node => node.radius + 12).strength(1).iterations(4);
         this.linkForce = d3.forceLink().id(node => node.id).distance(link => link.source.radius + link.target.radius + 80)
             .strength(link => link.source.systemId && link.source.systemId === link.target.systemId ? .015 : 0);
@@ -32,15 +32,15 @@ class GalaxyPhysics {
                 sizeScale: entry.sizeScale || 1, seedLayout: entry.seedLayout === true });
             node.radius = entry.role === "galaxy" ? 0 : this.baseNodeRadius * node.sizeScale;
             if (placements !== null) node.placement = this.copyPlacement(placements.get(entry.id));
-            if (parentChanged && !fresh.has(entry.id) && node.placement && !node.placement.pinned) node.placement = null;
-            this.applyPin(node); next.set(node.id, node);
+            if (parentChanged && !fresh.has(entry.id)) node.placement = null;
+            this.releaseConstraint(node); next.set(node.id, node);
         });
         this.particles = next;
         this.dragging = new Set([...this.dragging].filter(id => next.has(id)));
         this.origin ||= { x: (this.bounds.left + this.bounds.right) / 2, y: (this.bounds.top + this.bounds.bottom) / 2 };
         this.linkForce.links([]); this.simulation.nodes([...next.values()]); this.buildSystems();
         this.ordered.forEach(node => {
-            if (fresh.has(node.id) && node.seedLayout && !node.placement?.pinned) {
+            if (fresh.has(node.id) && node.seedLayout) {
                 if (!node.parent) Object.assign(node, this.galaxies.get(node.id).home);
                 else { node.x = node.parent.x + Math.cos(node.orbitAngle) * node.orbitRadius;
                     node.y = node.parent.y + Math.sin(node.orbitAngle) * node.orbitRadius; }
@@ -81,8 +81,9 @@ class GalaxyPhysics {
             // for their branches. A deep chain must not recursively inflate it.
             const local = Math.max(0, ...children.map(child => child.radius +
                 Math.min(parent.depth === 1 ? 28 : 14, Math.max(0, child.envelope - child.radius) * .18)));
-            const minimum = parent.radius + local + 24;
-            const spacing = children.length > 1 ? (local + 12) * (parent.depth === 1 ? 1.35 : 1.15) / Math.sin(Math.PI / children.length) : 0;
+            const clearance = parent.depth === 1 ? 66 : parent.depth === 2 ? 56 : 38;
+            const minimum = parent.radius + local + clearance;
+            const spacing = children.length > 1 ? (local + 26) * (parent.depth === 1 ? 1.35 : 1.15) / Math.sin(Math.PI / children.length) : 0;
             parent.childOrbit = children.length ? Math.max(minimum, spacing) : 0;
             parent.envelope = children.length ? parent.childOrbit + largest + 12 : parent.radius + 14;
             const phase = this.angleFor(parent.id);
@@ -162,20 +163,21 @@ class GalaxyPhysics {
             if (!child.parent || child.fx != null) return;
             const dx = child.x - child.parent.x, dy = child.y - child.parent.y;
             const distance = Math.hypot(dx, dy) || .001;
-            const influence = child.placement && !child.placement.pinned && child.placement.parentId === child.parentId ? child.placement : null;
-            // Dragging chooses an angle and influences a wide radial region, never
-            // an absolute coordinate. A dead zone allows free local floating.
-            const targetRadius = influence ? child.orbitRadius * .65 + Math.min(this.preferredLimit(child), Math.max(child.orbitRadius * .65, influence.radius)) * .35 : child.orbitRadius;
+            const influence = child.placement?.parentId === child.parentId ? child.placement : null;
+            // Release chooses the preferred angle AND radius. The default band
+            // only seeds an untouched body and sizes its adaptive safety range.
+            const range = this.orbitalRange(child);
+            const targetRadius = influence ? Math.max(range.min, Math.min(range.max, influence.radius)) : child.orbitRadius;
             const slack = Math.max(12, targetRadius * .12);
             const error = distance - targetRadius;
             const outside = Math.sign(error) * Math.max(0, Math.abs(error) - slack);
             const strength = child.depth === 1 ? .025 : child.depth === 2 ? .1 : .14;
             const pull = Math.max(-5, Math.min(5, outside * strength)) * alpha;
             child.vx -= dx / distance * pull; child.vy -= dy / distance * pull;
-            // Distant Flowing drops need time to return after the ordinary cooling
-            // period. A smooth, capped local pull sustains only that return; pins
-            // and active drags skip it, and release itself adds no velocity/heat.
-            const excess = Math.max(0, distance - this.preferredLimit(child) - slack);
+            // Distant drops need time to return after the ordinary cooling period.
+            // A smooth, capped local pull sustains only that return; active drags
+            // skip it, and release itself adds no velocity/heat.
+            const excess = Math.max(0, distance - range.max - slack);
             if (excess > 1) {
                 if (excess > 12) returning = true;
                 const containment = Math.min(4, excess * .008);
@@ -189,10 +191,15 @@ class GalaxyPhysics {
         });
         if (returning) this.simulation.alpha(Math.max(this.simulation.alpha(), .06));
     }
-    preferredLimit(node) {
-        const allowance = node.depth === 1 ? Math.max(60, node.envelope * .25) : node.depth === 2 ? 55 : node.depth === 3 ? 28 : 20;
-        return node.orbitRadius + allowance;
+    orbitalRange(node) {
+        // Suns retain the existing Galaxy packing allowance. Local families use
+        // their sibling-sized band, with a body-collision-safe inner boundary.
+        if (node.depth === 1) return { min: 0, max: node.orbitRadius + Math.max(60, node.envelope * .25) };
+        const min = (node.parent?.radius || 0) + node.radius + 24;
+        const factor = node.depth <= 3 ? 2.4 : 1.9;
+        return { min, max: Math.max(min + 24, node.orbitRadius * factor) };
     }
+    preferredLimit(node) { return this.orbitalRange(node).max; }
     separateSiblings(alpha) {
         this.children.forEach((siblings, parentId) => {
             if (siblings.length < 2 || this.particles.get(parentId).depth === 0) return;
@@ -218,24 +225,18 @@ class GalaxyPhysics {
         });
     }
     copyPlacement(placement) {
-        if (placement?.pinned && Number.isFinite(placement.x) && Number.isFinite(placement.y)) return { x: placement.x, y: placement.y, pinned: true };
         if (Number.isFinite(placement?.angle) && Number.isFinite(placement?.radius)) return { parentId: placement.parentId, angle: placement.angle, radius: placement.radius };
         return null;
     }
     influenceFor(node) {
-        return node.parent ? { parentId: node.parentId, angle: Math.atan2(node.y - node.parent.y, node.x - node.parent.x),
-            radius: Math.min(this.preferredLimit(node), Math.hypot(node.x - node.parent.x, node.y - node.parent.y)) } : null;
+        if (!node.parent) return null;
+        const range = this.orbitalRange(node);
+        return { parentId: node.parentId, angle: Math.atan2(node.y - node.parent.y, node.x - node.parent.x),
+            radius: Math.max(range.min, Math.min(range.max, Math.hypot(node.x - node.parent.x, node.y - node.parent.y))) };
     }
-    applyPin(node) {
+    releaseConstraint(node) {
         if (this.dragging.has(node.id)) return;
-        if (node.placement?.pinned) { node.fx = node.x = node.placement.x; node.fy = node.y = node.placement.y; node.vx = node.vy = 0; }
-        else node.fx = node.fy = null;
-    }
-    setPlacement(id, placement) {
-        const node = this.particles.get(id); if (!node) return null;
-        node.placement = placement?.pinned ? this.copyPlacement(placement) : this.influenceFor(node);
-        this.applyPin(node); this.reheat(.28); this.onTick(this.particles);
-        return this.copyPlacement(node.placement);
+        node.fx = node.fy = null;
     }
     beginDrag(id) {
         const node = this.particles.get(id); if (!node) return;
@@ -245,7 +246,7 @@ class GalaxyPhysics {
         const node = this.particles.get(id); if (!node || !Number.isFinite(x) || !Number.isFinite(y)) return;
         const dx = x - node.x, dy = y - node.y, queue = [...this.children.get(id)];
         for (let i = 0; i < queue.length; i++) {
-            const child = queue[i]; if (child.fx != null || child.placement?.pinned) continue;
+            const child = queue[i]; if (child.fx != null) continue;
             child.x += dx; child.y += dy; child.lastX = child.x; child.lastY = child.y; queue.push(...this.children.get(child.id));
         }
         node.fx = node.x = node.lastX = x; node.fy = node.y = node.lastY = y;
@@ -255,10 +256,10 @@ class GalaxyPhysics {
         const node = this.particles.get(id); if (!node) return null;
         this.dragging.delete(id);
         if (moved) {
-            node.placement = node.placement?.pinned ? { x: node.x, y: node.y, pinned: true } : this.influenceFor(node);
+            node.placement = this.influenceFor(node);
             if (!node.parent) this.galaxies.get(id).home = { x: node.x, y: node.y };
         }
-        this.applyPin(node); this.simulation.alphaTarget(this.dragging.size ? .1 : 0);
+        this.releaseConstraint(node); this.simulation.alphaTarget(this.dragging.size ? .1 : 0);
         if (moved) this.reheat(this.simulation.alpha());
         return this.copyPlacement(node.placement);
     }
