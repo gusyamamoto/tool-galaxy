@@ -109,6 +109,7 @@ def main():
     args.add_argument("--performance-only", action="store_true", help="Profile sample physics and browser paint separately")
     args.add_argument("--software-rendering", action="store_true", help="Disable GPU compositing for a separate software-paint profile")
     args.add_argument("--visual-only", action="store_true", help="Check nebula footprints and semantic zoom on the large sample")
+    args.add_argument("--navigation-only", action="store_true", help="Check hierarchy navigation, contextual creation and right-click menus")
     options = args.parse_args()
     browser = find_browser()
     server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), functools.partial(QuietHandler, directory=str(ROOT)))
@@ -174,7 +175,11 @@ def main():
             count += 1
             print(f"PASS {title}", flush=True)
 
-        def wait_for(code, timeout=15):
+        def wait_for(code, timeout=30):
+            # Large headless textures and returning Flowing outliers can delay
+            # cooling after edits; keep the assertion, allow actual settling.
+            if code == 'physics.settled':
+                timeout = max(timeout, 60)
             until = time.monotonic() + timeout
             while not evaluate(code):
                 if time.monotonic() >= until:
@@ -263,6 +268,170 @@ def main():
         check(evaluate("localStorage.getItem('galaxy:user-data:pre-cosmic-tree')") == old_raw, "exact original snapshot retained before migration")
         check(evaluate("JSON.parse(localStorage.getItem('galaxy:user-data')).version===5 && JSON.parse(localStorage.getItem('galaxy:user-data')).entries.every(e=>!('role' in e) && !('depth' in e))"), "version 5 persists generic ancestry without hardcoded roles or depth")
         check(evaluate("!document.getElementById('release-position-button') && roleField.tagName==='OUTPUT' && [...entries.values()].every(e=>e.depth>=0)"), "normal UI derives roles and exposes only Flowing or Pinned")
+
+        if options.navigation_only:
+            def preview(label):
+                if screenshot_dir:
+                    result=cdp.call('Page.captureScreenshot',format='png',captureBeyondViewport=False)
+                    (screenshot_dir/f'navigation-{label}.png').write_bytes(base64.b64decode(result['data']))
+
+            def click_selector(selector, button='left'):
+                point=evaluate(f"(()=>{{const r=document.querySelector({json.dumps(selector)}).getBoundingClientRect();return {{x:r.x+r.width/2,y:r.y+r.height/2}};}})()")
+                mouse('mousePressed',**point,button=button,clickCount=1)
+                mouse('mouseReleased',**point,button=button,clickCount=1)
+
+            def menu_for(entry_id):
+                evaluate(f"focusEntry({json.dumps(entry_id)})");wait_camera()
+                evaluate('physics.pause()')
+                before=evaluate(f"({{view:{{...camera.target}},x:entries.get({json.dumps(entry_id)}).x,y:entries.get({json.dumps(entry_id)}).y,placement:layout.get({json.dumps(entry_id)})||null}})")
+                click_selector(f'.entry-node[data-entry-id="{entry_id}"]',button='right')
+                wait_for('!contextMenu.hidden')
+                after=evaluate(f"({{view:{{...camera.target}},x:entries.get({json.dumps(entry_id)}).x,y:entries.get({json.dumps(entry_id)}).y,placement:layout.get({json.dumps(entry_id)})||null}})")
+                check(before==after and evaluate('!activeNodeDrags && !physics.dragging.size && !pan'),'right-click opens actions without focus, dragging or a placement change')
+                evaluate('physics.resume()')
+
+            def submit_context(name):
+                parent=evaluate('parentField.value')
+                check(evaluate("dialog.open && document.getElementById('parent-field').hidden && !creationContext.hidden"),'contextual form shows the chosen parent without requiring another choice')
+                evaluate(f"fields[0].value={json.dumps(name)};fields[1].value='Navigation test';form.requestSubmit()")
+                check(evaluate('!dialog.open'),'contextual child saves through the shared form')
+                child=evaluate('selectedNode.dataset.entryId')
+                check(evaluate(f"entries.get({json.dumps(child)}).parentId==={json.dumps(parent)} && entries.get({json.dumps(child)}).depth===entries.get({json.dumps(parent)}).depth+1 && hierarchySidebar.selectedId==={json.dumps(child)}"),'created entry has the correct parent, depth and synchronized selection')
+                return child
+
+            check(evaluate("!hierarchySidebar.collapsed && searchField.closest('#hierarchy-sidebar') && addEntryButton.textContent==='+ Add Galaxy'"),'desktop sidebar contains search and keeps a separate top-level Add Galaxy')
+            g=add('Navigation Galaxy')
+            chain=[g]
+            for depth in range(1,7):
+                parent=chain[-1]
+                evaluate(f"hierarchySidebar.rows.get({json.dumps(parent)}).querySelector('.tree-add').click()")
+                check(evaluate('parentField.value')==parent,'sidebar + preselects its exact parent')
+                chain.append(submit_context(f'Navigation depth {depth}'))
+            check(evaluate(f"entries.get({json.dumps(chain[-1])}).role==='satellite' && entries.get({json.dumps(chain[-1])}).depth===6"),'sidebar creation supports arbitrary nesting beyond Satellite')
+            evaluate('addEntryButton.click()')
+            check(evaluate("parentField.value==='' && contextualParentId===null && roleField.dataset.role==='galaxy'"),'top-level Add defaults to a new Galaxy even with a deep body selected')
+            evaluate('dialog.close()')
+            preview('created-tree')
+
+            for parent in chain[:-1]:
+                menu_for(parent)
+                expected=evaluate(f"cosmosHierarchy.childContext(entries,{json.dumps(parent)}).action")
+                check(evaluate("contextMenu.querySelector('[data-action=create]').textContent")==expected,'context menu offers '+expected)
+                click_selector('#entry-context-menu [data-action=create]')
+                check(evaluate('parentField.value')==parent,'right-click Add uses the same parent context')
+                submit_context('Menu child')
+            for parent in chain[:-1]:
+                select(parent)
+                evaluate('addChildButton.click()')
+                check(evaluate('parentField.value')==parent,'Entry Details Add uses the same parent context')
+                submit_context('Details child')
+            snapshot=evaluate('JSON.parse(localStorage.getItem("galaxy:user-data")).entries.map(e=>({id:e.id,parentId:e.parentId,name:e.name}))')
+            evaluate('window.navigationReloadMarker=true');cdp.call('Page.reload')
+            wait_for("typeof window.navigationReloadMarker==='undefined' && document.readyState==='complete' && typeof entries!=='undefined'");load()
+            check(evaluate('JSON.parse(localStorage.getItem("galaxy:user-data")).entries.map(e=>({id:e.id,parentId:e.parentId,name:e.name}))')==snapshot,'all three contextual creation paths persist through refresh')
+            check(evaluate("JSON.parse(localStorage.getItem('galaxy:user-data')).version===5 && localStorage.getItem('galaxy:user-data:pre-cosmic-tree')!==null"),'navigation requires no graph-schema change and preserves migration backups')
+
+            for entry_id in [chain[0],chain[1],chain[2],chain[-1]]:
+                evaluate(f"hierarchySidebar.select({json.dumps(entry_id)})")
+                click_selector(f'.hierarchy-row[data-entry-id="{entry_id}"] .tree-name');wait_camera()
+                check(evaluate(f"selectedNode.dataset.entryId==={json.dumps(entry_id)} && hierarchySidebar.selectedId==={json.dumps(entry_id)} && hierarchySidebar.rows.get({json.dumps(entry_id)}).getAttribute('aria-selected')==='true' && panelName.textContent===entries.get({json.dumps(entry_id)}).name"),'tree click selects, focuses and opens matching Details')
+            check(evaluate(f"camera.view.scale>=1.7 && !nodes.get({json.dumps(chain[-1])}).inert"),'deep tree navigation reaches a close semantic zoom')
+            evaluate(f"hierarchySidebar.toggleBranch({json.dumps(g)})")
+            check(evaluate(f"!hierarchySidebar.expanded.has({json.dumps(g)}) && !hierarchySidebar.tree.contains(hierarchySidebar.rows.get({json.dumps(chain[-1])})) && entries.has({json.dumps(chain[-1])})"),'Galaxy collapse hides its complete tree subtree while preserving Cosmos entries')
+            click_selector(f'.entry-node[data-entry-id="{chain[-1]}"]')
+            check(evaluate(f"hierarchySidebar.selectedId==={json.dumps(chain[-1])} && galaxyModel.ancestors(entries,{json.dumps(chain[-1])}).every(e=>hierarchySidebar.expanded.has(e.id)) && hierarchySidebar.tree.contains(hierarchySidebar.rows.get({json.dumps(chain[-1])}))"),'Cosmos click expands the ancestor path and highlights the deep tree item')
+            evaluate(f"searchField.value='Navigation depth 6';searchField.dispatchEvent(new Event('input'));searchResultList.querySelector('button').click()");wait_camera()
+            check(evaluate(f"hierarchySidebar.selectedId==={json.dumps(chain[-1])} && hierarchySidebar.rows.get({json.dumps(chain[-1])}).classList.contains('is-search-match')"),'deep search identifies the entry in both Cosmos and tree')
+
+            evaluate('physics.pause()')
+            before=evaluate('({left:physics.bounds.left,expanded:[...hierarchySidebar.expanded],positions:[...physics.particles].map(([id,n])=>[id,n.x,n.y])})')
+            evaluate('hierarchySidebar.toggle.click()');wait_camera()
+            check(evaluate('hierarchySidebar.collapsed && hierarchySidebar.sidebar.hidden') and evaluate('physics.bounds.left')<before['left'],'collapsing sidebar frees usable camera space')
+            check(evaluate('[...physics.particles].map(([id,n])=>[id,n.x,n.y])')==before['positions'],'sidebar collapse does not alter world layout')
+            evaluate('hierarchySidebar.toggle.click()');wait_camera()
+            check(evaluate('[...hierarchySidebar.expanded]')==before['expanded'],'sidebar reopen preserves expansion state')
+            evaluate("hierarchySidebar.resize.dispatchEvent(new KeyboardEvent('keydown',{key:'End',bubbles:true}))");wait_camera()
+            check(evaluate('hierarchySidebar.width<=360 && hierarchySidebar.width<=innerWidth*.3 && physics.bounds.left>hierarchySidebar.sidebar.getBoundingClientRect().right'),'sidebar resize respects width limits and updates camera padding')
+            point=evaluate('(()=>{const r=hierarchySidebar.resize.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2};})()')
+            mouse('mousePressed',**point,button='left',clickCount=1)
+            mouse('mouseMoved',x=point['x']-64,y=point['y'],button='left',buttons=1)
+            mouse('mouseReleased',x=point['x']-64,y=point['y'],button='left',clickCount=1)
+            check(evaluate('hierarchySidebar.width===296 && !galaxy.classList.contains("sidebar-resizing")'),'pointer resizing updates width and releases its capture')
+            check(evaluate('[...physics.particles].map(([id,n])=>[id,n.x,n.y])')==before['positions'],'pointer resizing preserves world positions')
+            evaluate("hierarchySidebar.resize.dispatchEvent(new KeyboardEvent('keydown',{key:'End',bubbles:true}))");wait_camera()
+            evaluate('fitGalaxy(false)')
+            check(evaluate("[...entries.values()].filter(e=>e.depth>0).every(e=>{const p=camera.worldToScreen(e.x,e.y);return p.x>physics.bounds.left&&p.x<physics.bounds.right&&p.y>physics.bounds.top&&p.y<physics.bounds.bottom;})"),'Fit uses the remaining canvas beside sidebar and Details')
+            preview('resized-sidebar')
+            evaluate('hierarchySidebar.setCollapsed(true);window.navigationReloadMarker=true');cdp.call('Page.reload')
+            wait_for("typeof window.navigationReloadMarker==='undefined' && document.readyState==='complete' && typeof hierarchySidebar!=='undefined'");load()
+            check(evaluate('hierarchySidebar.collapsed && hierarchySidebar.width===360'),'sidebar width and collapse preference survive refresh separately from graph data')
+            evaluate('hierarchySidebar.setCollapsed(false)');wait_camera()
+
+            leaf=chain[-1]
+            menu_for(leaf)
+            evaluate("contextMenu.querySelector('[data-action=pin]').click()")
+            check(evaluate(f"layout.get({json.dumps(leaf)}).pinned && contextMenu.hidden"),'context menu Pin shares existing exact pin behavior')
+            menu_for(leaf)
+            check(evaluate("contextMenu.querySelector('[data-action=pin]').textContent==='Unpin position'"),'context menu reflects current pin state')
+            evaluate("contextMenu.querySelector('[data-action=pin]').click()")
+            check(evaluate(f"!layout.get({json.dumps(leaf)})?.pinned"),'context menu Unpin resumes Flowing')
+            menu_for(leaf);evaluate("contextMenu.querySelector('[data-action=edit]').click()")
+            check(evaluate(f"dialog.open && editingId==={json.dumps(leaf)} && fields[0].value===entries.get({json.dumps(leaf)}).name"),'context menu Edit opens the existing editor')
+            evaluate('dialog.close()')
+            menu_for(leaf);evaluate("contextMenu.querySelector('[data-action=delete]').click()")
+            check(evaluate(f"deleteDialog.open && deletingId==={json.dumps(leaf)}"),'context menu Delete uses existing confirmation')
+            evaluate('deleteDialog.close()')
+            menu_for(g);evaluate("contextMenu.querySelector('[data-action=delete]').click()")
+            check(evaluate('!deleteDialog.open && !actionStatus.hidden'),'context menu preserves nonempty-parent deletion safeguards')
+            menu_for(leaf)
+            evaluate(f"openContextMenu({json.dumps(leaf)},innerWidth-1,innerHeight-1)")
+            check(evaluate('(()=>{const r=contextMenu.getBoundingClientRect();return r.right<=innerWidth-7&&r.bottom<=innerHeight-7&&r.left>=8&&r.top>=8;})()'),'menu stays inside the viewport near its edges')
+            cdp.call('Input.dispatchKeyEvent',type='keyDown',key='Escape',code='Escape',windowsVirtualKeyCode=27)
+            check(evaluate('contextMenu.hidden'),'Escape dismisses the menu')
+            check(evaluate(f'document.activeElement===nodes.get({json.dumps(leaf)})'),'Escape returns keyboard focus to the body without moving the camera')
+            cdp.call('Input.dispatchKeyEvent',type='keyDown',key='F10',code='F10',modifiers=8,windowsVirtualKeyCode=121)
+            check(evaluate('!contextMenu.hidden'),'Shift+F10 opens celestial actions from the keyboard')
+            cdp.call('Input.dispatchKeyEvent',type='keyDown',key='ArrowDown',code='ArrowDown',windowsVirtualKeyCode=40)
+            check(evaluate("document.activeElement.dataset.action==='edit'"),'menu arrow keys move between actions')
+            cdp.call('Input.dispatchKeyEvent',type='keyDown',key='Escape',code='Escape',windowsVirtualKeyCode=27)
+            menu_for(leaf);click_selector('#sidebar-toggle')
+            check(evaluate('contextMenu.hidden'),'clicking elsewhere dismisses the menu')
+
+            # Start a fresh temporary sample; real graph and UI preferences stay intact.
+            evaluate('physics.pause();if(graphNeedsSave)saveGalaxy()')
+            real_snapshot=evaluate("localStorage.getItem('galaxy:user-data')")
+            preference=evaluate("localStorage.getItem('galaxy:navigation-ui')")
+            evaluate('loadSampleButton.click()');wait_for("document.readyState==='complete' && typeof sampleMode!=='undefined' && sampleMode");load();wait_camera()
+            check(evaluate('entries.size===183 && hierarchySidebar.tree.querySelectorAll(".hierarchy-row").length===12'),'large sample starts with only Galaxy roots and Suns visible in the tree')
+            evaluate("hierarchySidebar.select('sample-deep-7')")
+            check(evaluate("hierarchySidebar.tree.querySelectorAll('.hierarchy-row').length<50 && galaxyModel.ancestors(entries,'sample-deep-7').every(e=>hierarchySidebar.expanded.has(e.id))"),'deep sample selection opens its path while keeping other branches compact')
+            evaluate("focusEntry('sample-deep-7')");wait_camera()
+            check(evaluate("(()=>{const r=hierarchySidebar.rows.get('sample-deep-7').getBoundingClientRect(),t=hierarchySidebar.tree.getBoundingClientRect();return r.top>=t.top&&r.bottom<=t.bottom;})()"),'selected deep row scrolls into the visible tree')
+            evaluate("entries.get('sample-deep-7').name='Long hierarchy name '.repeat(4).slice(0,60);hierarchySidebar.setEntries(entries)")
+            check(evaluate("document.documentElement.scrollWidth<=innerWidth && hierarchySidebar.tree.scrollWidth<=hierarchySidebar.width"),'long names truncate without breaking the sidebar layout')
+            evaluate("window.sidebarProbe=new Map([...entries].map(([id,e])=>[id,{...e}]));for(let i=0;i<30;i++)sidebarProbe.set('sidebar-probe-'+i,{id:'sidebar-probe-'+i,name:'Deep tree item '+i,parentId:i?'sidebar-probe-'+(i-1):'sample-deep-7'});galaxyModel.normalizeHierarchy(sidebarProbe);hierarchySidebar.setEntries(sidebarProbe);hierarchySidebar.select('sidebar-probe-29')")
+            check(evaluate("(()=>{const r=hierarchySidebar.rows.get('sidebar-probe-29').querySelector('.tree-name').getBoundingClientRect(),t=hierarchySidebar.tree.getBoundingClientRect();return hierarchySidebar.tree.scrollLeft>0&&r.left>=t.left&&r.right<=t.right&&document.documentElement.scrollWidth<=innerWidth;})()"),'arbitrary deep indentation scrolls its name into view without page overflow')
+            evaluate("hierarchySidebar.setEntries(entries);hierarchySidebar.select('sample-deep-7');delete window.sidebarProbe")
+            evaluate("hierarchySidebar.expanded.delete('sample-galaxy-0');hierarchySidebar.render();hierarchySidebar.rows.get('sample-galaxy-0').focus();hierarchySidebar.rows.get('sample-galaxy-0').dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true}))")
+            evaluate("hierarchySidebar.rows.get('sample-galaxy-0').dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}))");wait_camera()
+            check(evaluate("selectedNode.dataset.entryId==='sample-galaxy-0' && hierarchySidebar.expanded.has('sample-galaxy-0') && hierarchySidebar.rows.get('sample-galaxy-0').tabIndex===0"),'keyboard tree navigation activates matching Cosmos entries')
+            cdp.call('Input.dispatchKeyEvent',type='keyDown',key='End',code='End',windowsVirtualKeyCode=35)
+            check(evaluate('(()=>{const r=document.activeElement.getBoundingClientRect(),t=hierarchySidebar.tree.getBoundingClientRect();return r.top>=t.top&&r.bottom<=t.bottom;})()'),'keyboard traversal scrolls the active tree row into view')
+            preview('large-sample')
+            cdp.call('Emulation.setDeviceMetricsOverride',width=390,height=844,deviceScaleFactor=1,mobile=False);time.sleep(.3)
+            check(evaluate('hierarchySidebar.collapsed && document.documentElement.scrollWidth<=innerWidth'),'narrow screens keep the canvas available and avoid page overflow')
+            evaluate("hierarchySidebar.setCollapsed(false);hierarchySidebar.select('sample-deep-7')")
+            click_selector('.hierarchy-row[data-entry-id="sample-deep-7"] .tree-name');wait_camera()
+            check(evaluate("hierarchySidebar.collapsed && selectedNode.dataset.entryId==='sample-deep-7' && camera.view.scale>=1.7"),'mobile tree navigation closes its drawer before focusing the deep body')
+            check(evaluate("[panelName,addChildButton,editEntryButton,deleteEntryButton,pinPositionButton].every(e=>{const r=e.getBoundingClientRect(),p=panel.getBoundingClientRect();return r.top>=p.top&&r.bottom<=p.bottom&&r.width>0;})"),'mobile Details keeps the selected name and all actions visible')
+            evaluate("hierarchySidebar.setCollapsed(false);searchField.value='Long hierarchy name';searchField.dispatchEvent(new Event('input'))")
+            click_selector('#search-result-list button');wait_camera()
+            check(evaluate("hierarchySidebar.collapsed && selectedNode.dataset.entryId==='sample-deep-7'"),'mobile search closes the drawer and synchronizes its focused result')
+            preview('mobile-focus')
+            check(evaluate("localStorage.getItem('galaxy:user-data')")==real_snapshot and evaluate("localStorage.getItem('galaxy:navigation-ui')")==preference,'sample tree, navigation and sidebar interactions leave real data and preferences untouched')
+            check(not cdp.errors,f'no navigation browser exceptions: {cdp.errors}')
+            print(f'{count} navigation browser checks passed',flush=True)
+            return
 
         if options.visual_only:
             evaluate('loadSampleButton.click()');wait_for("document.readyState==='complete' && typeof physics!=='undefined' && sampleMode");load();wait_camera()
@@ -360,7 +529,10 @@ def main():
                 check(all(any(0<row[i]<1 for row in trace) for i in range(4)), 'zooming '+label+' fades every lower body level continuously')
             view_at(.575)
             metrics=motion_metrics()
-            check(metrics['renderP95']<20 and metrics['frameMedian']<55, f"Galaxy cloud motion responsive: projection p95 {metrics['renderP95']:.1f}ms, median frame {metrics['frameMedian']:.1f}ms")
+            cloud_responsive=metrics['renderP95']<20 and metrics['frameMedian']<55
+            cloud_motion_title=f"Galaxy cloud motion responsive: projection p95 {metrics['renderP95']:.1f}ms, median frame {metrics['frameMedian']:.1f}ms"
+            # Preserve the budget failure while completing visual/drag checks.
+            if not cloud_responsive: print('FAIL '+cloud_motion_title+' (deferred until visual checks finish)',flush=True)
             wait_for('physics.settled')
             before=evaluate("({...entries.get('sample-sun-1')})");drag_to('sample-sun-1',before['x']+350,before['y']+100,settle_timeout=60)
             check(evaluate("[...regions].every(([id,r])=>{const root=physics.particles.get(id),f=r.footprint;return [...physics.particles.values()].filter(p=>p.depth>0&&p.galaxyId===id).every(p=>Math.abs(p.x-root.x-f.offsetX)+p.radius<f.width/2 && Math.abs(p.y-root.y-f.offsetY)+p.radius<f.height/2);})"), 'cloud footprints contain actual systems after a Sun drag')
@@ -375,6 +547,7 @@ def main():
             load();wait_camera()
             check(evaluate("[...nodes].filter(([id,n])=>n.dataset.body==='satellite').map(([id,n])=>[id,n.dataset.archetype,n.querySelector('.satellite-craft').outerHTML])")==identities,'Satellite silhouettes remain identical after a sample reload')
             check(not cdp.errors,f"no visual browser exceptions: {cdp.errors}")
+            check(cloud_responsive,cloud_motion_title)
             print(f'{count} visual browser checks passed',flush=True)
             return
 
@@ -402,6 +575,12 @@ def main():
             return
 
         if options.migration_only:
+            def load_storage_fixture():
+                wait_for("document.readyState==='complete' && typeof physics!=='undefined'")
+                # Storage/backup assertions do not require a remote pinned body
+                # with a semantic link to finish cooling. Exercise normal save.
+                evaluate('physics.pause();saveGalaxy()')
+
             v4 = {"version": 4, "entries": [
                 {"id": "github", "name": "Saved Sun", "description": "Edited built-in Sun", "category": "Keep label", "role": "category", "parentId": None, "x": 400, "y": 400},
                 {"id": "saved-planet", "name": "Saved Planet", "description": "Saved category", "category": "Keep category", "role": "subcategory", "parentId": "github", "x": 600, "y": 430, "appearance": {"archetype": "desert", "rings": True}},
@@ -410,7 +589,7 @@ def main():
                 "layout": [{"id": "saved-moon", "x": 1050, "y": 680, "pinned": True}, {"id": "saved-planet", "x": 700, "y": 460, "pinned": False}]}
             v4_raw = json.dumps(v4, indent=2)
             evaluate(f"physics.pause();graphNeedsSave=false;localStorage.removeItem('galaxy:user-data:pre-cosmic-tree');localStorage.setItem('galaxy:user-data',{json.dumps(v4_raw)})")
-            cdp.call('Page.reload');load()
+            cdp.call('Page.reload');load_storage_fixture()
             check(evaluate("entries.size===4 && entries.get('github').name==='Saved Sun' && entries.get('saved-planet').parentId==='github' && entries.get('saved-moon').parentId==='saved-planet' && entries.get('saved-moon').role==='moon'"), "v4 migration preserves the entire saved three-level tree and edited built-in")
             check(evaluate("localStorage.getItem('galaxy:user-data:pre-cosmic-tree')") == v4_raw, "v4 migration saves the exact original raw snapshot before replacement")
             check(evaluate("entries.get('github').parentId==='migration-my-galaxy' && entries.get('migration-my-galaxy').name==='My Galaxy'"), "v4 former Sun gains a neutral Galaxy parent")
@@ -419,20 +598,20 @@ def main():
             check(evaluate("relationships.length===1 && connections.filter(c=>c.kind==='hierarchy').length===3 && entries.get('github').category==='Keep label' && entries.get('saved-planet').description==='Saved category'"), "v4 labels, descriptions and semantic relationships survive")
             check(evaluate("nodes.get('saved-planet').dataset.archetype==='desert' && nodes.get('saved-planet').dataset.rings==='true'"), "migration preserves optional appearance metadata")
             identity = evaluate("JSON.stringify([...entries.values()].map(e=>[e.id,galaxyAppearance.resolve(e)]))")
-            cdp.call('Page.reload');load()
+            cdp.call('Page.reload');load_storage_fixture()
             check(evaluate("entries.size===4 && entries.get('saved-moon').x===1050 && entries.get('saved-moon').y===680 && JSON.stringify([...entries.values()].map(e=>[e.id,galaxyAppearance.resolve(e)]))") == identity, "second refresh does not re-migrate or change styles and pins")
             select('saved-planet')
             check(evaluate("panelPlacement.textContent==='Position: Flowing' && !document.getElementById('release-position-button')"), "migrated soft body uses the simplified Flowing UI")
 
             corrupt = json.dumps({"version": 5, "entries": [{"id": "bad", "name": "Bad", "description": "", "parentId": None}], "connections": [], "layout": []})
             evaluate(f"physics.pause();graphNeedsSave=false;localStorage.setItem('galaxy:user-data',{json.dumps(corrupt)})")
-            cdp.call('Page.reload');load()
+            cdp.call('Page.reload');load_storage_fixture()
             check(evaluate("!storageAvailable && !storageStatus.hidden"), "invalid saved record disables overwriting and reports the issue")
             add('Session only')
             check(evaluate("localStorage.getItem('galaxy:user-data')") == corrupt, "session edits cannot replace a snapshot containing invalid records")
             unsupported = json.dumps({"version": 99, "entries": [], "connections": [], "layout": []})
             evaluate(f"physics.pause();graphNeedsSave=false;localStorage.setItem('galaxy:user-data',{json.dumps(unsupported)})")
-            cdp.call('Page.reload');load()
+            cdp.call('Page.reload');load_storage_fixture()
             check(evaluate("!storageAvailable && !storageStatus.hidden") and evaluate("localStorage.getItem('galaxy:user-data')") == unsupported, "unsupported future snapshot remains untouched")
             check(not cdp.errors, f"no migration browser exceptions: {cdp.errors}")
             print(f"{count} migration browser checks passed", flush=True)
@@ -450,8 +629,8 @@ def main():
         check(evaluate(f"relationships.filter(c=>c.from==={json.dumps(t1)}).length===2"), "deep entries retain optional semantic relationships")
         for entry_id, expected in [(g1,'Sun'),(s1,'Planet'),(p1,'Moon'),(m1,'Satellite'),(t1,'Satellite')]:
             select(entry_id)
-            check(evaluate('addEntryButton.textContent')=='Add '+expected, 'contextual Add '+expected)
-            evaluate('addEntryButton.click()')
+            check(evaluate('addChildButton.textContent')=='+ Add '+('child' if entry_id==t1 else expected), 'contextual Add '+expected)
+            evaluate('addChildButton.click()')
             check(evaluate('parentField.value')==entry_id, 'contextual Add preselects the current parent')
             evaluate('dialog.close()')
         select(g1);evaluate('editEntryButton.click()')

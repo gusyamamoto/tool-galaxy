@@ -67,6 +67,9 @@ const parentField = document.getElementById("entry-parent");
 const formError = document.getElementById("entry-form-error");
 const submitButton = document.getElementById("entry-submit");
 const addEntryButton = document.getElementById("add-entry-button");
+const addChildButton = document.getElementById("add-child-button");
+const contextMenu = document.getElementById("entry-context-menu");
+const creationContext = document.getElementById("creation-context");
 const dialog = document.getElementById("add-entry-dialog");
 const form = document.getElementById("add-entry-form");
 const connectionOptions = document.getElementById("connection-options");
@@ -100,7 +103,9 @@ let nextEntryId = 1;
 let storageAvailable = true;
 let graphNeedsSave = false;
 let editingId = null;
+let contextualParentId = null;
 let deletingId = null;
+let contextEntryId = null, contextReturnFocus = null;
 let searchOpen = false;
 let keyboardNavigation = false;
 document.addEventListener("keydown", event => {
@@ -113,6 +118,9 @@ let cameraViewReady = false;
 let lastRegionSample = -Infinity, lastRegionFrame = 0;
 let semanticDetail = cosmosView.detail(1);
 const focusRevealIds = new Set();
+const hierarchySidebar = new HierarchySidebar({ host: galaxy, persist: !sampleMode,
+    onNavigate: id => focusEntry(id), onCreate: id => createChildEntry(id),
+    onViewportChange: animate => navigationViewportChanged(animate) });
 const smoothDetail = (scale, start, end) => cosmosView.smooth(scale, start, end);
 const renderBackground = createUniverseBackground(galaxy);
 const camera = new GraphCamera({
@@ -156,6 +164,7 @@ function pointerInWorld(event) {
 graphViewport.addEventListener("wheel", (event) => {
     event.preventDefault();
     if (activeNodeDrags || pan) return;
+    closeContextMenu();
     autoFitPending = false;
     dismissTemporaryReveal();
     const rect = graphViewport.getBoundingClientRect();
@@ -172,10 +181,7 @@ graphViewport.addEventListener("pointerdown", (event) => {
     const point = { x: event.clientX - graphViewport.getBoundingClientRect().left, y: event.clientY - graphViewport.getBoundingClientRect().top };
     // Clouds stay in a non-intercepting paint layer. Hit-test their visible core
     // behind bodies so space remains pannable and a click can focus the region.
-    const candidates = [...regions].filter(([, r]) => r.dataset.semanticHidden !== "true" && r.dataset.culled !== "true")
-        .map(([id, r]) => ({ id, distance: ((point.x-r.renderX)/(r.renderWidth*.4)) ** 2 + ((point.y-r.renderY)/(r.renderHeight*.4)) ** 2 }))
-        .filter(r => r.distance <= 1).sort((a, b) => a.distance - b.distance);
-    pan = { id: event.pointerId, x: event.clientX, y: event.clientY, view: { ...camera.view }, galaxyId: candidates[0]?.id, moved: false };
+    pan = { id: event.pointerId, x: event.clientX, y: event.clientY, view: { ...camera.view }, galaxyId: galaxyAtScreen(point), moved: false };
     graphViewport.setPointerCapture(event.pointerId);
     graphViewport.classList.add("is-panning");
 });
@@ -193,7 +199,69 @@ function endPan(event) {
     if (galaxyId) focusEntry(galaxyId);
 }
 ["pointerup", "pointercancel", "lostpointercapture"].forEach((type) => graphViewport.addEventListener(type, endPan));
+function galaxyAtScreen(point) {
+    return [...regions].filter(([, r]) => r.dataset.semanticHidden !== "true" && r.dataset.culled !== "true")
+        .map(([id, r]) => ({ id, distance: ((point.x-r.renderX)/(r.renderWidth*.4)) ** 2 + ((point.y-r.renderY)/(r.renderHeight*.4)) ** 2 }))
+        .filter(r => r.distance <= 1).sort((a, b) => a.distance - b.distance)[0]?.id;
+}
+graphViewport.addEventListener("contextmenu", event => {
+    if (event.defaultPrevented) return;
+    const rect = graphViewport.getBoundingClientRect();
+    const id = galaxyAtScreen({ x: event.clientX - rect.left, y: event.clientY - rect.top });
+    if (id) { event.preventDefault(); openContextMenu(id, event.clientX, event.clientY); }
+});
+
+function openContextMenu(id, x, y) {
+    if (activeNodeDrags || pan || !entries.has(id)) return;
+    const entry = entries.get(id);
+    contextReturnFocus = nodes.get(id);
+    contextEntryId = id; contextMenu.dataset.entryId = id;
+    selectEntry(entry, nodes.get(id));
+    contextMenu.setAttribute("aria-label", `Actions for ${entry.name}`);
+    document.getElementById("context-entry-name").textContent = entry.name;
+    contextMenu.querySelector('[data-action="create"]').textContent = cosmosHierarchy.childContext(entries, id).action;
+    contextMenu.querySelector('[data-action="pin"]').textContent = layout.get(id)?.pinned ? "Unpin position" : "Pin position";
+    contextMenu.querySelector('[data-action="delete"]').disabled = builtInIds.has(id);
+    contextMenu.hidden = false;
+    const bounds = contextMenu.getBoundingClientRect();
+    contextMenu.style.left = `${Math.max(8, Math.min(x, innerWidth - bounds.width - 8))}px`;
+    contextMenu.style.top = `${Math.max(8, Math.min(y, innerHeight - bounds.height - 8))}px`;
+    contextMenu.querySelector('button:not(:disabled)').focus({ preventScroll: true });
+}
+function closeContextMenu(restoreFocus = false) {
+    if (contextMenu.hidden) return;
+    contextMenu.hidden = true; contextEntryId = null;
+    if (restoreFocus && contextReturnFocus?.isConnected) {
+        // Returning keyboard focus must not launch a new Cosmos focus transition.
+        keyboardNavigation = false; contextReturnFocus.focus({ preventScroll: true });
+    }
+    contextReturnFocus = null;
+}
+contextMenu.addEventListener("click", event => {
+    const action = event.target.closest("button")?.dataset.action, id = contextEntryId;
+    if (!action || !entries.has(id)) return;
+    closeContextMenu(action === "pin" || action === "delete");
+    if (action === "create") createChildEntry(id);
+    else if (action === "edit") openEntryForm(entries.get(id));
+    else if (action === "pin") toggleEntryPin(id);
+    else if (action === "delete") requestEntryDelete(id);
+});
+contextMenu.addEventListener("keydown", event => {
+    if (event.key === "Escape" || event.key === "Tab") {
+        closeContextMenu(true); if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); } return;
+    }
+    const buttons = [...contextMenu.querySelectorAll('button:not(:disabled)')], index = buttons.indexOf(document.activeElement);
+    const target = { ArrowDown: (index + 1) % buttons.length, ArrowUp: (index + buttons.length - 1) % buttons.length, Home: 0, End: buttons.length - 1 }[event.key];
+    if (target !== undefined) { event.preventDefault(); buttons[target].focus(); }
+});
+document.addEventListener("pointerdown", event => {
+    if (!event.target.closest("#entry-context-menu")) closeContextMenu();
+}, true);
+document.addEventListener("keydown", event => {
+    if (event.key === "Escape" && !contextMenu.hidden) { closeContextMenu(true); event.preventDefault(); }
+});
 document.getElementById("reset-view-button").addEventListener("click", () => {
+    if (hierarchySidebar.narrow) hierarchySidebar.setCollapsed(true);
     autoFitPending = !physics.settled;
     fitGalaxy();
 });
@@ -342,13 +410,14 @@ function selectEntry(entry, node) {
         panelAncestry.appendChild(button);
     });
     panelAncestry.hidden = !parent;
-    addEntryButton.textContent = `Add ${entryRoles[galaxyModel.roleAtDepth(entry.depth + 1)].name}`;
+    addChildButton.textContent = `+ ${cosmosHierarchy.childContext(entries, entry.id).action}`;
     panelParent.hidden = false;
     entryActions.hidden = false;
     deleteEntryButton.hidden = builtInIds.has(entry.id);
     actionStatus.hidden = true;
     updatePlacementControls();
     updateHierarchyEmphasis();
+    hierarchySidebar.select(entry.id);
 }
 
 function updateHierarchyEmphasis() {
@@ -390,6 +459,17 @@ function createEntryNode(entry) {
         if (event.detail && didMove) return;
         if (entry.depth <= 1) focusEntry(entry.id);
         else selectEntry(entry, node);
+    });
+    node.addEventListener("contextmenu", event => {
+        event.preventDefault(); event.stopPropagation();
+        const rect = node.getBoundingClientRect();
+        openContextMenu(entry.id, event.clientX || rect.left + rect.width / 2, event.clientY || rect.top + rect.height / 2);
+    });
+    node.addEventListener("keydown", event => {
+        if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) {
+            event.preventDefault(); const rect = node.getBoundingClientRect();
+            openContextMenu(entry.id, rect.left + rect.width / 2, rect.top + rect.height / 2);
+        }
     });
     node.addEventListener("focus", () => {
         // Browsers can restore old focus when a window receives pointer input.
@@ -538,6 +618,8 @@ function syncPhysicsGraph() {
         if (!placement.pinned && placement.parentId !== entries.get(id)?.parentId) layout.delete(id);
     });
     updateRegionFootprints(true);
+    hierarchySidebar.setEntries(entries);
+    hierarchySidebar.select(selectedNode?.dataset.entryId);
     rebuildOrbitGuides(); updateHierarchyEmphasis(); renderGraph();
 }
 
@@ -547,11 +629,25 @@ function updateGraphViewport() {
     baseNodeRadius = parseFloat(getComputedStyle(galaxy).getPropertyValue("--node-size")) / 2;
     const radius = getNodeRadius();
     const narrow = window.matchMedia("(max-width: 760px)").matches;
-    const left = radius + 24;
+    const sidebarRight = hierarchySidebar.collapsed ? 0 : hierarchySidebar.sidebar.getBoundingClientRect().right - rect.left;
+    const left = sidebarRight + radius + 24;
     const top = radius + (narrow ? 234 : 200);
     const right = Math.max(left, (narrow ? rect.width - 24 : panelRect.left - rect.left - 24) - radius);
     const bottom = Math.max(top, (narrow ? panelRect.top - rect.top - 48 : rect.height - 76) - radius);
-    physics.setViewport({ left, right, top, bottom }, radius);
+    const bounds = { left, right, top, bottom };
+    // Sidebar chrome changes the usable screen, never orbital targets or forces.
+    if (physics.baseNodeRadius !== radius) physics.setViewport(bounds, radius);
+    else physics.bounds = bounds;
+}
+
+function navigationViewportChanged(animate = true) {
+    autoFitPending = false;
+    closeContextMenu(); dismissTemporaryReveal();
+    const previous = physics.bounds, before = { x: (previous.left + previous.right) / 2, y: (previous.top + previous.bottom) / 2 };
+    updateGraphViewport();
+    const bounds = physics.bounds;
+    camera.setView({ x: camera.view.x + (bounds.left + bounds.right) / 2 - before.x,
+        y: camera.view.y + (bounds.top + bounds.bottom) / 2 - before.y, scale: camera.view.scale }, animate);
 }
 
 function galaxyBounds() {
@@ -809,14 +905,16 @@ function updateParentConnectionOption() {
 }
 
 function updateFormRole() {
-    const parent = entries.get(parentField.value), depth = parent ? parent.depth + 1 : 0;
-    roleField.dataset.role = galaxyModel.roleAtDepth(depth);
+    const parent = entries.get(parentField.value), context = cosmosHierarchy.childContext(entries, parentField.value);
+    const { depth, role } = context;
+    roleField.dataset.role = role;
     roleField.textContent = `${entryRoles[roleField.dataset.role].name} · Depth ${depth}`;
     document.getElementById("parent-help").textContent = parent ? `Child of ${parent.name}. Its descendants move with this branch.` : "A top-level Galaxy in the Universe.";
     if (!editingId) {
-        document.getElementById("add-entry-title").textContent = `Add ${entryRoles[roleField.dataset.role].name}`;
-        submitButton.textContent = `Add ${entryRoles[roleField.dataset.role].name}`;
+        document.getElementById("add-entry-title").textContent = context.action;
+        submitButton.textContent = context.action;
     }
+    creationContext.querySelector("span").textContent = parent ? `${entryRoles[role].name} under ${parent.name}` : "A new Galaxy in the Universe";
     updateParentConnectionOption();
 }
 function updateParentOptions(preferredId = parentField.value) {
@@ -834,8 +932,12 @@ function updateParentOptions(preferredId = parentField.value) {
     updateFormRole();
 }
 
-function openEntryForm(entry = null) {
+function openEntryForm(entry = null, parentId = null, contextual = false) {
+    closeContextMenu();
     editingId = entry?.id || null;
+    contextualParentId = contextual ? parentId : null;
+    creationContext.hidden = !contextual;
+    document.getElementById("parent-field").hidden = contextual;
     form.reset();
     fields.forEach((field) => field.setCustomValidity(""));
     clearFormError();
@@ -846,13 +948,26 @@ function openEntryForm(entry = null) {
         fields[1].value = entry.description;
         fields[2].value = entry.category;
     }
-    updateParentOptions(entry ? entry.parentId || "" : selectedNode?.dataset.entryId || "");
+    updateParentOptions(entry ? entry.parentId || "" : parentId || "");
     populateConnectionOptions();
     physics.pause();
     dialog.showModal();
 }
 
+function createChildEntry(parentId) {
+    const context = cosmosHierarchy.childContext(entries, parentId);
+    if (!context || !parentId || activeNodeDrags) return;
+    selectEntry(entries.get(parentId), nodes.get(parentId));
+    openEntryForm(null, context.parentId, true);
+}
+
+document.getElementById("change-creation-parent").addEventListener("click", () => {
+    contextualParentId = null; creationContext.hidden = true;
+    document.getElementById("parent-field").hidden = false; parentField.focus();
+});
+
 addEntryButton.addEventListener("click", () => openEntryForm());
+addChildButton.addEventListener("click", () => createChildEntry(selectedNode?.dataset.entryId));
 editEntryButton.addEventListener("click", () => {
     const entry = entries.get(selectedNode?.dataset.entryId);
     if (entry) openEntryForm(entry);
@@ -885,7 +1000,7 @@ form.addEventListener("submit", (event) => {
         name: fields[0].value.trim(),
         description: fields[1].value.trim(),
         category: fields[2].value.trim(),
-        parentId: parentField.value || null
+        parentId: contextualParentId || parentField.value || null
     };
     const error = galaxyModel.validateChange(data, entries);
     if (error) {
@@ -925,7 +1040,7 @@ form.addEventListener("submit", (event) => {
 function clearSelection() {
     focusRevealIds.clear();
     selectedNode = null;
-    addEntryButton.textContent = "Add Galaxy";
+    hierarchySidebar.select(null);
     panelAncestry.hidden = true;
     panelName.textContent = "Select an entry";
     panelDescription.textContent = "Click a node to see more information.";
@@ -946,21 +1061,22 @@ function updatePlacementControls() {
     panelPlacement.hidden = false;
     pinPositionButton.textContent = pinned ? "Unpin position" : "Pin position";
 }
-pinPositionButton.addEventListener("click", () => {
-    const entry = entries.get(selectedNode?.dataset.entryId);
+function toggleEntryPin(id) {
+    const entry = entries.get(id);
     if (!entry || activeNodeDrags) return;
     const placement = physics.setPlacement(entry.id, layout.get(entry.id)?.pinned ? null : { x: entry.x, y: entry.y, pinned: true });
     if (placement) layout.set(entry.id, placement); else layout.delete(entry.id);
     updatePlacementControls(); saveGalaxy();
-});
+}
+pinPositionButton.addEventListener("click", () => toggleEntryPin(selectedNode?.dataset.entryId));
 
 function reportAction(message) {
     actionStatus.textContent = message;
     actionStatus.hidden = false;
 }
 
-deleteEntryButton.addEventListener("click", () => {
-    const entry = entries.get(selectedNode?.dataset.entryId);
+function requestEntryDelete(id) {
+    const entry = entries.get(id);
     if (!entry || builtInIds.has(entry.id)) return;
     const children = galaxyModel.childrenOf(entries, entry.id);
     if (children.length) {
@@ -972,7 +1088,8 @@ deleteEntryButton.addEventListener("click", () => {
         `Delete “${entry.name}” and its connections? This cannot be undone.`;
     physics.pause();
     deleteDialog.showModal();
-});
+}
+deleteEntryButton.addEventListener("click", () => requestEntryDelete(selectedNode?.dataset.entryId));
 document.getElementById("cancel-delete-entry").addEventListener("click", () => deleteDialog.close());
 deleteDialog.addEventListener("close", () => {
     deletingId = null;
@@ -1006,6 +1123,8 @@ document.getElementById("delete-entry-form").addEventListener("submit", (event) 
 function focusEntry(id) {
     const entry = entries.get(id);
     if (!entry || activeNodeDrags || pan) return;
+    if (hierarchySidebar.narrow) hierarchySidebar.setCollapsed(true);
+    closeContextMenu();
     autoFitPending = false;
     focusRevealIds.clear();
     searchOpen = false;
@@ -1044,6 +1163,7 @@ function focusEntry(id) {
 function refreshSearchResults() {
     searchResultList.replaceChildren();
     const matches = galaxyModel.search(entries, searchField.value);
+    hierarchySidebar.markSearch(matches);
     const revealed = new Set(matches.flatMap(entry => galaxyModel.ancestors(entries, entry.id).map(ancestor => ancestor.id)));
     nodes.forEach((node, id) => node.classList.toggle("search-ancestor", revealed.has(id)));
     const matchIds = new Set(matches.map(entry => entry.id));
@@ -1081,13 +1201,13 @@ document.addEventListener("keydown", (event) => {
     }
 });
 document.addEventListener("pointerdown", (event) => {
+    if (event.button === 2) return;
     if (!event.target.closest(".entry-search")) {
         dismissTemporaryReveal();
     }
 });
 
 initializeGalaxy();
-addEntryButton.textContent = "Add Galaxy";
 if (sampleMode) {
     sampleControls.classList.add("sample-active");
     sampleModeLabel.textContent = "Sample galaxy";
@@ -1109,8 +1229,9 @@ motionPreference.addEventListener("change", (event) => {
 });
 
 window.addEventListener("resize", () => {
+    closeContextMenu(); hierarchySidebar.onWindowResize();
     renderBackground();
-    updateGraphViewport();
+    navigationViewportChanged(false);
     updateOrbitGuides();
 });
 window.addEventListener("pagehide", () => {

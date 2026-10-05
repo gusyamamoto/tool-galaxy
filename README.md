@@ -6,18 +6,40 @@ open `http://localhost:8000`. Use the same browser, address and port for saved d
 
 ## Creating and navigating
 
-- **Add:** without selection, Add Galaxy creates a domain. With selection, the
-  button offers the appropriate child: Sun, Planet, Moon or Satellite. The form
-  defaults to that parent. Choose **Universe — new Galaxy** to create another
-  independent Galaxy, or any valid parent to create a child there. The role
-  preview updates automatically; content may end at any level.
+- **Add Galaxy:** the top-level action always starts a new domain. Its normal
+  form also allows choosing any valid parent manually.
+- **Add child:** use the small **+** on a tree row, the action in Entry Details,
+  or the body's right-click menu. All three use the same parent context: Galaxy
+  → Sun → Planet → Moon → Satellite, then **Add child** at any deeper level.
+  The form shows the chosen parent and derived role; **Change parent** restores
+  manual selection. Content may end at any level.
+- **Hierarchy:** the left tree derives directly from `parentId`, with no depth
+  limit. Galaxies start expanded and other branches closed. Disclosure arrows
+  only change the tree. Selecting a body expands its ancestor path, highlights
+  its row and scrolls it into view; selecting a row focuses the corresponding
+  Galaxy/system/body and updates Details. Arrow keys navigate/expand/collapse,
+  Home/End reach the first/last visible row, and Enter/Space activate it. Tab also
+  reaches the current row's child-creation action.
+- **Sidebar:** toggle it beside the title to reclaim canvas space. Drag its
+  right edge to resize, or focus the separator and use Left/Right/Home/End.
+  Width stays within 180–360px and 30% of a desktop viewport. On narrow screens
+  it becomes a drawer that closes after navigation. Camera fitting and focus
+  use the space remaining beside the sidebar and Details; resizing changes
+  screen bounds and camera translation without moving world coordinates.
+- **Body actions:** right-click a body, Galaxy name or cloud for Add child,
+  Edit, Pin/Unpin and Delete. Existing deletion protections and confirmation
+  remain. The menu stays inside the viewport, closes on outside clicks/Escape,
+  and does not start dragging or camera focus. Shift+F10 opens it from a focused
+  body; arrows/Home/End navigate its actions.
 - **Edit:** name, description, optional category/label, parent and semantic
   connections. IDs stay stable. Moving a branch changes its descendants' computed
   depths/roles together. Self/descendant parent choices are excluded, with model
   validation also rejecting cycles. Appearance overrides survive ordinary edits.
 - **Delete:** confirmation for leaves; parents with children must have those
   children reassigned/deleted first. Original built-in IDs remain protected.
-- **Search:** names at every depth, case insensitive. While results are open,
+- **Search:** in the sidebar, names at every depth, case insensitive. Matching
+  visible tree rows are highlighted; choosing a result opens its ancestor path.
+  While results are open,
   matches and their ancestry reveal even at Universe zoom. Choose a result to select it, open Details and
   smoothly focus. Details includes clickable ancestor names. Arrow Down reaches
   results, Enter selects the first match, Escape dismisses results.
@@ -77,6 +99,11 @@ the appropriate backup too.
 `{id,parentId,angle,radius}`. Relative influences are independent of camera and
 travel with a parent naturally. Reparenting clears that entry's obsolete relative
 influence while keeping its pin and descendants' valid local influences.
+
+The entry/storage schema remains version 5. Navigation adds only the optional
+`galaxy:navigation-ui` preference key containing sidebar width and collapse state.
+Branch expansion lasts for the open session and never changes the graph. Sample
+mode neither reads nor writes this preference, just as it isolates saved entries.
 
 ## Layout and forces
 
@@ -241,6 +268,13 @@ printed OS temporary directory. `GALAXY_BROWSER` can select the executable.
 `python tests/browser-check.py --migration-only` additionally exercises a full
 saved v4 family with soft positions/pins, invalid records and future-version
 overwrite protection.
+`python tests/browser-check.py --navigation-only --screenshots` checks all three
+contextual creation paths through depth six, synchronized tree/body/search
+selection, branch/sidebar collapse, pointer/keyboard resizing, viewport Fit,
+right-click actions and keyboard dismissal, mobile navigation and Sample isolation.
+The migration-only suite exercises an explicit normal save without waiting for
+physics cooling: its remote pin plus semantic link can keep the existing local
+return force active. Motion/settling assertions remain in the full regression.
 `python tests/browser-check.py --performance-only` profiles active/idle rendering,
 display-scale changes and individual paint layers using the isolated sample.
 Add `--software-rendering` to profile without GPU compositing separately.
@@ -251,14 +285,11 @@ body/name clicks, all four artificial Satellite silhouettes, interrupted focus,
 an extreme Planet drop, stable appearances after an actual reload, cached images,
 a dragged Sun's cloud containment and Galaxy-view motion cost.
 The full regression checks normal-view motion and projection budgets.
-The current run passes 71 unit tests and 70 focused visual checks.
-The current isolated run passes 141 full-browser checks, including baseline
-motion (4.0ms projection p95; 49.9/100.1ms frame median/p95). Galaxy-cloud motion
-is measured separately by the focused visual check. Frame intervals after
-synthetic 1×→2×→1× display switching are reported separately: this headless stress
-sequence retains slower texture repainting (116.4/216.4ms frame median/p95),
-while projection remains fast (3.8ms p95). These timings depend on the machine;
-verify motion on a native high-DPI display too.
+The navigation addition passes 74 unit tests, 142 navigation browser checks,
+18 migration browser checks, 70 focused visual checks and 141 full-browser checks.
+The full regression measures baseline motion and reports display-scale stress
+separately; the focused visual suite measures Galaxy-cloud motion. Headless
+timings depend on the machine. Verify motion on a native high-DPI display too.
 
 Tests cover generic/deep/cyclic trees, old schema backups including quota failures,
 relative-position migration, deterministic/overridden appearance, local forces,
@@ -276,7 +307,12 @@ orbital guides on your display. Exact pins can intentionally overlap or stretch 
 branch outside its nominal region; layout does not override pins. Very deep/wide
 trees have larger footprints, so Fit may zoom far out. Galaxy clouds are spatial
 cues rather than hard containers or an astronomical simulation. Large production
-datasets beyond this sample still need profiling. A dedicated hierarchy sidebar
-and appearance picker are deferred.
+datasets beyond this sample still need profiling. An appearance picker is deferred.
+Before committing the navigation changes, also check long names and deep branches
+in your own hierarchy; create children through the tree, Details and right-click;
+collapse/reopen and resize the sidebar; Fit beside both panels; use keyboard tree
+and menu navigation; and check the mobile drawer and refresh persistence. Load and
+remove the temporary sample, then confirm your saved hierarchy and sidebar preference
+are restored.
 At extreme fitted zoom on narrow screens, temporarily revealed search labels can
 crowd together; focus and the ancestry breadcrumbs restore local reading.
