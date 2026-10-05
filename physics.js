@@ -22,7 +22,7 @@ class GalaxyPhysics {
             .on("tick", () => this.onTick(this.particles))
             .on("end", () => { this.settled = true; this.onSettle(); });
     }
-    setGraph(entries, connections, placements = null) {
+    setGraph(entries, connections, placements = null, { reheat = .55 } = {}) {
         const next = new Map(), fresh = new Set();
         entries.forEach(entry => {
             let node = this.particles.get(entry.id);
@@ -55,7 +55,7 @@ class GalaxyPhysics {
         });
         this.linkForce.links(connections.filter(link => link.kind !== "hierarchy" && next.has(link.from) && next.has(link.to))
             .map(({ from, to }) => ({ source: from, target: to })));
-        this.simulation.alphaTarget(this.dragging.size ? .1 : 0); this.reheat(.55);
+        this.simulation.alphaTarget(this.dragging.size ? .1 : 0); this.reheat(reheat);
     }
     buildSystems() {
         this.children = new Map([...this.particles.keys()].map(id => [id, []]));

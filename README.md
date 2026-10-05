@@ -52,8 +52,11 @@ open `http://localhost:8000`. Use the same browser, address and port for saved d
   Moving a branch changes its descendants' computed depths/roles together.
   Self/descendant parent choices are excluded, with model
   validation also rejecting cycles. Appearance overrides survive ordinary edits.
-- **Delete:** confirmation for leaves; parents with children must have those
-  children reassigned/deleted first. Original built-in IDs remain protected.
+- **Delete:** leaves use a simple confirmation. Parents offer an explicit
+  **Delete N entries** confirmation naming the entry and everything inside it.
+  Cancel makes no graph/storage changes. All descendants and incident semantic
+  links are removed together; children are never promoted. Original built-in IDs
+  remain protected, including against deletion through an ancestor.
 - **Search:** in the sidebar, names at every depth, case insensitive. Matching
   visible tree rows are highlighted; choosing a result opens its ancestor path.
   While results are open,
@@ -72,6 +75,28 @@ open `http://localhost:8000`. Use the same browser, address and port for saved d
   fixed-position controls or physics-status messages.
 
 ## Generic hierarchy and persistence
+
+CRUD operations freeze pending camera animation and cancel deferred startup/Fit
+work. Inspector/tree updates during a mutation measure viewport space without
+reframing. Add selects its normal seeded placement, expands its ancestor path and
+opens Details without changing zoom. A completely offscreen new/reparented item
+gets only the nearest practical same-scale pan; partially visible items keep the
+view exactly. Hidden new roles may temporarily reveal their ancestry using the
+existing reveal state. Metadata edits preserve physics and camera state without
+rebuilding/reheating. Reparent/Add/Delete reuse retained particle identities and
+positions with restrained 0.12 reheating instead of the initialization 0.55.
+
+The synchronous mutation pipeline updates model/derived particles, saves, then
+publishes nodes, lines, tree, selection and inspector. Subtree IDs are collected
+iteratively with a visited set, so arbitrary depth/cycles cannot overflow the
+stack. Both connection endpoints are checked against the deleted set. Confirmation
+is revalidated before mutation; a changed subtree displays its new impact and
+requires another explicit click. Unrelated links retain IDs/type/label metadata.
+Deleted selection falls back to the nearest surviving ancestor; an unrelated
+selection stays selected and a deleted root clears Details. Recovery never
+focuses the camera. Surviving expansions and practical tree scroll are retained.
+Normal sidebar/search/connection navigation and explicit Fit keep their existing
+camera behavior. Storage remains version 5, with Sample edits isolated.
 
 Version 5 stores entries with `id`, `parentId`, `name`, `description`, `category`,
 `x`, `y`, and optional `appearance`. Role and depth are computed, never stored:
@@ -417,6 +442,14 @@ refresh returns to it; the activation query is removed immediately.
 
 Run unit tests in PowerShell: `node --test (rg --files tests -g '*.test.js')`.
 Run isolated real-browser regression/visual checks:
+
+`python tests/browser-check.py --crud-only --screenshots` checks blank Description
+at every role and deeper Astronaut, reload/clearing, Add/Edit/Delete camera state
+at Universe/Galaxy/close zoom with sidebar and inspector open/closed, deferred Fit
+cancellation, same-scale offscreen reveal, metadata edit physics stability,
+save-before-sidebar order, reparented connections, counted subtree confirmation/
+Cancel, deep incident-link cleanup, selection/tree/inspector recovery, stale
+confirmation, protected branches, persistence, explicit Fit and Sample isolation.
 
 `python tests/browser-check.py --astronaut-only --screenshots` checks contextual
 creation through depth eight, sidebar icons, sibling/cluster clearance, curved
