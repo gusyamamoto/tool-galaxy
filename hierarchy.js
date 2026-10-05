@@ -101,6 +101,7 @@ class HierarchySidebar {
         this.applyLayout();
     }
     setEntries(entries) {
+        const scroll = { top: this.tree.scrollTop, left: this.tree.scrollLeft };
         this.entries = entries;
         const previousRoots = new Set(this.index.roots);
         this.index = cosmosHierarchy.index(entries);
@@ -109,6 +110,7 @@ class HierarchySidebar {
         this.rows.forEach((row, id) => { if (!entries.has(id)) { row.remove(); this.rows.delete(id); } });
         document.getElementById("hierarchy-count").textContent = `${entries.size} entries`;
         this.render();
+        this.tree.scrollTop = scroll.top; this.tree.scrollLeft = scroll.left;
     }
     createRow(id) {
         const row = document.createElement("div");
@@ -132,6 +134,7 @@ class HierarchySidebar {
         this.rows.set(id, row); return row;
     }
     render() {
+        const scroll = { top: this.tree.scrollTop, left: this.tree.scrollLeft };
         const focused = document.activeElement?.closest(".hierarchy-row")?.dataset.entryId;
         this.visibleRows = cosmosHierarchy.visible(this.entries, this.index, this.expanded);
         if (!this.visibleRows.some(row => row.id === this.activeId)) this.activeId = this.visibleRows.some(row => row.id === this.selectedId) ? this.selectedId : this.visibleRows[0]?.id;
@@ -156,6 +159,7 @@ class HierarchySidebar {
         });
         this.tree.replaceChildren(fragment); this.updateTabStops();
         if (focused && this.tree.contains(this.rows.get(focused))) this.rows.get(focused).focus({ preventScroll: true });
+        this.tree.scrollTop = scroll.top; this.tree.scrollLeft = scroll.left;
     }
     updateTabStops() {
         this.visibleRows?.forEach(({ id }) => {
@@ -168,7 +172,7 @@ class HierarchySidebar {
         if (this.expanded.has(id)) this.expanded.delete(id); else this.expanded.add(id);
         this.activeId = id; this.render(); this.rows.get(id).focus({ preventScroll: true });
     }
-    select(id) {
+    select(id, { scroll = true } = {}) {
         this.selectedId = id || null;
         let changed = false;
         if (id) galaxyModel.ancestors(this.entries, id).forEach(parent => {
@@ -178,7 +182,7 @@ class HierarchySidebar {
         this.visibleRows?.forEach(({ id: rowId }) => {
             const row = this.rows.get(rowId); row.classList.toggle("is-selected", rowId === id); row.setAttribute("aria-selected", String(rowId === id));
         });
-        if (id) { this.activeId = id; this.updateTabStops(); this.scrollSelected(); }
+        if (id) { this.activeId = id; this.updateTabStops(); if (scroll) this.scrollSelected(); }
     }
     scrollSelected() {
         this.scrollRow(this.selectedId);

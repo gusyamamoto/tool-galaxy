@@ -19,6 +19,18 @@ function family(){return make([{id:'g',seedLayout:true},{id:'s',parentId:'g',see
 function separated(nodes){nodes.filter(n=>n.depth>0).forEach((a,i,all)=>all.slice(i+1).forEach(b=>
     assert.ok(distance(a,b)>=a.radius+b.radius-1,`${a.id} overlaps ${b.id}`)));}
 
+test('CRUD graph refresh retains surviving positions/identity and supports restrained reheating',()=>{
+    const p=family();advance(p,400);
+    const before=new Map(p.ordered.map(n=>[n.id,{node:n,x:n.x,y:n.y,vx:n.vx,vy:n.vy}]));
+    const data=p.ordered.map(({id,parentId,role,depth,x,y,sizeScale})=>({id,parentId,role,depth,x,y,sizeScale}));
+    p.setGraph([...data,{id:'new',parentId:'t',role:'astronaut',depth:5,x:400,y:400,sizeScale:.5,seedLayout:true}],[],new Map(),{reheat:.12});
+    p.simulation.stop();assert.equal(p.simulation.alpha(),.12);
+    before.forEach((old,id)=>{const n=p.particles.get(id);assert.equal(n,old.node);assert.deepEqual([n.x,n.y,n.vx,n.vy],[old.x,old.y,old.vx,old.vy]);});
+    p.setGraph(data,[],new Map(),{reheat:.12});p.simulation.stop();
+    assert.equal(p.particles.has('new'),false);
+    before.forEach((old,id)=>{const n=p.particles.get(id);assert.equal(n,old.node);assert.deepEqual([n.x,n.y],[old.x,old.y]);});
+});
+
 test('semantic connections have zero influence on positions, envelopes or orbital bands',()=>{
     const records=plain(sample.build().entries).map(entry=>({...entry,seedLayout:true}));
     const a=make(records),b=make(records,new Map(),sample.build().connections);

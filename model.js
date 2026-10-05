@@ -24,6 +24,28 @@ const galaxyModel = {
         };
     },
     childrenOf(entries, id) { return [...entries.values()].filter(entry => entry.parentId === id); },
+    subtreeIds(entries, id) {
+        const ids = new Set();
+        if (!entries.has(id)) return ids;
+        const children = new Map();
+        entries.forEach(entry => {
+            const siblings = children.get(entry.parentId) || [];
+            siblings.push(entry.id); children.set(entry.parentId, siblings);
+        });
+        const queue = [id];
+        for (let i = 0; i < queue.length; i++) {
+            if (ids.has(queue[i])) continue;
+            ids.add(queue[i]); queue.push(...(children.get(queue[i]) || []));
+        }
+        return ids;
+    },
+    deletionPlan(entries, relationships, id, { subtree = false, protectedIds = new Set() } = {}) {
+        const ids = this.subtreeIds(entries, id);
+        if (!ids.size) return { ids, error: "This entry no longer exists." };
+        if ([...ids].some(id => protectedIds.has(id))) return { ids, error: "This branch contains protected entries and cannot be deleted." };
+        if (ids.size > 1 && !subtree) return { ids, error: "Confirm deletion of this entry and everything inside it." };
+        return { ids, error: "", relationships: relationships.filter(link => !ids.has(link.from) && !ids.has(link.to)) };
+    },
     ancestors(entries, id) {
         const result = [], visited = new Set([id]);
         let parent = entries.get(entries.get(id)?.parentId);

@@ -101,6 +101,7 @@ let graphNeedsSave = false;
 let editingId = null;
 let contextualParentId = null;
 let deletingId = null;
+let deleteConfirmationIds = null, crudActive = false;
 let contextEntryId = null, contextReturnFocus = null;
 let searchOpen = false;
 let connectionSourceId = null, hoveredEntryId = null;
@@ -123,7 +124,7 @@ let semanticDetail = cosmosView.detail(1);
 const focusRevealIds = new Set();
 const hierarchySidebar = new HierarchySidebar({ host: galaxy, persist: !sampleMode,
     onNavigate: id => connectionSourceId ? connectEntries(id) : focusEntry(id), onCreate: id => createChildEntry(id),
-    onViewportChange: animate => navigationViewportChanged(animate) });
+    onViewportChange: animate => crudActive ? updateGraphViewport() : navigationViewportChanged(animate) });
 const smoothDetail = (scale, start, end) => cosmosView.smooth(scale, start, end);
 const renderBackground = createUniverseBackground(galaxy);
 const camera = new GraphCamera({
@@ -506,7 +507,7 @@ removeSampleButton.addEventListener("click", () => {
     if (sampleMode) window.location.reload();
 });
 
-function selectEntry(entry, node, { openInspector = true, reframe = true } = {}) {
+function selectEntry(entry, node, { openInspector = true, reframe = true, scroll = true } = {}) {
     dismissConnectionHint();
     if (connectionSourceId && connectionSourceId !== entry.id) cancelConnectionMode();
     if (selectedNode) {
@@ -539,7 +540,7 @@ function selectEntry(entry, node, { openInspector = true, reframe = true } = {})
     actionStatus.hidden = true;
     refreshInspectorConnections();
     updateHierarchyEmphasis();
-    hierarchySidebar.select(entry.id);
+    hierarchySidebar.select(entry.id, { scroll });
     if (openInspector && !activeNodeDrags) setInspectorOpen(true, { reframe });
     else if (!activeNodeDrags) updateGraphViewport();
 }
@@ -730,7 +731,7 @@ function createEntryNode(entry) {
     node.addEventListener("focus", () => {
         // Browsers can restore old focus when a window receives pointer input.
         // Only intentional keyboard navigation should move the camera on focus.
-        if (!activeNodeDrags && !connectionSourceId && keyboardNavigation) focusEntry(entry.id);
+        if (!crudActive && !activeNodeDrags && !connectionSourceId && keyboardNavigation) focusEntry(entry.id);
     });
     node.addEventListener("pointerenter", () => {
         dismissConnectionHint();
@@ -871,11 +872,11 @@ function getNodeRadius(entry) {
     return baseNodeRadius * (entry ? entryRoles[entry.role].scale : 1);
 }
 
-function syncPhysicsGraph() {
+function syncPhysicsGraph({ updateUI = true, reheat = .55 } = {}) {
     galaxyModel.normalizeHierarchy(entries);
-    entries.forEach(entry => updateEntryNode(entry, nodes.get(entry.id)));
+    if (updateUI) entries.forEach(entry => updateEntryNode(entry, nodes.get(entry.id)));
     physics.setGraph([...entries.values()].map(({ id, role, depth, parentId, x, y, seedLayout }) =>
-        ({ id, role, depth, parentId, x, y, seedLayout, sizeScale: entryRoles[role].scale })), connections, layout);
+        ({ id, role, depth, parentId, x, y, seedLayout, sizeScale: entryRoles[role].scale })), connections, layout, { reheat });
     // Seeding can move fresh particles synchronously. Use the
     // actual coordinates for the first render, save and Add/focus handoff.
     physics.particles.forEach((particle, id) => {
@@ -888,6 +889,7 @@ function syncPhysicsGraph() {
     layout.forEach((placement, id) => {
         if (placement.parentId !== entries.get(id)?.parentId) layout.delete(id);
     });
+    if (!updateUI) return;
     updateRegionFootprints(true);
     hierarchySidebar.setEntries(entries);
     hierarchySidebar.select(selectedNode?.dataset.entryId);
@@ -977,23 +979,17 @@ function dismissTemporaryReveal() {
     renderGraph();
 }
 
-// Keep new entries and keyboard-focused bodies visible even after panning away.
+// CRUD may nudge a completely offscreen item to the nearest usable edge. Never
+// change scale or center a whole family; partial visibility already suffices.
 function revealEntry(entry) {
     if (activeNodeDrags) return;
     const bounds = physics.bounds;
-    const radius = getNodeRadius(entry);
-    const point = camera.worldToScreen(entry.x, entry.y);
-    const edge = radius * camera.view.scale;
-    const left = bounds.left - getNodeRadius();
-    const right = bounds.right + getNodeRadius();
-    const top = bounds.top - getNodeRadius();
-    const bottom = bounds.bottom + getNodeRadius();
-    if (point.x - edge < left || point.x + edge > right || point.y - edge < top || point.y + edge > bottom) {
-        const scale = Math.min(camera.view.scale, Math.max(camera.minScale,
-            Math.min(right - left, bottom - top) / (radius * 2 + 32)));
-        camera.setView({ x: (left + right) / 2 - entry.x * scale,
-            y: (top + bottom) / 2 - entry.y * scale, scale }, false);
-    }
+    const rect = nodes.get(entry.id).getBoundingClientRect(), viewport = graphViewport.getBoundingClientRect();
+    const left = rect.left-viewport.left, right = rect.right-viewport.left;
+    const top = rect.top-viewport.top, bottom = rect.bottom-viewport.top;
+    const dx = right<bounds.left ? bounds.left+12-left : left>bounds.right ? bounds.right-12-right : 0;
+    const dy = bottom<bounds.top ? bounds.top+12-top : top>bounds.bottom ? bounds.bottom-12-bottom : 0;
+    if (dx || dy) camera.panTo(camera.view.x+dx,camera.view.y+dy);
 }
 
 function renderNode(entry, node) {
@@ -1268,7 +1264,75 @@ function updateParentOptions(preferredId = parentField.value) {
     updateFormRole();
 }
 
+function beginCrudOperation() {
+    crudActive = true;
+    keyboardNavigation = false;
+    autoFitPending = false;
+    camera.stopAnimation();
+    physics.pause();
+    dismissConnectionHint();
+}
+
+function finishCrudOperation() {
+    if (dialog.open || deleteDialog.open) return;
+    crudActive = false;
+    if (!document.hidden) physics.resume();
+}
+
+// One synchronous mutation: model/derived particles -> save -> DOM/tree ->
+// selection/inspector. No navigation helpers or global Fit participate.
+function commitCrudMutation(mutate, { selectionId, topologyChanged = true, reveal = false,
+    preserveScroll = true, inspectorOpen = !panel.hidden } = {}) {
+    beginCrudOperation();
+    const scroll = { top: hierarchySidebar.tree.scrollTop, left: hierarchySidebar.tree.scrollLeft };
+    const previousSelection = selectedNode?.dataset.entryId;
+    mutate();
+    if (topologyChanged || selectionId !== previousSelection) focusRevealIds.clear();
+    if (!entries.has(selectedNode?.dataset.entryId)) selectedNode = null;
+    galaxyModel.normalizeHierarchy(entries);
+    connections = galaxyModel.buildConnections(entries, relationships);
+    if (topologyChanged) syncPhysicsGraph({ updateUI: false, reheat: .12 });
+    saveGalaxy();
+    nodes.forEach((node, id) => {
+        if (entries.has(id)) return;
+        node.remove(); nodes.delete(id); regions.get(id)?.remove(); regions.delete(id);
+    });
+    entries.forEach(entry => {
+        const node = nodes.get(entry.id);
+        if (!node) createEntryNode(entry);
+        else if (entry.id === selectionId || node.dataset.role !== entry.role || Number(node.dataset.depth) !== entry.depth) updateEntryNode(entry, node);
+    });
+    rebuildConnections();
+    if (topologyChanged) updateRegionFootprints(true);
+    hierarchySidebar.setEntries(entries);
+    const entry = entries.get(selectionId);
+    if (entry) selectEntry(entry, nodes.get(entry.id), { reframe: false, openInspector: inspectorOpen, scroll: !preserveScroll });
+    else clearSelection({ reframe: false });
+    rebuildOrbitGuides(); refreshSearchResults(); renderGraph();
+    if (preserveScroll) {
+        hierarchySidebar.tree.scrollTop = scroll.top; hierarchySidebar.tree.scrollLeft = scroll.left;
+    }
+    if (reveal && entry) {
+        revealEntry(entry);
+        if (entry.depth > 0 && semanticDetail[entry.role] < .02) {
+            focusRevealIds.add(entry.id);
+            galaxyModel.ancestors(entries, entry.id).forEach(parent => focusRevealIds.add(parent.id));
+            renderGraph();
+        }
+    }
+}
+
+function restoreCrudFocus() {
+    keyboardNavigation = false;
+    const row = hierarchySidebar.rows.get(selectedNode?.dataset.entryId);
+    const target = selectedNode && !selectedNode.inert && selectedNode.dataset.culled !== "true" ? selectedNode :
+        row && !hierarchySidebar.collapsed && hierarchySidebar.tree.contains(row) ? row :
+            hierarchySidebar.collapsed ? hierarchySidebar.toggle : addEntryButton;
+    target.focus({ preventScroll: true });
+}
+
 function openEntryForm(entry = null, parentId = null, contextual = false) {
+    beginCrudOperation();
     cancelConnectionMode();
     closeContextMenu();
     editingId = entry?.id || null;
@@ -1286,14 +1350,14 @@ function openEntryForm(entry = null, parentId = null, contextual = false) {
         fields[2].value = entry.category;
     }
     updateParentOptions(entry ? entry.parentId || "" : parentId || "");
-    physics.pause();
     dialog.showModal();
 }
 
 function createChildEntry(parentId) {
     const context = cosmosHierarchy.childContext(entries, parentId);
     if (!context || !parentId || activeNodeDrags) return;
-    selectEntry(entries.get(parentId), nodes.get(parentId));
+    beginCrudOperation();
+    selectEntry(entries.get(parentId), nodes.get(parentId), { reframe: false });
     openEntryForm(null, context.parentId, true);
 }
 
@@ -1314,9 +1378,7 @@ parentField.addEventListener("change", () => {
 });
 
 dialog.addEventListener("close", () => {
-    if (!document.hidden && !deleteDialog.open) {
-        physics.resume();
-    }
+    finishCrudOperation();
 });
 
 document.getElementById("cancel-add-entry").addEventListener("click", () => dialog.close());
@@ -1345,37 +1407,34 @@ form.addEventListener("submit", (event) => {
         return;
     }
     if (!form.reportValidity()) return;
+    const creating = !editingId;
     const entry = editingId ? entries.get(editingId) : {
         ...getNewEntryPosition(data.parentId ? [data.parentId] : [], roleField.dataset.role), seedLayout: true
     };
     const oldParentId = entry.parentId;
-    Object.assign(entry, data);
-    entries.set(entry.id, entry);
-    if (oldParentId !== data.parentId) layout.delete(entry.id);
-    galaxyModel.normalizeHierarchy(entries);
-    const node = editingId ? nodes.get(editingId) : createEntryNode(entry);
-    updateEntryNode(entry, node);
-    // Editing or reparenting changes the tree, never existing semantic relationships.
-    rebuildConnections();
-    syncPhysicsGraph();
-    saveGalaxy();
-    selectEntry(entry, node);
+    commitCrudMutation(() => {
+        Object.assign(entry, data);
+        entries.set(entry.id, entry);
+        if (oldParentId !== data.parentId) layout.delete(entry.id);
+    }, { selectionId: data.id, topologyChanged: creating || oldParentId !== data.parentId,
+        reveal: creating || oldParentId !== data.parentId, preserveScroll: !creating,
+        inspectorOpen: creating || !panel.hidden });
     dialog.close();
-    if (node.inert) focusEntry(entry.id);
-    else revealEntry(entry);
-    node.focus({ preventScroll: true });
-    refreshSearchResults();
+    restoreCrudFocus(); finishCrudOperation();
 });
 
-function clearSelection() {
+function clearSelection({ reframe = true } = {}) {
     dismissConnectionHint();
     focusRevealIds.clear();
     selectedNode = null;
-    setInspectorOpen(false);
+    setInspectorOpen(false, { reframe });
     hierarchySidebar.select(null);
+    panelAncestry.replaceChildren();
     panelAncestry.hidden = true;
     panelName.textContent = "Select an entry";
     panelDescription.textContent = "Click a node to see more information.";
+    panelParent.textContent = ""; panelCategory.textContent = "";
+    refreshInspectorConnections();
     [panelCategory, panelParent, entryActions, actionStatus].forEach((element) => { element.hidden = true; });
     nodes.forEach((node) => {
         node.classList.remove("related", "selected");
@@ -1385,55 +1444,66 @@ function clearSelection() {
     updateHierarchyEmphasis();
 }
 
-function reportAction(message) {
+function reportAction(message, { reframe = true } = {}) {
     actionStatus.textContent = message;
     actionStatus.hidden = false;
-    if (panel.hidden) setInspectorOpen(true);
+    if (panel.hidden) setInspectorOpen(true, { reframe });
+}
+
+function showDeleteConfirmation(entry, ids) {
+    deleteConfirmationIds = new Set(ids);
+    document.getElementById("delete-entry-title").textContent = ids.size > 1 ?
+        `Delete “${entry.name}” and everything inside it?` : "Delete entry?";
+    document.getElementById("delete-entry-message").textContent = ids.size > 1 ?
+        `This will permanently delete ${ids.size} entries and their connections. This cannot be undone.` :
+        `Delete “${entry.name}” and its connections? This cannot be undone.`;
+    document.getElementById("confirm-delete-entry").textContent = ids.size > 1 ? `Delete ${ids.size} entries` : "Delete entry";
 }
 
 function requestEntryDelete(id) {
     const entry = entries.get(id);
-    if (!entry || builtInIds.has(entry.id)) return;
-    const children = galaxyModel.childrenOf(entries, entry.id);
-    if (children.length) {
-        reportAction(`Cannot delete ${entry.name}: it has ${children.length} ${children.length === 1 ? "child" : "children"}. Reassign or delete them first.`);
+    if (!entry) return;
+    beginCrudOperation();
+    const plan = galaxyModel.deletionPlan(entries, relationships, id, { subtree: true, protectedIds: builtInIds });
+    if (plan.error) {
+        reportAction(plan.error, { reframe: false }); finishCrudOperation();
         return;
     }
     deletingId = entry.id;
-    document.getElementById("delete-entry-message").textContent =
-        `Delete “${entry.name}” and its connections? This cannot be undone.`;
-    physics.pause();
+    showDeleteConfirmation(entry, plan.ids);
     deleteDialog.showModal();
 }
 deleteEntryButton.addEventListener("click", () => requestEntryDelete(selectedNode?.dataset.entryId));
 document.getElementById("cancel-delete-entry").addEventListener("click", () => deleteDialog.close());
 deleteDialog.addEventListener("close", () => {
-    deletingId = null;
-    if (!document.hidden && !dialog.open) physics.resume();
+    if (deleteDialog.open) return;
+    deletingId = null; deleteConfirmationIds = null;
+    finishCrudOperation();
 });
 document.getElementById("delete-entry-form").addEventListener("submit", (event) => {
     event.preventDefault();
     const entry = entries.get(deletingId);
-    if (!entry || builtInIds.has(entry.id) || galaxyModel.childrenOf(entries, entry.id).length) {
+    const plan = galaxyModel.deletionPlan(entries, relationships, deletingId, { subtree: true, protectedIds: builtInIds });
+    if (!entry || plan.error) {
         deleteDialog.close();
-        reportAction("This entry cannot be deleted while it has children.");
+        reportAction(plan.error, { reframe: false }); finishCrudOperation();
         return;
     }
-    regions.get(entry.id)?.remove(); regions.delete(entry.id);
-    nodes.get(entry.id).remove();
-    nodes.delete(entry.id);
-    entries.delete(entry.id);
-    layout.delete(entry.id);
-    for (let i = relationships.length - 1; i >= 0; i--) {
-        if (relationships[i].from === entry.id || relationships[i].to === entry.id) relationships.splice(i, 1);
+    if (!deleteConfirmationIds || plan.ids.size !== deleteConfirmationIds.size || [...plan.ids].some(id => !deleteConfirmationIds.has(id))) {
+        showDeleteConfirmation(entry, plan.ids);
+        return; // Changed branch: show its new impact and require another explicit click.
     }
-    clearSelection();
-    rebuildConnections();
-    syncPhysicsGraph();
-    saveGalaxy();
+    const selectedId = selectedNode?.dataset.entryId;
+    const fallbackId = plan.ids.has(selectedId) ?
+        galaxyModel.ancestors(entries, selectedId).find(parent => !plan.ids.has(parent.id))?.id : selectedId;
+    commitCrudMutation(() => {
+        plan.ids.forEach(id => { entries.delete(id); layout.delete(id); focusRevealIds.delete(id); });
+        relationships.splice(0, relationships.length, ...plan.relationships);
+        if (plan.ids.has(hoveredEntryId)) hoveredEntryId = null;
+        if (plan.ids.has(hoveredSystemId)) hoveredSystemId = null;
+    }, { selectionId: fallbackId });
     deleteDialog.close();
-    addEntryButton.focus();
-    refreshSearchResults();
+    restoreCrudFocus(); finishCrudOperation();
 });
 
 function focusEntry(id, { semantic = false } = {}) {

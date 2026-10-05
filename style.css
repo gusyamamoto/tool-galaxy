@@ -192,7 +192,7 @@ button:disabled { opacity: 0.45; cursor: default; }
     background: #192330;
 }
 #delete-entry-dialog::backdrop { background: rgba(7, 12, 20, 0.68); }
-#delete-entry-dialog h2 { margin: 0 0 16px; font-size: 21px; }
+#delete-entry-dialog h2 { margin: 0 0 16px; font-size: 21px; overflow-wrap: anywhere; }
 #delete-entry-message { color: #b0bdcd; font-size: 13px; line-height: 1.6; overflow-wrap: anywhere; }
 #confirm-delete-entry { border-color: #997675; background: #523b3c; }
 

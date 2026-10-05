@@ -130,3 +130,33 @@ test('descriptions are optional at every depth and remain valid after clearing o
         assert.match(model.validateChange({...record, description: '', name: ' '}, entries), /name/);
     });
 });
+
+test('subtree collection is iterative through thousands of levels and handles cycles safely',()=>{
+    const entries=chain(2500);entries.set('other',entry('other'));
+    const ids=model.subtreeIds(entries,'e4');
+    assert.equal(ids.size,2496);assert.equal(ids.has('e3'),false);assert.equal(ids.has('other'),false);
+    assert.equal(model.subtreeIds(entries,'missing').size,0);
+    entries.get('e4').parentId='e2499';
+    assert.equal(model.subtreeIds(entries,'e4').size,2496);
+});
+
+test('guarded deletion requires explicit subtree intent and protects built-ins anywhere in a branch',()=>{
+    const entries=chain(8), before=plain([...entries.values()]);
+    assert.match(model.deletionPlan(entries,[],'e2').error,/Confirm/);
+    assert.equal(model.deletionPlan(entries,[],'e7').error,'');
+    assert.match(model.deletionPlan(entries,[],'e2',{subtree:true,protectedIds:new Set(['e6'])}).error,/protected/);
+    assert.match(model.deletionPlan(entries,[],'missing',{subtree:true}).error,/no longer/);
+    assert.deepEqual(plain([...entries.values()]),before,'planning never mutates or promotes entries');
+});
+
+test('subtree deletion plan cleans incident links in either direction and preserves unrelated metadata',()=>{
+    const entries=chain(8);entries.set('remote',entry('remote'));
+    const links=[{id:'local',from:'e4',to:'e6',type:'related'},
+        {id:'outgoing',from:'e7',to:'remote',type:'uses',label:'Keep meaning'},
+        {id:'incoming',from:'e0',to:'e5',type:'references'},
+        {id:'unrelated',from:'e1',to:'remote',type:'uses',label:'Unchanged'}];
+    const before=plain(links), plan=model.deletionPlan(entries,links,'e4',{subtree:true});
+    assert.equal(plan.error,'');assert.deepEqual([...plan.ids],['e4','e5','e6','e7']);
+    assert.deepEqual(plain(plan.relationships),[links[3]]);
+    assert.equal(plan.relationships[0],links[3]);assert.deepEqual(plain(links),before);
+});
