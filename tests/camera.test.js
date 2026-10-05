@@ -151,3 +151,13 @@ test("Fit Galaxy handles deliberately remote pins and avoids magnifying tiny gal
     settle();
     assert.equal(camera.view.scale, 1);
 });
+
+test("focus completion fires once after settling, including reduced motion, and interruption does not complete it", () => {
+    const { camera, step, settle } = makeCamera();
+    let completed = 0;
+    camera.onRest = () => { completed++; assert.equal(camera.frame, null); };
+    camera.setView({x:120,y:200,scale:.8});step();assert.equal(completed,0);settle();assert.equal(completed,1);
+    camera.setView({x:200,y:300,scale:.6});step();camera.stopAnimation();assert.equal(completed,1);
+    camera.setReducedMotion(true);assert.equal(completed,2);
+    camera.setView({x:0,y:0,scale:1});assert.equal(completed,3);
+});

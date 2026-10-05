@@ -20,6 +20,7 @@
             <div id="graph-world">
                 <svg id="connections" aria-hidden="true"></svg>
             </div>
+            <div id="regions-layer" aria-hidden="true"></div>
             <div id="nodes-layer"></div>
         </div>
 
@@ -54,6 +55,7 @@
                 <p id="panel-role" hidden></p>
                 <p id="panel-parent" hidden></p>
             </div>
+            <nav id="panel-ancestry" aria-label="Entry ancestry" hidden></nav>
             <p id="panel-placement" role="status" hidden></p>
             <div id="entry-actions" hidden>
                 <div class="entry-action-row">
@@ -62,7 +64,6 @@
                 </div>
                 <div class="entry-action-row placement-actions">
                     <button id="pin-position-button" type="button">Pin position</button>
-                    <button id="release-position-button" type="button">Release to physics</button>
                 </div>
             </div>
             <p id="entry-action-status" role="status" hidden></p>
@@ -84,14 +85,9 @@
             <label for="entry-category">Category / label (optional)</label>
             <input id="entry-category" name="category" type="text" maxlength="60">
 
-            <label for="entry-role">Hierarchy role</label>
-            <select id="entry-role" name="role" aria-describedby="role-help">
-                <option value="category">Sun — main category, no parent</option>
-                <option value="subcategory">Planet — child of a Sun</option>
-                <option value="entry">Moon — child of a Planet</option>
-            </select>
-            <p id="role-help">A Sun starts a system. Its Planets contain Moons.</p>
-            <div id="parent-field" hidden>
+            <output id="entry-role" aria-live="polite">Galaxy</output>
+            <p id="role-help">The parent determines the celestial role. Nest entries as deeply as you need.</p>
+            <div id="parent-field">
                 <label id="parent-label" for="entry-parent">Parent</label>
                 <select id="entry-parent" name="parentId" aria-describedby="parent-help"></select>
                 <p id="parent-help"></p>
@@ -123,6 +119,8 @@
     </dialog>
 
     <script src="model.js"></script>
+    <script src="appearance.js"></script>
+    <script src="cosmos-view.js"></script>
     <script src="sample-data.js"></script>
     <script src="storage.js"></script>
     <script src="vendor/d3-force.bundle.min.js"></script>

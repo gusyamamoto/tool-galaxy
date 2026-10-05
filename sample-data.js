@@ -1,97 +1,47 @@
-// Development-only sample data. It is built in memory and never persisted.
+// Temporary development tree. No persistence access, stable IDs and fresh copies.
 const galaxySample = {
     queryValue: "large",
-
-    isRequested(search) {
-        return new URLSearchParams(search).get("sample") === this.queryValue;
-    },
-
+    isRequested(search) { return new URLSearchParams(search).get("sample") === this.queryValue; },
     build() {
-        const systems = [
-            {
-                name: "Technology", description: "Software, devices and emerging technology.",
-                planets: [
-                    ["Software", "Applications and development tools.", [["Visual Studio Code", "Source-code editor."], ["GitHub", "Code hosting and collaboration."], ["Docker", "Container development platform."]]],
-                    ["Artificial Intelligence", "AI products and research.", [["ChatGPT", "General-purpose AI assistant."], ["Local Models", "Models running on personal hardware."]]],
-                    ["Hardware", "Computers and electronic devices.", [["Laptop", "Primary portable computer."], ["Raspberry Pi", "Small computer for experiments."]]]
-                ]
-            },
-            {
-                name: "Food", description: "Ingredients, cooking and places to eat.",
-                planets: [
-                    ["Ingredients", "Staples and ingredients to keep available.", [["Seasonal Fruit", "Fruit chosen by season."], ["Fresh Herbs", "Herbs for everyday cooking."], ["Whole Grains", "Rice, oats and other grains."]]],
-                    ["Cooking", "Recipes and cooking techniques.", [["Sourdough", "Naturally leavened bread."], ["Weeknight Stir-fry", "Fast flexible evening meal."]]],
-                    ["Restaurants", "Places and cuisines to explore.", [["Japanese", "Japanese restaurants to try."], ["Mediterranean", "Mediterranean restaurants to try."]]]
-                ]
-            },
-            {
-                name: "Travel", description: "Destinations, planning and experiences.",
-                planets: [
-                    ["Destinations", "Places for future trips.", [["Japan", "Cities, countryside and rail travel."], ["Iceland", "Landscapes and road trips."], ["Portugal", "Coastal cities and historic towns."]]],
-                    ["Planning", "Practical travel preparation.", [["Flights", "Routes and fare research."], ["Accommodation", "Hotels and short stays."]]],
-                    ["Activities", "Things to do while travelling.", [["Hiking", "Trails and day hikes."], ["Museums", "Art, history and design museums."]]]
-                ]
-            },
-            {
-                name: "Books", description: "Reading, authors and reference material.",
-                planets: [
-                    ["Fiction", "Novels and short fiction.", [["Dune", "Science-fiction novel by Frank Herbert."], ["Earthsea", "Fantasy series by Ursula K. Le Guin."], ["The Left Hand of Darkness", "Science-fiction novel by Ursula K. Le Guin."]]],
-                    ["Nonfiction", "Ideas, history and practical subjects.", [["Sapiens", "A broad history of humankind."], ["The Design of Everyday Things", "Human-centered product design."]]],
-                    ["Reading Lists", "Ways to organize future reading.", [["To Read", "Books queued for later."], ["Favorites", "Books worth revisiting."]]]
-                ]
-            },
-            {
-                name: "Fitness", description: "Training, movement and recovery.",
-                planets: [
-                    ["Strength", "Progressive resistance training.", [["Squat", "Lower-body compound lift."], ["Deadlift", "Posterior-chain compound lift."], ["Press", "Upper-body pressing movements."]]],
-                    ["Cardio", "Aerobic conditioning.", [["Running", "Outdoor and treadmill running."], ["Cycling", "Road and indoor cycling."]]],
-                    ["Recovery", "Practices that support consistent training.", [["Sleep", "Sleep schedule and quality."], ["Mobility", "Range-of-motion practice."]]]
-                ]
-            },
-            {
-                name: "Business", description: "Strategy, operations and customers.",
-                planets: [
-                    ["Strategy", "Direction and competitive choices.", [["Market Research", "Customer and competitor research."], ["Product Roadmap", "Planned product outcomes."], ["Pricing", "Packaging and pricing decisions."]]],
-                    ["Operations", "How the organization runs.", [["Processes", "Repeatable operating procedures."], ["Finance", "Budgets and financial reporting."]]],
-                    ["Customers", "Customer relationships and service.", [["CRM", "Customer relationship records."], ["Support", "Customer questions and issue resolution."]]]
-                ]
-            },
-            {
-                name: "Music", description: "Listening, playing and music practice.",
-                planets: [
-                    ["Instruments", "Instruments to play and learn.", [["Guitar", "Acoustic and electric guitar."], ["Piano", "Keyboard technique and repertoire."], ["Drums", "Rhythm and coordination practice."]]],
-                    ["Genres", "Styles and listening paths.", [["Jazz", "Jazz artists and recordings."], ["Electronic", "Electronic music and production."]]],
-                    ["Practice", "Structured ways to improve.", [["Scales", "Technique and ear training."], ["Repertoire", "Pieces currently being learned."]]]
-                ]
-            }
-        ];
-        const centers = [[220, 270], [520, 250], [850, 270], [1030, 520], [840, 750], [500, 760], [220, 650]];
-        const planetOffsets = [[-120, -80], [125, -70], [0, 145]];
-        const moonOffsets = [[-66, -34], [66, -30], [0, 72]];
         const entries = [];
-
-        systems.forEach((system, systemIndex) => {
-            const sunId = `sample-sun-${system.name.toLowerCase()}`;
-            const [sunX, sunY] = centers[systemIndex];
-            entries.push(this.entry(sunId, system.name, system.description, "category", null, sunX, sunY));
-            system.planets.forEach(([name, description, moons], planetIndex) => {
-                const planetId = `sample-planet-${systemIndex}-${planetIndex}`;
-                const [planetDx, planetDy] = planetOffsets[planetIndex];
-                const planetX = sunX + planetDx;
-                const planetY = sunY + planetDy;
-                entries.push(this.entry(planetId, name, description, "subcategory", sunId, planetX, planetY));
-                moons.forEach(([moonName, moonDescription], moonIndex) => {
-                    const [moonDx, moonDy] = moonOffsets[moonIndex];
-                    entries.push(this.entry(`sample-moon-${systemIndex}-${planetIndex}-${moonIndex}`,
-                        moonName, moonDescription, "entry", planetId, planetX + moonDx, planetY + moonDy));
+        const add = (id, name, parentId = null) => {
+            entries.push({ id, name, description: `Explore ${name}.`, category: "Development sample", parentId, x: 400, y: 350 });
+            return id;
+        };
+        const domains = [
+            ["Work", ["Development", "Business"], [["Software", "AI", "Hardware"], ["Strategy", "Operations", "Customers"]]],
+            ["Food", ["Recipes", "Ingredients"], [["Italian", "Japanese", "Baking"], ["Produce", "Pantry", "Seasonal"]]],
+            ["Travel", ["Destinations", "Planning"], [["Europe", "Asia", "Americas"], ["Transport", "Stays", "Experiences"]]],
+            ["Personal", ["Learning", "Wellbeing"], [["Books", "Music", "Languages"], ["Fitness", "Recovery", "Habits"]]]
+        ];
+        const topics = [
+            [["Editors", "Repositories"], ["Codex", "Local Models"], ["Laptop", "Experiments"]],
+            [["Research", "Roadmap"], ["Processes", "Finance"], ["CRM", "Support"]],
+            [["Chicken", "Pasta"], ["Rice", "Noodles"], ["Bread", "Pastry"]],
+            [["Fruit", "Vegetables"], ["Grains", "Spices"], ["Summer", "Winter"]],
+            [["Portugal", "Iceland"], ["Japan", "Vietnam"], ["Canada", "Mexico"]],
+            [["Flights", "Rail"], ["Hotels", "Cabins"], ["Hiking", "Museums"]],
+            [["Fiction", "Nonfiction"], ["Guitar", "Piano"], ["French", "Japanese"]],
+            [["Strength", "Cardio"], ["Sleep", "Mobility"], ["Routines", "Reflection"]]
+        ];
+        domains.forEach(([domain, suns, planets], g) => {
+            const galaxy = add(`sample-galaxy-${g}`, domain);
+            suns.forEach((name, s) => {
+                const sunIndex = g * 2 + s, sun = add(`sample-sun-${sunIndex}`, name, galaxy);
+                planets[s].forEach((name, p) => {
+                    const planet = add(`sample-planet-${sunIndex}-${p}`, name, sun);
+                    topics[sunIndex][p].forEach((name, m) => {
+                        const moon = add(`sample-moon-${sunIndex}-${p}-${m}`, name, planet);
+                        const titles = sunIndex === 2 && p === 0 && m === 0 ? ["Chicken Parmigiana", "Chicken Piccata"] :
+                            sunIndex === 0 && p === 1 && m === 0 ? ["Coding workflows", "Review habits"] : ["Reference", "Practice"];
+                        titles.forEach((name, t) => add(`sample-satellite-${sunIndex}-${p}-${m}-${t}`, name, moon));
+                    });
                 });
             });
         });
-
+        const deep = add("sample-deep-5", "Parmigiana techniques", "sample-satellite-2-0-0-0");
+        const deeper = add("sample-deep-6", "Sauce preparation", deep);
+        add("sample-deep-7", "Slow simmer notes", deeper);
         return { entries, connections: [], layout: [] };
-    },
-
-    entry(id, name, description, role, parentId, x, y) {
-        return { id, name, description, category: "Development sample", role, parentId, x, y };
     }
 };
