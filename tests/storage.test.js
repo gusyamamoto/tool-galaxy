@@ -39,7 +39,7 @@ test("legacy snapshots become generic entries without changing IDs or the old ke
     const { adapter, data } = makeStorage([[legacyKey, raw]]);
     const result = plain(adapter.load());
     assert.deepEqual(result, {
-        version: 4, legacy: true, entries: [...legacy.tools, ...legacy.builtInPositions],
+        version: 5, migrateTree: true, legacy: true, entries: [...legacy.tools, ...legacy.builtInPositions],
         connections: legacy.connections, layout: []
     });
     assert.equal(data.get(legacyKey), raw);
@@ -54,16 +54,16 @@ test("new saves use generic entries and preserve roles and the legacy backup", (
         connections: legacy.connections
     };
     adapter.save(snapshot);
-    assert.deepEqual(JSON.parse(data.get(currentKey)), { version: 4, ...snapshot, layout: [] });
+    assert.deepEqual(JSON.parse(data.get(currentKey)), { version: 5, ...snapshot, layout: [] });
     assert.equal(data.get(legacyKey), raw);
     assert.equal(Object.hasOwn(JSON.parse(data.get(currentKey)), "tools"), false);
-    assert.deepEqual(plain(adapter.load()), { version: 4, legacy: false, entries: snapshot.entries, connections: snapshot.connections, layout: [] });
+    assert.deepEqual(plain(adapter.load()), { version: 5, migrateTree: false, legacy: false, entries: snapshot.entries, connections: snapshot.connections, layout: [] });
 });
 
 test("the current key wins over a stale legacy backup", () => {
     const current = { version: 2, entries: [], connections: [], builtInPositions: [] };
     const { adapter } = makeStorage([[legacyKey, JSON.stringify(legacy)], [currentKey, JSON.stringify(current)]]);
-    assert.deepEqual(plain(adapter.load()), { version: 4, legacy: true, entries: [], connections: [], layout: [] });
+    assert.deepEqual(plain(adapter.load()), { version: 5, migrateTree: true, legacy: true, entries: [], connections: [], layout: [] });
 });
 
 test("broken current data is preserved rather than silently loading an older backup", () => {
@@ -98,7 +98,7 @@ test("the first hierarchy save keeps the exact version 2 snapshot as a backup", 
     const snapshot = { entries: [{ ...legacy.tools[0], role: "entry", parentId: "planet-id" }], connections: [] };
     adapter.save(snapshot);
     assert.equal(data.get(backupKey), old);
-    assert.deepEqual(JSON.parse(data.get(currentKey)), { version: 4, ...snapshot, layout: [] });
+    assert.deepEqual(JSON.parse(data.get(currentKey)), { version: 5, ...snapshot, layout: [] });
     adapter.save({ entries: [], connections: [] });
     assert.equal(data.get(backupKey), old, "later saves must never overwrite the migration backup");
 });
@@ -109,7 +109,7 @@ test("version 3 restores hierarchy fields and built-in edits without legacy defa
         { id: "github", name: "Repositories", description: "Edited", category: "", role: "category", parentId: null, x: 500, y: 400 }
     ], connections: [] };
     const { adapter } = makeStorage([[currentKey, JSON.stringify(snapshot)]]);
-    assert.deepEqual(plain(adapter.load()), { ...snapshot, version: 4, legacy: false, layout: [] });
+    assert.deepEqual(plain(adapter.load()), { ...snapshot, version: 5, migrateTree: true, legacy: false, layout: [] });
 });
 
 test("a failed migration backup leaves the original snapshot untouched", () => {
@@ -125,7 +125,7 @@ test("layout preferences round-trip separately from semantic entries", () => {
     const snapshot = { entries: legacy.tools, connections: legacy.connections,
         layout: [{ id: "custom-8", x: 800, y: 430, pinned: false }, { id: "github", x: 400, y: 350, pinned: true }] };
     adapter.save(snapshot);
-    assert.deepEqual(plain(adapter.load()), { version: 4, legacy: false, ...snapshot });
+    assert.deepEqual(plain(adapter.load()), { version: 5, migrateTree: false, legacy: false, ...snapshot });
     adapter.save({ ...snapshot, layout: [] });
     assert.deepEqual(plain(adapter.load()).layout, [], "releasing a placement must survive refresh");
 });
@@ -143,11 +143,42 @@ test("version 3 upgrades preserve hierarchy and keep an exact pre-layout backup"
 });
 
 test("unsupported layout containers and failed layout backups preserve original data", () => {
-    const { adapter: broken } = makeStorage([[currentKey, JSON.stringify({ version: 4, entries: [], connections: [], layout: {} })]]);
+    const { adapter: broken } = makeStorage([[currentKey, JSON.stringify({ version: 5, entries: [], connections: [], layout: {} })]]);
     assert.throws(() => broken.load(), /invalid saved galaxy/);
     const old = JSON.stringify({ version: 3, entries: [], connections: [] });
     const { adapter, data, localStorage } = makeStorage([[currentKey, old]]);
     localStorage.setItem = () => { throw new Error("quota"); };
     assert.throws(() => adapter.save({ entries: [], connections: [], layout: [] }), /quota/);
     assert.equal(data.get(currentKey), old);
+});
+
+test("version 4 tree migration backs up the exact snapshot and preserves soft data and pins", () => {
+    const snapshot = { version: 4, entries: [{ ...legacy.tools[0], role: "category", parentId: null }], connections: legacy.connections,
+        layout: [{ id: "custom-8", x: 900, y: 500, pinned: false }, { id: "github", x: -7000, y: 6000, pinned: true }] };
+    const raw = JSON.stringify(snapshot), { adapter, data } = makeStorage([[currentKey, raw]]);
+    const loaded = plain(adapter.load());
+    assert.equal(loaded.migrateTree, true); assert.deepEqual(loaded.entries, snapshot.entries); assert.deepEqual(loaded.layout, snapshot.layout);
+    adapter.save(loaded); assert.equal(data.get("galaxy:user-data:pre-cosmic-tree"), raw);
+    adapter.save({ entries: [], connections: [], layout: [] });
+    assert.equal(data.get("galaxy:user-data:pre-cosmic-tree"), raw);
+});
+test("failed cosmic backup never replaces existing v4 data", () => {
+    const raw=JSON.stringify({version:4,entries:legacy.tools,connections:[],layout:[]});
+    const {adapter,data,localStorage}=makeStorage([[currentKey,raw]]);
+    localStorage.setItem=()=>{throw new Error("quota");};
+    assert.throws(()=>adapter.save({entries:[],connections:[]}),/quota/);
+    assert.equal(data.get(currentKey),raw);
+});
+test("future appearance overrides and generic deep ancestry round trip in version 5",()=>{
+    const {adapter}=makeStorage();
+    const snapshot={entries:[{...legacy.tools[0],parentId:"deep-parent",appearance:{archetype:"ringed",rings:false,palette:"blue"}}],connections:[],layout:[{id:"custom-8",parentId:"deep-parent",angle:1.8,radius:140}]};
+    adapter.save(snapshot); const loaded=plain(adapter.load());
+    assert.equal(loaded.migrateTree,false);assert.deepEqual(loaded.entries,snapshot.entries);assert.deepEqual(loaded.layout,snapshot.layout);
+});
+
+test("saving also rejects a future snapshot changed by another tab",()=>{
+    const raw=JSON.stringify({version:99,entries:[],connections:[],layout:[]});
+    const {adapter,data}=makeStorage([[currentKey,raw]]);
+    assert.throws(()=>adapter.save({entries:[],connections:[],layout:[]}),/cannot be overwritten/);
+    assert.equal(data.get(currentKey),raw);
 });

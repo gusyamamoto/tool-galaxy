@@ -1,125 +1,81 @@
-const assert = require("node:assert/strict");
-const fs = require("node:fs");
-const path = require("node:path");
-const vm = require("node:vm");
-const { test } = require("node:test");
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const vm = require('node:vm');
+const path = require('node:path');
+const { test } = require('node:test');
 const context = vm.createContext({});
-vm.runInContext(fs.readFileSync(path.join(__dirname, "..", "model.js"), "utf8"), context);
-const model = vm.runInContext("galaxyModel", context);
-function plain(value) { return JSON.parse(JSON.stringify(value)); }
-function entry(id, role, parentId = null) {
-    return { id, name: id, description: "Description", category: "", role, parentId, x: 400, y: 350 };
+vm.runInContext(fs.readFileSync(path.join(__dirname, '../model.js'), 'utf8'), context);
+const model = vm.runInContext('galaxyModel', context);
+const entry = (id, parentId = null) => ({ id, parentId, name: id, description: 'Description', category: '', x: 400, y: 350 });
+const plain = value => JSON.parse(JSON.stringify(value));
+function chain(count = 8) {
+    const entries = new Map(Array.from({ length: count }, (_,i) => [`e${i}`, entry(`e${i}`, i ? `e${i-1}` : null)]));
+    model.normalizeHierarchy(entries); return entries;
 }
-function family() {
-    return new Map([
-        ["star", entry("star", "category")], ["star-2", entry("star-2", "category")],
-        ["planet", entry("planet", "subcategory", "star")],
-        ["planet-2", entry("planet-2", "subcategory", "star-2")],
-        ["moon", entry("moon", "entry", "planet")]
-    ]);
-}
-
-test("generic stored roles map to the Sun, Planet and Moon presentation", () => {
-    assert.deepEqual(plain(Object.fromEntries(Object.entries(model.roles).map(([role, value]) =>
-        [role, { name: value.name, body: value.body, scale: value.scale }]
-    ))), {
-        category: { name: "Sun", body: "sun", scale: 1.35 },
-        subcategory: { name: "Planet", body: "planet", scale: 1 },
-        entry: { name: "Moon", body: "moon", scale: 0.66 }
-    });
+test('generic tree computes visual depth through thousands of levels without recursion', () => {
+    const entries = chain(2000);
+    assert.deepEqual([...entries.values()].slice(0,6).map(e => e.role), ['galaxy','sun','planet','moon','satellite','satellite']);
+    assert.equal(entries.get('e1999').depth, 1999);
+    assert.equal(model.ancestors(entries,'e1999').length,1999);
+    assert.ok([...entries.values()].every(e=>model.validateChange(e, entries)===''));
 });
-
-test("valid three-level hierarchy and reparenting pass validation", () => {
-    const entries = family();
-    entries.forEach((record) => assert.equal(model.validateChange(record, entries), ""));
-    assert.equal(model.validateChange({ ...entries.get("planet"), parentId: "star-2" }, entries), "");
-    assert.equal(model.validateChange({ ...entries.get("moon"), parentId: "planet-2" }, entries), "");
+test('reparenting recomputes a whole subtree and allows a tree to stop at any depth', () => {
+    const entries=chain(); entries.get('e3').parentId='e0'; model.normalizeHierarchy(entries);
+    assert.equal(entries.get('e3').role,'sun'); assert.equal(entries.get('e4').role,'planet');
+    entries.get('e3').parentId=null; model.normalizeHierarchy(entries);
+    assert.equal(entries.get('e3').role,'galaxy'); assert.equal(entries.get('e7').depth,4);
 });
-
-test("suns reject parents and planets/moons require the correct role", () => {
-    const entries = family();
-    assert.match(model.validateChange(entry("new", "category", "star"), entries), /Sun cannot have a parent/);
-    assert.match(model.validateChange(entry("new", "subcategory"), entries), /existing Sun/);
-    for (const record of [entry("new", "subcategory"), entry("new", "subcategory", "moon"),
-        entry("new", "entry", "star"), entry("new", "entry", "missing"), entry("new", "entry", "new")]) {
-        assert.match(model.validateChange(record, entries), /Choose an existing/);
-    }
+test('self parenting, descendant parenting and missing parents are rejected', () => {
+    const entries=chain();
+    for(const parentId of ['e0','e4','e7']) assert.match(model.validateChange({...entries.get('e0'), parentId},entries),/ancestor/);
+    assert.match(model.validateChange({...entries.get('e0'),parentId:'missing'},entries),/existing parent/);
 });
-
-test("role changes with incompatible children are blocked until reassigned", () => {
-    const entries = family();
-    assert.match(model.validateChange({ ...entries.get("star"), role: "entry", parentId: "planet-2" }, entries), /children/);
-    assert.match(model.validateChange({ ...entries.get("planet"), role: "category", parentId: null }, entries), /children/);
-    entries.get("moon").parentId = "planet-2";
-    assert.equal(model.validateChange({ ...entries.get("planet"), role: "category", parentId: null }, entries), "");
+test('malformed stored cycles and missing parents are repaired without dropping records', () => {
+    const entries=chain(); entries.get('e0').parentId='e7'; entries.set('orphan',entry('orphan','missing'));
+    model.normalizeHierarchy(entries);
+    assert.equal(entries.size,9); assert.equal(entries.get('orphan').parentId,null);
+    entries.forEach(e=>assert.equal(model.validateChange(e,entries),''));
 });
-
-test("hierarchy edges derive from parent IDs and replace old edges after reparenting", () => {
-    const entries = family();
-    const links = [{ from: "moon", to: "star-2" }];
-    const before = plain(model.buildConnections(entries, links));
-    assert.ok(before.some((edge) => edge.from === "planet" && edge.to === "moon" && edge.kind === "hierarchy"));
-    entries.get("moon").parentId = "planet-2";
-    const after = plain(model.buildConnections(entries, links));
-    assert.ok(!after.some((edge) => edge.from === "planet" && edge.to === "moon"));
-    assert.ok(after.some((edge) => edge.from === "planet-2" && edge.to === "moon" && edge.kind === "hierarchy"));
-    assert.ok(after.some((edge) => edge.from === "moon" && edge.to === "star-2" && edge.kind === "relationship"));
-    assert.deepEqual(links, [{ from: "moon", to: "star-2" }]);
+test('legacy migration preserves IDs, content and valid ancestry in a neutral Galaxy', () => {
+    const records=[{...entry('sun'),role:'group'},{...entry('planet','sun'),role:'subcategory'},
+        {...entry('moon','planet'),role:'entry'},{...entry('orphan','missing'),role:'entry'},
+        {...entry('migration-my-galaxy'),role:'category'}];
+    const entries=new Map(records.map(r=>[r.id,model.normalizeEntry(r)]));
+    model.migrateLegacy(entries,records);
+    assert.equal(entries.size,6); assert.equal(entries.get('sun').parentId,'migration-my-galaxy-1');
+    assert.equal(entries.get('planet').parentId,'sun'); assert.equal(entries.get('moon').parentId,'planet');
+    assert.equal(entries.get('moon').role,'moon'); assert.equal(entries.get('orphan').parentId,'migration-my-galaxy-1');
+    records.forEach(r=>assert.equal(entries.get(r.id).description,r.description));
 });
-
-test("duplicate, missing and self connections never create extra edges", () => {
-    const entries = family();
-    const edges = plain(model.buildConnections(entries, [
-        { from: "planet", to: "star" }, { from: "star", to: "planet" },
-        { from: "star", to: "star" }, { from: "star", to: "missing" }
-    ]));
-    assert.equal(edges.length, 3);
-    assert.ok(edges.every((edge) => edge.kind === "hierarchy"));
+test('layout migration uses restored parent coordinates independent of layout record order',()=>{
+    const entries=chain(4);
+    const records=[{id:'e2',x:600,y:400,pinned:false},{id:'e1',x:500,y:400,pinned:true}];
+    const layout=model.normalizeLayout(records,entries);
+    assert.equal(layout.get('e2').radius,100);assert.equal(layout.get('e2').angle,0);
+    assert.equal(entries.get('e1').x,500);
 });
-
-test("legacy roles and absent/invalid parent IDs preserve unassigned entries", () => {
-    const records = new Map([
-        ["star", model.normalizeEntry({ ...entry("star", "group"), parentId: "moon" })],
-        ["planet", model.normalizeEntry(entry("planet", "subcategory", "missing"))],
-        ["moon", model.normalizeEntry({ ...entry("moon", "unknown"), parentId: "star" })]
-    ]);
-    model.normalizeHierarchy(records);
-    assert.equal(records.get("star").role, "category");
-    assert.equal(records.get("moon").role, "entry");
-    records.forEach((record) => assert.equal(record.parentId, null));
-    assert.equal(model.normalizeEntry({ ...entry("old", "entry"), category: undefined }).category, "");
+test('old soft positions become initial positions and relative influences; pins stay exact', () => {
+    const entries=chain(); const layout=model.normalizeLayout([{id:'e1',x:900,y:600,pinned:false},
+        {id:'e2',x:-8000,y:7000,pinned:true},{id:'missing',x:5,y:5},{id:'e4',x:Infinity,y:5}],entries);
+    assert.equal(layout.size,2); assert.equal(layout.get('e1').x,undefined);
+    assert.equal(layout.get('e1').parentId,'e0'); assert.equal(entries.get('e1').x,900);
+    assert.deepEqual(plain(layout.get('e2')),{x:-8000,y:7000,pinned:true});
 });
-
-test("children can be checked safely before deletion", () => {
-    const entries = family();
-    assert.deepEqual(plain(model.childrenOf(entries, "planet")).map((child) => child.id), ["moon"]);
-    assert.equal(model.childrenOf(entries, "moon").length, 0);
-    entries.delete("moon");
-    assert.equal(model.childrenOf(entries, "planet").length, 0);
+test('derived hierarchy edges override duplicate semantic edges but preserve independent relationships', () => {
+    const entries=chain(4), links=[{from:'e1',to:'e0'},{from:'e0',to:'e3'},{from:'e0',to:'e0'},{from:'e0',to:'missing'}];
+    const edges=model.buildConnections(entries,links);
+    assert.equal(edges.length,4); assert.equal(edges.filter(e=>e.kind==='relationship').length,1);
+    entries.get('e3').parentId='e1';
+    assert.ok(model.buildConnections(entries,links).some(e=>e.from==='e1'&&e.to==='e3'));
 });
-
-test("name search is case insensitive, ranks prefixes and preserves duplicate IDs", () => {
-    const entries = new Map([
-        ["a", { ...entry("a", "entry"), name: "Fresh Apple" }],
-        ["b", { ...entry("b", "entry"), name: "Apple" }],
-        ["c", { ...entry("c", "entry"), name: "Apple" }]
-    ]);
-    assert.deepEqual(plain(model.search(entries, " APP ")).map((record) => record.id), ["b", "c", "a"]);
-    assert.equal(model.search(entries, "").length, 0);
-    assert.equal(model.search(entries, "banana").length, 0);
+test('normalization preserves optional appearance metadata and rejects invalid content', () => {
+    const data={...entry('test'),appearance:{mode:'manual',archetype:'ringed',rings:true,palette:'amber'}};
+    assert.deepEqual(plain(model.normalizeEntry(data).appearance),data.appearance);
+    assert.equal(model.normalizeEntry({...data,name:''}),null);
+    assert.equal(model.normalizeEntry({...data,id:''}),null);
 });
-
-test("layout normalization ignores invalid/stale coordinates without changing hierarchy", () => {
-    const entries = family();
-    const before = JSON.stringify([...entries]);
-    const layout = model.normalizeLayout([
-        { id: "planet", x: 900, y: 430, pinned: true },
-        { id: "moon", x: 950, y: 600, pinned: "true" },
-        { id: "missing", x: 250, y: 300, pinned: true },
-        { id: "star", x: Infinity, y: 300 }, null, { id: "star-2", x: "400", y: 400 }
-    ], entries);
-    assert.deepEqual(plain([...layout]), [
-        ["planet", { x: 900, y: 430, pinned: true }], ["moon", { x: 950, y: 600, pinned: false }]
-    ]);
-    assert.equal(JSON.stringify([...entries]), before);
+test('search spans all depths with case insensitive prefix ranking and duplicate names', () => {
+    const entries=chain(); entries.get('e0').name='Fresh Apple'; entries.get('e6').name='Apple'; entries.get('e7').name='Apple';
+    assert.deepEqual(plain(model.search(entries,' APP ')).map(e=>e.id),['e6','e7','e0']);
+    assert.equal(model.search(entries,'').length,0);
 });

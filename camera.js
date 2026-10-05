@@ -1,8 +1,9 @@
 // The camera transforms the view only. Physics and storage always use world coordinates.
 class GraphCamera {
-    constructor({ onChange, requestFrame = (callback) => requestAnimationFrame(callback),
+    constructor({ onChange, onRest = () => {}, requestFrame = (callback) => requestAnimationFrame(callback),
         cancelFrame = (id) => cancelAnimationFrame(id) }) {
         this.onChange = onChange;
+        this.onRest = onRest;
         this.requestFrame = requestFrame;
         this.cancelFrame = cancelFrame;
         this.minScale = 0.08;
@@ -36,6 +37,7 @@ class GraphCamera {
             this.target = target;
             this.view = { ...target };
             this.onChange(this.view);
+            this.onRest();
         } else if (this.frame === null) {
             this.lastTime = null;
             this.frame = this.requestFrame((time) => this.tick(time));
@@ -54,6 +56,7 @@ class GraphCamera {
         if (settled) this.view = { ...this.target };
         this.onChange(this.view);
         this.frame = settled ? null : this.requestFrame((nextTime) => this.tick(nextTime));
+        if (settled) this.onRest();
     }
 
     // Freeze the visible view before starting a drag, avoiding coordinate jumps.
