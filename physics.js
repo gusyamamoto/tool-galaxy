@@ -9,7 +9,7 @@ class GalaxyPhysics {
         this.baseNodeRadius = 13; this.paused = false; this.settled = true; this.origin = null;
         this.collisionForce = d3.forceCollide(node => node.radius + 12).strength(1).iterations(4);
         this.linkForce = d3.forceLink().id(node => node.id).distance(link => link.source.radius + link.target.radius + 80)
-            .strength(link => link.source.systemId && link.source.systemId === link.target.systemId ? .015 : 0);
+            .strength(0); // Semantic relationships are informational, never layout constraints.
         this.galaxyCollision = d3.forceCollide(region => region.radius + 60).strength(.65).iterations(3);
         this.simulation = d3.forceSimulation([]).stop().alphaMin(.002).alphaDecay(.032).velocityDecay(.42)
             .force("follow", () => this.followParents())

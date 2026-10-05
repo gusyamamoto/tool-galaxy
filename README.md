@@ -42,12 +42,12 @@ open `http://localhost:8000`. Use the same browser, address and port for saved d
   opens its menu without opening a closed drawer or shifting the camera. Opening
   Details eases the camera at the same zoom and keeps an edge-selected body visible;
   it waits for drag release before opening if a pointer is held.
-- **Body actions:** right-click a body, Galaxy name or cloud for Add child,
-  Edit and Delete. Existing deletion protections and confirmation
+- **Body actions:** right-click a body, Galaxy name, cloud or sidebar row for Add child,
+  Connect to..., Edit and Delete. Existing deletion protections and confirmation
   remain. The menu stays inside the viewport, closes on outside clicks/Escape,
   and does not start dragging or camera focus. Shift+F10 opens it from a focused
   body; arrows/Home/End navigate its actions.
-- **Add / Edit:** name, description, optional category/label and one structural
+- **Add / Edit:** required name, optional description/category/label and one structural
   parent. Relationship fields are absent. IDs and existing semantic links stay stable.
   Moving a branch changes its descendants' computed depths/roles together.
   Self/descendant parent choices are excluded, with model
@@ -90,12 +90,85 @@ parents/cycles in stored trees are repaired into roots without dropping valid
 records. Invalid records disable saving for that session so the original snapshot
 is preserved. `category` is only an optional text label, separate from ancestry.
 
-Optional relationships store `{from,to}` pairs. Hierarchy edges derive from
-`parentId`; hierarchy takes priority if both describe the same pair. Semantic
-relationships remain separate for future “related to”, “uses” and “alternative
-to” rendering. Creation adds no semantic links; content edits and parent changes
-preserve existing relationship pairs, even when a pair also becomes a hierarchy edge.
-Relationship management is deferred to a separate interaction.
+Optional, undirected relationships reuse the existing `connections` array and
+`from`/`to` entry-ID references. Records now contain `{id,from,to,type}` with an
+optional `label`; the first workflow defaults to `type:"related"`. Legacy pairs
+receive a deterministic stable ID from their sorted endpoints. Existing valid IDs,
+types and labels survive normalization and saving; self-links, missing endpoints
+and reversed/exact duplicate pairs are rejected. A semantic parent/child connection
+coexists with its derived hierarchy edge. Creation adds no semantic links; content
+edits and parent changes preserve them. Deleting a leaf removes only its incident
+relationships. These additive fields keep the version 5 storage container and
+existing migration/backups; `parentId` and layout records are unchanged.
+
+## Semantic connections
+
+Choose **Connect to...** from a body's or tree row's context menu, or **+ Connect**
+in Details. The inspector prompts “Connect [name] to...” and highlights the source.
+Click a visible body or Galaxy cloud/name to relate it; body dragging is suppressed
+until target selection ends. The source and already-connected targets are rejected.
+Escape, Cancel, the inspector's × or an empty-space click cancel. Space remains
+pannable and wheel zoom remains available. Target search reaches all entries,
+including hidden bodies and other Galaxies; results show ancestry to distinguish
+duplicate names, with already-connected results disabled. Enter chooses the first
+eligible match; Arrow Down reaches result buttons. Sidebar row activation can also
+choose a target. No type picker or constellation UI is included.
+
+Details lists connected names with navigation and a compact × removal action.
+An empty section contains only **+ Connect**. Editing connections updates the
+presentation and saves immediately without rebuilding/reheating physics. All
+semantic force strengths are zero, including links within a single solar system.
+
+Semantic lines are thin dashed SVG lines, distinct from faint solid hierarchy
+cues and orbital guides. Strokes/dashes compensate for the HTML world transform,
+remaining 1px for selected/hovered links and 0.7px otherwise at any zoom.
+Their world-space endpoints update on every physics tick,
+drag frame and camera change. Galaxy endpoints follow the projected Galaxy names.
+Universe and system views hide unrelated links; close zoom fades them up to only
+5.5% opacity when both endpoints are visible onscreen. Hover reveals incident
+links at 30% opacity from Galaxy zoom; selection reveals direct links at 50%
+(40% in Universe view), including cross-Galaxy links. Connected visible targets
+receive a restrained outline/name emphasis. Body semantic hiding is unchanged,
+and inspector navigation can focus a hidden or distant endpoint. Unrelated bodies
+retain at least 72% contextual opacity.
+
+Semantic lines have presentation-only screen-space hit-testing: a 6px radius on
+desktop and 10px on touch, including gaps between dashes. The rendered stroke
+stays 1px. Only lines at least 18% opaque and intersecting the usable viewport are
+interactive; hidden and 5.5% background links leave no pointer or keyboard traps.
+Bodies/labels take priority over line hits. At crossings, nearest half-pixel
+distance wins, then an incident link of the selected entry, then stable ID.
+Hovering shows endpoint names and the relationship label/type in a compact,
+viewport-clamped tooltip, emphasizing the line and both bodies without dimming
+unrelated content. Leaving clears the emphasis. Pointer hit-testing and tooltip
+anchors use current projected geometry on every movement/physics/camera update.
+
+Clicking a line focuses the opposite endpoint when one endpoint is selected;
+otherwise it focuses the endpoint nearest the pointer (exact ties choose `from`).
+It uses the same semantic `focusEntry` path as inspector rows, updating Details and
+the expanded tree. Nearby routes ease directly in 450–650ms without context zoom.
+Distance is measured in usable viewport lengths at the current/destination scale;
+different-system/distant same-Galaxy routes take 800–1100ms, and cross-Galaxy routes
+take 1200–1500ms, with durations capped even for extreme distances.
+Longer routes zoom out during the first 32%, pan continuously through spatial
+context, and zoom into the normal target hierarchy during the final 38%. A quintic
+smootherstep gives the pan a slow–fast–slow velocity profile. Zoom interpolates
+logarithmic scale with the same easing, keeping proportional size changes smooth
+across large zoom ranges. The phases overlap without camera jumps. Normal tree/body
+focus retains its faster behavior. Wheel, pan, body drag and Escape cancel travel
+at the visible view; reduced motion uses immediate focus without the sequence.
+Dragging space from a line still pans. Wheel/Fit/navigation
+dismiss hover context. Touch first previews endpoint names and a **Go to [name]**
+action; that action or a second tap on the same line navigates. The preview can
+be closed or dismissed by another canvas/control interaction. Visible eligible
+lines have accessible labels and support Tab then Enter/Space; inspector rows
+remain the keyboard navigation alternative. No connection, hierarchy, layout or
+storage fields change for this refinement.
+
+Descriptions may be empty at every hierarchy depth. Add/Edit trim to an empty
+string, persisted-record normalization accepts empty/missing/null descriptions
+(missing/null become empty strings), and the existing 1000-character limit and
+text validation remain. Only the name is required; storage stays at version 5.
 
 `galaxyStorage` loads versions 1–5 and the old `tool-galaxy:user-data` key.
 For pre-v5 data, valid Sun→Planet→Moon parent links and all stable IDs/content are
@@ -191,8 +264,8 @@ Sibling separation remains parent-local and tangential: radius sums +24px,
 multiplier 1.35 for Planets or 1.15 for deeper bodies, strength 0.06 capped at
 `2 × alpha` per pair. All released siblings are movable; held drags have zero mobility.
 Local system repulsion remains `-radius × 1.1`. Body collision remains strength 1,
-12px clearance, four iterations. Semantic links have strength 0.015 inside a
-system and zero between systems; they cannot drag remote Galaxies together.
+12px clearance, four iterations. Semantic links have zero force strength everywhere;
+they cannot alter local systems or pull remote Galaxies together.
 
 Normal velocity decay stays **0.42**, alpha decay **0.032**, alpha minimum
 **0.002**. Moving a drag reheats to at least **0.22**, active alpha target **0.10**;
@@ -210,7 +283,16 @@ identity; their names stay in the native text layer.
 Galaxy clouds use filled radial-gradient concentrations with soft dust, luminous
 cores and organic silhouettes. There are no outlined spiral/S strokes. Each
 deterministic visual is smoothed once into a cached 512px canvas and reused;
-clouds fade between 0.58 and 0.95, leaving close bodies/local guides clear.
+cloud opacity uses a squared smooth fade, normally from 0.38 to 0.72 (previously
+0.58–0.95). Universe opacity stays 0.92; by system view clouds are very faint and
+close detail hides them completely. Each cloud adapts to usable `physics.bounds`
+after the sidebar/inspector, plus its projected width/height relative to that
+canvas. A short canvas side of 420–900px smoothly advances fade onset by up to
+0.03 and completion by up to 0.04. Projected coverage from 0.8–2.2 canvas lengths
+advances completion by another 0.04. This uses size, never position or overlap:
+panning/floating cannot pulse opacity. Existing footprint dead bands/easing
+stabilize size changes. Galaxy names, breadcrumbs and sidebar identity remain
+independent of cloud opacity. No body fade ranges or tier boundaries change.
 `cosmos-view.js` derives visual footprints from normal parent-relative positions
 of contained Suns and descendants, including the Galaxy anchor. For presentation
 only, distant offsets are limited to 1.4 times the preferred band plus local
@@ -299,7 +381,8 @@ independent of subscription/features. No customization UI is added yet.
 
 **Load Sample Galaxy** opens 183 temporary entries: four Galaxies (Work, Food,
 Travel, Personal), eight Suns, 24 Planets, 48 Moons, 99 Satellites, including a
-depth-seven recipe branch. Normal interactions use the same model/renderer/
+depth-seven recipe branch and eight semantic links demonstrating technology,
+recipes/ingredients, travel, business and cross-Galaxy interests. Normal interactions use the same model/renderer/
 physics. Sample mode neither reads nor writes real saved data. Remove Sample or
 refresh returns to it; the activation query is removed immediately.
 
@@ -320,6 +403,37 @@ Use `--extremes-only` to isolate the two extreme-return cases and their recovery
 `python tests/browser-check.py --migration-only` additionally exercises a full
 saved v4 family with soft positions/pins, invalid records and future-version
 overwrite protection.
+`python tests/browser-check.py --connections-only --screenshots` checks actual
+right-click and pointer target selection, search across Galaxies, self/reverse
+duplicate rejection, cancellation, inspector navigation/removal, refresh and
+endpoint deletion. It also checks sample isolation, zero physics effects,
+moving/dragged/camera-aligned endpoints, Galaxy/Sun/deep endpoints, contextual
+line visibility, native motion cost and mobile target search. Screenshots show
+the picker, search, selected Codex, far zoom, cross-Galaxy links and mobile sheet.
+`python tests/browser-check.py --connections-performance-only` repeats the full
+regression's deep-focus motion scene in isolation, comparing normal rendering
+with semantic line painting disabled and enforcing the existing frame budget.
+Add `--baseline-head` to serve a temporary snapshot of the committed app for the
+same comparison, without modifying workspace files. Headless frame budgets can
+fail even on that baseline; report this separately from functional checks and
+verify smooth motion on a native display.
+`python tests/browser-check.py --cloud-fade-only --screenshots` checks early fade
+on desktop, laptop and narrow canvas with sidebar/inspector open, strong Universe
+clouds, faint system clouds, independent Galaxy identity, smooth actual zoom in/
+out, translation stability and cached pixel reuse. It retains comparison views
+and measured opacity values.
+
+`python tests/browser-check.py --travel-only --screenshots` checks native blank
+description submission at every depth, clearing during Edit, reload, local/system/
+Galaxy travel from rows and lines, arrival visibility, reverse routes, manual
+wheel/pan/drag/Escape interruption and reduced motion. It retains departure,
+context and arrival screenshots and camera traces.
+
+`python tests/browser-check.py --connection-lines-only --screenshots` checks
+actual line hover/click gestures, label wording, invisible hit margins, endpoint
+emphasis, tooltip clamping, opposite/nearest navigation, inspector-row parity,
+cross-Galaxy focus, wheel resumption, hidden-link pointer/keyboard safety, keyboard
+activation, moving geometry and mobile touch preview/action/repeat-tap behavior.
 `python tests/browser-check.py --navigation-only --screenshots` checks all three
 contextual creation paths through depth six, synchronized tree/body/search
 selection, branch/sidebar collapse, pointer/keyboard resizing, viewport Fit,
@@ -378,3 +492,9 @@ remove the temporary sample, then confirm your saved hierarchy and sidebar prefe
 are restored.
 At extreme fitted zoom on narrow screens, temporarily revealed search labels can
 crowd together; focus and the ancestry breadcrumbs restore local reading.
+Before committing connections, try a visible target and a distant search target
+with your own data, including duplicate names. Cancel with Escape/empty space,
+refresh, navigate/remove a connection in Details, and inspect the Sample at far
+and close zoom. Check cross-Galaxy line contrast and mobile result scrolling on
+your display. Connections do not provide richer relationship classification or
+named collections yet.

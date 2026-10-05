@@ -4,7 +4,7 @@ const cosmosView = {
     fades: {
         sun: [.43, .58], planet: [.58, .68], moon: [.68, .76], satellite: [.70, .79],
         planetLabel: [.62, .72], moonLabel: [.73, .83], satelliteLabel: [.76, .88],
-        guides: [.58, .78], clouds: [.58, .95]
+        guides: [.58, .78], clouds: [.38, .72]
     },
     smooth(scale, start, end) {
         const t = Math.max(0, Math.min(1, (scale - start) / (end - start)));
@@ -13,8 +13,24 @@ const cosmosView = {
     detail(scale) {
         const result = { tier: scale < this.tiers.galaxy ? "universe" : scale < this.tiers.system ? "galaxy" : scale < this.tiers.close ? "system" : "close" };
         Object.entries(this.fades).forEach(([name, range]) => { result[name] = this.smooth(scale, ...range); });
-        result.clouds = .92 * (1 - result.clouds);
+        result.clouds = this.cloudOpacity(scale);
         return result;
+    },
+    cloudOpacity(scale, viewport, footprint) {
+        let [start, end] = this.fades.clouds;
+        if (viewport) {
+            const width = Math.max(1, viewport.right - viewport.left), height = Math.max(1, viewport.bottom - viewport.top);
+            const smallCanvas = 1 - this.smooth(Math.min(width, height), 420, 900);
+            // Size only: translation/panning never changes this pressure. The
+            // footprint already has a dead band and gradual size interpolation.
+            const coverage = footprint ? Math.max(Math.max(160, footprint.width * scale) / width,
+                Math.max(140, footprint.height * scale) / height) : 0;
+            const pressure = this.smooth(coverage, .8, 2.2);
+            start -= .03 * smallCanvas;
+            end -= .04 * smallCanvas + .04 * pressure;
+        }
+        const remaining = 1 - this.smooth(scale, start, end);
+        return .92 * remaining * remaining;
     },
     // Measure the normal local footprint. Winsorize parent-relative offsets so
     // a dragged/outlying branch cannot inflate its whole Galaxy. Never move bodies.

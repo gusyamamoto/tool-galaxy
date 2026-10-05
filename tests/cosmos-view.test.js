@@ -78,3 +78,34 @@ test('a distant Sun or deep dragged branch has bounded influence on its cloud', 
     sun.x = 100000;
     assert.ok(view.regionTarget(root, [sun, planet]).width < 1500);
 });
+
+test('clouds fade early and smoothly while viewport pressure leaves Universe identity strong', () => {
+    const view = load(), large={left:0,right:1400,top:0,bottom:1000}, small={left:260,right:850,top:40,bottom:700};
+    const footprint={width:1800,height:1200,offsetX:0,offsetY:0};
+    assert.equal(view.cloudOpacity(.2,large,footprint),.92);
+    assert.equal(view.cloudOpacity(.2,small,footprint),.92);
+    assert.ok(view.cloudOpacity(.58,large,footprint)<.15);
+    assert.ok(view.cloudOpacity(.68,large,footprint)<.005);
+    assert.equal(view.cloudOpacity(.78,small,footprint),0);
+    assert.ok(view.cloudOpacity(.52,small,footprint)<view.cloudOpacity(.52,large,footprint));
+    assert.ok(view.cloudOpacity(.52,large,{width:5000,height:4000})<view.cloudOpacity(.52,large,{width:400,height:300}));
+    for (const viewport of [large,small]) {
+        let previous=.92;
+        for(let scale=.2;scale<1;scale+=.001) {
+            const opacity=view.cloudOpacity(scale,viewport,footprint);
+            assert.ok(opacity<=previous+1e-12 && previous-opacity<.012,'monotonic continuous fade');
+            previous=opacity;
+        }
+    }
+    assert.equal(view.cloudOpacity(.52,small,footprint),view.cloudOpacity(.52,small,{...footprint,offsetX:10000,offsetY:-10000}));
+});
+
+test('responsive opacity inherits the footprint dead band, so normal floating does not pulse',()=>{
+    const view=load(),root={x:0,y:0},viewport={left:260,right:850,top:40,bottom:700};
+    let region=view.updateRegion(null,view.regionTarget(root,[{x:500,y:100,radius:30}]),16);
+    const opacity=view.cloudOpacity(.52,viewport,region);
+    for(let i=0;i<100;i++) {
+        region=view.updateRegion(region,view.regionTarget(root,[{x:500+Math.sin(i),y:100,radius:30}]),16);
+        assert.equal(view.cloudOpacity(.52,viewport,region),opacity);
+    }
+});

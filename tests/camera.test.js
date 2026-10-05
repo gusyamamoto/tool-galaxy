@@ -18,10 +18,10 @@ function makeCamera() {
         requestFrame(callback) { frames.set(++nextId, callback); return nextId; },
         cancelFrame(id) { frames.delete(id); }
     });
-    function step() {
+    function step(elapsed = 16) {
         const pending = [...frames.values()];
         frames.clear();
-        time += 16;
+        time += elapsed;
         pending.forEach((callback) => callback(time));
     }
     function settle() {
@@ -160,4 +160,104 @@ test("focus completion fires once after settling, including reduced motion, and 
     camera.setView({x:200,y:300,scale:.6});step();camera.stopAnimation();assert.equal(completed,1);
     camera.setReducedMotion(true);assert.equal(completed,2);
     camera.setView({x:0,y:0,scale:1});assert.equal(completed,3);
+});
+
+const travelViewport = {left: 260, right: 1100, top: 40, bottom: 900};
+test('nearby semantic travel eases without a context zoom and ends at the exact focus view', () => {
+    const {camera, step, settle} = makeCamera();
+    const destination = {x: -160, y: 40, scale: 1.2};
+    camera.travelTo(destination, travelViewport);
+    assert.equal(camera.travel.distant, false);
+    assert.ok(camera.travel.duration >= 450 && camera.travel.duration <= 650);
+    let completed = 0;
+    camera.onRest = () => completed++;
+    step(); step();
+    assert.ok(camera.view.scale >= 1 && camera.view.scale < 1.01, 'gentle start');
+    while (camera.travel) {
+        assert.ok(camera.view.scale >= 1 && camera.view.scale <= 1.2, 'no unnecessary zoom out');
+        step();
+    }
+    settle();
+    for (const key of ['x','y','scale']) near(camera.view[key], destination[key]);
+    assert.equal(completed, 1);
+});
+
+test('cross-system and Galaxy travel zoom out, pan continuously, arrive and cap distant timing', () => {
+    for (const crossGalaxy of [false, true]) {
+        const {camera, step, settle} = makeCamera();
+        const destination = {x: -2200, y: -1500, scale: 1.7};
+        camera.travelTo(destination, travelViewport, {differentSystem: true, crossGalaxy});
+        const {contextScale, duration} = camera.travel;
+        assert.ok(contextScale < .68);
+        assert.ok(duration >= (crossGalaxy ? 1200 : 800) && duration <= (crossGalaxy ? 1500 : 1100));
+        const centers = [], scales = [];
+        while (camera.travel) {
+            step(); scales.push(camera.view.scale);
+            centers.push(camera.screenToWorld(680, 470));
+        }
+        assert.ok(Math.min(...scales) <= contextScale + 1e-8);
+        assert.ok(centers.every((c,i)=>!i || c.x >= centers[i-1].x), 'pan never reverses');
+        settle();
+        for (const key of ['x','y','scale']) near(camera.view[key], destination[key]);
+        camera.travelTo({x:-1e9,y:1e9,scale:1.2}, travelViewport, {crossGalaxy:true});
+        assert.equal(camera.travel.duration, 1500);
+        assert.ok(camera.travel.contextScale >= camera.minScale);
+    }
+});
+
+test('wheel, pan, drag cancellation and ordinary focus replace travel from its visible view', () => {
+    for (const action of ['wheel', 'pan', 'drag', 'focus']) {
+        const {camera, step, settle, frames} = makeCamera();
+        camera.travelTo({x:-2000,y:-1000,scale:1.7},travelViewport,{crossGalaxy:true});
+        for (let i=0;i<15;i++) step();
+        const visible = {...camera.view}, anchor = camera.screenToWorld(400,300);
+        if (action === 'wheel') {
+            camera.zoomAt(400,300,1.2);
+            assert.equal(camera.travel, null);
+            near(camera.target.scale,visible.scale*1.2);
+            step(); near(camera.screenToWorld(400,300).x,anchor.x); near(camera.screenToWorld(400,300).y,anchor.y);
+        } else if (action === 'pan') {
+            camera.panTo(visible.x+30,visible.y-20);
+            near(camera.view.x,visible.x+30); near(camera.view.scale,visible.scale);
+        } else if (action === 'drag') {
+            camera.stopAnimation();
+            assert.equal(frames.size,0);
+            for (const key of ['x','y','scale']) near(camera.view[key],visible[key]);
+        } else camera.setView({x:20,y:30,scale:1});
+        assert.equal(camera.travel,null);
+        settle();
+    }
+});
+
+test('reduced motion skips semantic travel, including when preference changes mid-route', () => {
+    const {camera,step,frames} = makeCamera();
+    const destination = {x:-2000,y:-1000,scale:1.7};
+    camera.travelTo(destination,travelViewport,{crossGalaxy:true});step();step();
+    camera.setReducedMotion(true);
+    assert.equal(camera.travel,null);assert.equal(frames.size,0);
+    for (const key of ['x','y','scale']) near(camera.view[key],destination[key]);
+    camera.travelTo({x:10,y:20,scale:1},travelViewport);
+    assert.equal(camera.travel,null);assert.equal(frames.size,0);near(camera.view.x,10);
+});
+
+test('semantic travel accelerates through the middle and uses proportional continuous zoom', () => {
+    const {camera,step} = makeCamera();
+    camera.travelTo({x:-2200,y:-1500,scale:1.7},travelViewport,{crossGalaxy:true});
+    const {duration,startScale,contextScale} = camera.travel;
+    step();
+    const centers = [camera.screenToWorld(680,470)];
+    let previous = 0;
+    for (const t of [.1,.16,.32,.4,.5,.62,.9,1]) {
+        step((t-previous)*duration);previous=t;
+        if ([.1,.4,.5,.9,1].includes(t)) centers.push(camera.screenToWorld(680,470));
+        if (t === .16) near(camera.view.scale,Math.sqrt(startScale*contextScale));
+        if (t === .32 || t === .62) near(camera.view.scale,contextScale);
+    }
+    const distance = (a,b) => Math.hypot(a.x-b.x,a.y-b.y);
+    const departure = distance(centers[0],centers[1]);
+    const middle = distance(centers[2],centers[3]);
+    const arrival = distance(centers[4],centers[5]);
+    assert.ok(middle>departure*10 && middle>arrival*10,'equal time windows have a much faster middle');
+    near(departure,arrival);
+    assert.equal(camera.travel,null);
 });

@@ -11,9 +11,9 @@ const galaxyModel = {
     normalizeEntry(record) {
         if (!record || typeof record.id !== "string" || !record.id.trim() || record.id.length > 100 ||
             typeof record.name !== "string" || !record.name.trim() || record.name.length > 60 ||
-            typeof record.description !== "string" || !record.description.trim() || record.description.length > 1000) return null;
+            (record.description != null && (typeof record.description !== "string" || record.description.length > 1000))) return null;
         return {
-            id: record.id, name: record.name, description: record.description,
+            id: record.id, name: record.name, description: record.description ?? "",
             category: typeof record.category === "string" ? record.category : "",
             parentId: typeof record.parentId === "string" && record.parentId ? record.parentId : null,
             x: Number.isFinite(record.x) ? record.x : 400,
@@ -102,8 +102,8 @@ const galaxyModel = {
     },
     validateChange(entry, entries) {
         if (!entry.name.trim()) return "Enter a name.";
-        if (!entry.description.trim()) return "Enter a description.";
-        if (entry.name.length > 60 || entry.description.length > 1000 || entry.category.length > 60) return "Please shorten the name, description or category.";
+        if (entry.description != null && typeof entry.description !== "string") return "Description must be text.";
+        if (entry.name.length > 60 || (entry.description?.length ?? 0) > 1000 || entry.category.length > 60) return "Please shorten the name, description or category.";
         if (entry.parentId && !entries.has(entry.parentId)) return "Choose an existing parent.";
         const visited = new Set([entry.id]);
         let ancestor = entries.get(entry.parentId);
@@ -114,15 +114,38 @@ const galaxyModel = {
         return "";
     },
     connectionKey(from, to) { return JSON.stringify([from, to].sort()); },
+    validateConnection(entries, relationships, from, to) {
+        if (!entries.has(from) || !entries.has(to)) return "Choose an existing entry.";
+        if (from === to) return "Choose a different entry.";
+        const key = this.connectionKey(from, to);
+        if (relationships.some(link => this.connectionKey(link.from, link.to) === key)) return "These entries are already connected.";
+        return "";
+    },
+    normalizeConnections(records, entries) {
+        const result = [], pairs = new Set(), ids = new Set();
+        records.forEach(record => {
+            if (!record || typeof record !== "object") return;
+            const from = record.from ?? record.sourceId, to = record.to ?? record.targetId;
+            if (typeof from !== "string" || typeof to !== "string" || from === to || !entries.has(from) || !entries.has(to)) return;
+            const pair = this.connectionKey(from, to);
+            if (pairs.has(pair)) return;
+            let id = typeof record.id === "string" && record.id.trim() && record.id.length <= 300 ? record.id : `connection:${pair}`;
+            if (ids.has(id)) id = `connection:${pair}`;
+            while (ids.has(id)) id += ":duplicate-id";
+            const type = typeof record.type === "string" && record.type.trim() && record.type.length <= 60 ? record.type : "related";
+            result.push({ id, from, to, type,
+                ...(typeof record.label === "string" && record.label.trim() && record.label.length <= 60 ? { label: record.label } : {}) });
+            pairs.add(pair); ids.add(id);
+        });
+        return result;
+    },
     buildConnections(entries, relationships) {
-        const edges = new Map();
-        relationships.forEach(({ from, to }) => {
-            if (from !== to && entries.has(from) && entries.has(to)) edges.set(this.connectionKey(from, to), { from, to, kind: "relationship" });
-        });
+        // A semantic link may relate a parent and child, but never replaces ancestry.
+        const edges = this.normalizeConnections(relationships, entries).map(link => ({ ...link, kind: "relationship" }));
         entries.forEach(entry => {
-            if (entry.parentId && entries.has(entry.parentId)) edges.set(this.connectionKey(entry.parentId, entry.id), { from: entry.parentId, to: entry.id, kind: "hierarchy" });
+            if (entry.parentId && entries.has(entry.parentId)) edges.push({ from: entry.parentId, to: entry.id, kind: "hierarchy" });
         });
-        return [...edges.values()];
+        return edges;
     },
     search(entries, query) {
         const term = query.trim().toLocaleLowerCase();
