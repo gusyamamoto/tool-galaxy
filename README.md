@@ -10,7 +10,7 @@ open `http://localhost:8000`. Use the same browser, address and port for saved d
   domain. Its normal form also allows choosing any valid parent manually.
 - **Add child:** use the small **+** on a tree row, the action in Entry Details,
   or the body's right-click menu. All three use the same parent context: Galaxy
-  → Sun → Planet → Moon → Satellite, then **Add child** at any deeper level.
+  → Sun → Planet → Moon → Satellite → Astronaut, then **Add Astronaut** at any deeper level.
   The form shows the chosen parent and derived role; **Change parent** restores
   manual selection. Content may end at any level.
 - **Hierarchy:** the left tree derives directly from `parentId`, with no depth
@@ -82,7 +82,8 @@ Version 5 stores entries with `id`, `parentId`, `name`, `description`, `category
 | 1 | Sun | 1.75 |
 | 2 | Planet | 1 |
 | 3 | Moon | 0.65 |
-| 4+ | Satellite | 0.58 |
+| 4 | Satellite | 0.58 |
+| 5+ | Astronaut | 0.50 |
 
 The tree can continue beyond these visual levels. Iterative normalization,
 ancestry traversal and layout traversal avoid a fixed maximum depth. Missing
@@ -211,7 +212,7 @@ One cooling D3 simulation maintains three local levels:
   24px clearance, three iterations. Suns prefer a filled region around their
   Galaxy, rather than a rigid orbital rail. Sun radial/angular strengths are
   **0.025 / 0.012**. Galaxy regions don't body-collide with their own contents.
-- Planets, Moons and deeper Satellites use their parent's preferred orbital band.
+- Planets, Moons and Satellites use their parent's preferred orbital band.
   Bottom-up branch envelopes account for descendants. Planet radial/angular
   strengths are **0.10 / 0.025**; Moon/Satellite strengths **0.14 / 0.04**. Radial
   force has a dead zone of `max(12px, 12% of target radius)` and is capped at
@@ -365,11 +366,38 @@ partial orbit fragments.
 - Planet: **rocky, gas giant, icy, oceanic, ringed, desert**. Only the ringed
   default archetype has rings; approximately one in six automatic Planets.
 - Sun: warm/golden. Moon: rocky/icy/earthy.
-- Satellite (depth 4 and deeper): **twin-panel, dish, probe, station**. Small
+- Satellite (depth 4): **twin-panel, dish, probe, station**. Small
   native SVG silhouettes use metallic bodies, muted panels and restrained antenna
   strokes. They fit inside the existing Satellite size, smaller than a Moon, with
   stable ID-based archetype/orientation and optional archetype/palette overrides.
   They use no spherical surface, procedural textures, filters, or per-frame redraw.
+- Astronaut (depth 5 and deeper): **floating, angled, extended-arm, compact-eva**.
+  Neutral white/grey EVA figures have a dark visor, small backpack and restrained
+  limbs. Stable ID hashing chooses the pose and tilt; compatible appearance
+  overrides remain supported. A 24px SVG viewBox scales into a 13px body at 100%
+  zoom, smaller than Satellite (15.08px) and Moon (16.9px). No raster/filter work.
+
+Astronaut branches use compact local placement rather than additional orbital
+bands. Default parent clearance is about 35px under another Astronaut and 40px
+under a Satellite, with small golden-angle sibling offsets. Local radial/angular
+strengths are 0.045/0.012, with a wider resting slack, subdued drift and weaker
+repulsion. Cartesian sibling separation and small collision margins prevent
+stacking. Drag release preserves the chosen angle and an adaptive clamped radius
+using the existing layout record. Each Satellite branch has a soft outer cluster
+boundary sized as 54 + 18 × sqrt(Astronaut count), never recursive depth; the
+envelope stops accumulating new orbital layers. Reasonable placement floats
+freely; only excessive extension sustains local return motion until it can cool.
+
+Astronaut parent-child edges render as low-contrast, solid quadratic SVG tethers
+with deterministic slack (one path per existing hierarchy edge). They update
+from live world endpoints on physics, drag and camera changes, with a 0.65px
+screen-space stroke. They are noninteractive and remain hierarchy edges, separate
+from dashed semantic relationships. Astronaut bodies fade in at 0.74–0.86,
+labels at 0.82–0.96 and tethers at 0.78–0.96. Search/focus can temporarily reveal
+the required ancestry and tethers at far zoom; ordinary zoom-out hides it again.
+Existing tiers and other body fades remain unchanged. Stored depth-5+ entries
+automatically derive Astronaut roles; schema 5, IDs, parents, connections, content
+and appearance metadata stay intact without a new migration.
 
 The model already preserves `appearance` for a future small Edit Appearance UI:
 `{mode:"manual",archetype:"oceanic",rings:true,palette:"teal"}`. Allowed palettes
@@ -379,15 +407,22 @@ independent of subscription/features. No customization UI is added yet.
 
 ## Development sample and tests
 
-**Load Sample Galaxy** opens 183 temporary entries: four Galaxies (Work, Food,
-Travel, Personal), eight Suns, 24 Planets, 48 Moons, 99 Satellites, including a
-depth-seven recipe branch and eight semantic links demonstrating technology,
+**Load Sample Galaxy** opens 187 temporary entries: four Galaxies (Work, Food,
+Travel, Personal), eight Suns, 24 Planets, 48 Moons, 96 Satellites and seven
+Astronauts, including a depth-eight recipe branch with several Astronaut siblings
+and eight semantic links demonstrating technology,
 recipes/ingredients, travel, business and cross-Galaxy interests. Normal interactions use the same model/renderer/
 physics. Sample mode neither reads nor writes real saved data. Remove Sample or
 refresh returns to it; the activation query is removed immediately.
 
 Run unit tests in PowerShell: `node --test (rg --files tests -g '*.test.js')`.
 Run isolated real-browser regression/visual checks:
+
+`python tests/browser-check.py --astronaut-only --screenshots` checks contextual
+creation through depth eight, sidebar icons, sibling/cluster clearance, curved
+tether geometry through drag/zoom, search reveal and focus, old deep Satellite
+metadata on refresh, stable poses, semantic line navigation and persistence,
+Sample isolation, mobile presentation and projection cost.
 `python tests/browser-check.py --screenshots`. The standard-library harness
 launches headless Chrome/Edge with a temporary profile and local HTTP server;
 it never accesses your normal browser profile. Screenshots are retained in the
@@ -450,7 +485,7 @@ Motion/settling assertions remain in the physics and full browser regressions.
 `python tests/browser-check.py --performance-only` profiles active/idle rendering,
 display-scale changes and individual paint layers using the isolated sample.
 Add `--software-rendering` to profile without GPU compositing separately.
-`python tests/browser-check.py --visual-only --screenshots` checks the 183-entry
+`python tests/browser-check.py --visual-only --screenshots` checks the 187-entry
 nebula sample, all zoom tiers, zooming both directions, deep selection/search,
 Food/Work/Travel zoom-out without deselection, Galaxy cloud/name and Sun
 body/name clicks, all four artificial Satellite silhouettes, interrupted focus,
@@ -475,7 +510,7 @@ check migrated My Galaxy organization, drag parents/children at several zoom
 levels and refresh. Verify that formerly pinned bodies move naturally while their
 content and hierarchy survive. Focus Food, Work and Travel, zoom to 80%, then back
 to Universe without changing selection; every descendant should fade. Search a
-deep Satellite and repeat, including interrupting its focus transition. Check
+deep Astronaut and repeat, including interrupting its focus transition. Check
 name/cloud/Sun clicks, far-drop recovery, sparse/wide systems, and stable Satellite
 variants after reload. Verify Galaxy region prominence and the quieter
 orbital guides on your display. Compare two- and eight-Planet families, and

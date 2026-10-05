@@ -32,7 +32,7 @@ test('one creation context derives each parent and child role, including deeper 
         const child=hierarchy.childContext(data,`n${i}`);
         assert.equal(child.parentId,`n${i}`);assert.equal(child.depth,i+1);
         assert.equal(child.role,model.roleAtDepth(i+1));
-        assert.equal(child.action,i>=4?'Add child':`Add ${model.roles[child.role].name}`);
+        assert.equal(child.action,`Add ${model.roles[child.role].name}`);
     }
     assert.equal(hierarchy.childContext(data,'missing'),null);
 });

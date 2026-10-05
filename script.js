@@ -138,7 +138,7 @@ const camera = new GraphCamera({
         graphViewport.style.setProperty("--camera-scale", scale);
         graphViewport.style.setProperty("--native-label-scale", Math.min(1, scale / 0.62));
         const detail = semanticDetail = cosmosView.detail(scale);
-        for (const role of ["sun", "planet", "moon", "satellite"]) {
+        for (const role of ["sun", "planet", "moon", "satellite", "astronaut"]) {
             graphViewport.style.setProperty(`--${role}-detail`, detail[role]);
             graphViewport.style.setProperty(`--${role}-render-scale`, scale * (.72 + detail[role] * .28));
             if (role !== "sun") graphViewport.style.setProperty(`--${role}-label-detail`, detail[`${role}Label`]);
@@ -824,14 +824,15 @@ function updateEntryNode(entry, node) {
     let ring = node.querySelector(".planet-rings");
     if (style.rings && !ring) { ring = document.createElement("span"); ring.className = "planet-rings"; ring.setAttribute("aria-hidden", "true"); node.prepend(ring); }
     if (!style.rings) ring?.remove();
-    node.querySelector(".satellite-craft")?.remove();
+    node.querySelector(".satellite-craft,.astronaut-figure")?.remove();
     if (entry.role === "satellite") node.insertAdjacentHTML("afterbegin", galaxyAppearance.satellite(style));
+    if (entry.role === "astronaut") node.insertAdjacentHTML("afterbegin", galaxyAppearance.astronaut(style));
     if (entry.role === "galaxy") {
         let region = regions.get(entry.id);
         if (!region) { region = document.createElement("canvas"); region.width = region.height = 512; region.className = "galaxy-region"; regions.set(entry.id, region); regionsLayer.appendChild(region); }
         region.dataset.archetype = style.archetype;
         galaxyAppearance.prepareCloud(region, style);
-    } else if (entry.role !== "satellite") {
+    } else if (!["satellite", "astronaut"].includes(entry.role)) {
         regions.get(entry.id)?.remove(); regions.delete(entry.id);
         const texture = `<svg xmlns="http://www.w3.org/2000/svg" width="180" height="180"><filter id="terrain"><feTurbulence type="fractalNoise" baseFrequency=".075 .11" numOctaves="3" seed="${hash % 997}" stitchTiles="stitch"/><feColorMatrix type="saturate" values="0"/><feComponentTransfer><feFuncR type="linear" slope="1.8" intercept="-.4"/><feFuncG type="linear" slope="1.8" intercept="-.4"/><feFuncB type="linear" slope="1.8" intercept="-.4"/></feComponentTransfer></filter><rect width="100%" height="100%" filter="url(#terrain)"/></svg>`;
         // Metadata/parent edits keep an existing baked field for this stable ID.
@@ -1010,7 +1011,7 @@ function renderNode(entry, node) {
     const culled = point.x + margin < 0 || point.y + margin < 0 ||
         point.x - margin > window.innerWidth || point.y - margin > window.innerHeight;
     if (node.dataset.culled !== String(culled)) node.dataset.culled = String(culled);
-    if (cameraViewReady && particle && !culled && !hidden && entry.depth > 0 && entry.role !== "satellite" && camera.view.scale >= .68) galaxyAppearance.prepareTextures(node, getNodeRadius(entry) * 2 * camera.view.scale);
+    if (cameraViewReady && particle && !culled && !hidden && entry.depth > 0 && !["satellite", "astronaut"].includes(entry.role) && camera.view.scale >= .68) galaxyAppearance.prepareTextures(node, getNodeRadius(entry) * 2 * camera.view.scale);
     if (node.renderX === point.x && node.renderY === point.y) return;
     node.style.transform = `translate(${point.x}px, ${point.y}px) translate(-50%, -50%)`;
     node.renderX = point.x;
@@ -1132,6 +1133,11 @@ function updateConnections() {
             element.setAttribute("y1", start.y);
             element.setAttribute("x2", end.x);
             element.setAttribute("y2", end.y);
+            if (element.classList.contains("astronaut-tether")) {
+                const dx = end.x - start.x, dy = end.y - start.y, length = Math.hypot(dx, dy) || 1;
+                const slack = Math.min(18, length * .18) * (galaxyAppearance.hash(`${from}:${to}`) % 2 ? 1 : -1);
+                element.setAttribute("d", `M${start.x},${start.y} Q${(start.x+end.x)/2-dy/length*slack},${(start.y+end.y)/2+dx/length*slack} ${end.x},${end.y}`);
+            }
             element.renderFromX = start.x;
             element.renderFromY = start.y;
             element.renderToX = end.x;
@@ -1168,6 +1174,14 @@ function updateConnections() {
             }
             element.classList.toggle("hovered", !!hovered);
             element.classList.toggle("line-hovered", lineHovered);
+        } else if (element.classList.contains("astronaut-tether")) {
+            const parentNode = nodes.get(from), childNode = nodes.get(to);
+            const endpointsVisible = [parentNode, childNode].every(node => node.dataset.semanticHidden !== "true");
+            const revealed = [parentNode, childNode].every(node => node.classList.contains("temporarily-revealed"));
+            const opacity = endpointsVisible ? (revealed ? .23 : semanticDetail.tethers * .18) : 0;
+            element.style.opacity = opacity;
+            element.style.display = opacity ? "" : "none";
+            element.style.strokeWidth = .65 / camera.view.scale;
         } else {
             const child = physics.particles.get(to);
             const selectedAncestry = selected?.depth >= 3 && ancestry.has(to) && ancestry.has(from) && fromEntry.depth > 0;
@@ -1186,8 +1200,10 @@ function rebuildConnections() {
     lines.length = 0;
     connections.forEach(connection => {
         const { id, from, to, kind } = connection;
-        const element = document.createElementNS("http://www.w3.org/2000/svg", "line");
+        const tether = kind === "hierarchy" && entries.get(to).role === "astronaut";
+        const element = document.createElementNS("http://www.w3.org/2000/svg", tether ? "path" : "line");
         element.classList.add("connection-line");
+        if (tether) element.classList.add("astronaut-tether");
         element.dataset.kind = kind;
         if (id) element.dataset.connectionId = id;
         connectionsLayer.appendChild(element);
@@ -1476,6 +1492,7 @@ function refreshSearchResults() {
     const matchIds = new Set(matches.map(entry => entry.id));
     nodes.forEach((node, id) => node.classList.toggle("search-match", matchIds.has(id)));
     entries.forEach(entry => renderNode(entry, nodes.get(entry.id)));
+    updateConnections();
     searchResults.hidden = !searchOpen || !searchField.value.trim();
     matches.slice(0, 8).forEach((entry) => {
         const item = document.createElement("li");

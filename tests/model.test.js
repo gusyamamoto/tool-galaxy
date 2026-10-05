@@ -14,7 +14,8 @@ function chain(count = 8) {
 }
 test('generic tree computes visual depth through thousands of levels without recursion', () => {
     const entries = chain(2000);
-    assert.deepEqual([...entries.values()].slice(0,6).map(e => e.role), ['galaxy','sun','planet','moon','satellite','satellite']);
+    assert.deepEqual([...entries.values()].slice(0,6).map(e => e.role), ['galaxy','sun','planet','moon','satellite','astronaut']);
+    assert.ok([...entries.values()].slice(5).every(e=>e.role==='astronaut'));
     assert.equal(entries.get('e1999').depth, 1999);
     assert.equal(model.ancestors(entries,'e1999').length,1999);
     assert.ok([...entries.values()].every(e=>model.validateChange(e, entries)===''));

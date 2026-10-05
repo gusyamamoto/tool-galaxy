@@ -19,15 +19,17 @@ test('sample has a modest isolated set of cross-hierarchy and cross-Galaxy conne
     assert.ok(links.some(link=>root(link.from)!==root(link.to)));
     snapshot.connections[0].type='changed';assert.equal(sample.build().connections[0].type,'related');
 });
-test('183 entries exercise four Galaxies, eight Suns and seven levels of nesting',()=>{
+test('187 entries exercise four Galaxies, eight Suns and compact Astronaut branches through depth eight',()=>{
     const snapshot=sample.build(),entries=new Map(snapshot.entries.map(e=>[e.id,model.normalizeEntry(e)]));
-    model.normalizeHierarchy(entries);assert.equal(entries.size,183);
+    model.normalizeHierarchy(entries);assert.equal(entries.size,187);
     const counts={};entries.forEach(e=>{counts[e.role]=(counts[e.role]||0)+1;assert.equal(model.validateChange(e,entries),'');});
-    assert.deepEqual(counts,{galaxy:4,sun:8,planet:24,moon:48,satellite:99});
+    assert.deepEqual(counts,{galaxy:4,sun:8,planet:24,moon:48,satellite:96,astronaut:7});
     assert.equal(entries.get('sample-deep-7').depth,7);
+    assert.equal(entries.get('sample-deep-8').depth,8);
+    assert.equal(model.childrenOf(entries,'sample-deep-5').length,4);
     const galaxies=[...entries.values()].filter(e=>e.depth===0);
     assert.ok(galaxies.every(e=>model.childrenOf(entries,e.id).length===2));
     assert.equal(new Set(galaxies.map(e=>appearance.resolve(e).archetype)).size,4);
     assert.equal(new Set([...entries.values()].filter(e=>e.depth===2).map(e=>appearance.resolve(e).archetype)).size,6);
-    assert.equal(model.buildConnections(entries,[]).length,179);assert.deepEqual(plain(snapshot.layout),[]);
+    assert.equal(model.buildConnections(entries,[]).length,183);assert.deepEqual(plain(snapshot.layout),[]);
 });

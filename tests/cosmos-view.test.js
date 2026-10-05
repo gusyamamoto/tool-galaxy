@@ -109,3 +109,12 @@ test('responsive opacity inherits the footprint dead band, so normal floating do
         assert.equal(view.cloudOpacity(.52,viewport,region),opacity);
     }
 });
+
+test('Astronauts and tethers extend detail fades without changing existing tier boundaries',()=>{
+    const view=load();
+    assert.equal(view.detail(.58).astronaut,0);assert.equal(view.detail(.58).tethers,0);
+    assert.ok(view.detail(.8).astronaut>0 && view.detail(.8).astronaut<1);
+    assert.equal(view.detail(.78).tethers,0);
+    assert.equal(view.detail(.96).astronaut,1);assert.equal(view.detail(.96).astronautLabel,1);assert.equal(view.detail(.96).tethers,1);
+    assert.deepEqual(plain(view.tiers),{galaxy:.45,system:.58,close:.78});
+});

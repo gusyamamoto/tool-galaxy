@@ -27,7 +27,7 @@ const cosmosHierarchy = {
         if (parentId && !parent) return null;
         const depth = parent ? parent.depth + 1 : 0, role = galaxyModel.roleAtDepth(depth);
         return { parentId: parent?.id || null, depth, role,
-            action: parent?.depth >= 4 ? "Add child" : `Add ${galaxyModel.roles[role].name}` };
+            action: `Add ${galaxyModel.roles[role].name}` };
     }
 };
 
