@@ -18,7 +18,7 @@
         </div>
         <div id="graph-viewport">
             <div id="graph-world">
-                <svg id="connections" aria-hidden="true"></svg>
+                <svg id="connections" role="group" aria-label="Cosmos connections"></svg>
             </div>
             <div id="regions-layer" aria-hidden="true"></div>
             <div id="nodes-layer"></div>
@@ -64,6 +64,17 @@
             </div>
             <nav id="panel-ancestry" aria-label="Entry ancestry" hidden></nav>
             <p id="panel-parent" hidden></p>
+            <section id="panel-connections" aria-labelledby="connections-heading">
+                <header class="connections-header"><h3 id="connections-heading">Connections</h3><button id="connect-entry-button" type="button">+ Connect</button></header>
+                <ul id="panel-connection-list"></ul>
+                <form id="connection-picker" hidden>
+                    <label id="connection-prompt" for="connection-search"></label>
+                    <input id="connection-search" type="search" placeholder="Search entries" autocomplete="off" maxlength="60" aria-controls="connection-results">
+                    <ul id="connection-results" aria-label="Connection targets"></ul>
+                    <p id="connection-status" role="status" aria-live="polite"></p>
+                    <button id="cancel-connection" type="button">Cancel</button>
+                </form>
+            </section>
             <div id="entry-actions" hidden>
                 <div class="inspector-main-actions">
                     <button id="add-child-button" type="button">+ Add child</button>
@@ -80,9 +91,14 @@
             <p id="entry-action-status" role="status" hidden></p>
         </aside>
 
+        <div id="connection-hint" role="tooltip" hidden>
+            <span id="connection-hint-text"></span>
+            <div id="connection-hint-actions" hidden><button id="connection-hint-go" type="button"></button><button id="connection-hint-close" type="button" aria-label="Close connection preview">×</button></div>
+        </div>
         <div id="entry-context-menu" role="menu" aria-label="Entry actions" hidden>
             <span id="context-entry-name" class="context-entry-name" aria-hidden="true"></span>
             <button type="button" role="menuitem" data-action="create">Add child</button>
+            <button type="button" role="menuitem" data-action="connect">Connect to...</button>
             <button type="button" role="menuitem" data-action="edit">Edit</button>
             <button type="button" role="menuitem" data-action="delete">Delete</button>
         </div>
@@ -95,8 +111,8 @@
             <label for="entry-name">Entry name</label>
             <input id="entry-name" name="name" type="text" maxlength="60" required autofocus>
 
-            <label for="entry-description">Description</label>
-            <textarea id="entry-description" name="description" rows="4" maxlength="1000" required></textarea>
+            <label for="entry-description">Description (optional)</label>
+            <textarea id="entry-description" name="description" rows="4" maxlength="1000"></textarea>
 
             <label for="entry-category">Category / label (optional)</label>
             <input id="entry-category" name="category" type="text" maxlength="60">
@@ -132,6 +148,7 @@
     <script src="model.js"></script>
     <script src="appearance.js"></script>
     <script src="cosmos-view.js"></script>
+    <script src="connection-view.js"></script>
     <script src="sample-data.js"></script>
     <script src="storage.js"></script>
     <script src="vendor/d3-force.bundle.min.js"></script>

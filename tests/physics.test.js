@@ -18,6 +18,18 @@ function family(){return make([{id:'g',seedLayout:true},{id:'s',parentId:'g',see
     {id:'p',parentId:'s',seedLayout:true},{id:'m',parentId:'p',seedLayout:true},{id:'t',parentId:'m',seedLayout:true}]);}
 function separated(nodes){nodes.filter(n=>n.depth>0).forEach((a,i,all)=>all.slice(i+1).forEach(b=>
     assert.ok(distance(a,b)>=a.radius+b.radius-1,`${a.id} overlaps ${b.id}`)));}
+
+test('semantic connections have zero influence on positions, envelopes or orbital bands',()=>{
+    const records=plain(sample.build().entries).map(entry=>({...entry,seedLayout:true}));
+    const a=make(records),b=make(records,new Map(),sample.build().connections);
+    advance(a,300);advance(b,300);
+    for(const [id,node] of a.particles){
+        const other=b.particles.get(id);
+        assert.deepEqual([node.x,node.y,node.vx,node.vy,node.envelope,node.orbitRadius],
+            [other.x,other.y,other.vx,other.vy,other.envelope,other.orbitRadius]);
+    }
+    assert.ok(b.linkForce.links().every(link=>b.linkForce.strength()(link)===0));
+});
 test('183 bodies retain separate Galaxy footprints and local solar trees',()=>{
     const p=fixture(),nodes=advance(p,450),regions=[...p.galaxies.values()];
     assert.equal(regions.length,4);assert.equal(p.systems.size,8);assert.equal(p.ordered.length,183);

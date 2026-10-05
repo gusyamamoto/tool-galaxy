@@ -42,6 +42,25 @@ const galaxySample = {
         const deep = add("sample-deep-5", "Parmigiana techniques", "sample-satellite-2-0-0-0");
         const deeper = add("sample-deep-6", "Sauce preparation", deep);
         add("sample-deep-7", "Slow simmer notes", deeper);
-        return { entries, connections: [], layout: [] };
+        const rename = (id, name) => {
+            const entry = entries.find(entry => entry.id === id);
+            entry.name = name; entry.description = `Explore ${name}.`;
+        };
+        rename("sample-satellite-0-0-0-0", "VS Code");
+        rename("sample-satellite-0-0-1-0", "GitHub");
+        rename("sample-planet-3-2", "Protein");
+        rename("sample-moon-3-2-0", "Chicken");
+        rename("sample-moon-3-2-1", "Tofu");
+        const pairs = [
+            ["sample-moon-0-1-0", "sample-satellite-0-0-0-0"], // Codex / VS Code
+            ["sample-moon-0-1-0", "sample-satellite-0-0-1-0"], // Codex / GitHub
+            ["sample-satellite-0-0-0-0", "sample-satellite-0-0-1-0"],
+            ["sample-satellite-2-0-0-0", "sample-moon-3-2-0"], // Recipe / ingredient
+            ["sample-satellite-2-0-0-1", "sample-moon-3-2-0"],
+            ["sample-moon-4-0-0", "sample-moon-5-0-0"], // Portugal / Flights
+            ["sample-moon-1-0-1", "sample-moon-1-1-1"], // Roadmap / Finance
+            ["sample-moon-5-2-0", "sample-moon-7-0-1"] // Hiking / Cardio, across Galaxies
+        ];
+        return { entries, connections: pairs.map(([from, to], index) => ({ id: `sample-connection-${index}`, from, to, type: "related" })), layout: [] };
     }
 };

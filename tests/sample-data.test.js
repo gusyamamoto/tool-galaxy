@@ -8,6 +8,17 @@ test('development query is explicit and generation deterministic and isolated',(
     assert.deepEqual(plain(sample.build()),plain(sample.build()));
     assert.equal(fs.readFileSync(path.join(__dirname,'../sample-data.js'),'utf8').includes('localStorage'),false);
 });
+
+test('sample has a modest isolated set of cross-hierarchy and cross-Galaxy connections',()=>{
+    const snapshot=sample.build(), entries=new Map(snapshot.entries.map(e=>[e.id,model.normalizeEntry(e)]));
+    model.normalizeHierarchy(entries);
+    const links=plain(model.normalizeConnections(snapshot.connections,entries));
+    assert.equal(links.length,8);assert.deepEqual(links,plain(snapshot.connections));
+    assert.ok(links.every(link=>entries.get(link.from).parentId!==entries.get(link.to).parentId));
+    const root=id=>[...model.ancestors(entries,id)].at(-1)?.id||id;
+    assert.ok(links.some(link=>root(link.from)!==root(link.to)));
+    snapshot.connections[0].type='changed';assert.equal(sample.build().connections[0].type,'related');
+});
 test('183 entries exercise four Galaxies, eight Suns and seven levels of nesting',()=>{
     const snapshot=sample.build(),entries=new Map(snapshot.entries.map(e=>[e.id,model.normalizeEntry(e)]));
     model.normalizeHierarchy(entries);assert.equal(entries.size,183);

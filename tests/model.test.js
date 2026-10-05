@@ -74,12 +74,31 @@ test('root pins release without changing content, ancestry or semantic relations
     assert.ok(model.buildConnections(entries,links).some(e=>e.kind==='relationship'&&e.from==='e0'&&e.to==='e4'));
     assert.deepEqual(plain([...model.normalizeLayout([...layout].map(([id,p])=>({id,...p})),entries)]),plain([...layout]));
 });
-test('derived hierarchy edges override duplicate semantic edges but preserve independent relationships', () => {
+test('semantic links remain independent even between a structural parent and child', () => {
     const entries=chain(4), links=[{from:'e1',to:'e0'},{from:'e0',to:'e3'},{from:'e0',to:'e0'},{from:'e0',to:'missing'}];
     const edges=model.buildConnections(entries,links);
-    assert.equal(edges.length,4); assert.equal(edges.filter(e=>e.kind==='relationship').length,1);
+    assert.equal(edges.length,5); assert.equal(edges.filter(e=>e.kind==='relationship').length,2);
     entries.get('e3').parentId='e1';
     assert.ok(model.buildConnections(entries,links).some(e=>e.from==='e1'&&e.to==='e3'));
+});
+
+test('connection normalization preserves legacy pairs, stable IDs and richer labels', () => {
+    const entries=chain(5), records=[{from:'e1',to:'e3'}, {from:'e3',to:'e1'},
+        {id:'custom-link',from:'e0',to:'e4',type:'uses',label:'Research'},
+        {id:'custom-link',sourceId:'e2',targetId:'e4'}, {from:'e0',to:'missing'},
+        {from:'e0',to:'e0'}, null, {from:3,to:'e2'}];
+    const links=plain(model.normalizeConnections(records,entries));
+    assert.equal(links.length,3); assert.equal(new Set(links.map(link=>link.id)).size,3);
+    assert.deepEqual(links[1],{id:'custom-link',from:'e0',to:'e4',type:'uses',label:'Research'});
+    assert.equal(links[0].type,'related');
+    assert.deepEqual(plain(model.normalizeConnections(links,entries)),links);
+    assert.equal(model.validateConnection(entries,links,'e1','e3'),'These entries are already connected.');
+    assert.equal(model.validateConnection(entries,links,'e3','e1'),'These entries are already connected.');
+    assert.equal(model.validateConnection(entries,links,'e2','e2'),'Choose a different entry.');
+    assert.equal(model.validateConnection(entries,links,'e0','missing'),'Choose an existing entry.');
+    assert.equal(model.validateConnection(entries,links,'e1','e4'),'');
+    entries.delete('e4');
+    assert.deepEqual(plain(model.normalizeConnections(links,entries)),[links[0]]);
 });
 test('normalization preserves optional appearance metadata and rejects invalid content', () => {
     const data={...entry('test'),appearance:{mode:'manual',archetype:'ringed',rings:true,palette:'amber'}};
@@ -91,4 +110,22 @@ test('search spans all depths with case insensitive prefix ranking and duplicate
     const entries=chain(); entries.get('e0').name='Fresh Apple'; entries.get('e6').name='Apple'; entries.get('e7').name='Apple';
     assert.deepEqual(plain(model.search(entries,' APP ')).map(e=>e.id),['e6','e7','e0']);
     assert.equal(model.search(entries,'').length,0);
+});
+
+test('descriptions are optional at every depth and remain valid after clearing or reload', () => {
+    const entries = chain();
+    entries.forEach(record => {
+        for (const description of ['', '   ', undefined, null]) {
+            const normalized = model.normalizeEntry({...record, description});
+            assert.ok(normalized);
+            assert.equal(normalized.description, description ?? '');
+            assert.equal(model.validateChange(normalized, entries), '');
+            assert.equal(model.normalizeEntry(plain(normalized)).description, description ?? '');
+        }
+        assert.equal(model.validateChange({...record, description: ''}, entries), '');
+        assert.equal(model.normalizeEntry({...record, description: 42}), null);
+        assert.equal(model.normalizeEntry({...record, description: 'x'.repeat(1001)}), null);
+        assert.match(model.validateChange({...record, description: 'x'.repeat(1001)}, entries), /shorten/);
+        assert.match(model.validateChange({...record, description: '', name: ' '}, entries), /name/);
+    });
 });

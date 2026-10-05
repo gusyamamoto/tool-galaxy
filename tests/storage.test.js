@@ -182,3 +182,22 @@ test("saving also rejects a future snapshot changed by another tab",()=>{
     assert.throws(()=>adapter.save({entries:[],connections:[],layout:[]}),/cannot be overwritten/);
     assert.equal(data.get(currentKey),raw);
 });
+
+test("empty descriptions round trip without changing schema or semantic connections",()=>{
+    const {adapter} = makeStorage();
+    const snapshot = {entries:[{...legacy.tools[0],description:'',parentId:null}],
+        connections:[{id:'optional-description-link',from:'custom-8',to:'github',type:'related'}],layout:[]};
+    adapter.save(snapshot);
+    assert.equal(adapter.load().entries[0].description,'');
+    assert.deepEqual(plain(adapter.load().connections),snapshot.connections);
+    assert.equal(adapter.load().version,5);
+});
+
+test("normalized connection metadata round trips without changing version or hierarchy",()=>{
+    const {adapter}=makeStorage();
+    const snapshot={entries:legacy.tools,connections:[{id:'semantic-1',from:'custom-8',to:'github',type:'uses',label:'Research'}],layout:[]};
+    adapter.save(snapshot);
+    const saved=plain(adapter.load());
+    assert.equal(saved.version,5);assert.deepEqual(saved.connections,snapshot.connections);
+    assert.deepEqual(saved.entries,snapshot.entries);assert.deepEqual(saved.layout,[]);
+});
