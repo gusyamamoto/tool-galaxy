@@ -140,7 +140,7 @@ test("Fit Galaxy includes asymmetric world bounds with panel space and padding",
     near((topLeft.y + bottomRight.y) / 2, (viewport.top + viewport.bottom) / 2);
 });
 
-test("Fit Galaxy handles deliberately remote pins and avoids magnifying tiny galaxies", () => {
+test("Fit Galaxy handles distant bodies and avoids magnifying tiny galaxies", () => {
     const { camera, settle } = makeCamera();
     const viewport = { left: 20, right: 400, top: 240, bottom: 600 };
     camera.fitBounds({ left: -100000, right: 100000, top: -5000, bottom: 8000 }, viewport);

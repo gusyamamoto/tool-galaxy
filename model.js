@@ -2,10 +2,10 @@
 const galaxyModel = {
     roles: {
         galaxy: { name: "Galaxy", label: "Galaxy · Domain", body: "galaxy", scale: 1 },
-        sun: { name: "Sun", label: "Sun · Topic", body: "sun", scale: 1.35 },
+        sun: { name: "Sun", label: "Sun · Topic", body: "sun", scale: 1.75 },
         planet: { name: "Planet", label: "Planet · Category", body: "planet", scale: 1 },
-        moon: { name: "Moon", label: "Moon · Subcategory", body: "moon", scale: 0.66 },
-        satellite: { name: "Satellite", label: "Satellite · Entry", body: "satellite", scale: 0.43 }
+        moon: { name: "Moon", label: "Moon · Subcategory", body: "moon", scale: 0.65 },
+        satellite: { name: "Satellite", label: "Satellite · Entry", body: "satellite", scale: 0.58 }
     },
     roleAtDepth(depth) { return ["galaxy", "sun", "planet", "moon"][depth] || "satellite"; },
     normalizeEntry(record) {
@@ -86,12 +86,12 @@ const galaxyModel = {
         });
         records.forEach(record => {
             if (!record || !entries.has(record.id)) return;
-            if (record.pinned === true && Number.isFinite(record.x) && Number.isFinite(record.y)) {
-                layout.set(record.id, { x: record.x, y: record.y, pinned: true });
-            } else if (Number.isFinite(record.angle) && Number.isFinite(record.radius) && record.radius >= 0) {
+            if (Number.isFinite(record.angle) && Number.isFinite(record.radius) && record.radius >= 0 &&
+                !(record.pinned === true && Number.isFinite(record.x) && Number.isFinite(record.y))) {
                 layout.set(record.id, { parentId: entries.get(record.id).parentId, angle: record.angle, radius: record.radius });
             } else if (Number.isFinite(record.x) && Number.isFinite(record.y)) {
-                // Old soft coordinates become an initial position and a parent-relative region.
+                // Historical soft positions and pins both start at their saved coordinates.
+                // Only a flowing parent-relative influence survives; roots need no influence.
                 const entry = entries.get(record.id), parent = entries.get(entry.parentId);
                 entry.x = record.x; entry.y = record.y;
                 if (parent) layout.set(record.id, { parentId: parent.id,

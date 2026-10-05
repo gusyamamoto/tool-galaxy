@@ -81,7 +81,7 @@ class GraphCamera {
         const height = Math.max(1, viewport.bottom - viewport.top - padding * 2);
         const scale = Math.min(maxScale, width / Math.max(1, bounds.right - bounds.left),
             height / Math.max(1, bounds.bottom - bounds.top));
-        // Deliberately remote pins must also fit. Wheel zoom can return to this scale.
+        // Distant dragged bodies must also fit. Wheel zoom can return to this scale.
         this.minScale = Math.min(this.minScale, scale);
         this.setView({ x: (viewport.left + viewport.right) / 2 - (bounds.left + bounds.right) / 2 * scale,
             y: (viewport.top + viewport.bottom) / 2 - (bounds.top + bounds.bottom) / 2 * scale,

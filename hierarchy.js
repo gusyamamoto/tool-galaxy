@@ -80,7 +80,7 @@ class HierarchySidebar {
         this.host.classList.toggle("sidebar-collapsed", this.collapsed);
         this.sidebar.hidden = this.collapsed;
         this.toggle.setAttribute("aria-expanded", String(!this.collapsed));
-        this.toggle.title = this.toggle.ariaLabel = this.collapsed ? "Show hierarchy" : "Hide hierarchy";
+        this.toggle.title = this.toggle.ariaLabel = this.collapsed ? "Show navigation" : "Hide navigation";
         this.resize.setAttribute("aria-valuemin", String(Math.round(Math.min(min, max))));
         this.resize.setAttribute("aria-valuemax", String(Math.round(max)));
         this.resize.setAttribute("aria-valuenow", String(Math.round(this.width)));
@@ -146,7 +146,7 @@ class HierarchySidebar {
             row.classList.toggle("is-selected", id === this.selectedId);
             row.classList.toggle("is-search-match", this.searchMatches.has(id));
             row.setAttribute("aria-selected", String(id === this.selectedId));
-            row.dataset.role = entry.role; row.title = `${entry.name} · ${galaxyModel.roles[entry.role].name} · Depth ${entry.depth}`;
+            row.dataset.role = entry.role; row.title = `${entry.name} · ${galaxyModel.roles[entry.role].name}`;
             row.querySelector(".tree-name").textContent = entry.name;
             const disclosure = row.querySelector(".tree-disclosure");
             disclosure.disabled = !hasChildren; disclosure.ariaLabel = `${this.expanded.has(id) ? "Collapse" : "Expand"} ${entry.name}`;

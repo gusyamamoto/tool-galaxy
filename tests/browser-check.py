@@ -110,6 +110,11 @@ def main():
     args.add_argument("--software-rendering", action="store_true", help="Disable GPU compositing for a separate software-paint profile")
     args.add_argument("--visual-only", action="store_true", help="Check nebula footprints and semantic zoom on the large sample")
     args.add_argument("--navigation-only", action="store_true", help="Check hierarchy navigation, contextual creation and right-click menus")
+    args.add_argument("--interface-only", action="store_true", help="Check sidebar controls, contextual inspector and responsive camera space")
+    args.add_argument("--arrangement-only", action="store_true", help="Measure native sizes and test moderate/extreme Planet and Moon drags")
+    args.add_argument("--capture-baseline", action="store_true", help="Capture sizes before tuning without running new arrangement assertions")
+    args.add_argument("--sizes-only", action="store_true", help="Check desktop/mobile native sizes without repeating drag cases")
+    args.add_argument("--extremes-only", action="store_true", help="Check only extreme Planet/Moon recovery in the arrangement suite")
     options = args.parse_args()
     browser = find_browser()
     server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), functools.partial(QuietHandler, directory=str(ROOT)))
@@ -202,12 +207,13 @@ def main():
             # Let the compositor present the final transform before mouse hit-testing.
             evaluate("new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))")
 
-        def add(name, parent=None, extras=()):
+        def add(name, parent=None):
             evaluate(f"""addEntryButton.click();fields[0].value={json.dumps(name)};fields[1].value='Description of '+fields[0].value;
                 fields[2].value='Test';parentField.value={json.dumps(parent or '')};parentField.dispatchEvent(new Event('change'));
-                [...connectionOptions.querySelectorAll('input')].forEach(c=>c.checked={json.dumps(list(extras))}.includes(c.value));form.requestSubmit();""")
+                form.requestSubmit();""")
             assert evaluate("!dialog.open"), evaluate("formError.textContent")
             assert evaluate("(()=>{const p=physics.particles.get(selectedNode.dataset.entryId),e=entries.get(p.id);return p.x===e.x&&p.y===e.y;})()"), "Add must reveal/save the actual seeded position immediately"
+            assert evaluate("!relationships.some(c=>c.from===selectedNode.dataset.entryId||c.to===selectedNode.dataset.entryId)"), "Creation must add no semantic relationships"
             return evaluate("selectedNode.dataset.entryId")
 
         def edit(entry_id, name=None, parent=None):
@@ -226,6 +232,11 @@ def main():
 
         def mouse(kind, x, y, **kwargs):
             cdp.call("Input.dispatchMouseEvent", type=kind, x=x, y=y, **kwargs)
+
+        def click_selector(selector, button='left'):
+            point=evaluate(f"(()=>{{const r=document.querySelector({json.dumps(selector)}).getBoundingClientRect();return {{x:r.x+r.width/2,y:r.y+r.height/2}};}})()")
+            mouse('mousePressed',**point,button=button,clickCount=1)
+            mouse('mouseReleased',**point,button=button,clickCount=1)
 
         def drag_to(entry_id, world_x, world_y, settle_timeout=25):
             evaluate(f"focusEntry({json.dumps(entry_id)})")
@@ -267,18 +278,204 @@ def main():
         check(evaluate("relationships.length===3"), "legacy semantic relationships remain separate")
         check(evaluate("localStorage.getItem('galaxy:user-data:pre-cosmic-tree')") == old_raw, "exact original snapshot retained before migration")
         check(evaluate("JSON.parse(localStorage.getItem('galaxy:user-data')).version===5 && JSON.parse(localStorage.getItem('galaxy:user-data')).entries.every(e=>!('role' in e) && !('depth' in e))"), "version 5 persists generic ancestry without hardcoded roles or depth")
-        check(evaluate("!document.getElementById('release-position-button') && roleField.tagName==='OUTPUT' && [...entries.values()].every(e=>e.depth>=0)"), "normal UI derives roles and exposes only Flowing or Pinned")
+        check(evaluate("!document.querySelector('#pin-position-button,[data-action=pin],#panel-placement,#panel-role,#connection-options') && !panel.textContent.includes('Moves naturally') && !dialog.textContent.includes('Other connections') && roleField.tagName==='OUTPUT' && [...entries.values()].every(e=>e.depth>=0)"), "normal UI derives roles without pin, physics status or relationship controls")
+
+        if options.arrangement_only:
+            evaluate('loadSampleButton.click()');wait_for("document.readyState==='complete' && typeof sampleMode!=='undefined' && sampleMode");load();wait_camera()
+            evaluate('physics.pause();clearSelection()')
+            report={'bands':evaluate("({planet:physics.particles.get('sample-sun-0').childOrbit,moon:physics.particles.get('sample-planet-0-0').childOrbit,satellite:physics.particles.get('sample-moon-0-0-0').childOrbit,foodRadius:physics.galaxies.get('sample-galaxy-1').radius})")}
+            ids=['sample-sun-0','sample-planet-0-0','sample-moon-0-0-0','sample-satellite-0-0-0-0','sample-planet-0-2']
+            evaluate(f"window.sizeIds={json.dumps(ids)};window.sizePositions=[...physics.particles].map(([id,n])=>[id,n.x,n.y]);sizeIds.forEach((id,i)=>{{const n=physics.particles.get(id);n.x=400+i*165;n.y=420;}});[...nodes].forEach(([id,n])=>n.hidden=!sizeIds.includes(id));[...regions.values()].forEach(r=>r.style.visibility='hidden');connectionsLayer.style.visibility='hidden';physics.onTick(physics.particles);camera.setView({{x:0,y:0,scale:1}},false)")
+            wait_for("sizeIds.every(id=>nodes.get(id).dataset.body==='satellite'||nodes.get(id).dataset.textureReady==='true')")
+            time.sleep(.2)
+            report['sizes']=evaluate("sizeIds.map(id=>{const n=nodes.get(id),s=getComputedStyle(n),p=physics.particles.get(id),r=n.getBoundingClientRect(),craft=n.querySelector('.satellite-craft');return {id,role:p.role,width:r.width,height:r.height,collisionBodyRadius:p.radius,craftWidth:craft?.getBoundingClientRect().width||null,font:parseFloat(getComputedStyle(n.querySelector('.node-label')).fontSize)};})")
+            evaluate("selectEntry(entries.get('sample-planet-0-0'),nodes.get('sample-planet-0-0'),{openInspector:false})")
+            report['selected']=evaluate("(()=>{const n=selectedNode,s=getComputedStyle(n);return {width:n.getBoundingClientRect().width,outlineWidth:parseFloat(s.outlineWidth),outlineOffset:parseFloat(s.outlineOffset)};})()")
+            if screenshot_dir:
+                result=cdp.call('Page.captureScreenshot',format='png',captureBeyondViewport=False)
+                (screenshot_dir/'arrangement-native-100-percent.png').write_bytes(base64.b64decode(result['data']))
+            cdp.call('Emulation.setDeviceMetricsOverride',width=390,height=844,deviceScaleFactor=1,mobile=False)
+            time.sleep(.2);evaluate('camera.setView({x:0,y:0,scale:1},false)')
+            report['mobileSizes']=evaluate("sizeIds.slice(0,4).map(id=>nodes.get(id).getBoundingClientRect().width)")
+            cdp.call('Emulation.setDeviceMetricsOverride',width=1440,height=1000,deviceScaleFactor=1,mobile=False)
+            time.sleep(.2);evaluate('camera.setView({x:0,y:0,scale:1},false)')
+            if screenshot_dir:
+                (screenshot_dir/'arrangement-report.json').write_text(json.dumps(report,indent=2))
+            print('Arrangement report: '+json.dumps(report),flush=True)
+            if options.capture_baseline:
+                return
+            # Restore the sample before exercising real pointer drags.
+            evaluate("sizePositions.forEach(([id,x,y])=>Object.assign(physics.particles.get(id),{x,y,lastX:x,lastY:y,vx:0,vy:0}));[...nodes.values()].forEach(n=>n.hidden=false);[...regions.values()].forEach(r=>r.style.visibility='');connectionsLayer.style.visibility='';clearSelection();physics.onTick(physics.particles)")
+            sizes={s['role']:s['width'] for s in report['sizes']}
+            check(42<=sizes['sun']<=48 and 24<=sizes['planet']<=30 and 15<=sizes['moon']<=20 and 14<=sizes['satellite']<=18,'100% native body diameters meet the visual targets')
+            check(sizes['planet']<=38*.7 and sizes['moon']<=25.078125*.7,'Planet and Moon diameters are materially smaller than the captured baseline')
+            check(report['selected']['outlineOffset']<=2 and report['selected']['width']==sizes['planet'],'selection halo stays close to the smaller body without changing its dimensions')
+            check(all(abs(actual-expected)<.03 for actual,expected in zip(report['mobileSizes'],[42,24,15.6,13.92])),'mobile native diameters retain the same hierarchy with readable body silhouettes')
+            if options.sizes_only:
+                check(not cdp.errors,f"no sizing browser exceptions: {cdp.errors}")
+                print(f'{count} sizing browser checks passed',flush=True)
+                return
+            report['drags']=[]
+            for kind,entry_id in [('Planet','sample-planet-0-0'),('Moon','sample-moon-0-0-0')]:
+                for factor in (['extreme'] if options.extremes_only else [1.5,2,'extreme']):
+                    # Reset this family to its untouched arrangement for each comparison.
+                    evaluate("physics.pause();sizePositions.forEach(([id,x,y])=>Object.assign(physics.particles.get(id),{x,y,lastX:x,lastY:y,vx:0,vy:0,placement:null}));layout.clear();physics.onTick(physics.particles)")
+                    evaluate(f"focusEntry({json.dumps(entry_id)})");wait_camera()
+                    before=evaluate("(()=>{const n=physics.particles.get(selectedNode.dataset.entryId);return {radius:Math.hypot(n.x-n.parent.x,n.y-n.parent.y),angle:Math.atan2(n.y-n.parent.y,n.x-n.parent.x)+.3,px:n.parent.x,py:n.parent.y,range:physics.orbitalRange(n),band:n.orbitRadius};})()")
+                    requested=2000 if factor=='extreme' else before['radius']*factor
+                    import math
+                    wx=before['px']+math.cos(before['angle'])*requested;wy=before['py']+math.sin(before['angle'])*requested
+                    point=evaluate("(()=>{const r=selectedNode.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2};})()")
+                    target=evaluate(f"(()=>{{const e=entries.get({json.dumps(entry_id)});return {{x:{point['x']}+({wx}-e.x)*camera.view.scale,y:{point['y']}+({wy}-e.y)*camera.view.scale}};}})()")
+                    mouse('mousePressed',**point,button='left',clickCount=1);mouse('mouseMoved',**target,button='left',buttons=1)
+                    mouse('mouseReleased',**target,button='left',clickCount=1)
+                    release=evaluate("(()=>{const n=physics.particles.get(selectedNode.dataset.entryId);return {radius:Math.hypot(n.x-n.parent.x,n.y-n.parent.y),preferred:n.placement.radius,angle:n.placement.angle,fx:n.fx};})()")
+                    check(abs(release['radius']-requested)<max(2,requested*.02) and release['fx'] is None,kind+' release preserves the chosen coordinates without snapping')
+                    evaluate('physics.resume()');wait_for('physics.settled',timeout=60);wait_camera()
+                    settled=evaluate("(()=>{const n=physics.particles.get(selectedNode.dataset.entryId);return {radius:Math.hypot(n.x-n.parent.x,n.y-n.parent.y),angle:Math.atan2(n.y-n.parent.y,n.x-n.parent.x),fx:n.fx,range:physics.orbitalRange(n)};})()")
+                    result={'body':kind,'factor':factor,'original':before['radius'],'requested':requested,'release':release,'settled':settled,'default':before['band']}
+                    report['drags'].append(result);print('Drag measurement: '+json.dumps(result),flush=True)
+                    if factor=='extreme':
+                        check(abs(release['preferred']-before['range']['max'])<.01 and settled['radius']<=before['range']['max']*1.12+16,kind+' absurd drop returns only to the soft adaptive safety boundary')
+                        check(settled['radius']>before['band']*1.7,kind+' extreme recovery does not spring back to the default band')
+                    else:
+                        check(abs(release['preferred']-release['radius'])<.01 and release['radius']*.85<=settled['radius']<=release['radius']*1.15,kind+' '+str(factor)+'x reposition remains near the released orbital region')
+                        delta=math.atan2(math.sin(settled['angle']-release['angle']),math.cos(settled['angle']-release['angle']))
+                        check(abs(delta)<.4,kind+' preserves the released preferred angle while floating')
+                    if screenshot_dir:
+                        # The camera remains at the release location during return.
+                        # Reframe only the test screenshot to show the settled family.
+                        evaluate(f"focusEntry({json.dumps(entry_id)})");wait_camera()
+                        result=cdp.call('Page.captureScreenshot',format='png',captureBeyondViewport=False)
+                        (screenshot_dir/f'arrangement-{kind.lower()}-{factor}.png').write_bytes(base64.b64decode(result['data']))
+            if screenshot_dir:
+                (screenshot_dir/'arrangement-report.json').write_text(json.dumps(report,indent=2))
+            check(not cdp.errors,f"no arrangement browser exceptions: {cdp.errors}")
+            print(f'{count} arrangement browser checks passed',flush=True)
+            return
+
+        if options.interface_only:
+            def preview(label):
+                if screenshot_dir:
+                    result=cdp.call('Page.captureScreenshot',format='png',captureBeyondViewport=False)
+                    (screenshot_dir/f'interface-{label}.png').write_bytes(base64.b64decode(result['data']))
+
+            check(evaluate("!document.querySelector('.hierarchy-header') && !document.querySelector('#galaxy > h1')"),'sidebar has no Hierarchy heading or large canvas branding')
+            check(evaluate("[addEntryButton,document.getElementById('reset-view-button'),searchField,document.querySelector('.view-controls'),sampleControls,storageStatus].every(e=>hierarchySidebar.sidebar.contains(e))"),'creation, Fit, search, zoom and extra tools live inside the sidebar')
+            check(evaluate("panel.hidden && !selectedNode && physics.bounds.right>innerWidth-60 && physics.bounds.top<60"),'empty selection leaves the right side and canvas top available')
+            evaluate('physics.pause();if(graphNeedsSave)saveGalaxy()')
+            real_snapshot=evaluate("localStorage.getItem('galaxy:user-data')")
+            preference=evaluate("localStorage.getItem('galaxy:navigation-ui')")
+            evaluate("document.getElementById('sidebar-tools').open=true")
+            click_selector('#load-sample-button')
+            wait_for("document.readyState==='complete' && typeof sampleMode!=='undefined' && sampleMode");load();wait_camera()
+            evaluate('physics.pause()')
+            check(evaluate('panel.hidden && entries.size===183'),'Sample opens into a clean canvas without a permanent inspector')
+            preview('desktop-clean')
+            evaluate("focusEntry('sample-deep-7')");wait_camera()
+            check(evaluate("!panel.hidden && panelName.textContent==='Slow simmer notes' && hierarchySidebar.selectedId==='sample-deep-7'"),'selecting a deep item opens matching Details and keeps the tree synchronized')
+            check(evaluate("!document.getElementById('inspector-metadata').open && panelCategory.closest('details') && !panelCategory.hidden && panelParent.hidden && !document.querySelector('#panel-placement,#panel-role')"),'More contains only the optional label and breadcrumbs supply location')
+            evaluate('window.interfacePositions=[...physics.particles].map(([id,n])=>[id,n.x,n.y]);window.inspectedBounds={...physics.bounds};window.inspectedScale=camera.view.scale;window.interfaceExpansion=[...hierarchySidebar.expanded]')
+            preview('desktop-inspector')
+            click_selector('#close-inspector-button');wait_camera()
+            check(evaluate('panel.hidden && physics.bounds.right>inspectedBounds.right+200 && camera.view.scale===inspectedScale'),'closing Details reclaims the right side without changing zoom')
+            check(evaluate("selectedNode.dataset.entryId==='sample-deep-7' && hierarchySidebar.selectedId==='sample-deep-7' && JSON.stringify([...hierarchySidebar.expanded])===JSON.stringify(interfaceExpansion)"),'closing the inspector preserves selection and tree expansion')
+            click_selector('.entry-node[data-entry-id="sample-deep-7"]');wait_camera()
+            check(evaluate('!panel.hidden'),'clicking the selected body reopens its inspector')
+            cdp.call('Input.dispatchKeyEvent',type='keyDown',key='Escape',code='Escape',windowsVirtualKeyCode=27);wait_camera()
+            check(evaluate('panel.hidden'),'Escape closes Details without clearing selection')
+
+            # Put the body near the old right edge before physically selecting it.
+            evaluate("(()=>{const e=entries.get('sample-deep-7'),s=camera.view.scale;camera.setView({x:innerWidth-70-e.x*s,y:innerHeight/2-e.y*s,scale:s},false);})()")
+            click_selector('.entry-node[data-entry-id="sample-deep-7"]');wait_camera()
+            check(evaluate("(()=>{const r=nodes.get('sample-deep-7').getBoundingClientRect(),p=panel.getBoundingClientRect();return !panel.hidden&&r.right<p.left&&camera.view.scale===inspectedScale;})()"),'opening Details gently keeps a body near the right edge visible')
+            evaluate("window.interfaceEmptyPoint=(()=>{for(let y=80;y<innerHeight-50;y+=60)for(let x=hierarchySidebar.width+40;x<physics.bounds.right;x+=60)if(document.elementFromPoint(x,y)?.id==='graph-viewport'&&!galaxyAtScreen({x,y}))return {x,y};return null;})()")
+            empty=evaluate('interfaceEmptyPoint');check(empty is not None,'empty canvas remains reachable')
+            mouse('mousePressed',**empty,button='left',clickCount=1);mouse('mouseReleased',**empty,button='left',clickCount=1);wait_camera()
+            check(evaluate('panel.hidden'),'an empty-canvas click closes the inspector')
+            before=evaluate('({...camera.target})')
+            click_selector('.entry-node[data-entry-id="sample-deep-7"]',button='right')
+            check(evaluate("!contextMenu.hidden && panel.hidden && contextMenu.querySelector('[data-action=create]').textContent==='Add child'") and evaluate('({...camera.target})')==before,'right-click keeps the clean canvas and opens actions without reframing')
+            cdp.call('Input.dispatchKeyEvent',type='keyDown',key='Escape',code='Escape',windowsVirtualKeyCode=27)
+            check(evaluate('contextMenu.hidden && panel.hidden'),'menu Escape dismisses only the context menu')
+
+            evaluate('window.interfaceLeft=physics.bounds.left')
+            click_selector('#sidebar-toggle');wait_camera()
+            check(evaluate('hierarchySidebar.collapsed && physics.bounds.left<interfaceLeft && hierarchySidebar.toggle.getBoundingClientRect().left===16'),'collapsed navigation leaves only a small reopen control')
+            preview('immersive')
+            click_selector('#sidebar-toggle');wait_camera()
+            check(evaluate('JSON.stringify([...hierarchySidebar.expanded])===JSON.stringify(interfaceExpansion)'),'sidebar reopening preserves its branch state')
+            evaluate('hierarchySidebar.setWidth(180,false)');wait_camera()
+            check(evaluate("[addEntryButton,document.getElementById('reset-view-button'),searchField].every(e=>{const r=e.getBoundingClientRect(),s=hierarchySidebar.sidebar.getBoundingClientRect();return r.left>=s.left&&r.right<=s.right;})"),'minimum sidebar width keeps Add, Fit and search usable')
+            evaluate('hierarchySidebar.setWidth(260,false)');wait_camera()
+            check(evaluate('JSON.stringify([...physics.particles].map(([id,n])=>[id,n.x,n.y]))===JSON.stringify(interfacePositions)'),'inspector and sidebar transitions never change world coordinates')
+
+            for path in ['sidebar','inspector','menu']:
+                evaluate("focusEntry('sample-deep-7')");wait_camera()
+                if path=='sidebar':
+                    click_selector('.hierarchy-row[data-entry-id="sample-deep-7"] .tree-add')
+                elif path=='inspector':
+                    click_selector('#add-child-button')
+                else:
+                    click_selector('.entry-node[data-entry-id="sample-deep-7"]',button='right')
+                    click_selector('#entry-context-menu [data-action=create]')
+                check(evaluate("dialog.open && contextualParentId==='sample-deep-7' && document.getElementById('parent-field').hidden"),path+' keeps the shared contextual creation path')
+                evaluate(f"fields[0].value='Cleanup {path} child';fields[1].value='Contextual cleanup check';form.requestSubmit();physics.pause()")
+                check(evaluate("!dialog.open && entries.get(selectedNode.dataset.entryId).parentId==='sample-deep-7' && !panel.hidden"),path+' creation updates the hierarchy and inspector')
+
+            evaluate("focusEntry('sample-deep-7')");wait_camera()
+            click_selector('#close-inspector-button');wait_camera()
+            point=evaluate("(()=>{const r=nodes.get('sample-deep-7').getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2};})()")
+            before=evaluate('({...camera.target})')
+            mouse('mousePressed',**point,button='left',clickCount=1)
+            check(evaluate('panel.hidden && activeNodeDrags===1 && camera.frame===null') and evaluate('({...camera.target})')==before,'pressing a body with Details closed keeps the camera still for dragging')
+            mouse('mouseMoved',x=point['x']+24,y=point['y']+12,button='left',buttons=1)
+            check(evaluate('panel.hidden && activeNodeDrags===1') and evaluate('({...camera.target})')==before,'dragging keeps inspector layout out of the held pointer gesture')
+            mouse('mouseReleased',x=point['x']+24,y=point['y']+12,button='left',clickCount=1);wait_camera()
+            check(evaluate("!panel.hidden && !activeNodeDrags && selectedNode.dataset.entryId==='sample-deep-7' && !layout.get('sample-deep-7')?.pinned"),'drag release opens Details and preserves Flowing behavior')
+            check(evaluate("!document.querySelector('#pin-position-button,[data-action=pin]') && !panel.textContent.includes('Moves naturally')"),'inspector and context menu expose no positioning actions or status')
+            evaluate("selectEntry({...entries.get('sample-deep-7'),category:''},nodes.get('sample-deep-7'))")
+            check(evaluate("document.getElementById('inspector-metadata').hidden"),'More disappears when there is no useful label')
+            evaluate("selectEntry(entries.get('sample-deep-7'),nodes.get('sample-deep-7'))")
+
+            for width,height,label in [(1024,768,'laptop'),(820,740,'small-laptop'),(390,844,'mobile'),(320,700,'small-mobile')]:
+                cdp.call('Emulation.setDeviceMetricsOverride',width=width,height=height,deviceScaleFactor=1,mobile=False)
+                time.sleep(.2);evaluate("focusEntry('sample-deep-7')");wait_camera()
+                check(evaluate('document.documentElement.scrollWidth<=innerWidth'),label+' has no page overflow')
+                check(evaluate("[panelName,addChildButton,editEntryButton,deleteEntryButton].every(e=>{const r=e.getBoundingClientRect(),p=panel.getBoundingClientRect();return r.width>0&&r.top>=p.top&&r.bottom<=p.bottom;})"),label+' keeps names and all inspector actions reachable')
+                if width<760:
+                    check(evaluate('hierarchySidebar.collapsed && panel.getBoundingClientRect().bottom===innerHeight && physics.bounds.bottom<panel.getBoundingClientRect().top'),'mobile uses a contextual bottom sheet and its remaining canvas')
+                    evaluate("document.getElementById('inspector-metadata').open=true")
+                    wait_for("physics.bounds.bottom<panel.getBoundingClientRect().top");wait_camera()
+                    check(evaluate("panelCategory.getBoundingClientRect().width>0 && !document.querySelector('#panel-role,#panel-placement')"),'More reveals only the optional label on mobile')
+                    evaluate("document.getElementById('inspector-metadata').open=false")
+                    click_selector('#sidebar-toggle');wait_camera()
+                    check(evaluate('!hierarchySidebar.collapsed && panel.hidden'),'mobile navigation drawer gets the space without a competing inspector')
+                    check(evaluate("[addEntryButton,document.getElementById('reset-view-button'),searchField].every(e=>{const r=e.getBoundingClientRect();return r.left>=0&&r.right<=innerWidth;})"),'mobile sidebar controls remain within the drawer')
+                    evaluate("hierarchySidebar.select('sample-deep-7')")
+                    click_selector('.hierarchy-row[data-entry-id="sample-deep-7"] .tree-name');wait_camera()
+                    check(evaluate('hierarchySidebar.collapsed && !panel.hidden'),'mobile tree selection closes navigation and opens Details')
+                    evaluate("(()=>{const e=entries.get('sample-sun-2'),s=camera.view.scale;camera.setView({x:innerWidth/2-e.x*s,y:(physics.bounds.top+physics.bounds.bottom)/2-e.y*s,scale:s},false);})()")
+                    menu_view=evaluate('({...camera.target})')
+                    click_selector('.entry-node[data-entry-id="sample-sun-2"]',button='right')
+                    check(evaluate("!contextMenu.hidden && panelName.textContent==='Recipes' && Math.abs(physics.bounds.bottom-(panel.getBoundingClientRect().top-getNodeRadius()-24))<.1") and evaluate('({...camera.target})')==menu_view,'mobile context selection measures changed sheet content without moving the camera')
+                    cdp.call('Input.dispatchKeyEvent',type='keyDown',key='Escape',code='Escape',windowsVirtualKeyCode=27)
+                    evaluate("focusEntry('sample-deep-7')");wait_camera()
+                evaluate('fitGalaxy(false)')
+                check(evaluate("(()=>{const b=galaxyBounds(),a=camera.worldToScreen(b.left,b.top),z=camera.worldToScreen(b.right,b.bottom);return a.x>=physics.bounds.left+31&&a.y>=physics.bounds.top+31&&z.x<=physics.bounds.right-31&&z.y<=physics.bounds.bottom-31;})()"),label+' Fit uses only available canvas space')
+                preview(label)
+                click_selector('#close-inspector-button');wait_camera()
+                check(evaluate('panel.hidden && physics.bounds.bottom>innerHeight-60 && physics.bounds.right>innerWidth-60'),label+' inspector close restores the full height or width')
+            check(evaluate("localStorage.getItem('galaxy:user-data')")==real_snapshot and evaluate("localStorage.getItem('galaxy:navigation-ui')")==preference,'Sample cleanup interactions leave real data and UI preferences untouched')
+            check(not cdp.errors,f'no interface browser exceptions: {cdp.errors}')
+            print(f'{count} interface browser checks passed',flush=True)
+            return
 
         if options.navigation_only:
             def preview(label):
                 if screenshot_dir:
                     result=cdp.call('Page.captureScreenshot',format='png',captureBeyondViewport=False)
                     (screenshot_dir/f'navigation-{label}.png').write_bytes(base64.b64decode(result['data']))
-
-            def click_selector(selector, button='left'):
-                point=evaluate(f"(()=>{{const r=document.querySelector({json.dumps(selector)}).getBoundingClientRect();return {{x:r.x+r.width/2,y:r.y+r.height/2}};}})()")
-                mouse('mousePressed',**point,button=button,clickCount=1)
-                mouse('mouseReleased',**point,button=button,clickCount=1)
 
             def menu_for(entry_id):
                 evaluate(f"focusEntry({json.dumps(entry_id)})");wait_camera()
@@ -369,12 +566,8 @@ def main():
 
             leaf=chain[-1]
             menu_for(leaf)
-            evaluate("contextMenu.querySelector('[data-action=pin]').click()")
-            check(evaluate(f"layout.get({json.dumps(leaf)}).pinned && contextMenu.hidden"),'context menu Pin shares existing exact pin behavior')
-            menu_for(leaf)
-            check(evaluate("contextMenu.querySelector('[data-action=pin]').textContent==='Unpin position'"),'context menu reflects current pin state')
-            evaluate("contextMenu.querySelector('[data-action=pin]').click()")
-            check(evaluate(f"!layout.get({json.dumps(leaf)})?.pinned"),'context menu Unpin resumes Flowing')
+            check(evaluate("[...contextMenu.querySelectorAll('button')].map(b=>b.dataset.action).join(',')==='create,edit,delete'"),'context menus contain only Add, Edit and Delete')
+            evaluate('closeContextMenu()')
             menu_for(leaf);evaluate("contextMenu.querySelector('[data-action=edit]').click()")
             check(evaluate(f"dialog.open && editingId==={json.dumps(leaf)} && fields[0].value===entries.get({json.dumps(leaf)}).name"),'context menu Edit opens the existing editor')
             evaluate('dialog.close()')
@@ -423,7 +616,7 @@ def main():
             evaluate("hierarchySidebar.setCollapsed(false);hierarchySidebar.select('sample-deep-7')")
             click_selector('.hierarchy-row[data-entry-id="sample-deep-7"] .tree-name');wait_camera()
             check(evaluate("hierarchySidebar.collapsed && selectedNode.dataset.entryId==='sample-deep-7' && camera.view.scale>=1.7"),'mobile tree navigation closes its drawer before focusing the deep body')
-            check(evaluate("[panelName,addChildButton,editEntryButton,deleteEntryButton,pinPositionButton].every(e=>{const r=e.getBoundingClientRect(),p=panel.getBoundingClientRect();return r.top>=p.top&&r.bottom<=p.bottom&&r.width>0;})"),'mobile Details keeps the selected name and all actions visible')
+            check(evaluate("[panelName,addChildButton,editEntryButton,deleteEntryButton].every(e=>{const r=e.getBoundingClientRect(),p=panel.getBoundingClientRect();return r.top>=p.top&&r.bottom<=p.bottom&&r.width>0;})"),'mobile Details keeps the selected name and all actions visible')
             evaluate("hierarchySidebar.setCollapsed(false);searchField.value='Long hierarchy name';searchField.dispatchEvent(new Event('input'))")
             click_selector('#search-result-list button');wait_camera()
             check(evaluate("hierarchySidebar.collapsed && selectedNode.dataset.entryId==='sample-deep-7'"),'mobile search closes the drawer and synchronizes its focused result')
@@ -540,12 +733,31 @@ def main():
             view_at(.575);preview('after-drag')
             before=evaluate("({...entries.get('sample-planet-2-0')})")
             drag_to('sample-planet-2-0',before['x']+1800,before['y'],settle_timeout=60)
-            check(evaluate("(()=>{const p=physics.particles.get('sample-planet-2-0');return p.fx===null&&Math.hypot(p.x-p.parent.x,p.y-p.parent.y)<p.orbitRadius+100;})()"),'far Planet drag gently returns to its local Sun band')
+            check(evaluate("(()=>{const p=physics.particles.get('sample-planet-2-0');return p.fx===null&&Math.hypot(p.x-p.parent.x,p.y-p.parent.y)<physics.orbitalRange(p).max*1.12+16;})()"),'far Planet drag gently returns to its soft local safety boundary')
             evaluate('window.cosmosReloadMarker=true')
             cdp.call('Page.navigate',url=origin+'/?sample=large')
             wait_for("typeof window.cosmosReloadMarker==='undefined' && document.readyState==='complete' && typeof sampleMode!=='undefined' && sampleMode")
             load();wait_camera()
             check(evaluate("[...nodes].filter(([id,n])=>n.dataset.body==='satellite').map(([id,n])=>[id,n.dataset.archetype,n.querySelector('.satellite-craft').outerHTML])")==identities,'Satellite silhouettes remain identical after a sample reload')
+            view_at(1,'sample-planet-0-0')
+            check(evaluate("(()=>{const ids=['sample-sun-0','sample-planet-0-0','sample-moon-0-0-0','sample-satellite-0-0-0-0'],widths=ids.map(id=>nodes.get(id).getBoundingClientRect().width);return widths.every((w,i)=>w>0&&(!i||w<widths[i-1]))&&widths[1]<40&&ids.every(id=>parseFloat(getComputedStyle(nodes.get(id).querySelector('.node-label')).fontSize)>=9);})()"),'smaller native bodies retain Sun, Planet, Moon and artificial Satellite dominance with readable labels')
+            check(evaluate("(()=>{const p=physics.particles.get('sample-planet-0-0'),m=physics.particles.get('sample-moon-0-0-0'),t=physics.particles.get('sample-satellite-0-0-0-0');return [p,m,t].every(n=>Math.hypot(n.x-n.parent.x,n.y-n.parent.y)-n.radius-n.parent.radius>28);})()"),'Planet, Moon and Satellite families have visible resting clearance')
+            check(evaluate("(()=>{const f=physics.galaxies.get('sample-galaxy-1');return Math.hypot(f.systems[0].root.x-f.systems[1].root.x,f.systems[0].root.y-f.systems[1].root.y)<1200;})()"),'Food retains the branch compactness limit after the spacing refinement')
+            preview('refined-local-hierarchy')
+            sparse=add('Two Planet system','sample-galaxy-0');sparse_planet=add('Inner Planet',sparse);add('Outer Planet',sparse)
+            moon=add('Local Moon',sparse_planet);add('Local Satellite',moon)
+            wide=add('Eight Planet system','sample-galaxy-0')
+            wide_planets=[add('Planet '+str(i+1),wide) for i in range(8)]
+            wide_moon=add('Local Moon',wide_planets[0]);add('Local Satellite',wide_moon)
+            wait_for('physics.settled');wait_camera()
+            check(evaluate(f"physics.particles.get({json.dumps(sparse)}).childOrbit<140 && physics.particles.get({json.dumps(wide)}).childOrbit>physics.particles.get({json.dumps(sparse)}).childOrbit*1.5 && physics.particles.get({json.dumps(wide)}).childOrbit<260"),'two Planets stay compact while eight Planets with the same Moon branch expand adaptively within a bounded footprint')
+            for entry_id,label in [(sparse,'two-planets'),(wide,'eight-planets')]:
+                view_at(.95,entry_id);select(entry_id);wait_camera();preview(label)
+                check(evaluate(f"(()=>{{const c=physics.children.get({json.dumps(entry_id)});return c.every((a,i)=>c.slice(i+1).every(b=>Math.hypot(a.x-b.x,a.y-b.y)>a.radius+b.radius+12));}})()"),label+' preserves sibling separation')
+            before=evaluate(f"({{...entries.get({json.dumps(sparse_planet)})}})")
+            drag_to(sparse_planet,before['x']+600,before['y'],settle_timeout=60)
+            check(evaluate(f"(()=>{{const p=physics.particles.get({json.dumps(sparse_planet)}),d=Math.hypot(p.x-p.parent.x,p.y-p.parent.y);return p.fx===null&&d>p.orbitRadius*1.7&&d<physics.orbitalRange(p).max*1.12+16;}})()"),'outward Planet release settles near the allowed outer region rather than returning to the default')
+            view_at(.95,sparse);select(sparse);wait_camera();preview('two-planets-after-release')
             check(not cdp.errors,f"no visual browser exceptions: {cdp.errors}")
             check(cloud_responsive,cloud_motion_title)
             print(f'{count} visual browser checks passed',flush=True)
@@ -575,11 +787,16 @@ def main():
             return
 
         if options.migration_only:
+            # Inspect restored coordinates before the first live physics frame.
+            cdp.call('Page.addScriptToEvaluateOnNewDocument',source="document.addEventListener('DOMContentLoaded',()=>physics.pause(),{once:true})")
             def load_storage_fixture():
-                wait_for("document.readyState==='complete' && typeof physics!=='undefined'")
-                # Storage/backup assertions do not require a remote pinned body
-                # with a semantic link to finish cooling. Exercise normal save.
+                wait_for("typeof window.storageReloadMarker==='undefined' && document.readyState==='complete' && typeof physics!=='undefined'")
+                # Pause the flowing fixture while checking its exact initial data.
                 evaluate('physics.pause();saveGalaxy()')
+
+            def reload_storage_fixture():
+                evaluate('window.storageReloadMarker=true')
+                cdp.call('Page.reload');load_storage_fixture()
 
             v4 = {"version": 4, "entries": [
                 {"id": "github", "name": "Saved Sun", "description": "Edited built-in Sun", "category": "Keep label", "role": "category", "parentId": None, "x": 400, "y": 400},
@@ -589,29 +806,43 @@ def main():
                 "layout": [{"id": "saved-moon", "x": 1050, "y": 680, "pinned": True}, {"id": "saved-planet", "x": 700, "y": 460, "pinned": False}]}
             v4_raw = json.dumps(v4, indent=2)
             evaluate(f"physics.pause();graphNeedsSave=false;localStorage.removeItem('galaxy:user-data:pre-cosmic-tree');localStorage.setItem('galaxy:user-data',{json.dumps(v4_raw)})")
-            cdp.call('Page.reload');load_storage_fixture()
+            reload_storage_fixture()
             check(evaluate("entries.size===4 && entries.get('github').name==='Saved Sun' && entries.get('saved-planet').parentId==='github' && entries.get('saved-moon').parentId==='saved-planet' && entries.get('saved-moon').role==='moon'"), "v4 migration preserves the entire saved three-level tree and edited built-in")
             check(evaluate("localStorage.getItem('galaxy:user-data:pre-cosmic-tree')") == v4_raw, "v4 migration saves the exact original raw snapshot before replacement")
             check(evaluate("entries.get('github').parentId==='migration-my-galaxy' && entries.get('migration-my-galaxy').name==='My Galaxy'"), "v4 former Sun gains a neutral Galaxy parent")
-            check(evaluate("entries.get('saved-moon').x===1050 && entries.get('saved-moon').y===680 && layout.get('saved-moon').pinned"), "v4 exact pin coordinates remain unchanged through migration")
+            check(evaluate("entries.get('saved-moon').x===1050 && entries.get('saved-moon').y===680 && !layout.get('saved-moon').pinned && layout.get('saved-moon').parentId==='saved-planet' && physics.particles.get('saved-moon').fx===null"), "v4 legacy pin keeps its initial coordinates while becoming a flowing relative influence")
             check(evaluate("!('x' in layout.get('saved-planet')) && layout.get('saved-planet').parentId==='github' && Number.isFinite(layout.get('saved-planet').angle) && physics.particles.get('saved-planet').fx===null"), "v4 old soft placement becomes an initial position and relative flowing influence")
             check(evaluate("relationships.length===1 && connections.filter(c=>c.kind==='hierarchy').length===3 && entries.get('github').category==='Keep label' && entries.get('saved-planet').description==='Saved category'"), "v4 labels, descriptions and semantic relationships survive")
             check(evaluate("nodes.get('saved-planet').dataset.archetype==='desert' && nodes.get('saved-planet').dataset.rings==='true'"), "migration preserves optional appearance metadata")
             identity = evaluate("JSON.stringify([...entries.values()].map(e=>[e.id,galaxyAppearance.resolve(e)]))")
-            cdp.call('Page.reload');load_storage_fixture()
-            check(evaluate("entries.size===4 && entries.get('saved-moon').x===1050 && entries.get('saved-moon').y===680 && JSON.stringify([...entries.values()].map(e=>[e.id,galaxyAppearance.resolve(e)]))") == identity, "second refresh does not re-migrate or change styles and pins")
+            reload_storage_fixture()
+            check(evaluate("entries.size===4 && entries.get('saved-moon').x===1050 && entries.get('saved-moon').y===680 && JSON.stringify([...entries.values()].map(e=>[e.id,galaxyAppearance.resolve(e)]))") == identity, "second refresh preserves normalized positions, styles and content")
             select('saved-planet')
-            check(evaluate("panelPlacement.textContent==='Position: Flowing' && !document.getElementById('release-position-button')"), "migrated soft body uses the simplified Flowing UI")
+            check(evaluate("!document.querySelector('#panel-placement,#pin-position-button') && !panel.textContent.includes('Moves naturally')"), "migrated body has no position controls or physics status")
+
+            # The current schema also contains historical pins, including roots.
+            evaluate("(()=>{const data=JSON.parse(localStorage.getItem('galaxy:user-data'));data.layout.push({id:'migration-my-galaxy',x:420,y:360,pinned:true},{id:'saved-moon',x:1050,y:680,pinned:true});localStorage.setItem('galaxy:user-data',JSON.stringify(data));})()")
+            reload_storage_fixture()
+            check(evaluate("entries.get('migration-my-galaxy').x===420 && entries.get('migration-my-galaxy').y===360 && !layout.has('migration-my-galaxy') && entries.get('saved-moon').x===1050 && physics.particles.get('saved-moon').fx===null"),'v5 root and child pins retain initial coordinates without permanent constraints')
+            check(evaluate("JSON.parse(localStorage.getItem('galaxy:user-data')).layout.every(p=>!('pinned' in p)&&!('x' in p))"),'normal save replaces historical pins with relative influences in schema 5')
+            semantic=evaluate("JSON.stringify(relationships)")
+            edit('saved-moon',name='Updated saved Moon');evaluate('physics.pause()')
+            check(evaluate("JSON.stringify(relationships)")==semantic and evaluate("!document.getElementById('connection-options')"),'editing content preserves existing semantic relationships without relationship fields')
+            edit('saved-moon',parent='github');evaluate('physics.pause()')
+            check(evaluate("JSON.stringify(relationships)")==semantic and evaluate("entries.get('saved-moon').parentId==='github'"),'changing the single structural parent preserves a semantic link to the same pair')
+            edit('saved-moon',parent='saved-planet');evaluate('physics.pause();saveGalaxy()')
+            reload_storage_fixture()
+            check(evaluate("JSON.stringify(relationships)")==semantic and evaluate("connections.some(c=>c.kind==='relationship'&&c.to==='saved-moon') && entries.get('saved-moon').name==='Updated saved Moon'"),'semantic links survive reparenting, saving and reload')
 
             corrupt = json.dumps({"version": 5, "entries": [{"id": "bad", "name": "Bad", "description": "", "parentId": None}], "connections": [], "layout": []})
             evaluate(f"physics.pause();graphNeedsSave=false;localStorage.setItem('galaxy:user-data',{json.dumps(corrupt)})")
-            cdp.call('Page.reload');load_storage_fixture()
+            reload_storage_fixture()
             check(evaluate("!storageAvailable && !storageStatus.hidden"), "invalid saved record disables overwriting and reports the issue")
             add('Session only')
             check(evaluate("localStorage.getItem('galaxy:user-data')") == corrupt, "session edits cannot replace a snapshot containing invalid records")
             unsupported = json.dumps({"version": 99, "entries": [], "connections": [], "layout": []})
             evaluate(f"physics.pause();graphNeedsSave=false;localStorage.setItem('galaxy:user-data',{json.dumps(unsupported)})")
-            cdp.call('Page.reload');load_storage_fixture()
+            reload_storage_fixture()
             check(evaluate("!storageAvailable && !storageStatus.hidden") and evaluate("localStorage.getItem('galaxy:user-data')") == unsupported, "unsupported future snapshot remains untouched")
             check(not cdp.errors, f"no migration browser exceptions: {cdp.errors}")
             print(f"{count} migration browser checks passed", flush=True)
@@ -621,7 +852,9 @@ def main():
         g2=add('Work');s3=add('Development',g2)
         p1=add('Italian',s1);p2=add('Japanese',s1)
         m1=add('Chicken',p1);m2=add('Pasta',p1)
-        t1=add('Chicken Parmigiana',m1,['github','codex']);t2=add('Chicken Piccata',m1)
+        t1=add('Chicken Parmigiana',m1);t2=add('Chicken Piccata',m1)
+        # Seed historical semantic links internally; the creation UI cannot configure them.
+        evaluate(f"relationships.push({{from:{json.dumps(t1)},to:'github'}},{{from:{json.dumps(t1)},to:'codex'}});rebuildConnections();syncPhysicsGraph();saveGalaxy()")
         d5=add('Preparation',t1);d6=add('Slow simmer notes',d5)
         wait_for("physics.settled")
         check(evaluate(f"entries.get({json.dumps(g1)}).depth===0 && entries.get({json.dumps(s1)}).depth===1 && entries.get({json.dumps(p1)}).depth===2 && entries.get({json.dumps(m1)}).depth===3 && entries.get({json.dumps(t1)}).depth===4 && entries.get({json.dumps(d6)}).depth===6"), "create multiple Galaxies and a hierarchy through depth six")
@@ -658,24 +891,19 @@ def main():
         for body,entry_id in [('Galaxy',g1),('Sun',s1),('Planet',p1),('Moon',m1),('Satellite',t1)]:
             before=evaluate(f"({{...entries.get({json.dumps(entry_id)})}})")
             drag_to(entry_id,before['x']+140,before['y']+70)
-            check(evaluate(f"physics.particles.get({json.dumps(entry_id)}).fx===null && !layout.get({json.dumps(entry_id)})?.pinned && panelPlacement.textContent==='Position: Flowing'"),body+' remains unpinned and flowing after drag')
+            check(evaluate(f"physics.particles.get({json.dumps(entry_id)}).fx===null && !layout.get({json.dumps(entry_id)})?.pinned"),body+' remains unpinned and flowing after drag')
             if body!='Galaxy':
                 check(evaluate(f"!('x' in layout.get({json.dumps(entry_id)})) && Number.isFinite(layout.get({json.dumps(entry_id)}).angle)"),body+' drag stores a relative influence rather than a coordinate spring')
             check(evaluate(f"entries.get({json.dumps(entry_id)}).parentId==={json.dumps(before['parentId'])}"),body+' drag preserves hierarchy')
-        select(t1);evaluate('pinPositionButton.click()');wait_for('physics.settled')
-        pin=evaluate(f"({{x:entries.get({json.dumps(t1)}).x,y:entries.get({json.dumps(t1)}).y}})")
+        before=evaluate(f"({{...entries.get({json.dumps(t1)})}})")
         parent=evaluate(f"({{...entries.get({json.dumps(m1)})}})");drag_to(m1,parent['x']+100,parent['y']-50)
-        check(evaluate(f"entries.get({json.dumps(t1)}).x===({pin['x']}) && entries.get({json.dumps(t1)}).y===({pin['y']})"), "exact Satellite pin resists ancestor dragging")
+        check(evaluate(f"Math.hypot(entries.get({json.dumps(t1)}).x-({before['x']}),entries.get({json.dumps(t1)}).y-({before['y']}))>20 && physics.particles.get({json.dumps(t1)}).fx===null"), "Satellite follows its ancestor and remains movable")
         cdp.call('Page.reload');load()
-        check(evaluate(f"entries.get({json.dumps(t1)}).x===({pin['x']}) && entries.get({json.dumps(t1)}).y===({pin['y']}) && layout.get({json.dumps(t1)}).pinned"), "exact pin survives refresh")
-        select(t1);evaluate('pinPositionButton.click()');wait_for('physics.settled')
-        check(evaluate(f"physics.particles.get({json.dumps(t1)}).fx===null && panelPlacement.textContent==='Position: Flowing'"), "Unpin directly resumes flowing physics")
+        check(evaluate("[...layout.values()].every(p=>!('pinned' in p)) && [...physics.particles.values()].every(p=>p.fx===null)"), "flowing placement survives refresh without fixed positions")
 
         for kind,a,b in [('Planet',p1,p2),('Moon',m1,m2),('Satellite',t1,t2)]:
-            select(b);evaluate('pinPositionButton.click()');wait_for('physics.settled')
             point=evaluate(f"({{...entries.get({json.dumps(b)})}})");drag_to(a,point['x'],point['y'])
-            check(evaluate(f"(()=>{{const a=physics.particles.get({json.dumps(a)}),b=physics.particles.get({json.dumps(b)});return Math.hypot(a.x-b.x,a.y-b.y)>=a.radius+b.radius+12 && b.x===({point['x']}) && b.y===({point['y']});}})()"),kind+' siblings separate after coincident drop beside a pin')
-            select(b);evaluate('pinPositionButton.click()');wait_for('physics.settled')
+            check(evaluate(f"(()=>{{const a=physics.particles.get({json.dumps(a)}),b=physics.particles.get({json.dumps(b)});return Math.hypot(a.x-b.x,a.y-b.y)>=a.radius+b.radius+12 && a.fx===null && b.fx===null;}})()"),kind+' siblings separate after coincident drops while remaining movable')
 
         edit(p1,name='Italian recipes',parent=s3);wait_for('physics.settled')
         check(hierarchy_edge(s3,p1) and not hierarchy_edge(s1,p1), "reparenting replaces the derived hierarchy edge")
@@ -752,7 +980,7 @@ def main():
             cdp.call('Emulation.setDeviceMetricsOverride',width=width,height=height,deviceScaleFactor=1,mobile=width<760);wait_for('physics.settled')
             select(t1)
             check(evaluate('document.documentElement.scrollWidth===innerWidth'),label+' has no horizontal overflow')
-            check(evaluate("(()=>{const p=panel.getBoundingClientRect();return [entryActions,panelPlacement,pinPositionButton].every(el=>{const a=el.getBoundingClientRect();return a.top>=p.top&&a.bottom<=p.bottom;});})()"),label+' keeps Pin and actions visible')
+            check(evaluate("(()=>{const p=panel.getBoundingClientRect();return [entryActions,addChildButton].every(el=>{const a=el.getBoundingClientRect();return a.top>=p.top&&a.bottom<=p.bottom;});})()"),label+' keeps contextual actions visible')
             evaluate('editEntryButton.click()');check(evaluate('dialog.open && parentField.value===entries.get(editingId).parentId'),label+' Edit loads correct deep parent');evaluate('dialog.close()')
             if screenshot_dir:
                 evaluate('fitGalaxy(false)');time.sleep(.2);result=cdp.call('Page.captureScreenshot',format='png',captureBeyondViewport=False)
@@ -783,7 +1011,7 @@ def main():
         cdp.call('Emulation.setDeviceMetricsOverride',width=1440,height=1000,deviceScaleFactor=1,mobile=False)
         for body,entry_id in [('Galaxy','sample-galaxy-0'),('Sun','sample-sun-0'),('Planet','sample-planet-0-0'),('Moon','sample-moon-0-0-0'),('Satellite','sample-satellite-0-0-0-0')]:
             before=evaluate(f"({{...entries.get({json.dumps(entry_id)})}})");drag_to(entry_id,before['x']+100,before['y']+60,settle_timeout=60)
-            check(evaluate('panelPlacement.textContent==="Position: Flowing"'), 'stress sample '+body+' dragging remains flowing')
+            check(evaluate("physics.particles.get(selectedNode.dataset.entryId).fx===null && !document.getElementById('panel-placement')"), 'stress sample '+body+' dragging remains flowing')
         check(evaluate("localStorage.getItem('galaxy:user-data')")==real_snapshot, "sample search, drag and layout remain isolated")
         stress=motion_metrics()
         check(stress['renderP95']<20, f"183-body projection stays within budget after DPR switching ({stress['renderP95']:.1f}ms p95)")
