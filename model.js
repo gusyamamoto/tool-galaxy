@@ -5,9 +5,10 @@ const galaxyModel = {
         sun: { name: "Sun", label: "Sun · Topic", body: "sun", scale: 1.75 },
         planet: { name: "Planet", label: "Planet · Category", body: "planet", scale: 1 },
         moon: { name: "Moon", label: "Moon · Subcategory", body: "moon", scale: 0.65 },
-        satellite: { name: "Satellite", label: "Satellite · Entry", body: "satellite", scale: 0.58 }
+        satellite: { name: "Satellite", label: "Satellite · Entry", body: "satellite", scale: 0.58 },
+        astronaut: { name: "Astronaut", label: "Astronaut · Entry", body: "astronaut", scale: 0.5 }
     },
-    roleAtDepth(depth) { return ["galaxy", "sun", "planet", "moon"][depth] || "satellite"; },
+    roleAtDepth(depth) { return ["galaxy", "sun", "planet", "moon", "satellite"][depth] || "astronaut"; },
     normalizeEntry(record) {
         if (!record || typeof record.id !== "string" || !record.id.trim() || record.id.length > 100 ||
             typeof record.name !== "string" || !record.name.trim() || record.name.length > 60 ||

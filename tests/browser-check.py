@@ -116,6 +116,7 @@ def main():
     args.add_argument("--connection-lines-only", action="store_true", help="Check semantic line hover, hit-testing, navigation, synchronization and touch previews")
     args.add_argument("--travel-only", action="store_true", help="Check optional descriptions and distance-aware semantic travel, arrival and interruption")
     args.add_argument("--cloud-fade-only", action="store_true", help="Check early responsive cloud fading, identity, smooth zoom and stability on desktop/laptop/narrow canvas")
+    args.add_argument("--astronaut-only", action="store_true", help="Check deep Astronaut creation, tethers, compact clusters, persistence, search and semantic links")
     args.add_argument("--connections-performance-only", action="store_true", help="Measure the large sample's deep-focus motion with and without semantic line paint")
     args.add_argument("--baseline-head", action="store_true", help="Use a temporary read-only HEAD snapshot for the connection performance comparison")
     args.add_argument("--capture-baseline", action="store_true", help="Capture sizes before tuning without running new arrangement assertions")
@@ -283,7 +284,7 @@ def main():
         def motion_metrics():
             # Browser paint/compositing is separate from our projection callback.
             # Keep baseline and synthetic DPR-switch stress measurements distinct.
-            wait_for("camera.view.scale<.95 || [...nodes.values()].filter(n=>n.dataset.culled==='false' && n.dataset.semanticHidden!=='true' && !['galaxy','satellite'].includes(n.dataset.body)).every(n=>n.dataset.textureReady==='true')")
+            wait_for("camera.view.scale<.95 || [...nodes.values()].filter(n=>n.dataset.culled==='false' && n.dataset.semanticHidden!=='true' && !['galaxy','satellite','astronaut'].includes(n.dataset.body)).every(n=>n.dataset.textureReady==='true')")
             return evaluate("""new Promise(resolve=>{const tick=physics.onTick,costs=[],frames=[];physics.onTick=p=>{const start=performance.now();tick(p);costs.push(performance.now()-start);};physics.reheat(.3);let last;
                 const frame=t=>{if(last!==undefined)frames.push(t-last);last=t;if(frames.length<60)requestAnimationFrame(frame);else{physics.onTick=tick;costs.sort((a,b)=>a-b);frames.sort((a,b)=>a-b);resolve({renderP95:costs[Math.floor(costs.length*.95)]||0,frameMedian:frames[30],frameP95:frames[57]});}};requestAnimationFrame(frame);})""")
 
@@ -294,6 +295,88 @@ def main():
         check(evaluate("localStorage.getItem('galaxy:user-data:pre-cosmic-tree')") == old_raw, "exact original snapshot retained before migration")
         check(evaluate("JSON.parse(localStorage.getItem('galaxy:user-data')).version===5 && JSON.parse(localStorage.getItem('galaxy:user-data')).entries.every(e=>!('role' in e) && !('depth' in e))"), "version 5 persists generic ancestry without hardcoded roles or depth")
         check(evaluate("!document.querySelector('#pin-position-button,[data-action=pin],#panel-placement,#panel-role,#connection-options') && !panel.textContent.includes('Moves naturally') && !dialog.textContent.includes('Other connections') && roleField.tagName==='OUTPUT' && [...entries.values()].every(e=>e.depth>=0)"), "normal UI derives roles without pin, physics status or relationship controls")
+
+        if options.astronaut_only:
+            ids=[add('EVA Galaxy')];wait_camera()
+            for depth in range(1,9):
+                parent=ids[-1];role=['Galaxy','Sun','Planet','Moon','Satellite','Astronaut'][min(depth,5)]
+                evaluate(f"focusEntry({json.dumps(parent)})");wait_camera()
+                if depth%3==0:
+                    click_selector(f'.hierarchy-row[data-entry-id="{parent}"] .tree-add')
+                elif depth%3==1:
+                    click_selector('#add-child-button')
+                else:
+                    click_selector(f'.entry-node[data-entry-id="{parent}"]',button='right')
+                    check(evaluate(f"contextMenu.querySelector('[data-action=create]').textContent==='Add {role}'"),'context menu derives Add '+role)
+                    click_selector('#entry-context-menu [data-action=create]')
+                check(evaluate(f"dialog.open && document.getElementById('add-entry-title').textContent==='Add {role}' && contextualParentId==={json.dumps(parent)} && roleField.tagName==='OUTPUT' && !fields[1].required"),f'depth {depth} contextual Add {role} keeps parent and optional Description')
+                evaluate(f"fields[0].value={json.dumps('EVA '+role+' '+str(depth))};fields[1].value='';form.requestSubmit()")
+                check(evaluate(f"!dialog.open && entries.get(selectedNode.dataset.entryId).role==={json.dumps(role.lower())} && entries.get(selectedNode.dataset.entryId).depth==={depth}"),f'depth {depth} creates the correct visual role without limiting nesting')
+                ids.append(evaluate('selectedNode.dataset.entryId'));wait_camera()
+            for i in range(3):
+                evaluate(f"createChildEntry({json.dumps(ids[5])});fields[0].value={json.dumps('EVA sibling '+str(i+1))};form.requestSubmit()")
+                wait_camera()
+            wait_for('physics.settled');evaluate('physics.pause()')
+            deep=ids[8]
+            evaluate(f"focusEntry({json.dumps(deep)})");wait_camera()
+            check(evaluate(f"hierarchySidebar.selectedId==={json.dumps(deep)} && hierarchySidebar.rows.get({json.dumps(deep)}).dataset.role==='astronaut' && galaxyModel.ancestors(entries,{json.dumps(deep)}).every(e=>hierarchySidebar.expanded.has(e.id))"),'deep Astronaut selection and indicator synchronize with the expanded sidebar')
+            check(evaluate("[...entries.values()].filter(e=>e.role==='astronaut').every(e=>nodes.get(e.id).querySelector('.astronaut-figure') && !nodes.get(e.id).querySelector('.satellite-craft') && !nodes.get(e.id).textureSize)"),'Astronauts use lightweight distinct SVG figures without textures')
+            check(evaluate(f"getNodeRadius(entries.get({json.dumps(ids[5])}))<getNodeRadius(entries.get({json.dumps(ids[4])})) && getNodeRadius(entries.get({json.dumps(ids[4])}))<getNodeRadius(entries.get({json.dumps(ids[3])}))"),'Astronaut bodies remain smaller than Satellites and Moons')
+            check(evaluate("(()=>{const siblings=galaxyModel.childrenOf(entries,"+json.dumps(ids[5])+").map(e=>physics.particles.get(e.id));return siblings.every((a,i)=>siblings.slice(i+1).every(b=>Math.hypot(a.x-b.x,a.y-b.y)>a.radius+b.radius+8));})()"),'Astronaut siblings keep local collision clearance')
+            check(evaluate("[...physics.particles.values()].filter(n=>n.role==='astronaut').every(n=>n.childOrbit===0 && Math.hypot(n.x-n.clusterAnchor.x,n.y-n.clusterAnchor.y)<n.clusterAnchor.clusterRadius+30)"),'deep chains remain compact and add no orbit bands')
+            def tethers_aligned():
+                return evaluate("""lines.filter(l=>l.element.classList.contains('astronaut-tether')).every(l=>{const e=l.element,m=e.getScreenCTM(),a=e.getPointAtLength(0),z=e.getPointAtLength(e.getTotalLength());return [[l.from,a],[l.to,z]].every(([id,p])=>{const projected=new DOMPoint(p.x,p.y).matrixTransform(m),entry=entries.get(id),actual=camera.worldToScreen(entry.x,entry.y);return Math.hypot(projected.x-actual.x,projected.y-actual.y)<.7;});})""")
+            check(evaluate("lines.filter(l=>l.element.classList.contains('astronaut-tether')).every(l=>l.kind==='hierarchy' && l.element.tagName==='path' && l.element.getAttribute('d').includes('Q') && l.element.getAttribute('aria-hidden')==='true' && !l.interactive && getComputedStyle(l.element).strokeDasharray==='none')") and tethers_aligned(),'curved solid hierarchy tethers remain separate from interactive relationships')
+            def preview(name):
+                if screenshot_dir:
+                    result=cdp.call('Page.captureScreenshot',format='png',captureBeyondViewport=False)
+                    (screenshot_dir/(name+'.png')).write_bytes(base64.b64decode(result['data']))
+            preview('astronaut-deep-cluster')
+            evaluate(f"(()=>{{const p=physics.particles.get({json.dumps(deep)});physics.beginDrag(p.id);physics.moveDrag(p.id,p.x+25,p.y-10);}})()")
+            check(tethers_aligned(),'tethers follow an Astronaut drag using actual live endpoints')
+            evaluate(f"physics.endDrag({json.dumps(deep)},true);physics.pause();saveGalaxy();camera.zoomAt(600,400,.9)");wait_camera()
+            check(tethers_aligned(),'tethers stay aligned through zoom/pan projection')
+            identities=evaluate("[...nodes].filter(([id,n])=>n.dataset.body==='astronaut').map(([id,n])=>[id,n.dataset.archetype,n.querySelector('.astronaut-figure').outerHTML])")
+            parents=evaluate('JSON.stringify([...entries.values()].map(e=>[e.id,e.parentId,e.name]))')
+            # Simulate a current saved deep Satellite with a role-incompatible
+            # historical appearance override. No storage migration is needed.
+            evaluate(f"(()=>{{const data=JSON.parse(localStorage.getItem('galaxy:user-data')),e=data.entries.find(e=>e.id==={json.dumps(ids[5])});e.role='satellite';e.appearance={{archetype:'station',future:'preserve'}};localStorage.setItem('galaxy:user-data',JSON.stringify(data));}})()")
+            cdp.call('Page.reload');load();wait_camera();evaluate('physics.pause()')
+            check(evaluate("[...nodes].filter(([id,n])=>n.dataset.body==='astronaut').map(([id,n])=>[id,n.dataset.archetype,n.querySelector('.astronaut-figure').outerHTML])")==identities,'Astronaut silhouette and deterministic pose survive refresh and old Satellite metadata')
+            check(evaluate('JSON.stringify([...entries.values()].map(e=>[e.id,e.parentId,e.name]))')==parents and evaluate(f"entries.get({json.dumps(ids[5])}).appearance.future==='preserve' && storageAvailable && JSON.parse(localStorage.getItem('galaxy:user-data')).version===5"),'existing deep records preserve IDs, parents, content and future appearance metadata without schema migration')
+            evaluate(f"focusEntry({json.dumps(deep)})");wait_camera()
+            evaluate(f"startConnectionMode({json.dumps(deep)});connectionSearch.value='Codex';connectionSearch.dispatchEvent(new Event('input'));connectionResults.querySelector('button:not(:disabled)').click()")
+            check(evaluate(f"relationships.some(l=>l.from==={json.dumps(deep)}&&l.to==='codex') && entries.get({json.dumps(deep)}).parentId==={json.dumps(ids[7])}"),'Astronaut semantic connections preserve the single structural parent')
+            evaluate('fitGalaxy(false)');wait_camera()
+            point=evaluate(f"(()=>{{const l=lines.find(l=>l.kind==='relationship'&&l.from==={json.dumps(deep)}),{{start,end}}=connectionSegment(l);return {{x:(start.x+end.x)/2,y:(start.y+end.y)/2}};}})()")
+            mouse('mouseMoved',**point)
+            check(evaluate("!connectionHint.hidden && connectionHint.textContent.includes('EVA Astronaut 8') && connectionHint.textContent.includes('Codex') && lines.filter(l=>l.element.classList.contains('astronaut-tether')).every(l=>+l.element.style.opacity===0)"),'far zoom keeps interactive dashed semantic links distinct from hidden tethers')
+            mouse('mousePressed',**point,button='left',clickCount=1);mouse('mouseReleased',**point,button='left',clickCount=1);wait_camera()
+            check(evaluate("selectedNode.dataset.entryId==='codex' && panelName.textContent==='Codex'"),'Astronaut relationship line preserves opposite-endpoint semantic travel')
+            evaluate(f"focusEntry({json.dumps(deep)});saveGalaxy()");wait_camera()
+            cdp.call('Page.reload');load();wait_camera();evaluate('physics.pause()')
+            check(evaluate(f"relationships.some(l=>l.from==={json.dumps(deep)}&&l.to==='codex') && entries.get({json.dumps(deep)}).description===''") ,'deep semantic links and optional descriptions survive refresh')
+            evaluate(f"clearSelection();camera.setView({{...camera.view,scale:.2}},false);searchField.value='EVA Astronaut 8';searchField.dispatchEvent(new Event('input'))")
+            check(evaluate(f"nodes.get({json.dumps(deep)}).classList.contains('temporarily-revealed') && lines.some(l=>l.to==={json.dumps(deep)}&&l.element.classList.contains('astronaut-tether')&&+l.element.style.opacity>0)"),'search reveals a deep Astronaut and its tether ancestry at far zoom')
+            evaluate('searchResultList.querySelector("button").click()');wait_camera()
+            check(evaluate(f"selectedNode.dataset.entryId==={json.dumps(deep)} && panelName.textContent==='EVA Astronaut 8' && !nodes.get({json.dumps(deep)}).inert && camera.view.scale>=1.7"),'deep search focuses, selects, expands and opens the inspector normally')
+            evaluate('fitGalaxy(false)');wait_camera()
+            check_rendered("[...nodes.values()].filter(n=>n.dataset.body==='astronaut').every(n=>n.inert&&getComputedStyle(n).opacity==='0') && lines.filter(l=>l.element.classList.contains('astronaut-tether')).every(l=>getComputedStyle(l.element).display==='none')",'Universe zoom hides Astronauts and their tethers without sticky focus reveals')
+            evaluate(f"focusEntry({json.dumps(deep)})");wait_camera();preview('astronaut-tethers-close')
+            raw=evaluate("localStorage.getItem('galaxy:user-data')")
+            evaluate('loadSampleButton.click()');wait_for("document.readyState==='complete' && typeof sampleMode!=='undefined' && sampleMode");load();wait_camera()
+            evaluate("focusEntry('sample-deep-8')");wait_camera()
+            check(evaluate("entries.size===187 && [...entries.values()].filter(e=>e.role==='astronaut').length===7 && entries.get('sample-deep-8').depth===8 && galaxyModel.childrenOf(entries,'sample-deep-5').length===4"),'restrained Sample demonstrates deep chains and several Astronaut siblings')
+            preview('astronaut-sample-close')
+            metrics=motion_metrics();print('Astronaut sample motion: '+json.dumps(metrics),flush=True)
+            check(metrics['renderP95']<16,'Astronaut figures and tethers keep projection within the frame budget')
+            cdp.call('Emulation.setDeviceMetricsOverride',width=390,height=844,deviceScaleFactor=1,mobile=False);time.sleep(.2)
+            evaluate("focusEntry('sample-deep-8')");wait_camera();preview('astronaut-mobile')
+            check(evaluate("panelName.textContent==='Texture observations' && !nodes.get('sample-deep-8').inert && lines.some(l=>l.to==='sample-deep-8'&&+l.element.style.opacity>0)"),'mobile deep focus retains the Astronaut, hierarchy tether and inspector')
+            check(evaluate("localStorage.getItem('galaxy:user-data')")==raw,'temporary Astronaut Sample interactions preserve real saved data')
+            check(not cdp.errors,f'no Astronaut browser exceptions: {cdp.errors}')
+            print(f'{count} Astronaut browser checks passed',flush=True)
+            return
 
         if options.cloud_fade_only:
             evaluate('loadSampleButton.click()');wait_for("document.readyState==='complete' && typeof sampleMode!=='undefined' && sampleMode");load();wait_camera()
@@ -344,7 +427,7 @@ def main():
         if options.travel_only:
             # Use actual submit clicks so both native and custom validation run.
             ids = []
-            for depth, role in enumerate(['Galaxy', 'Sun', 'Planet', 'Moon', 'Satellite', 'deeper Satellite']):
+            for depth, role in enumerate(['Galaxy', 'Sun', 'Planet', 'Moon', 'Satellite', 'Astronaut']):
                 parent = ids[-1] if ids else None
                 evaluate(f"{'createChildEntry('+json.dumps(parent)+')' if parent else 'openEntryForm()'};fields[0].value={json.dumps('Name only '+role)};fields[1].value='';fields[2].value=''")
                 check(evaluate("form.checkValidity() && fields[0].required && !fields[1].required && !fields[2].required"), role+' accepts an empty Description in native validation')
@@ -645,7 +728,7 @@ def main():
             real_snapshot=evaluate("localStorage.getItem('galaxy:user-data')")
             real_ui=evaluate("localStorage.getItem('galaxy:navigation-ui')")
             evaluate('loadSampleButton.click()');wait_for("document.readyState==='complete' && typeof sampleMode!=='undefined' && sampleMode");load();wait_camera()
-            check(evaluate('entries.size===183 && relationships.length===8'),'large sample has eight realistic semantic connections')
+            check(evaluate('entries.size===187 && relationships.length===8'),'large sample has eight realistic semantic connections')
             evaluate('physics.pause();clearSelection();hoveredEntryId=null;camera.setView({...camera.view,scale:.2},false);renderGraph()')
             check(evaluate("lines.filter(link=>link.element.dataset.kind==='relationship').every(link=>getComputedStyle(link.element).display==='none')"),'Universe view hides all unselected semantic links')
             preview('connections-universe')
@@ -693,7 +776,7 @@ def main():
             drag_to('sample-moon-0-1-0',old['x']+80,old['y']+35)
             check(aligned(),'semantic lines stay aligned through real pointer dragging and release')
             metrics=motion_metrics();print('Connection sample motion: '+json.dumps(metrics),flush=True)
-            check(metrics['renderP95']<16,'183-entry connection sample projection stays within a frame budget')
+            check(metrics['renderP95']<16,'187-entry connection sample projection stays within a frame budget')
             cdp.call('Emulation.setDeviceMetricsOverride',width=390,height=844,deviceScaleFactor=1,mobile=False);time.sleep(.2)
             evaluate("focusEntry('sample-moon-0-1-0')");wait_camera();evaluate("startConnectionMode('sample-moon-0-1-0');connectionSearch.value='Chicken';connectionSearch.dispatchEvent(new Event('input'))")
             check(evaluate('(()=>{const r=panel.getBoundingClientRect();return !connectionPicker.hidden&&r.left>=0&&r.right<=innerWidth&&r.bottom<=innerHeight+1&&connectionResults.children.length>0})()'),'connection search fits the mobile inspector sheet')
@@ -803,7 +886,7 @@ def main():
             click_selector('#load-sample-button')
             wait_for("document.readyState==='complete' && typeof sampleMode!=='undefined' && sampleMode");load();wait_camera()
             evaluate('physics.pause()')
-            check(evaluate('panel.hidden && entries.size===183'),'Sample opens into a clean canvas without a permanent inspector')
+            check(evaluate('panel.hidden && entries.size===187'),'Sample opens into a clean canvas without a permanent inspector')
             preview('desktop-clean')
             evaluate("focusEntry('sample-deep-7')");wait_camera()
             check(evaluate("!panel.hidden && panelName.textContent==='Slow simmer notes' && hierarchySidebar.selectedId==='sample-deep-7'"),'selecting a deep item opens matching Details and keeps the tree synchronized')
@@ -828,7 +911,7 @@ def main():
             check(evaluate('panel.hidden'),'an empty-canvas click closes the inspector')
             before=evaluate('({...camera.target})')
             click_selector('.entry-node[data-entry-id="sample-deep-7"]',button='right')
-            check(evaluate("!contextMenu.hidden && panel.hidden && contextMenu.querySelector('[data-action=create]').textContent==='Add child'") and evaluate('({...camera.target})')==before,'right-click keeps the clean canvas and opens actions without reframing')
+            check(evaluate("!contextMenu.hidden && panel.hidden && contextMenu.querySelector('[data-action=create]').textContent==='Add Astronaut'") and evaluate('({...camera.target})')==before,'right-click keeps the clean canvas and opens actions without reframing')
             cdp.call('Input.dispatchKeyEvent',type='keyDown',key='Escape',code='Escape',windowsVirtualKeyCode=27)
             check(evaluate('contextMenu.hidden && panel.hidden'),'menu Escape dismisses only the context menu')
 
@@ -937,7 +1020,7 @@ def main():
                 evaluate(f"hierarchySidebar.rows.get({json.dumps(parent)}).querySelector('.tree-add').click()")
                 check(evaluate('parentField.value')==parent,'sidebar + preselects its exact parent')
                 chain.append(submit_context(f'Navigation depth {depth}'))
-            check(evaluate(f"entries.get({json.dumps(chain[-1])}).role==='satellite' && entries.get({json.dumps(chain[-1])}).depth===6"),'sidebar creation supports arbitrary nesting beyond Satellite')
+            check(evaluate(f"entries.get({json.dumps(chain[-1])}).role==='astronaut' && entries.get({json.dumps(chain[-1])}).depth===6"),'sidebar creation supports arbitrary nesting beyond Satellite')
             evaluate('addEntryButton.click()')
             check(evaluate("parentField.value==='' && contextualParentId===null && roleField.dataset.role==='galaxy'"),'top-level Add defaults to a new Galaxy even with a deep body selected')
             evaluate('dialog.close()')
@@ -1018,7 +1101,9 @@ def main():
             cdp.call('Input.dispatchKeyEvent',type='keyDown',key='F10',code='F10',modifiers=8,windowsVirtualKeyCode=121)
             check(evaluate('!contextMenu.hidden'),'Shift+F10 opens celestial actions from the keyboard')
             cdp.call('Input.dispatchKeyEvent',type='keyDown',key='ArrowDown',code='ArrowDown',windowsVirtualKeyCode=40)
-            check(evaluate("document.activeElement.dataset.action==='edit'"),'menu arrow keys move between actions')
+            check(evaluate("document.activeElement.dataset.action==='connect'"),'menu arrow keys reach the existing Connect action')
+            cdp.call('Input.dispatchKeyEvent',type='keyDown',key='ArrowDown',code='ArrowDown',windowsVirtualKeyCode=40)
+            check(evaluate("document.activeElement.dataset.action==='edit'"),'menu arrow keys continue to Edit')
             cdp.call('Input.dispatchKeyEvent',type='keyDown',key='Escape',code='Escape',windowsVirtualKeyCode=27)
             menu_for(leaf);click_selector('#sidebar-toggle')
             check(evaluate('contextMenu.hidden'),'clicking elsewhere dismisses the menu')
@@ -1028,7 +1113,7 @@ def main():
             real_snapshot=evaluate("localStorage.getItem('galaxy:user-data')")
             preference=evaluate("localStorage.getItem('galaxy:navigation-ui')")
             evaluate('loadSampleButton.click()');wait_for("document.readyState==='complete' && typeof sampleMode!=='undefined' && sampleMode");load();wait_camera()
-            check(evaluate('entries.size===183 && hierarchySidebar.tree.querySelectorAll(".hierarchy-row").length===12'),'large sample starts with only Galaxy roots and Suns visible in the tree')
+            check(evaluate('entries.size===187 && hierarchySidebar.tree.querySelectorAll(".hierarchy-row").length===12'),'large sample starts with only Galaxy roots and Suns visible in the tree')
             evaluate("hierarchySidebar.select('sample-deep-7')")
             check(evaluate("hierarchySidebar.tree.querySelectorAll('.hierarchy-row').length<50 && galaxyModel.ancestors(entries,'sample-deep-7').every(e=>hierarchySidebar.expanded.has(e.id))"),'deep sample selection opens its path while keeping other branches compact')
             evaluate("focusEntry('sample-deep-7')");wait_camera()
@@ -1070,12 +1155,12 @@ def main():
             def view_at(scale, entry_id='sample-galaxy-0'):
                 evaluate(f"(()=>{{clearSelection();searchField.value='';refreshSearchResults();const e=entries.get({json.dumps(entry_id)});camera.setView({{x:(physics.bounds.left+physics.bounds.right)/2-e.x*{scale},y:(physics.bounds.top+physics.bounds.bottom)/2-e.y*{scale},scale:{scale}}},false);}})()")
                 time.sleep(.25)
-            check(evaluate("entries.size===183 && regions.size===4 && galaxyAppearance.cloudCache.size===4"), "large sample reuses four cached nebula images")
+            check(evaluate("entries.size===187 && regions.size===4 && galaxyAppearance.cloudCache.size===4"), "large sample reuses four cached nebula images")
             check(evaluate("[...regions.values()].every(r=>r.tagName==='CANVAS' && r.width===512 && r.height===512 && r.cloudDraws===1)"), "nebula pixels use fixed cached canvases rather than full-resolution frame redraws")
             check(evaluate("[...entries.values()].filter(e=>e.depth>0).every(e=>nodes.get(e.id).dataset.semanticHidden==='true')"), "fitted Universe hides all routine lower bodies")
             check(evaluate("[...entries.values()].filter(e=>e.depth===0).every(e=>{const n=nodes.get(e.id),r=n.getBoundingClientRect();return parseFloat(getComputedStyle(n.querySelector('.node-label')).fontSize)>=15&&r.left>=0&&r.right<=innerWidth&&r.top>=0&&r.bottom<=innerHeight;})"), "Universe Galaxy names are authoritative and fit in view")
             preview('whole-universe')
-            for scale,tier,roles,target in [(.1,'universe',[],'sample-galaxy-0'),(.575,'galaxy',['sun'],'sample-galaxy-0'),(.68,'system',['sun','planet'],'sample-sun-0'),(.8,'close',['sun','planet','moon','satellite'],'sample-satellite-0-0-0-0')]:
+            for scale,tier,roles,target in [(.1,'universe',[],'sample-galaxy-0'),(.575,'galaxy',['sun'],'sample-galaxy-0'),(.68,'system',['sun','planet'],'sample-sun-0'),(.96,'close',['sun','planet','moon','satellite','astronaut'],'sample-satellite-0-0-0-0')]:
                 view_at(scale,target)
                 check(evaluate('galaxy.dataset.detailLevel')==tier, 'separated semantic tier '+tier)
                 check_rendered(f"[...entries.values()].filter(e=>e.depth>0).every(e=>{{const alpha=parseFloat(getComputedStyle(nodes.get(e.id)).opacity);return {json.dumps(roles)}.includes(e.role)?alpha>.99:alpha<.001;}})", tier+' shows the intended body levels')
@@ -1144,7 +1229,7 @@ def main():
             mouse('mouseWheel',500,500,deltaX=0,deltaY=240);wait_camera();wheel_to(.1)
             check_rendered("selectedNode.dataset.entryId==='sample-deep-7' && focusRevealIds.size===0 && !searchOpen && [...entries.values()].filter(e=>e.depth>0).every(e=>nodes.get(e.id).inert&&getComputedStyle(nodes.get(e.id)).opacity==='0')",'manual zoom cancels deep search reveal without deselecting the Satellite')
             evaluate("focusEntry('sample-deep-7')");wait_camera()
-            check(evaluate("!focusRevealIds.size && nodes.get('sample-deep-7').querySelector('.satellite-craft') && getComputedStyle(nodes.get('sample-deep-7').querySelector('.node-label')).opacity==='1'"),'completed deep focus reveals the Satellite and labels through normal close zoom')
+            check(evaluate("!focusRevealIds.size && nodes.get('sample-deep-7').querySelector('.astronaut-figure') && getComputedStyle(nodes.get('sample-deep-7').querySelector('.node-label')).opacity==='1'"),'completed deep focus reveals the Satellite and labels through normal close zoom')
 
             check(evaluate("[...entries.values()].filter(e=>e.role==='satellite').every(e=>{const n=nodes.get(e.id);return !!n.querySelector('.satellite-craft')&&getComputedStyle(n).backgroundImage==='none'&&getComputedStyle(n,'::before').content==='none'&&!n.textureSize;}) && new Set([...nodes.values()].filter(n=>n.dataset.body==='satellite').map(n=>n.dataset.archetype)).size===4"),'Satellites use all four artificial silhouettes without sphere textures')
             identities=evaluate("[...nodes].filter(([id,n])=>n.dataset.body==='satellite').map(([id,n])=>[id,n.dataset.archetype,n.querySelector('.satellite-craft').outerHTML])")
@@ -1206,7 +1291,7 @@ def main():
                     const frame=t=>{if(last!==undefined)frames.push(t-last);last=t;if(frames.length<45)requestAnimationFrame(frame);else{physics.onTick=original;frames.sort((a,b)=>a-b);costs.sort((a,b)=>a-b);resolve({renderP95:costs[Math.floor(costs.length*.95)]||0,frameMedian:frames[22],frameP95:frames[42],scale:camera.view.scale,dpr:devicePixelRatio,culled:[...nodes.values()].filter(n=>n.dataset.culled==='true').length,visibleLayers:[...nodes.values()].filter(n=>getComputedStyle(n).visibility==='visible'&&getComputedStyle(n).willChange==='transform').length});}};requestAnimationFrame(frame);})""")
                 print(label+': '+json.dumps(metrics),flush=True)
                 evaluate('physics.pause()')
-            wait_for("[...nodes.values()].filter(n=>n.dataset.culled==='false' && !['galaxy','satellite'].includes(n.dataset.body)).every(n=>n.dataset.textureReady==='true')")
+            wait_for("[...nodes.values()].filter(n=>n.dataset.culled==='false' && !['galaxy','satellite','astronaut'].includes(n.dataset.body)).every(n=>n.dataset.textureReady==='true')")
             measure_case('pristine close')
             measure_case('idle close',False)
             cdp.call('Emulation.setDeviceMetricsOverride',width=1440,height=1000,deviceScaleFactor=2,mobile=False)
@@ -1372,8 +1457,8 @@ def main():
                 evaluate(f"camera.setView({{x:(physics.bounds.left+physics.bounds.right)/2-({center['x']})*{scale},y:(physics.bounds.top+physics.bounds.bottom)/2-({center['y']})*{scale},scale:{scale}}},false)")
                 time.sleep(.25)
                 if level == 'close':
-                    wait_for("[...nodes.values()].filter(n=>n.dataset.culled==='false' && !['galaxy','satellite'].includes(n.dataset.body)).every(n=>n.dataset.textureReady==='true')")
-                    check(evaluate("[...nodes.values()].filter(n=>n.dataset.culled==='false' && !['galaxy','satellite'].includes(n.dataset.body)).every(n=>getComputedStyle(n,'::before').mixBlendMode==='normal' && n.style.getPropertyValue('--surface-map').includes('blob:'))"),prefix+' close surface detail uses cached native overlays')
+                    wait_for("[...nodes.values()].filter(n=>n.dataset.culled==='false' && !['galaxy','satellite','astronaut'].includes(n.dataset.body)).every(n=>n.dataset.textureReady==='true')")
+                    check(evaluate("[...nodes.values()].filter(n=>n.dataset.culled==='false' && !['galaxy','satellite','astronaut'].includes(n.dataset.body)).every(n=>getComputedStyle(n,'::before').mixBlendMode==='normal' && n.style.getPropertyValue('--surface-map').includes('blob:'))"),prefix+' close surface detail uses cached native overlays')
                 check(evaluate('galaxy.dataset.detailLevel')==level,prefix+' semantic tier '+level)
                 check_native_rendering(prefix+' native body and text dimensions at '+level)
                 check(aligned(),prefix+' hierarchy and semantic endpoints align at '+level)
@@ -1421,10 +1506,10 @@ def main():
 
         wait_for('physics.settled');evaluate('physics.pause();saveGalaxy()');real_snapshot=evaluate("localStorage.getItem('galaxy:user-data')")
         evaluate('loadSampleButton.click()');wait_for("document.readyState==='complete' && typeof physics!=='undefined' && sampleMode");wait_for('physics.settled',timeout=25);wait_camera()
-        check(evaluate('entries.size===183 && physics.galaxies.size===4 && physics.systems.size===8'), "stress sample contains 183 entries across four Galaxies and eight Suns")
+        check(evaluate('entries.size===187 && physics.galaxies.size===4 && physics.systems.size===8'), "stress sample contains 187 entries across four Galaxies and eight Suns")
         check(evaluate("new Set([...entries.values()].filter(e=>e.depth===0).map(e=>galaxyAppearance.resolve(e).archetype)).size===4"), "sample shows four stable Galaxy archetypes")
         check(evaluate("new Set([...entries.values()].filter(e=>e.depth===2).map(e=>galaxyAppearance.resolve(e).archetype)).size===6 && [...nodes.values()].filter(n=>n.dataset.rings==='true').length>0 && [...nodes.values()].filter(n=>n.dataset.rings==='true').length<12"), "sample shows six Planet archetypes with occasional rings")
-        check(evaluate("entries.get('sample-deep-7').depth===7 && connections.filter(link=>link.kind==='hierarchy').length===179 && relationships.length===8"), "sample exercises depth seven, all hierarchy edges and eight semantic links")
+        check(evaluate("entries.get('sample-deep-7').depth===7 && connections.filter(link=>link.kind==='hierarchy').length===183 && relationships.length===8"), "sample exercises depth seven, all hierarchy edges and eight semantic links")
         check(evaluate("localStorage.getItem('galaxy:user-data')")==real_snapshot, "sample loading never modifies real saved data")
         check(evaluate("loadSampleButton.disabled && !removeSampleButton.disabled && !location.search.includes('sample')"), "sample activation is temporary and explicit")
         check(evaluate("(()=>{const g=[...physics.galaxies.values()];return g.every((a,i)=>g.slice(i+1).every(b=>Math.hypot(a.root.x-b.root.x,a.root.y-b.root.y)>(a.radius+b.radius)*.85));})()"), "Galaxy regions retain separate soft footprints")
@@ -1434,7 +1519,7 @@ def main():
         check(evaluate("selectedNode.dataset.entryId==='sample-deep-7' && panelAncestry.querySelectorAll('button').length===7 && galaxyModel.ancestors(entries,'sample-deep-7').every(e=>nodes.get(e.id).classList.contains('related'))"), "depth-seven sample search reveals Galaxy, Sun and every intermediate ancestor")
         baseline=motion_metrics()
         baseline_responsive=baseline['renderP95']<20 and baseline['frameMedian']<55 and baseline['frameP95']<120
-        baseline_title=f"183-body baseline motion responsive: render p95 {baseline['renderP95']:.1f}ms, frame median/p95 {baseline['frameMedian']:.1f}/{baseline['frameP95']:.1f}ms"
+        baseline_title=f"187-body baseline motion responsive: render p95 {baseline['renderP95']:.1f}ms, frame median/p95 {baseline['frameMedian']:.1f}/{baseline['frameP95']:.1f}ms"
         # Finish drag/sample-isolation checks before reporting a paint-budget
         # failure. Keep the same threshold and failing exit status.
         if not baseline_responsive: print('FAIL '+baseline_title+' (deferred until functional checks finish)',flush=True)
@@ -1447,7 +1532,7 @@ def main():
             check(evaluate("physics.particles.get(selectedNode.dataset.entryId).fx===null && !document.getElementById('panel-placement')"), 'stress sample '+body+' dragging remains flowing')
         check(evaluate("localStorage.getItem('galaxy:user-data')")==real_snapshot, "sample search, drag and layout remain isolated")
         stress=motion_metrics()
-        check(stress['renderP95']<20, f"183-body projection stays within budget after DPR switching ({stress['renderP95']:.1f}ms p95)")
+        check(stress['renderP95']<20, f"187-body projection stays within budget after DPR switching ({stress['renderP95']:.1f}ms p95)")
         print(f"DPR-switch paint stress: frame median/p95 {stress['frameMedian']:.1f}/{stress['frameP95']:.1f}ms (reported separately; verify on a native display)",flush=True)
         wait_for('physics.settled',timeout=60);evaluate('removeSampleButton.click()');wait_for("document.readyState==='complete' && typeof physics!=='undefined' && !sampleMode");load()
         check(evaluate(f"entries.has({json.dumps(g1)}) && !entries.has('sample-galaxy-0') && !JSON.parse(localStorage.getItem('galaxy:user-data')).entries.some(e=>e.id.startsWith('sample-'))"), "Remove Sample returns to real data without mixing entries")

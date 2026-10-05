@@ -5,7 +5,8 @@ const galaxyAppearance = {
         sun: ["warm", "golden"],
         planet: ["rocky", "gas-giant", "icy", "oceanic", "ringed", "desert"],
         moon: ["rocky", "icy", "earthy"],
-        satellite: ["twin-panel", "dish", "probe", "station"]
+        satellite: ["twin-panel", "dish", "probe", "station"],
+        astronaut: ["floating", "angled", "extended-arm", "compact-eva"]
     },
     palettes: { amber: 36, blue: 212, teal: 178, violet: 265, rose: 327 },
     textureCache: new Map(),
@@ -100,7 +101,8 @@ const galaxyAppearance = {
         const override = entry.appearance?.mode === "auto" ? {} : entry.appearance || {};
         const archetype = choices.includes(override.archetype) ? override.archetype : choices[seed % choices.length];
         const hues = { rocky: 218, "gas-giant": 29, icy: 196, oceanic: 205, ringed: 35, desert: 24, warm: 38, golden: 46, earthy: 27,
-            "twin-panel": 214, dish: 208, probe: 220, station: 202 };
+            "twin-panel": 214, dish: 208, probe: 220, station: 202,
+            floating: 210, angled: 210, "extended-arm": 210, "compact-eva": 210 };
         return { seed, archetype, angle: seed % 360,
             hue: Object.hasOwn(this.palettes, override.palette) ? this.palettes[override.palette] :
                 (entry.role === "galaxy" ? [212, 265, 178, 327][(seed >>> 8) % 4] : hues[archetype]) + (seed % 13) - 6,
@@ -117,6 +119,17 @@ const galaxyAppearance = {
             station: panel + '<path d="M7 12h10M12 5v14"/><rect x="9" y="9" width="6" height="6" rx="1" fill="#b1bdc6"/><rect x="10" y="4" width="4" height="4" rx=".5" fill="#8395a6"/><path d="M11 18h2"/>'
         };
         return `<svg class="satellite-craft" aria-hidden="true" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><g transform="rotate(${style.angle % 50 - 25} 12 12)" stroke="#a1b0bf" stroke-width=".85" stroke-linejoin="round" fill="none">${shapes[style.archetype]}</g></svg>`;
+    },
+    astronaut(style) {
+        const poses = {
+            floating: ['M8 10l-3 4M16 10l3 4', 'M10 16l-2 5M14 16l2 5'],
+            angled: ['M8 10l-4 2M16 10l2 5', 'M10 16l-3 4M14 16l4 3'],
+            'extended-arm': ['M8 10L3 7M16 10l5-1', 'M10 16l-2 5M14 16l2 5'],
+            'compact-eva': ['M8 10l-2 3 2 1M16 10l2 3-2 1', 'M10 16l-2 2 1 3M14 16l2 2-1 3']
+        };
+        const [arms, legs] = poses[style.archetype];
+        const tilt = style.archetype === 'angled' ? 24 : style.angle % 25 - 12;
+        return `<svg class="astronaut-figure" aria-hidden="true" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><g transform="rotate(${tilt} 12 12)" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="8" width="10" height="8" rx="2" fill="#87939d"/><path d="${arms}M10 16h4${legs}" stroke="#cbd2d7" stroke-width="2.4" fill="none"/><path d="M9 9h6l1 7-4 2-4-2z" fill="#d6dce0"/><ellipse cx="12" cy="6" rx="4.5" ry="4.2" fill="#e0e4e7"/><rect x="8.8" y="4.1" width="6.4" height="3.6" rx="1.6" fill="#172634"/><path d="M10 4.7h2" stroke="#82939f" stroke-width=".65"/></g></svg>`;
     },
     prepareCloud(element, style) {
         const key = JSON.stringify(style);

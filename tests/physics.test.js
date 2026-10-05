@@ -30,16 +30,16 @@ test('semantic connections have zero influence on positions, envelopes or orbita
     }
     assert.ok(b.linkForce.links().every(link=>b.linkForce.strength()(link)===0));
 });
-test('183 bodies retain separate Galaxy footprints and local solar trees',()=>{
+test('187 bodies retain separate Galaxy footprints and local solar trees',()=>{
     const p=fixture(),nodes=advance(p,450),regions=[...p.galaxies.values()];
-    assert.equal(regions.length,4);assert.equal(p.systems.size,8);assert.equal(p.ordered.length,183);
+    assert.equal(regions.length,4);assert.equal(p.systems.size,8);assert.equal(p.ordered.length,187);
     regions.forEach((g,i)=>{
         assert.equal(g.systems.length,2);
         regions.slice(i+1).forEach(h=>assert.ok(distance(g.root,h.root)>(g.radius+h.radius)*.85));
         g.systems.forEach(s=>assert.ok(distance(s.root,g.root)+s.radius<g.radius*1.2));
         assert.ok(distance(g.systems[0].root,g.systems[1].root)>(g.systems[0].radius+g.systems[1].radius)*.85);
     });
-    nodes.filter(n=>n.depth>1).forEach(n=>assert.ok(distance(n,n.parent)<n.orbitRadius*1.45+25));
+    nodes.filter(n=>n.depth>1).forEach(n=>assert.ok(distance(n,n.parent)<(n.role==='astronaut'?p.orbitalRange(n).max+20:n.orbitRadius*1.45+25)));
     assert.ok(nodes.every(n=>Number.isFinite(n.x)&&Number.isFinite(n.y)));separated(nodes);
 });
 for(const [body,id] of [['Galaxy','sample-galaxy-0'],['Sun','sample-sun-0'],['Planet','sample-planet-0-0'],['Moon','sample-moon-0-0-0'],['Satellite','sample-satellite-0-0-0-0']]){
@@ -66,6 +66,48 @@ for(const [body,id] of [['Galaxy','sample-galaxy-0'],['Sun','sample-sun-0'],['Pl
         descendants.forEach(n=>assert.ok(distance(n,before.get(n.id))>10,'children should visibly follow'));
     });
 }
+
+function astronautFamily(count=8, siblings=false){
+    return make([{id:'g',seedLayout:true},{id:'s',parentId:'g',seedLayout:true},
+        {id:'p',parentId:'s',seedLayout:true},{id:'m',parentId:'p',seedLayout:true},{id:'t',parentId:'m',seedLayout:true},
+        ...Array.from({length:count},(_,i)=>({id:`eva-${i}`,parentId:siblings||!i?'t':`eva-${i-1}`,seedLayout:true}))]);
+}
+
+test('deep Astronaut chains use bounded compact clusters and never add orbital bands',()=>{
+    const p=astronautFamily(24);advance(p,1800);
+    const anchor=p.particles.get('t'),figures=p.ordered.filter(n=>n.role==='astronaut');
+    assert.equal(figures.length,24);assert.equal(p.particles.get('eva-23').depth,28);
+    assert.ok(figures.every(n=>n.childOrbit===0 && n.clusterAnchor===anchor));
+    assert.ok(figures.every(n=>distance(n,anchor)<anchor.clusterRadius+25));
+    assert.ok(figures.every(n=>distance(n,n.parent)<p.orbitalRange(n).max+30));
+    assert.ok(anchor.envelope<190 && p.particles.get('s').envelope<650,'depth must not expand recursive envelopes');
+    separated(figures);assert.ok(p.simulation.alpha()<p.simulation.alphaMin());
+});
+
+test('Astronaut siblings separate locally and remain compact after an overlapping drop',()=>{
+    const p=astronautFamily(8,true);advance(p,600);
+    const a=p.particles.get('eva-0'),b=p.particles.get('eva-1'),anchor=p.particles.get('t');
+    p.beginDrag(a.id);p.moveDrag(a.id,b.x,b.y);advance(p,12);p.endDrag(a.id,true);advance(p,700);
+    const figures=p.ordered.filter(n=>n.role==='astronaut');separated(figures);
+    assert.ok(distance(a,b)>a.radius+b.radius+10);
+    assert.ok(figures.every(n=>distance(n,anchor)<anchor.clusterRadius+25 && n.fx===null));
+});
+
+test('Astronaut drag preserves a reasonable chosen region, moves descendants and softly bounds extreme drops',()=>{
+    const p=astronautFamily(3);advance(p,600);
+    const node=p.particles.get('eva-0'),child=p.particles.get('eva-1'),parent=node.parent;
+    const before={x:child.x,y:child.y};
+    p.beginDrag(node.id);p.moveDrag(node.id,parent.x+58,parent.y+18);
+    assert.ok(distance(child,before)>5);
+    const released={x:node.x,y:node.y},preferred=p.endDrag(node.id,true);
+    advance(p,700);
+    assert.equal(node.fx,null);assert.equal(node.placement.radius,preferred.radius);
+    assert.ok(distance(node,released)<24,'reasonable drag should remain near the chosen local region');
+    p.beginDrag(node.id);p.moveDrag(node.id,parent.x+5000,parent.y-3000);p.endDrag(node.id,true);advance(p,10000);
+    assert.ok(distance(node,parent)<p.orbitalRange(node).max+35);
+    assert.ok(distance(node,node.clusterAnchor)<node.clusterAnchor.clusterRadius+30);
+    assert.ok(p.ordered.every(n=>Number.isFinite(n.x)&&Number.isFinite(n.y)));
+});
 test('relative arrangement survives a graph rebuild and moves with its parent',()=>{
     const p=family();advance(p);const moon=p.particles.get('m');
     p.beginDrag('m');p.moveDrag('m',moon.parent.x-160,moon.parent.y+90);const placement=p.endDrag('m',true);advance(p);

@@ -417,9 +417,11 @@ button:disabled { opacity: 0.45; cursor: default; }
 .entry-node[data-body="planet"] { --body-render-scale: var(--planet-render-scale, 1); opacity: calc(var(--planet-detail, 1)*var(--context-opacity, 1)); }
 .entry-node[data-body="moon"] { --body-render-scale: var(--moon-render-scale, 1); opacity: calc(var(--moon-detail, 1)*var(--context-opacity, 1)); --texture-opacity: .85; }
 .entry-node[data-body="satellite"] { --body-render-scale: var(--satellite-render-scale, 1); opacity: calc(var(--satellite-detail, 1)*var(--context-opacity, 1)); --texture-opacity: .65; }
+.entry-node[data-body="astronaut"] { --body-render-scale: var(--astronaut-render-scale, 1); opacity: calc(var(--astronaut-detail, 0)*var(--context-opacity, 1)); }
 .entry-node[data-body="planet"] .node-label { opacity: var(--planet-label-detail, 1); }
 .entry-node[data-body="moon"] .node-label { opacity: var(--moon-label-detail, 1); }
 .entry-node[data-body="satellite"] .node-label { opacity: var(--satellite-label-detail, 1); }
+.entry-node[data-body="astronaut"] .node-label { opacity: var(--astronaut-label-detail, 0); }
 .entry-node[data-body="sun"] .node-label { font-size: 10px; }
 .entry-node .node-label { pointer-events: auto; }
 .entry-node[data-surface="gaseous"] { --texture-opacity: .8; }
@@ -431,8 +433,9 @@ button:disabled { opacity: 0.45; cursor: default; }
 #galaxy .entry-node.temporarily-revealed .node-label { opacity: 1; font-size: 10px; }
 #galaxy .entry-node:is(.selected,.selected-ancestor) .node-label { font-size: 10px; }
 .connection-line[data-kind="hierarchy"] { opacity: 0; }
-.connection-line[data-kind="hierarchy"]:not(.context-link) { display: none; }
+.connection-line[data-kind="hierarchy"]:not(.astronaut-tether):not(.context-link) { display: none; }
 .connection-line[data-kind="hierarchy"].context-link { opacity: calc(var(--orbit-detail, 0)*.1); stroke-width: .65; }
+.connection-line.astronaut-tether { fill: none; stroke: #a4b0ba; stroke-dasharray: none; vector-effect: none; pointer-events: none; transition: opacity 180ms ease; }
 .connection-line[data-kind="relationship"] { stroke-dasharray: 3 5; stroke-width: .7; vector-effect: none; }
 .connection-line[data-kind="relationship"]:is(.selected,.hovered) { stroke: #acc4db; stroke-width: 1; }
 .connection-line[data-kind="relationship"].line-hovered { stroke: #c5dbed; transition: none; }
@@ -465,9 +468,9 @@ button:disabled { opacity: 0.45; cursor: default; }
 #galaxy .entry-node[data-body="galaxy"]::before, #galaxy .entry-node[data-body="galaxy"]::after { content: none; }
 #galaxy .entry-node[data-body="galaxy"] .node-label { top: 5px; width: max-content; max-width: 180px; font-size: var(--galaxy-label-size, 16px); line-height: 1.25; font-weight: 600; letter-spacing: .035em; opacity: 1; color: hsl(var(--body-hue) 30% 92%); text-shadow: 0 1px 4px #02040a, 0 0 10px #02040ae6; }
 #galaxy .entry-node[data-body="galaxy"].selected { outline-color: hsl(var(--body-hue) 24% 65% / .4); outline-offset: 2px; }
-#nodes-layer .entry-node[data-body="satellite"] { background: transparent; border: 0; border-radius: 3px; box-shadow: none; }
-#nodes-layer .entry-node[data-body="satellite"]::before, #nodes-layer .entry-node[data-body="satellite"]::after { content: none; }
-.satellite-craft { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+#nodes-layer .entry-node:is([data-body="satellite"],[data-body="astronaut"]) { background: transparent; border: 0; border-radius: 3px; box-shadow: none; }
+#nodes-layer .entry-node:is([data-body="satellite"],[data-body="astronaut"])::before, #nodes-layer .entry-node:is([data-body="satellite"],[data-body="astronaut"])::after { content: none; }
+.satellite-craft, .astronaut-figure { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
 .entry-node[data-surface="oceanic"] { background: radial-gradient(circle at 28% 24%, #a7d0df, #2d738d 30%, #14314c 54%, #040915 83%); }
 .entry-node[data-surface="oceanic"]::before { background: linear-gradient(35deg, transparent 20%, #50705688 43%, transparent 65%), var(--surface-map), var(--surface-grain); }
 .entry-node[data-surface="desert"] { background: radial-gradient(circle at 28% 24%, #e7c29a, #a5764c 30%, #59402e 52%, #0c0a0b 83%); }
@@ -666,6 +669,7 @@ button:disabled { opacity: 0.45; cursor: default; }
 .hierarchy-row[data-role="planet"] .tree-role-icon { background: #728fa7; border: 1px solid #b5c8d166; }
 .hierarchy-row[data-role="moon"] .tree-role-icon { width: 8px; height: 8px; background: linear-gradient(120deg, #aab2ba 50%, #526071 55%); }
 .hierarchy-row[data-role="satellite"] .tree-role-icon { width: 13px; height: 10px; border-radius: 0; background: linear-gradient(#aeb9c7,#aeb9c7) center/3px 8px no-repeat, linear-gradient(#536f90,#536f90) center/13px 4px no-repeat; }
+.hierarchy-row[data-role="astronaut"] .tree-role-icon { width: 12px; height: 15px; border-radius: 0; background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 15'%3E%3Cpath d='M3 7L1 10M9 7l2 3M4.5 11l-1 3M7.5 11l1 3' stroke='%23bcc6ce' stroke-width='1.6' stroke-linecap='round'/%3E%3Crect x='3' y='6' width='6' height='6' rx='1.5' fill='%23bac5cd'/%3E%3Ccircle cx='6' cy='3.8' r='3' fill='%23d7dfe4'/%3E%3Crect x='4' y='2.4' width='4' height='2.4' rx='1' fill='%23213242'/%3E%3C/svg%3E") center/contain no-repeat; }
 #sidebar-tools { margin: 8px 14px 14px; flex-shrink: 0; max-height: 35dvh; overflow: auto; color: #8293a9; }
 #sidebar-tools summary, #inspector-metadata summary { cursor: pointer; padding: 6px 0; font-size: 11px; color: #8698af; }
 summary:focus-visible { outline: 1px solid #b9d0e9; outline-offset: 3px; }

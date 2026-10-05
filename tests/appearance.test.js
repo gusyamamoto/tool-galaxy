@@ -4,7 +4,7 @@ function load(){const c=vm.createContext({}); vm.runInContext(fs.readFileSync(pa
 const plain=v=>JSON.parse(JSON.stringify(v));
 test('identities remain identical after reload, rename and metadata edits',()=>{
     const a=load(),b=load();
-    for(const role of ['galaxy','sun','planet','moon','satellite']) for(let i=0;i<30;i++) {
+    for(const role of ['galaxy','sun','planet','moon','satellite','astronaut']) for(let i=0;i<30;i++) {
         const entry={id:`identity-${i}`,role,name:'Original'};
         assert.deepEqual(plain(a.resolve(entry)),plain(b.resolve({...entry,name:'Renamed',category:'Changed'})));
         if(role==='galaxy') assert.equal(a.cloud(a.resolve(entry)),b.cloud(b.resolve(entry)));
@@ -12,7 +12,7 @@ test('identities remain identical after reload, rename and metadata edits',()=>{
 });
 test('automatic variants cover all four Galaxy and six Planet archetypes, with occasional rings',()=>{
     const a=load();
-    for(const role of ['galaxy','planet','satellite']) {
+    for(const role of ['galaxy','planet','satellite','astronaut']) {
         const variants=Array.from({length:100},(_,i)=>a.resolve({id:`node-${i}`,role}));
         assert.equal(new Set(variants.map(s=>s.archetype)).size,a.archetypes[role].length);
         if(role==='planet'){const rings=variants.filter(s=>s.rings).length;assert.ok(rings>0 && rings<35);}
@@ -37,6 +37,22 @@ test('valid future overrides resolve predictably while auto and invalid override
     assert.deepEqual(plain(a.resolve({...entry,appearance:{mode:'auto',archetype:'oceanic'}})),plain(a.resolve(entry)));
     assert.deepEqual(plain(a.resolve({...entry,appearance:{archetype:'bad',palette:'bad'}})),plain(a.resolve(entry)));
     assert.equal(a.resolve({id:'test',role:'moon',appearance:{rings:true}}).rings,false);
+});
+
+test('Astronaut poses are stable, compact native SVG silhouettes and accept future overrides',()=>{
+    const a=load();
+    const figures=new Set();
+    for(const archetype of a.archetypes.astronaut){
+        const entry={id:'eva',role:'astronaut',appearance:{archetype,palette:'blue',future:'keep'}};
+        const style=a.resolve(entry),svg=a.astronaut(style);
+        assert.equal(style.archetype,archetype);assert.equal(style.hue,212);
+        assert.equal(svg,load().astronaut(load().resolve(entry)));
+        assert.doesNotMatch(svg,/<filter|<image|foreignObject|random/);
+        assert.ok(svg.length<1200);figures.add(svg);
+    }
+    assert.equal(figures.size,4);
+    const entry={id:'eva',role:'astronaut'};
+    assert.deepEqual(plain(a.resolve({...entry,appearance:{archetype:'bad'}})),plain(a.resolve(entry)));
 });
 
 test('Galaxy archetypes use deterministic filled clouds with transparent edges and no line-art spirals or live filters',()=>{

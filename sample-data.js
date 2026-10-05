@@ -42,6 +42,10 @@ const galaxySample = {
         const deep = add("sample-deep-5", "Parmigiana techniques", "sample-satellite-2-0-0-0");
         const deeper = add("sample-deep-6", "Sauce preparation", deep);
         add("sample-deep-7", "Slow simmer notes", deeper);
+        add("sample-deep-8", "Texture observations", "sample-deep-7");
+        add("sample-eva-seasoning", "Seasoning balance", deep);
+        add("sample-eva-crust", "Crust notes", deep);
+        add("sample-eva-resting", "Resting time", deep);
         const rename = (id, name) => {
             const entry = entries.find(entry => entry.id === id);
             entry.name = name; entry.description = `Explore ${name}.`;

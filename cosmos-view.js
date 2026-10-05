@@ -2,9 +2,9 @@
 const cosmosView = {
     tiers: { galaxy: .45, system: .58, close: .78 },
     fades: {
-        sun: [.43, .58], planet: [.58, .68], moon: [.68, .76], satellite: [.70, .79],
+        sun: [.43, .58], planet: [.58, .68], moon: [.68, .76], satellite: [.70, .79], astronaut: [.74, .86],
         planetLabel: [.62, .72], moonLabel: [.73, .83], satelliteLabel: [.76, .88],
-        guides: [.58, .78], clouds: [.38, .72]
+        astronautLabel: [.82, .96], tethers: [.78, .96], guides: [.58, .78], clouds: [.38, .72]
     },
     smooth(scale, start, end) {
         const t = Math.max(0, Math.min(1, (scale - start) / (end - start)));
