@@ -60,19 +60,23 @@ const galaxyConstellations = {
 };
 
 class ConstellationOverlay {
-    constructor(element, project) { this.element=element;this.project=project;this.edges=[]; }
-    rebuild(points) {
+    constructor(element, project, {motion=null}={}) { this.element=element;this.project=project;this.motion=motion;this.edges=[]; }
+    rebuild(points,{animate=false}={}) {
         this.clear();
         this.edges=galaxyConstellations.pattern(points).map(edge=>{
             const line=document.createElementNS('http://www.w3.org/2000/svg','line');line.classList.add('constellation-line');
             line.dataset.from=edge.from;line.dataset.to=edge.to;this.element.append(line);return {...edge,line};
         });
         this.update();
+        if(animate&&this.motion&&!this.motion.reduced){
+            this.motion.play(this.element,[{opacity:.4},{opacity:1}],{duration:260,group:'constellation'});
+            this.edges.forEach(({line},index)=>this.motion.drawLine(line,index,this.edges.length));
+        }
     }
     update() {
         this.edges.forEach(({from,to,line})=>{const a=this.project(from),b=this.project(to);if(!a||!b)return;
             line.setAttribute('x1',a.x);line.setAttribute('y1',a.y);line.setAttribute('x2',b.x);line.setAttribute('y2',b.y);
         });
     }
-    clear() { this.edges=[];this.element.replaceChildren(); }
+    clear() { this.edges.forEach(({line})=>this.motion?.cancelElement(line));this.motion?.cancelElement(this.element);this.edges=[];this.element.replaceChildren(); }
 }

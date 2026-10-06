@@ -425,6 +425,13 @@ button:disabled { opacity: 0.45; cursor: default; }
 .entry-node[data-body="satellite"] .node-label { opacity: var(--satellite-label-detail, 1); }
 .entry-node[data-body="astronaut"] .node-label { opacity: var(--astronaut-label-detail, 0); }
 .entry-node[data-body="sun"] .node-label { font-size: 10px; }
+.entry-node[data-body="sun"] .node-label { opacity: var(--sun-label-detail,1); }
+.node-hit-area { position: absolute; left: 50%; top: 50%; width: max(24px,100%); height: max(24px,100%); transform: translate(-50%,-50%); border-radius: 50%; background: transparent; }
+@media (pointer: coarse) { .node-hit-area { width: max(30px,100%); height: max(30px,100%); } }
+#galaxy .node-label[data-density-hidden="true"] { opacity: 0 !important; pointer-events: none; }
+#galaxy .entry-node:is(.selected,:hover,:focus-visible,.dragging) .node-label { opacity: 1 !important; }
+#galaxy .entry-node.label-priority .node-label { opacity: 1 !important; }
+#galaxy .entry-node:not([data-body="galaxy"]):is(.selected,:hover,:focus-visible,.dragging) .node-label { font-size: 10px; }
 .entry-node .node-label { pointer-events: auto; }
 .entry-node[data-surface="gaseous"] { --texture-opacity: .8; }
 .entry-node[data-surface="icy"] { --texture-opacity: .55; }
@@ -672,10 +679,10 @@ summary:focus-visible { outline: 1px solid #b9d0e9; outline-offset: 3px; }
 #entry-action-status { font-size: 12px; color: #cbb58c; line-height: 1.5; }
 #creation-context { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; color: #aebfd3; font-size: 12px; }
 #change-creation-parent { padding: 4px 6px; background: transparent; border-color: #60718b44; font-size: 11px; }
-#entry-context-menu { position: fixed; width: 192px; max-width: calc(100vw - 16px); padding: 5px; z-index: 40; background: #172231; border: 1px solid #60738f55; border-radius: 8px; box-shadow: 0 12px 35px #0008; }
+#entry-context-menu { position: fixed; width: 192px; max-width: calc(100vw - 16px); z-index: 40; border: 1px solid #50627c55; }
 .context-entry-name { display: block; padding: 7px 8px; color: #7f93ad; font-size: 11px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-#entry-context-menu button { display: block; width: 100%; padding: 8px; border: 0; background: transparent; border-radius: 4px; box-shadow: none; text-align: left; font-size: 12px; }
-#entry-context-menu button:is(:hover,:focus-visible) { background: #344b6899; outline: none; }
+#entry-context-menu button { display: block; width: 100%; padding: 7px 9px; border: 0; background: transparent; border-radius: 4px; box-shadow: none; text-align: left; font-size: 12px; color: #b6c9dd; }
+#entry-context-menu button:is(:hover,:focus-visible) { background: #30435b55; outline: none; }
 #entry-context-menu button[data-action="delete"] { color: #d6a4a4; }
 @media (max-width: 760px) {
     #sidebar-resize { display: none; }
@@ -730,6 +737,36 @@ summary:focus-visible { outline: 1px solid #b9d0e9; outline-offset: 3px; }
 #add-menu button, #entry-actions button { display: block; width: 100%; padding: 8px 10px; border: 0; background: transparent; box-shadow: none; text-align: left; font-size: 12px; }
 #add-menu button:hover, #entry-actions button:hover { background: #324b6866; }
 #add-menu button:disabled { opacity: .4; cursor: default; }
+/* Temporary creation surfaces use the same quiet language as the side panels.
+   Scope the compact dialog to Name-only creation; Edit/Move keep their layout. */
+#add-menu, #entry-context-menu { padding: 4px; background: #0e1621; border-color: #50627c55; border-radius: 5px; box-shadow: 0 6px 20px #0006; }
+#add-menu button { padding: 7px 9px; border-radius: 4px; color: #b6c9dd; }
+#add-menu button:is(:hover,:focus-visible) { background: #30435b55; }
+#context-entry-name { color: #8197b0; font-size: 10px; font-weight: 500; }
+#add-entry-dialog:has(#entry-info-fields[hidden]):has(#parent-field[hidden]) {
+    width: min(300px, calc(100vw - 32px)); padding: 16px;
+    background: #0e1621; border-color: #50627c55; border-radius: 5px;
+    box-shadow: 0 6px 20px #0006;
+}
+#add-entry-dialog:has(#entry-info-fields[hidden]):has(#parent-field[hidden])::backdrop { backdrop-filter: none; }
+#add-entry-dialog:has(#entry-info-fields[hidden]):has(#parent-field[hidden]) #add-entry-form { gap: 14px; font-size: 12px; }
+#add-entry-dialog:has(#entry-info-fields[hidden]):has(#parent-field[hidden]) #add-entry-title {
+    font-size: 12px; line-height: 1.5; letter-spacing: 1px; text-transform: uppercase; color: #9cb1ca;
+}
+#add-entry-dialog:has(#entry-info-fields[hidden]):has(#parent-field[hidden]) #entry-name-field { gap: 8px; }
+#add-entry-dialog:has(#entry-info-fields[hidden]):has(#parent-field[hidden]) label { color: #8ea1b8; font-size: 11px; }
+#add-entry-dialog:has(#entry-info-fields[hidden]):has(#parent-field[hidden]) input {
+    min-height: 36px; padding: 8px 9px; border-color: #60759030; border-radius: 4px;
+    background: #ffffff04; font: inherit; color: #d8e5f4;
+}
+#add-entry-dialog:has(#entry-info-fields[hidden]):has(#parent-field[hidden]) input:focus { border-color: #839ab5; background: #ffffff04; }
+#add-entry-dialog:has(#entry-info-fields[hidden]):has(#parent-field[hidden]) .form-actions { margin-top: 0; }
+#add-entry-dialog:has(#entry-info-fields[hidden]):has(#parent-field[hidden]) .form-actions button { min-height: 32px; padding: 6px 10px; font-size: 12px; border-radius: 4px; }
+@media (hover: none), (pointer: coarse) {
+    #add-menu button, #entry-context-menu > button { min-height: 40px; }
+    #add-entry-dialog:has(#entry-info-fields[hidden]):has(#parent-field[hidden]) input { min-height: 44px; font-size: 16px; }
+    #add-entry-dialog:has(#entry-info-fields[hidden]):has(#parent-field[hidden]) .form-actions button { min-height: 40px; }
+}
 #panel-rich-content { margin-top: 2px; padding-top: 0; border-top: 0; }
 #panel-rich-content > section { padding: 9px 0 12px; border-bottom: 1px solid #50627c33; }
 #panel-rich-content .content-heading { margin: 0 0 7px; min-height: 27px; flex-wrap: wrap; }
@@ -794,7 +831,7 @@ summary:focus-visible { outline: 1px solid #b9d0e9; outline-offset: 3px; }
 .tree-portal-icon circle { fill: #070b14; }
 .hierarchy-row .tree-portal-actions { font-size: 10px; letter-spacing: 1px; opacity: 0; pointer-events: none; }
 .portal-row:is(:hover,:focus-within) .tree-portal-actions { opacity: 1; pointer-events: auto; }
-.portal-row.portal-activated .tree-portal-icon { color: #c7baef; filter: drop-shadow(0 0 3px #a297d766); }
+.portal-row.portal-activated .tree-portal-icon { color: #c7baef; }
 @media (prefers-reduced-motion: reduce) { .portal-row.portal-activated .tree-portal-icon { filter: none; } }
 @media (hover: none), (pointer: coarse) { .hierarchy-row .tree-portal-actions { opacity: 1; pointer-events: auto; } }
 @media (max-width: 760px) { .hierarchy-row .tree-portal-actions { opacity: 1; pointer-events: auto; } }
@@ -857,6 +894,17 @@ summary:focus-visible { outline: 1px solid #b9d0e9; outline-offset: 3px; }
 #panel-add-member { margin-top: 12px; padding: 6px 0; background: transparent; border: 0; box-shadow: none; font-size: 12px; color: #96aac3; }
 #constellation-overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
 .constellation-line { stroke: #d6c3a2; stroke-width: 1; stroke-opacity: .48; fill: none; }
+.constellation-exit-line { stroke: #d6c3a2; stroke-width: 1; stroke-opacity: .48; fill: none; }
+#motion-overlay { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
+.file-removal-echo { position: fixed; pointer-events: none; z-index: 30; font-size: 12px; color: #9bb0c8; background: #0e1621; padding: 8px 0; overflow: hidden; }
+.ambient-layer { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+.ambient-object { position: absolute; left: 0; top: 0; pointer-events: none; will-change: transform,opacity; }
+#galaxy .entry-node:not([data-body="galaxy"]):hover { outline: 1px solid #b6cadb66; outline-offset: 2px; }
+.entry-node.dragging .astronaut-figure { transform: rotate(-3deg); }
+@media (prefers-reduced-motion: reduce) {
+    .entry-node,.node-label,.astronaut-figure { transition: none !important; }
+    .ambient-layer { display: none; }
+}
 /* The lens multiplies normal detail for context, prioritizing only collection
    entries and intentional inspection. Labels have a separate readability fade. */
 #galaxy.constellation-has-members .entry-node { opacity: var(--constellation-body-opacity); }

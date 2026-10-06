@@ -30,8 +30,8 @@ function createPanelItemMenu(actions, label, root) {
 
 // Content presentation over canonical entry content and a replaceable file store.
 class EntryContentInspector {
-    constructor({ store, getEntry, save, rollback, onAction, onLayout }) {
-        Object.assign(this, { store, getEntry, save, rollback, onAction, onLayout });
+    constructor({ store, getEntry, save, rollback, onAction, onLayout, motion=null }) {
+        Object.assign(this, { store, getEntry, save, rollback, onAction, onLayout, motion });
         this.root = document.getElementById("panel-rich-content");
         this.notes = document.getElementById("content-notes");
         this.notesForm = document.getElementById("content-notes-form");
@@ -153,8 +153,13 @@ class EntryContentInspector {
     }
     clearPreviews() { this.generation++; this.urls.forEach(url => URL.revokeObjectURL(url)); this.urls.clear(); }
     renderLists() {
-        this.clearPreviews();
         const links = document.getElementById("content-links"), files = document.getElementById("content-attachments");
+        const changed=this.listEntryId!==this.entryId,previous=this.listFileIds||new Set(),current=new Set(this.content().attachments.map(file=>file.id));
+        if(!changed&&this.visible&&this.motion&&!this.motion.reduced){
+            const removed=[...files.children].filter(row=>!current.has(row.dataset.attachmentId)).map(row=>({rect:row.getBoundingClientRect(),name:row.querySelector('.content-file-name').textContent}));
+            removed.forEach(row=>this.motion.fileExit(row.name,row.rect,this.root.closest('#entry-panel')));
+        }
+        this.listEntryId=this.entryId;this.listFileIds=current;this.clearPreviews();
         links.replaceChildren(); files.replaceChildren();
         if (!this.entryId) return;
         this.content().links.forEach(link => {
@@ -197,6 +202,7 @@ class EntryContentInspector {
             }, `Remove attachment ${metadata.filename}`));
             info.className = "content-file-info"; info.append(name, size);
             item.append(preview, info, this.itemMenu(actions, metadata.filename)); files.append(item);
+            if(!changed&&!previous.has(metadata.id)&&this.visible)this.motion?.fileEnter(item);
             if (this.visible) this.preview(metadata, preview, generation);
         });
         document.getElementById("content-files-empty").hidden = !!this.content().attachments.length;

@@ -83,6 +83,70 @@ open `http://localhost:8000`. Use the same browser, address and port for saved d
   returns gradually toward its parent; release preserves inertia. There are no
   fixed-position controls or physics-status messages.
 
+## Visual density and restrained motion
+
+Body sizes stay unchanged at 100% zoom: Sun 45.5px, Planet 26px, Moon 16.9px,
+Satellite 15.1px and Astronaut 13px visual boxes. Deep bodies have transparent
+24px pointer areas (30px on coarse pointers), independent of their visual size.
+Body fades retain their existing hierarchy thresholds. Label fades are separate:
+Sun .44–.58, Planet .66–.82, Moon .90–1.12, Satellite 1.02–1.30 and Astronaut
+1.20–1.52. Selected, hovered, keyboard-focused, current Search and navigation
+targets reveal labels; active Constellation bodies retain priority while their
+labels still respect readability. Represented Galaxy names remain context labels.
+
+`LabelDensity` batches projected label rectangles at most about every 120ms.
+A spatial grid and stable ID/role priorities suppress substantial overlap, with
+overlap tolerance and a 240ms clear window before restoring a label. Interaction
+targets and represented Galaxy labels are protected. Generic repeated names use
+the same rules; there are no word exceptions. Measurements and writes are batched,
+and the pass uses existing camera/physics ticks plus one-shot interaction requests,
+not a permanent label animation loop. A dense Astronaut family receives a sibling
+boost of `min(14, 5*sqrt(max(0, count-3)))` world pixels, adaptive collision padding
+and a bounded cluster allowance. Sparse groups/deep chains retain their old bands;
+drag preferences still take the released radius/angle directly within soft bounds.
+
+`CosmosMotion` is presentation-only: a 240ms Portal ring cue starts alongside
+existing travel; completed travel adds a brief arrival outline. The existing
+quintic departure/middle/arrival easing and interruption remain unchanged.
+Constellation bodies illuminate over a capped 150ms stagger and 240ms fade,
+with a brief restrained outline; existing sparse lines draw over 260ms with at
+most 125ms stagger and temporarily stronger stroke opacity. Persistent styling
+returns unchanged within 400ms. Large sets cap
+individual animation work to 96 bodies/128 edges; the whole line layer also fades
+in. Deactivation changes logical state immediately and fades a noninteractive
+echo for 140ms. Only newly created bodies materialize (220ms). Newly added Files
+settle (180ms), and successful removal can leave a 150ms filename echo outside
+the authoritative list; animations never delay file transactions or failures.
+Astronaut figures use a tiny drag/release orientation response. Galaxy focus may
+produce a relative opacity breath of at most 8% for 260ms when its cloud is visible.
+
+Successful canonical deletion captures one inert rendered-body snapshot, then
+commits the existing deletion and cleanup immediately. The snapshot alone
+collapses/fades over 240ms; subtree descendants disappear normally. No animation
+callback controls data, attachment, Portal or Constellation cleanup. Reduced
+motion skips the snapshot. This does not apply to other removal actions.
+
+Comets/UFOs belong only to the far-background DOM. One randomized timeout schedules
+an opportunity 25–55 seconds later; there is no polling/RAF loop for ambient life.
+After 8–12 opportunities, a coin flip may choose a tiny UFO instead of a comet,
+so no short session guarantees one. Passes last 1.1–1.8 seconds, never receive
+pointer events, and remove themselves. Hidden/unfocused pages, dialogs, visible
+Notes/Bookmark editors, file jobs, camera/drag motion and primary cue animations
+block new passes. Timers/animations clean up on teardown and resume after a cached
+page restore. Reduced motion cancels these effects and preserves static state.
+Use `window.debugComet()` or `window.debugUfo()` in the browser console to preview
+one pass. They return false if busy, unfocused, reduced-motion, or another pass
+is active. They use the same renderer/cleanup without changing the production
+timer or UFO opportunity counter. UFO opportunity odds remain unchanged.
+No domain fields, preferences or schema migration were added; storage stays at 5.
+
+Run `python tests/browser-check.py --density-only --screenshots` and
+`python tests/browser-check.py --motion-only --screenshots` in isolated profiles.
+Inspect the recipe family at .55/.95/1.3/1.7 zoom, hover/select deep entries,
+interrupt a Portal, switch/exit Constellations, add/remove a file, and toggle OS
+reduced motion. Ambient test captures can force decorative passes for inspection;
+the production scheduler remains rare and random.
+
 ## Generic hierarchy and persistence
 
 CRUD operations freeze pending camera animation and cancel deferred startup/Fit

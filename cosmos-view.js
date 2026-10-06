@@ -3,8 +3,8 @@ const cosmosView = {
     tiers: { galaxy: .45, system: .58, close: .78 },
     fades: {
         sun: [.43, .58], planet: [.58, .68], moon: [.68, .76], satellite: [.70, .79], astronaut: [.74, .86],
-        planetLabel: [.62, .72], moonLabel: [.73, .83], satelliteLabel: [.76, .88],
-        astronautLabel: [.82, .96], tethers: [.78, .96], guides: [.58, .78], clouds: [.38, .72]
+        sunLabel: [.44, .58], planetLabel: [.66, .82], moonLabel: [.90, 1.12], satelliteLabel: [1.02, 1.30],
+        astronautLabel: [1.20, 1.52], tethers: [.78, .96], guides: [.58, .78], clouds: [.38, .72]
     },
     smooth(scale, start, end) {
         const t = Math.max(0, Math.min(1, (scale - start) / (end - start)));
@@ -20,7 +20,7 @@ const cosmosView = {
     constellationVisibility(scale, role, { member = false, priority = false } = {}, detail = this.detail(scale)) {
         const context = .78 * this.smooth(scale, .34, .84);
         const body = role === 'galaxy' ? 1 : detail[role];
-        const label = role === 'galaxy' || role === 'sun' ? this.smooth(scale, .48, .68) : detail[`${role}Label`];
+        const label = role === 'galaxy' ? this.smooth(scale, .48, .68) : detail[`${role}Label`];
         return { body: member || priority ? 1 : body * context,
             label: priority ? 1 : member ? label : label * context };
     },
