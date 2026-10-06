@@ -1826,9 +1826,9 @@ motion.setReducedMotion(motionPreference.matches);
 const ambient=new CosmosAmbient({root:document.querySelector('.universe-background'),reduced:motionPreference.matches,
     busy:()=>!!document.querySelector('dialog[open]')||(!panel.hidden&&!contentInspector.root.hidden&&(!contentInspector.notesForm.hidden||!contentInspector.linkForm.hidden))||
         !!camera.frame||!!pan||activeNodeDrags>0||motion.constellationAnimating||motion.animations.size>0||contentInspector.jobs.size>0});
-// Console-only previews share production guards/rendering without advancing its timer or rarity counter.
-window.debugComet=()=>ambient.trigger('comet');
-window.debugUfo=()=>ambient.trigger('ufo');
+// Deterministic console previews share rendering, with independent production timing/state.
+window.debugComet=()=>ambient.debug('comet');
+window.debugUfo=()=>ambient.debug('ufo');
 motionPreference.addEventListener("change", (event) => {
     physics.setReducedMotion(event.matches);
     camera.setReducedMotion(event.matches);

@@ -126,18 +126,29 @@ collapses/fades over 240ms; subtree descendants disappear normally. No animation
 callback controls data, attachment, Portal or Constellation cleanup. Reduced
 motion skips the snapshot. This does not apply to other removal actions.
 
-Comets/UFOs belong only to the far-background DOM. One randomized timeout schedules
-an opportunity 25–55 seconds later; there is no polling/RAF loop for ambient life.
-After 8–12 opportunities, a coin flip may choose a tiny UFO instead of a comet,
-so no short session guarantees one. Passes last 1.1–1.8 seconds, never receive
-pointer events, and remove themselves. Hidden/unfocused pages, dialogs, visible
+Comets/UFOs belong only to the far-background DOM. Independent one-shot timeouts
+use random delays of 12–35 seconds for comets and 45–120 seconds for UFOs. Each
+type schedules its next delay after its pass completes; blocked attempts defer
+with a fresh delay. Only one event (including debug previews) can run at a time.
+There is no polling/RAF loop for ambient life. Comets have a brighter head and
+108px fading tail, with a shallow diagonal arc over 0.9–1.4 seconds. UFOs have an
+18px saucer silhouette, three tiny lights and a gentle wobble over 2.8–4 seconds,
+with no tail. Events never receive pointer events and remove themselves.
+Production passes randomize direction, off-screen start/end offsets, starting
+height, trajectory and bounded duration. Comets have steeper vertical travel;
+UFOs stay mostly horizontal. Console preview paths and durations stay fixed.
+Hidden/unfocused pages, dialogs, visible
 Notes/Bookmark editors, file jobs, camera/drag motion and primary cue animations
 block new passes. Timers/animations clean up on teardown and resume after a cached
 page restore. Reduced motion cancels these effects and preserves static state.
 Use `window.debugComet()` or `window.debugUfo()` in the browser console to preview
-one pass. They return false if busy, unfocused, reduced-motion, or another pass
-is active. They use the same renderer/cleanup without changing the production
-timer or UFO opportunity counter. UFO opportunity odds remain unchanged.
+one immediately visible, deterministic pass. Both return `true` on success,
+bypass DevTools focus and busy-state guards, and replace an unfinished debug
+preview. Reduced motion, a hidden page or an unavailable renderer return an
+explanatory string. They share production rendering/cleanup but use a separate
+preview slot, consume no random draws and do not directly change production
+timers or counters. If a production event is active, helpers return an explanatory
+string; an event due during a debug preview defers under the same single-pass rule.
 No domain fields, preferences or schema migration were added; storage stays at 5.
 
 Run `python tests/browser-check.py --density-only --screenshots` and
