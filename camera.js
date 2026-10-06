@@ -140,7 +140,7 @@ class GraphCamera {
         if (t === 1) { this.travel = null; this.frame = null; }
         else this.frame = this.requestFrame(nextTime => this.tick(nextTime));
         this.onChange(this.view);
-        if (t === 1) this.onRest();
+        if (t === 1) this.onRest({travel:true});
     }
 
     setReducedMotion(enabled) {

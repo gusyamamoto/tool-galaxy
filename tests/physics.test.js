@@ -13,6 +13,15 @@ function make(records,layout=new Map()){
     physics.setGraph(data,layout);physics.simulation.stop();return physics;
 }
 function advance(p,ticks=300){p.simulation.stop().tick(ticks);return [...p.particles.values()];}
+test('dense Astronaut sibling spacing increases locally; sparse and deep-chain bands retain their old clearance',()=>{
+    const records=Array.from({length:5},(_,i)=>({id:`root${i}`,parentId:i?`root${i-1}`:null,seedLayout:true}));
+    const family=count=>make([...records,...Array.from({length:count},(_,i)=>({id:`a${i}`,parentId:'root4',seedLayout:true}))]);
+    const sparse=family(2),dense=family(7);
+    assert.equal(sparse.deepSiblingBoost('root4'),0);assert.equal(dense.deepSiblingBoost('root4'),10);
+    assert.equal(dense.particles.get('a0').orbitRadius-sparse.particles.get('a0').orbitRadius,10);
+    assert.ok(dense.particles.get('root4').clusterRadius<145);assert.ok(dense.collisionPadding(dense.particles.get('a0'))>sparse.collisionPadding(sparse.particles.get('a0')));
+    assert.equal(dense.particles.get('root1').childOrbit,sparse.particles.get('root1').childOrbit);
+});
 function fixture(){return make(plain(sample.build().entries).map(e=>({...e,seedLayout:true})));}
 function family(){return make([{id:'g',seedLayout:true},{id:'s',parentId:'g',seedLayout:true},
     {id:'p',parentId:'s',seedLayout:true},{id:'m',parentId:'p',seedLayout:true},{id:'t',parentId:'m',seedLayout:true}]);}

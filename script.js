@@ -82,6 +82,7 @@ const constellations = new Map();
 let activeConstellationId = null;
 let activeConstellationMembers = new Set();
 let activeConstellationGalaxyIds = new Set();
+let pendingPortalArrival = null;
 let constellationOverview = false;
 // Parent-relative arrangement influences are separate from content.
 let layout = new Map();
@@ -92,6 +93,7 @@ const nodes = new Map();
 const lines = [];
 const orbitGuides = [];
 let hoveredSystemId = null;
+let hoveredEntryId = null, searchFocusId = null;
 let selectedNode = null;
 let nextEntryId = 1;
 let storageAvailable = true;
@@ -124,7 +126,9 @@ const hierarchySidebar = new HierarchySidebar({ host: galaxy, persist: !sampleMo
 const smoothDetail = (scale, start, end) => cosmosView.smooth(scale, start, end);
 const renderBackground = createUniverseBackground(galaxy);
 const camera = new GraphCamera({
-    onRest() {
+    onRest({travel=false}={}) {
+        if(travel&&pendingPortalArrival===selectedNode?.dataset.entryId)motion.accent(selectedNode,'arrival');
+        pendingPortalArrival=null;
         if (focusRevealIds.size) { focusRevealIds.clear(); renderGraph(); }
     },
     onChange({ x, y, scale }) {
@@ -138,7 +142,7 @@ const camera = new GraphCamera({
         for (const role of ["sun", "planet", "moon", "satellite", "astronaut"]) {
             graphViewport.style.setProperty(`--${role}-detail`, detail[role]);
             graphViewport.style.setProperty(`--${role}-render-scale`, scale * (.72 + detail[role] * .28));
-            if (role !== "sun") graphViewport.style.setProperty(`--${role}-label-detail`, detail[`${role}Label`]);
+            graphViewport.style.setProperty(`--${role}-label-detail`, detail[`${role}Label`]);
         }
         graphViewport.style.setProperty("--surface-detail", smoothDetail(scale, 0.5, 1));
         graphViewport.style.setProperty("--orbit-detail", detail.guides);
@@ -152,6 +156,7 @@ const camera = new GraphCamera({
         updateHierarchyPaths();
         updateOrbitGuides();
         constellationOverlay.update();
+        requestLabelLayout();
     }
 });
 let pan = null;
@@ -370,15 +375,33 @@ function rollbackEntryContent(id, previous) {
     if (previous) entry.content = previous; else delete entry.content;
     persistContentSnapshot();
 }
-const contentInspector = new EntryContentInspector({ store: attachmentStore, getEntry: id => entries.get(id),
+const motion = new CosmosMotion({wake:()=>renderRegions()});
+const contentInspector = new EntryContentInspector({ store: attachmentStore, motion, getEntry: id => entries.get(id),
     save: saveEntryContent, rollback: rollbackEntryContent,
     onAction() { autoFitPending = false; keyboardNavigation = false; camera.stopAnimation(); },
     onLayout() { if (cameraViewReady) updateGraphViewport(); } });
+const labelDensity = new LabelDensity();
+function requestLabelLayout(force=false) {
+    labelDensity.request(()=>{
+        const candidates=[],labels=[],rank={galaxy:4,sun:5,planet:6,moon:7,satellite:8,astronaut:9};
+        nodes.forEach((node,id)=>{
+            const entry=entries.get(id),label=node.querySelector('.node-label');
+            const selected=selectedNode===node,interactive=hoveredEntryId===id||document.activeElement===node||node.classList.contains('dragging');
+            const search=searchFocusId===id,context=activeConstellationGalaxyIds.has(id)&&entry.depth===0;
+            const protectedLabel=selected||interactive||search||context;
+            const eligible=node.dataset.culled!=='true'&&node.dataset.semanticHidden!=='true'&&(protectedLabel||node.labelOpacity>.18);
+            labels.push({id,label,eligible});if(!eligible)return;
+            const rect=label.getBoundingClientRect(),b=physics.bounds;
+            if(rect.right<b.left||rect.left>b.right||rect.bottom<b.top||rect.top>b.bottom)return;
+            candidates.push({id,rect,protected:protectedLabel,priority:selected?0:interactive?1:search?2:node.classList.contains('selected-ancestor')?3:rank[entry.role]-(activeConstellationMembers.has(id) ? .25 : 0)});
+        });return {candidates,labels};
+    },force);
+}
 
 const constellationOverlay = new ConstellationOverlay(document.getElementById('constellation-overlay'), id => {
     const node = nodes.get(id);
     return node ? { x: node.renderX, y: node.renderY } : null;
-});
+},{motion});
 const constellationWorkspace = new ConstellationWorkspace({ entries, portals, collections: constellations,
     getActive: () => activeConstellationId, activate: activateConstellation, inspect: id => focusEntry(id),
     commit: commitConstellations, showMembershipMenu: showConstellationMemberships, overview: showConstellationOverview, persist: !sampleMode,
@@ -442,7 +465,8 @@ function showConstellationOverview() {
 document.getElementById('active-constellation-name').addEventListener('click', showConstellationOverview);
 document.getElementById('deactivate-constellation-button').addEventListener('click', () => exitConstellation());
 
-function refreshConstellation() {
+function refreshConstellation({animate=false}={}) {
+    if(!animate)motion.cancelConstellationIntro();
     const collection = constellations.get(activeConstellationId);
     activeConstellationMembers = new Set(collection?.memberEntryIds || []);
     activeConstellationGalaxyIds = galaxyConstellations.galaxyIds(activeConstellationMembers, entries);
@@ -453,7 +477,8 @@ function refreshConstellation() {
     // Only membership changes regenerate topology; tick/zoom/drag updates use
     // the existing n-1 edges and project each live endpoint.
     const points = [...activeConstellationMembers].map(id => ({ id, ...camera.screenToWorld(nodes.get(id).renderX, nodes.get(id).renderY) }));
-    constellationOverlay.rebuild(points);
+    if(animate)motion.beginConstellation([...activeConstellationMembers].map(id=>nodes.get(id)));
+    constellationOverlay.rebuild(points,{animate});
     constellationWorkspace.renderSidebar();
     updateConstellationIndicator();
     if (collection && constellationOverview) constellationWorkspace.renderPanel();
@@ -465,7 +490,7 @@ function activateConstellation(id) {
     closeContextMenu(); closeContentMenus(); autoFitPending = false; keyboardNavigation = false; camera.stopAnimation();
     activeConstellationId = id;
     constellationOverview = true;
-    contentInspector.hide(); refreshConstellation(); setInspectorOpen(true);
+    contentInspector.hide(); refreshConstellation({animate:true}); setInspectorOpen(true);
     const members = [...activeConstellationMembers];
     if (!members.length) return;
     const bounds = { left: Infinity, right: -Infinity, top: Infinity, bottom: -Infinity };
@@ -480,6 +505,7 @@ function activateConstellation(id) {
 function exitConstellation({ restorePanel = true } = {}) {
     if (!activeConstellationId) return;
     const inspectingEntry = !constellationOverview && selectedNode && entries.has(selectedNode.dataset.entryId);
+    motion.leaveConstellation(constellationOverlay.element,[...activeConstellationMembers].map(id=>nodes.get(id)));
     camera.stopAnimation(); activeConstellationId = null; refreshConstellation(); entityPanelMode();
     if (!restorePanel) return;
     // The indicator's × clears only the lens, preserving in-progress content
@@ -596,6 +622,7 @@ function selectEntry(entry, node, { openInspector = true, reframe = false, scrol
     selectedNode = node;
     node.classList.add("selected");
     node.setAttribute("aria-pressed", "true");
+    if(changingEntry&&!activeNodeDrags){motion.accent(node,'select');if(entry.role==='astronaut')motion.astronaut(node);}
     panelName.textContent = entry.name;
     const parent = entries.get(entry.parentId);
     panelAncestry.replaceChildren();
@@ -670,6 +697,7 @@ function updateHierarchyEmphasis() {
     lines.forEach(({ from, to, element }) => element.classList.toggle("selected", from === id || to === id));
     entries.forEach(entry => renderNode(entry, nodes.get(entry.id)));
     updateHierarchyPaths(); updateOrbitGuides();
+    requestLabelLayout(true);
 }
 
 // Initial entries and form submissions share all rendering and interactions.
@@ -680,6 +708,7 @@ function createEntryNode(entry) {
     const label = document.createElement("span");
     label.className = "node-label";
     node.appendChild(label);
+    if(entry.depth>=3){const hit=document.createElement('span');hit.className='node-hit-area';hit.ariaHidden='true';node.append(hit);}
     updateEntryNode(entry, node);
     node.dataset.entryId = entry.id;
     node.setAttribute("aria-pressed", "false");
@@ -706,10 +735,12 @@ function createEntryNode(entry) {
         if (!crudActive && !activeNodeDrags && keyboardNavigation) focusEntry(entry.id);
     });
     node.addEventListener("pointerenter", () => {
+        hoveredEntryId=entry.id;renderNode(entry,node);requestLabelLayout(true);
         hoveredSystemId = physics.particles.get(entry.id)?.systemId || null;
         updateOrbitGuides();
     });
     node.addEventListener("pointerleave", () => {
+        if(hoveredEntryId===entry.id)hoveredEntryId=null;renderNode(entry,node);requestLabelLayout(true);
         hoveredSystemId = null;
         updateOrbitGuides();
     });
@@ -760,6 +791,7 @@ function createEntryNode(entry) {
             if (placement) layout.set(entry.id, placement); else layout.delete(entry.id);
             saveGalaxy();
             setInspectorOpen(true);
+            if(entry.role==='astronaut')motion.astronaut(node,true);
         }
     }
     ["pointerup", "pointercancel", "lostpointercapture"].forEach((type) => node.addEventListener(type, endDrag));
@@ -772,6 +804,9 @@ function createEntryNode(entry) {
 
 // Editing reuses the same appearance renderer without duplicating DOM or handlers.
 function updateEntryNode(entry, node) {
+    const hit=node.querySelector('.node-hit-area');
+    if(entry.depth>=3&&!hit){const target=document.createElement('span');target.className='node-hit-area';target.ariaHidden='true';node.append(target);}
+    else if(entry.depth<3)hit?.remove();
     node.dataset.role = entry.role; node.dataset.depth = entry.depth;
     node.dataset.body = entryRoles[entry.role].body;
     node.style.setProperty("--body-scale", entryRoles[entry.role].scale);
@@ -957,9 +992,10 @@ function renderNode(entry, node) {
     const region = regions.get(entry.id)?.footprint;
     const point = region ? camera.worldToScreen(entry.x + region.offsetX, entry.y + region.offsetY) : camera.worldToScreen(entry.x, entry.y);
     if (region) point.y -= Math.max(140, region.height * camera.view.scale) * .36;
-    const revealed = focusRevealIds.has(entry.id) || node.classList.contains("dragging") ||
+    const revealed = selectedNode===node || hoveredEntryId===entry.id || document.activeElement===node || searchFocusId===entry.id || focusRevealIds.has(entry.id) || node.classList.contains("dragging") ||
         (searchOpen && node.matches(".search-match,.search-ancestor"));
     node.classList.toggle("temporarily-revealed", revealed);
+    node.classList.toggle('label-priority',selectedNode===node||hoveredEntryId===entry.id||document.activeElement===node||searchFocusId===entry.id||node.classList.contains('dragging'));
     const lens = activeConstellationMembers.size > 0;
     const priority = selectedNode === node || node.classList.contains('dragging') || revealed;
     const visibility = lens ? cosmosView.constellationVisibility(camera.view.scale, entry.role,
@@ -970,6 +1006,7 @@ function renderNode(entry, node) {
         visibility.body = priority || activeConstellationMembers.has(entry.id) ? 1 : .68;
         visibility.label = 1;
     }
+    node.labelOpacity=visibility?visibility.label:revealed?1:entry.depth===0?1:semanticDetail[`${entry.role}Label`];
     node.classList.toggle('constellation-inspected', lens && priority);
     node.classList.toggle('constellation-label-hidden', lens && visibility.label < .02);
     if (visibility) {
@@ -997,6 +1034,7 @@ function renderGraph() {
     updateHierarchyPaths();
     updateOrbitGuides();
     constellationOverlay.update();
+    requestLabelLayout();
 }
 
 function updateRegionFootprints(force = false) {
@@ -1019,7 +1057,7 @@ function updateRegionFootprints(force = false) {
 function renderRegions() {
     regions.forEach((element, id) => {
         const footprint = element.footprint;
-        const opacity = cosmosView.cloudOpacity(camera.view.scale, physics.bounds, footprint) * (activeConstellationMembers.size ? .58 : 1);
+        const opacity = cosmosView.cloudOpacity(camera.view.scale, physics.bounds, footprint) * (activeConstellationMembers.size ? .58 : 1) * motion.cloudFactor(element);
         if (element.renderOpacity !== opacity) { element.style.opacity = opacity; element.renderOpacity = opacity; }
         const hidden = opacity === 0;
         if (element.dataset.semanticHidden !== String(hidden)) element.dataset.semanticHidden = String(hidden);
@@ -1208,6 +1246,7 @@ function commitCrudMutation(mutate, { selectionId, topologyChanged = true, revea
     beginCrudOperation();
     const scroll = { top: hierarchySidebar.tree.scrollTop, left: hierarchySidebar.tree.scrollLeft };
     const previousSelection = selectedNode?.dataset.entryId;
+    const materialized=[];
     mutate();
     if (topologyChanged || selectionId !== previousSelection) focusRevealIds.clear();
     if (!entries.has(selectedNode?.dataset.entryId)) selectedNode = null;
@@ -1220,7 +1259,7 @@ function commitCrudMutation(mutate, { selectionId, topologyChanged = true, revea
     });
     entries.forEach(entry => {
         const node = nodes.get(entry.id);
-        if (!node) createEntryNode(entry);
+        if (!node) materialized.push(createEntryNode(entry));
         else if (entry.id === selectionId || node.dataset.role !== entry.role || Number(node.dataset.depth) !== entry.depth) updateEntryNode(entry, node);
     });
     rebuildHierarchyPaths();
@@ -1242,6 +1281,7 @@ function commitCrudMutation(mutate, { selectionId, topologyChanged = true, revea
             renderGraph();
         }
     }
+    materialized.forEach(node=>motion.materialize(node));
 }
 
 function restoreCrudFocus() {
@@ -1524,12 +1564,14 @@ document.getElementById("delete-entry-form").addEventListener("submit", async (e
             deletionBusy = false; deletingContentIds.clear(); confirm.disabled = cancel.disabled = false;
         }
     }
+    const deletionGhost=motion.captureDeletion(nodes.get(entry.id));
     commitCrudMutation(() => {
         portals.forEach((portal, id) => { if (plan.ids.has(portal.targetEntryId) || plan.ids.has(portal.parentEntryId)) portals.delete(id); });
         galaxyConstellations.withoutEntries([...constellations.values()], plan.ids).forEach(collection => constellations.set(collection.id, collection));
         plan.ids.forEach(id => { entries.delete(id); layout.delete(id); focusRevealIds.delete(id); });
         if (plan.ids.has(hoveredSystemId)) hoveredSystemId = null;
     }, { selectionId: fallbackId, persisted: hasFiles });
+    motion.implode(deletionGhost);
     deleteDialog.close();
     restoreCrudFocus(); finishCrudOperation();
 });
@@ -1537,6 +1579,8 @@ document.getElementById("delete-entry-form").addEventListener("submit", async (e
 function openPortal(id) {
     const portal = portals.get(id), targetId = portal?.targetEntryId;
     if (entries.has(targetId)) {
+        motion.portal(hierarchySidebar.rows.get(id)?.querySelector('.tree-portal-icon'));
+        pendingPortalArrival=targetId;
         focusEntry(targetId, { travel: true, sourceId: selectedNode?.dataset.entryId || portal.parentEntryId });
         if (!hierarchySidebar.collapsed) hierarchySidebar.rows.get(targetId)?.focus({ preventScroll: true });
     }
@@ -1658,6 +1702,8 @@ document.getElementById("portal-form").addEventListener("submit", event => {
 function focusEntry(id, { travel = false, sourceId = selectedNode?.dataset.entryId } = {}) {
     const entry = entries.get(id);
     if (!entry || activeNodeDrags || pan) return;
+    if(!travel)pendingPortalArrival=null;
+    if(entry.depth===0)motion.cloud(regions.get(id));
     const source = physics.particles.get(sourceId);
 
 
@@ -1717,10 +1763,14 @@ function refreshSearchResults() {
         const item = document.createElement("li");
         const button = document.createElement("button");
         button.type = "button";
+        button.dataset.entryId=entry.id;
         const path = galaxyModel.ancestors(entries, entry.id).reverse().map(parent => parent.name).join(" › ") || "Universe";
         const name = document.createElement('span'), location = document.createElement('small');
         name.textContent = entry.name; location.textContent = path; button.append(name, location); button.title = `${entry.name}\n${path}`;
         button.addEventListener("click", () => focusEntry(entry.id));
+        const reveal=()=>{searchFocusId=entry.id;const node=nodes.get(entry.id);if(node)renderNode(entry,node);requestLabelLayout(true);};
+        const dismiss=()=>{if(searchFocusId===entry.id)searchFocusId=null;const node=nodes.get(entry.id);if(node)renderNode(entry,node);requestLabelLayout(true);};
+        button.addEventListener('focus',reveal);button.addEventListener('pointerenter',reveal);button.addEventListener('blur',dismiss);button.addEventListener('pointerleave',dismiss);
         item.appendChild(button);
         searchResultList.appendChild(item);
     });
@@ -1772,9 +1822,17 @@ cameraViewReady = true;
 const motionPreference = window.matchMedia("(prefers-reduced-motion: reduce)");
 physics.setReducedMotion(motionPreference.matches);
 camera.setReducedMotion(motionPreference.matches);
+motion.setReducedMotion(motionPreference.matches);
+const ambient=new CosmosAmbient({root:document.querySelector('.universe-background'),reduced:motionPreference.matches,
+    busy:()=>!!document.querySelector('dialog[open]')||(!panel.hidden&&!contentInspector.root.hidden&&(!contentInspector.notesForm.hidden||!contentInspector.linkForm.hidden))||
+        !!camera.frame||!!pan||activeNodeDrags>0||motion.constellationAnimating||motion.animations.size>0||contentInspector.jobs.size>0});
+// Console-only previews share production guards/rendering without advancing its timer or rarity counter.
+window.debugComet=()=>ambient.trigger('comet');
+window.debugUfo=()=>ambient.trigger('ufo');
 motionPreference.addEventListener("change", (event) => {
     physics.setReducedMotion(event.matches);
     camera.setReducedMotion(event.matches);
+    motion.setReducedMotion(event.matches);ambient.setReducedMotion(event.matches);
 });
 
 window.addEventListener("resize", () => {
@@ -1784,11 +1842,14 @@ window.addEventListener("resize", () => {
     updateOrbitGuides();
 });
 window.addEventListener("pagehide", () => {
+    labelDensity.destroy();
+    motion.destroy();ambient.destroy();
     if (graphNeedsSave) {
         saveGalaxy();
     }
 });
 document.addEventListener("visibilitychange", () => {
+    ambient.refresh();
     if (document.hidden) {
         physics.pause();
         if (graphNeedsSave) {
@@ -1798,3 +1859,5 @@ document.addEventListener("visibilitychange", () => {
         physics.resume();
     }
 });
+window.addEventListener('blur',()=>ambient.refresh());window.addEventListener('focus',()=>ambient.refresh());
+window.addEventListener('pageshow',event=>{if(event.persisted){motion.setReducedMotion(motionPreference.matches);ambient.setReducedMotion(motionPreference.matches);ambient.resume();requestLabelLayout(true);if(!panel.hidden&&!constellationOverview)contentInspector.render();}});

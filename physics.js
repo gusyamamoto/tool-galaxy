@@ -7,7 +7,7 @@ class GalaxyPhysics {
         this.children = new Map(); this.dragging = new Set();
         this.bounds = { left: 60, right: 900, top: 140, bottom: 700 };
         this.baseNodeRadius = 13; this.paused = false; this.settled = true; this.origin = null;
-        this.collisionForce = d3.forceCollide(node => node.radius + (node.role === "astronaut" ? 10 : 12)).strength(1).iterations(4);
+        this.collisionForce = d3.forceCollide(node => node.radius + this.collisionPadding(node)).strength(1).iterations(4);
         this.galaxyCollision = d3.forceCollide(region => region.radius + 60).strength(.65).iterations(3);
         this.simulation = d3.forceSimulation([]).stop().alphaMin(.002).alphaDecay(.032).velocityDecay(.42)
             .force("follow", () => this.followParents())
@@ -86,7 +86,8 @@ class GalaxyPhysics {
         astronautClusters.forEach((members, id) => {
             // Count, never depth: many figures need area, but a deep chain must
             // not accumulate another full orbital envelope at every level.
-            this.particles.get(id).clusterRadius = 54 + Math.sqrt(members.length) * 18;
+            const density=Math.max(1,...members.map(node=>this.children.get(node.parentId)?.length||1));
+            this.particles.get(id).clusterRadius = 54 + Math.sqrt(members.length) * 18 + Math.min(20,Math.sqrt(Math.max(0,density-3))*4);
         });
         [...this.ordered].reverse().forEach(parent => {
             const children = this.children.get(parent.id), largest = Math.max(0, ...children.map(child => child.envelope));
@@ -94,7 +95,7 @@ class GalaxyPhysics {
                 const phase = this.floatAngleFor(parent.id);
                 children.forEach((child, index) => {
                     const clearance = parent.radius + child.radius + (parent.role === "astronaut" ? 22 : 26);
-                    child.orbitRadius = clearance + 9 * Math.sqrt(index);
+                    child.orbitRadius = clearance + this.deepSiblingBoost(parent.id) + 9 * Math.sqrt(index);
                     child.orbitAngle = phase + index * 2.39996323;
                 });
                 parent.childOrbit = 0; // Compact floating clusters have no orbit guide.
@@ -142,6 +143,7 @@ class GalaxyPhysics {
                 .distanceMin(this.baseNodeRadius).distanceMax(system.radius * 1.3);
             system.repulsion.initialize(system.members, this.simulation.randomSource());
         });
+        this.collisionForce.radius(node => node.radius + this.collisionPadding(node));
         // Galaxy regions overlap their own content by design; never body-collide them.
         this.collisionForce.initialize([...this.particles.values()].filter(node => node.depth > 0), this.simulation.randomSource());
     }
@@ -158,7 +160,7 @@ class GalaxyPhysics {
     setViewport(bounds, nodeRadius) {
         this.bounds = bounds; this.baseNodeRadius = nodeRadius;
         this.particles.forEach(node => { node.radius = node.depth === 0 ? 0 : nodeRadius * node.sizeScale; });
-        this.collisionForce.radius(node => node.radius + (node.role === "astronaut" ? 10 : 12));
+        this.collisionForce.radius(node => node.radius + this.collisionPadding(node));
         if (this.particles.size) this.buildSystems(); this.reheat(.3);
     }
     followParents() {
@@ -240,7 +242,7 @@ class GalaxyPhysics {
         // their sibling-sized band, with a body-collision-safe inner boundary.
         if (node.depth === 1) return { min: 0, max: node.orbitRadius + Math.max(60, node.envelope * .25) };
         if (node.role === "astronaut") {
-            const min = (node.parent?.radius || 0) + node.radius + (node.parent?.role === "astronaut" ? 22 : 26);
+            const min = (node.parent?.radius || 0) + node.radius + (node.parent?.role === "astronaut" ? 22 : 26) + this.deepSiblingBoost(node.parentId);
             const siblings = this.children.get(node.parentId)?.length || 1;
             return { min, max: Math.max(min+20, 62+Math.sqrt(siblings)*12) };
         }
@@ -249,6 +251,8 @@ class GalaxyPhysics {
         return { min, max: Math.max(min + 24, node.orbitRadius * factor) };
     }
     preferredLimit(node) { return this.orbitalRange(node).max; }
+    deepSiblingBoost(parentId) { return Math.min(14,Math.sqrt(Math.max(0,(this.children.get(parentId)?.length||0)-3))*5); }
+    collisionPadding(node) { return node.role==='astronaut'?10+this.deepSiblingBoost(node.parentId)*.4:12; }
     separateSiblings(alpha) {
         this.children.forEach((siblings, parentId) => {
             if (siblings.length < 2 || this.particles.get(parentId).depth === 0) return;
@@ -259,7 +263,7 @@ class GalaxyPhysics {
                         bx = b.x + b.vx - px, by = b.y + b.vy - py;
                     if (a.role === "astronaut" && b.role === "astronaut") {
                         let dx = bx-ax, dy = by-ay, distance = Math.hypot(dx,dy);
-                        const clearance = a.radius+b.radius+24;
+                        const clearance = a.radius+b.radius+24+this.deepSiblingBoost(parentId);
                         if (distance>=clearance) continue;
                         if (distance<.001) { const angle=this.angleFor(`${a.id}:${b.id}`);dx=Math.cos(angle);dy=Math.sin(angle);distance=1; }
                         const am=a.fx!=null?0:1, bm=b.fx!=null?0:1, total=am+bm;

@@ -135,6 +135,7 @@ test('Astronauts and tethers extend detail fades without changing existing tier 
     assert.equal(view.detail(.58).astronaut,0);assert.equal(view.detail(.58).tethers,0);
     assert.ok(view.detail(.8).astronaut>0 && view.detail(.8).astronaut<1);
     assert.equal(view.detail(.78).tethers,0);
-    assert.equal(view.detail(.96).astronaut,1);assert.equal(view.detail(.96).astronautLabel,1);assert.equal(view.detail(.96).tethers,1);
+    assert.equal(view.detail(.96).astronaut,1);assert.equal(view.detail(.96).astronautLabel,0);assert.equal(view.detail(.96).tethers,1);
+    assert.ok(view.detail(1.35).astronautLabel>0&&view.detail(1.35).astronautLabel<1);assert.equal(view.detail(1.52).astronautLabel,1);
     assert.deepEqual(plain(view.tiers),{galaxy:.45,system:.58,close:.78});
 });
