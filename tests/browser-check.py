@@ -119,6 +119,9 @@ def main():
     args.add_argument("--astronaut-only", action="store_true", help="Check deep Astronaut creation, tethers, compact clusters, persistence, search and semantic links")
     args.add_argument("--crud-only", action="store_true", help="Check camera-stable CRUD, blank descriptions, safe subtree deletion and selection/storage recovery")
     args.add_argument("--content-only", action="store_true", help="Check notes/links, binary IndexedDB files, previews, failure atomicity, deletion and Sample isolation")
+    args.add_argument("--organizer-only", action="store_true", help="Check contextual Add, read-first contents, item menus, breadcrumbs and the full Rich Content backend")
+    args.add_argument("--workspace-only", action="store_true", help="Check polished tree/modal, quiet content, overflow management and header connections alongside Rich Content storage")
+    args.add_argument("--row-actions-only", action="store_true", help="Check row-specific Add targeting, hover/focus/touch access and header More alignment")
     args.add_argument("--connections-performance-only", action="store_true", help="Measure the large sample's deep-focus motion with and without semantic line paint")
     args.add_argument("--baseline-head", action="store_true", help="Use a temporary read-only HEAD snapshot for the connection performance comparison")
     args.add_argument("--capture-baseline", action="store_true", help="Capture sizes before tuning without running new arrangement assertions")
@@ -187,6 +190,7 @@ def main():
                 sessionStorage.setItem('seeded','yes');
             }}
             document.addEventListener('DOMContentLoaded',()=>physics.setReducedMotion(false));
+            window.openSelectedRowAdd=()=>hierarchySidebar.rows.get(selectedNode.dataset.entryId).querySelector('.tree-add').click();
         """)
 
         def evaluate(code):
@@ -226,7 +230,7 @@ def main():
             evaluate("new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))")
 
         def add(name, parent=None):
-            evaluate(f"""addEntryButton.click();fields[0].value={json.dumps(name)};fields[1].value='Description of '+fields[0].value;
+            evaluate(f"""openEntryForm(null,{json.dumps(parent or '')},true);fields[0].value={json.dumps(name)};fields[1].value='Description of '+fields[0].value;
                 fields[2].value='Test';parentField.value={json.dumps(parent or '')};parentField.dispatchEvent(new Event('change'));
                 form.requestSubmit();""")
             assert evaluate("!dialog.open"), evaluate("formError.textContent")
@@ -252,7 +256,11 @@ def main():
             cdp.call("Input.dispatchMouseEvent", type=kind, x=x, y=y, **kwargs)
 
         def click_selector(selector, button='left'):
-            point=evaluate(f"(()=>{{const r=document.querySelector({json.dumps(selector)}).getBoundingClientRect();return {{x:r.x+r.width/2,y:r.y+r.height/2}};}})()")
+            # Labels can overlap the centers of nearby bodies. Use a point that
+            # actually hits the requested element, rather than its neighbour.
+            point=evaluate(f"(()=>{{const selector={json.dumps(selector)},element=document.querySelector(selector),r=element.getBoundingClientRect();for(const fy of [.5,.25,.75,.1,.9])for(const fx of [.5,.25,.75,.1,.9]){{const x=r.x+r.width*fx,y=r.y+r.height*fy;if(document.elementFromPoint(x,y)?.closest(selector)===element)return {{x,y}};}}return {{x:r.x+r.width/2,y:r.y+r.height/2}};}})()")
+            if '.tree-add' in selector:
+                mouse('mouseMoved',**point)
             mouse('mousePressed',**point,button=button,clickCount=1)
             mouse('mouseReleased',**point,button=button,clickCount=1)
 
@@ -298,11 +306,183 @@ def main():
         check(evaluate("JSON.parse(localStorage.getItem('galaxy:user-data')).version===5 && JSON.parse(localStorage.getItem('galaxy:user-data')).entries.every(e=>!('role' in e) && !('depth' in e))"), "version 5 persists generic ancestry without hardcoded roles or depth")
         check(evaluate("!document.querySelector('#pin-position-button,[data-action=pin],#panel-placement,#panel-role,#connection-options') && !panel.textContent.includes('Moves naturally') && !dialog.textContent.includes('Other connections') && roleField.tagName==='OUTPUT' && [...entries.values()].every(e=>e.depth>=0)"), "normal UI derives roles without pin, physics status or relationship controls")
 
-        if options.content_only:
+        if options.row_actions_only:
+            first=add('Selected Galaxy');target=add('Other Galaxy')
+            chain=[target]
+            for depth in range(1,10): chain.append(add('Deep '+str(depth)+' '+('long name ' * 4),chain[-1]))
+            wait_for('physics.settled');evaluate('physics.pause()')
+            evaluate(f"focusEntry({json.dumps(first)})");wait_camera();evaluate('physics.pause()')
+            check(evaluate("!document.querySelector('.sidebar-controls button') && addEntryButton.closest('#sidebar-tools') && addEntryButton.textContent==='Add Galaxy'"),'Search has no global +; Add Galaxy remains in More tools')
+            check(evaluate("[...hierarchySidebar.tree.children].every(row=>row.querySelector('.tree-add') && row.getBoundingClientRect().height===32)"),'every visible hierarchy row has a small + without changing row height')
+            selector=f'.hierarchy-row[data-entry-id="{target}"] .tree-add'
+            evaluate('hierarchySidebar.toggle.focus({preventScroll:true})');mouse('mouseMoved',x=700,y=950)
+            check(evaluate(f"getComputedStyle(document.querySelector({json.dumps(selector)})).opacity==='0'"),'desktop row + is hidden at rest')
+            point=evaluate(f"(()=>{{const r=document.querySelector({json.dumps(selector)}).getBoundingClientRect();return {{x:r.x+r.width/2,y:r.y+r.height/2}}}})()")
+            mouse('mouseMoved',**point)
+            check(evaluate(f"getComputedStyle(document.querySelector({json.dumps(selector)})).opacity==='1'"),'row hover reveals the right-aligned +')
+            before=evaluate('JSON.stringify({id:selectedNode.dataset.entryId,tree:hierarchySidebar.selectedId,view:camera.view,panel:panel.hidden})')
+            click_selector(selector)
+            check(evaluate(f"addMenuTargetId==={json.dumps(target)} && [...addMenu.children].map(b=>b.textContent).join('|')==='Add child|Add files|Add note|Add bookmark'"),'row + opens four actions for its own row, even with a different selection')
+            check(evaluate('JSON.stringify({id:selectedNode.dataset.entryId,tree:hierarchySidebar.selectedId,view:camera.view,panel:panel.hidden})')==before,'opening row + does not select, focus-navigate or reframe the body')
+            cdp.call('Input.dispatchKeyEvent',type='keyDown',key='Escape',code='Escape',windowsVirtualKeyCode=27)
+            check(evaluate(f"addMenu.hidden && document.activeElement===document.querySelector({json.dumps(selector)}) && getComputedStyle(document.activeElement).opacity==='1'"),'Escape restores visible keyboard focus to the originating row +')
+            cdp.call('Input.dispatchKeyEvent',type='keyDown',key='Enter',code='Enter',windowsVirtualKeyCode=13,text='\r',unmodifiedText='\r')
+            cdp.call('Input.dispatchKeyEvent',type='keyUp',key='Enter',code='Enter',windowsVirtualKeyCode=13)
+            check(evaluate(f"!addMenu.hidden && addMenuTargetId==={json.dumps(target)}"),'keyboard activation opens the correct row menu')
+            evaluate('closeContentMenus()')
+            for role,parent in zip(['sun','planet','moon','satellite','astronaut','astronaut'],chain[:6]):
+                select(first);evaluate('physics.pause()')
+                evaluate(f"hierarchySidebar.rows.get({json.dumps(parent)}).querySelector('.tree-add').click();addChildButton.click()")
+                check(evaluate(f"dialog.open && parentField.value==={json.dumps(parent)} && roleField.dataset.role==={json.dumps(role)}"),'row creation derives '+role+' from its own parent')
+                evaluate('document.getElementById("cancel-add-entry").click();physics.pause()')
+            select(first);evaluate('physics.pause()');view=evaluate('JSON.stringify(camera.view)')
+            evaluate(f"hierarchySidebar.rows.get({json.dumps(target)}).querySelector('.tree-add').click();addMenu.querySelector('[data-add=note]').click();contentInspector.notes.value='Target note';contentInspector.notesForm.requestSubmit()")
+            check(evaluate(f"entries.get({json.dumps(target)}).content.notes.text==='Target note' && !entries.get({json.dumps(first)}).content"),'Add note edits the row target rather than the previously selected body')
+            check(evaluate('JSON.stringify(camera.view)')==view,'opening another row\'s content editor preserves camera state')
+            evaluate(f"window.pickedOwner=null;contentInspector.files.addEventListener('click',event=>{{pickedOwner=contentInspector.entryId;event.preventDefault()}});hierarchySidebar.rows.get({json.dumps(first)}).querySelector('.tree-add').click();addMenu.querySelector('[data-add=files]').click()")
+            check(evaluate('pickedOwner')==first,'Add files invokes the existing picker for the clicked row')
+            evaluate('contentInspector.files.dispatchEvent(new Event("cancel"))')
+            evaluate(f"hierarchySidebar.rows.get({json.dumps(target)}).querySelector('.tree-add').click();addMenu.querySelector('[data-add=bookmark]').click();document.getElementById('content-link-url').value='google.com';contentInspector.linkForm.requestSubmit()")
+            check(evaluate(f"entries.get({json.dumps(target)}).content.links[0].url==='https://google.com/' && !entries.get({json.dumps(first)}).content"),'Add bookmark saves to the clicked row through the existing handler')
+            evaluate(f"startConnectionMode({json.dumps(first)});connectEntries({json.dumps(target)})")
+            check(evaluate("(()=>{const c=document.getElementById('connect-entry-button').getBoundingClientRect(),m=moreButton.getBoundingClientRect();return Math.abs(c.top+c.height/2-m.top-m.height/2)<.1&&m.width===28&&m.height===28&&m.left>c.right&&moreButton.ariaLabel==='More actions'&&moreButton.title==='More actions'})()"),'More actions has a compact footprint aligned with Connections and the requested accessible label')
+            for action,condition in [('edit-entry-button',"dialog.open && !document.getElementById('entry-info-fields').hidden"),('move-entry-button',"dialog.open && !document.getElementById('parent-field').hidden"),('delete-entry-button','deleteDialog.open')]:
+                click_selector('#entry-more-button');click_selector('#'+action)
+                check(evaluate(condition),'header More reuses '+action)
+                evaluate('if(dialog.open)document.getElementById("cancel-add-entry").click();if(deleteDialog.open)deleteDialog.close();physics.pause()')
+            if screenshot_dir:
+                result=cdp.call('Page.captureScreenshot',format='png',captureBeyondViewport=False);(screenshot_dir/'row-actions-desktop.png').write_bytes(base64.b64decode(result['data']))
+            cdp.call('Emulation.setDeviceMetricsOverride',width=390,height=844,deviceScaleFactor=1,mobile=False);time.sleep(.2)
+            evaluate('hierarchySidebar.setCollapsed(false)');wait_camera();evaluate(f"physics.pause();hierarchySidebar.scrollRow({json.dumps(chain[-1])})")
+            mobile_selector=f'.hierarchy-row[data-entry-id="{chain[-1]}"] .tree-add'
+            check(evaluate(f"(()=>{{const a=document.querySelector({json.dumps(mobile_selector)}),r=a.getBoundingClientRect(),s=hierarchySidebar.sidebar.getBoundingClientRect();return getComputedStyle(a).opacity==='1'&&r.left>=s.left&&r.right<=s.right&&a.ariaLabel.includes('Deep 9');}})()"),'deep Astronaut row + stays visible and reachable on mobile with truncation/scrolling intact')
+            before=evaluate('JSON.stringify({id:selectedNode.dataset.entryId,view:camera.view,collapsed:hierarchySidebar.collapsed})')
+            point=evaluate(f"(()=>{{const r=document.querySelector({json.dumps(mobile_selector)}).getBoundingClientRect();return {{x:r.x+r.width/2,y:r.y+r.height/2}}}})()")
+            cdp.call('Input.dispatchTouchEvent',type='touchStart',touchPoints=[point]);cdp.call('Input.dispatchTouchEvent',type='touchEnd',touchPoints=[])
+            wait_for('!addMenu.hidden')
+            check(evaluate('addMenuTargetId')==chain[-1] and evaluate('JSON.stringify({id:selectedNode.dataset.entryId,view:camera.view,collapsed:hierarchySidebar.collapsed})')==before,'touch opens the deep row menu without navigating or closing the drawer')
+            if screenshot_dir:
+                result=cdp.call('Page.captureScreenshot',format='png',captureBeyondViewport=False);(screenshot_dir/'row-actions-mobile.png').write_bytes(base64.b64decode(result['data']))
+            cdp.call('Input.dispatchKeyEvent',type='keyDown',key='Escape',code='Escape',windowsVirtualKeyCode=27)
+            check(evaluate(f"document.activeElement===document.querySelector({json.dumps(mobile_selector)})"),'mobile menu dismissal returns focus to its row action')
+            check(not cdp.errors,f'no row-action browser exceptions: {cdp.errors}')
+            print(f'{count} row-action browser checks passed',flush=True)
+            return
+
+        if options.content_only or options.organizer_only or options.workspace_only:
             owner=add('Rich content Galaxy');child=add('Rich content child',owner);other=add('Unrelated files')
             wait_for('physics.settled');evaluate('physics.pause()')
+            if options.organizer_only or options.workspace_only:
+                chain=[owner,child]
+                for role in ['Planet','Moon','Satellite','Astronaut','Astronaut']:
+                    parent=chain[-1]
+                    evaluate(f"selectEntry(entries.get({json.dumps(parent)}),nodes.get({json.dumps(parent)}));openSelectedRowAdd()")
+                    check(evaluate("[...addMenu.querySelectorAll('button:not([hidden])')].map(b=>b.textContent).join('|')==='Add child|Add files|Add note|Add bookmark' && addMenuTargetId===selectedNode.dataset.entryId"),'row + offers hierarchy and content actions for its own item')
+                    click_selector('#add-child-button')
+                    check(evaluate(f"document.getElementById('add-entry-title').textContent==='Add {role}' && submitButton.textContent==='Create {role}' && document.getElementById('entry-info-fields').hidden && document.getElementById('parent-field').hidden && creationContext.hidden && roleField.hidden"),f'quick Add {role} only shows Name')
+                    evaluate(f"fields[0].value='Organizer {role}';form.requestSubmit();physics.pause()")
+                    chain.append(evaluate('selectedNode.dataset.entryId'))
+                    check(evaluate(f"entries.get(selectedNode.dataset.entryId).role==={json.dumps(role.lower())} && entries.get(selectedNode.dataset.entryId).parentId==={json.dumps(parent)}"),f'contextual creation derives {role} and one parent')
+                deepest=chain[-1]
+                evaluate(f"focusEntry({json.dumps(deepest)})");wait_camera();evaluate('physics.pause()')
+                check(evaluate(f"panelName.textContent===entries.get({json.dumps(deepest)}).name && [...panelAncestry.children].map(b=>b.textContent).join('|')===[...galaxyModel.ancestors(entries,{json.dumps(deepest)})].reverse().map(e=>e.name).join('|')"),'content title and clickable breadcrumb contain ancestors only')
+                evaluate('panelAncestry.children[1].click()');wait_camera();evaluate('physics.pause()')
+                check(evaluate(f"selectedNode.dataset.entryId==={json.dumps(child)} && hierarchySidebar.selectedId==={json.dumps(child)}"),'breadcrumb uses existing ancestor focus and synchronizes selection')
+                evaluate(f"hierarchySidebar.rows.get({json.dumps(deepest)}).querySelector('.tree-name').click()");wait_camera();evaluate('physics.pause()')
+                check(evaluate(f"selectedNode.dataset.entryId==={json.dumps(deepest)} && contentInspector.entryId==={json.dumps(deepest)}"),'sidebar name selects the body and displays its contents')
+                evaluate(f"focusEntry({json.dumps(owner)})");wait_camera();evaluate('physics.pause();closeInspector()')
+                before=evaluate('JSON.stringify(camera.view)')
+                click_selector(f'.entry-node[data-entry-id="{owner}"]')
+                check(evaluate(f"!panel.hidden && contentInspector.entryId==={json.dumps(owner)} && hierarchySidebar.selectedId==={json.dumps(owner)}"),'Cosmos selection opens matching contents and sidebar selection')
+                check(evaluate('JSON.stringify(camera.view)')==before,'reopening contents through body selection does not move camera')
+                click_selector('#entry-more-button')
+                check(evaluate("!entryActions.hidden && [...entryActions.children].filter(b=>!b.hidden).map(b=>b.textContent).join('|')==='Edit info|Move / change parent|Delete'"),'More contains management actions without permanent metadata')
+                check(evaluate('JSON.stringify(camera.view)')==before,'opening More leaves camera unchanged')
+                cdp.call('Input.dispatchKeyEvent',type='keyDown',key='ArrowDown',code='ArrowDown',windowsVirtualKeyCode=40)
+                check(evaluate("document.activeElement.id==='move-entry-button'"),'More supports arrow-key navigation')
+                cdp.call('Input.dispatchKeyEvent',type='keyDown',key='Escape',code='Escape',windowsVirtualKeyCode=27)
+                check(evaluate('entryActions.hidden && !panel.hidden && document.activeElement===moreButton'),'More Escape returns focus and leaves Contents open')
+                click_selector('#entry-more-button')
+                click_selector('#edit-entry-button')
+                check(evaluate("dialog.open && !document.getElementById('entry-info-fields').hidden && document.getElementById('parent-field').hidden"),'Edit info reuses the metadata editor')
+                evaluate("fields[1].value='Preserved description';fields[2].value='Preserved label';form.requestSubmit();physics.pause()")
+                evaluate('moreButton.click();document.getElementById("move-entry-button").click()')
+                check(evaluate("dialog.open && !document.getElementById('parent-field').hidden && document.getElementById('entry-info-fields').hidden"),'Move exposes the existing parent selector without duplicate CRUD')
+                evaluate("form.requestSubmit();physics.pause()")
+                check(evaluate("entries.get(selectedNode.dataset.entryId).description==='Preserved description' && entries.get(selectedNode.dataset.entryId).category==='Preserved label'"),'Move preserves metadata and contents')
+                evaluate("document.getElementById('connect-entry-button').click()")
+                check(evaluate("!connectionPicker.hidden && connectionSourceId===selectedNode.dataset.entryId"),'header Connect launches existing target selection')
+                evaluate(f"connectEntries({json.dumps(other)})")
+                check(evaluate(f"relationships.some(r=>r.from==={json.dumps(owner)}&&r.to==={json.dumps(other)}) && document.getElementById('connection-action-label').textContent==='Connections 1' && document.getElementById('panel-connections').hidden"),'existing connections appear as a compact header count')
+                evaluate("document.getElementById('connect-entry-button').click()")
+                check(evaluate("!document.getElementById('panel-connections').hidden && document.getElementById('new-connection-button').textContent.includes('Connect')"),'Connections reveals existing destinations and the existing Connect workflow together')
+                evaluate("document.querySelector('#panel-connection-list .connection-name').click()");wait_camera();evaluate('physics.pause()')
+                check(evaluate(f"selectedNode.dataset.entryId==={json.dumps(other)} && contentInspector.entryId==={json.dumps(other)}"),'connected-item navigation updates contents through existing travel')
+                select(owner);evaluate('physics.pause()');before=evaluate('JSON.stringify(camera.view)')
+                evaluate('openSelectedRowAdd();addMenu.querySelector("[data-add=note]").click()')
+                check(evaluate("!contentInspector.notesForm.hidden && document.activeElement===contentInspector.notes"),'sidebar Add note activates one on-demand Notes editor')
+                evaluate("contentInspector.notes.value='Organizer note';contentInspector.notesForm.requestSubmit()")
+                check(evaluate("contentInspector.notesForm.hidden && contentInspector.notesView.textContent==='Organizer note' && document.getElementById('content-edit-notes').ariaLabel==='Edit note'"),'Notes save returns to content with a small accessible edit icon')
+                evaluate('openSelectedRowAdd();addMenu.querySelector("[data-add=note]").click();document.getElementById("content-cancel-notes").click()')
+                check(evaluate("contentInspector.content().notes.text==='Organizer note' && contentInspector.notesForm.hidden"),'Add note edits the same notes field and Cancel preserves saved text')
+                evaluate('openSelectedRowAdd();addMenu.querySelector("[data-add=bookmark]").click()')
+                check(evaluate('!contentInspector.linkForm.hidden'),'sidebar Add bookmark opens lightweight temporary form')
+                for domain in ['google.com','www.google.com']:
+                    evaluate(f"contentInspector.editLink();document.getElementById('content-link-url').value={json.dumps(domain)};contentInspector.linkForm.requestSubmit()")
+                    check(evaluate(f"contentInspector.linkForm.hidden && contentInspector.content().links.at(-1).url==={json.dumps('https://'+domain+'/')}"),f'{domain} normalizes to HTTPS without protocol input')
+                evaluate('window.filePickerClicks=0;contentInspector.files.addEventListener("click",event=>{filePickerClicks++;event.preventDefault()});openSelectedRowAdd();addMenu.querySelector("[data-add=files]").click()')
+                check(evaluate('filePickerClicks===1 && !panel.hidden'),'sidebar Add files invokes the supported picker for the selected entry')
+                evaluate('contentInspector.files.dispatchEvent(new Event("cancel"))')
+                check(evaluate('document.getElementById("content-file-limit").hidden'),'canceling file selection restores the quiet view without upload information')
+                evaluate('contentInspector.editNotes();contentInspector.notes.value="Unsaved note draft";openSelectedRowAdd();addMenu.querySelector("[data-add=files]").click()')
+                check(evaluate('!contentInspector.notesForm.hidden && contentInspector.notes.value==="Unsaved note draft"'),'adding files preserves the selected body\'s in-progress note draft')
+                evaluate('document.getElementById("content-cancel-notes").click()')
+                evaluate('contentInspector.files.dispatchEvent(new Event("cancel"))')
+                check(evaluate('JSON.stringify(camera.view)')==before,'all contextual content actions preserve the exact camera')
+                evaluate('closeInspector();setInspectorOpen(true)')
+                check(evaluate('!panel.hidden && contentInspector.notesForm.hidden && contentInspector.linkForm.hidden'),'Contents can close and reopen with read-first state')
+                check(evaluate('JSON.stringify(camera.view)')==before,'closing and reopening the Content panel leaves camera unchanged')
+                evaluate('saveEntryContent(contentInspector.entryId,galaxyModel.emptyContent());contentInspector.select(entries.get(contentInspector.entryId),true)')
+            if options.workspace_only:
+                def shot(name):
+                    if screenshot_dir:
+                        result=cdp.call('Page.captureScreenshot',format='png',captureBeyondViewport=False);(screenshot_dir/(name+'.png')).write_bytes(base64.b64decode(result['data']))
+                check(evaluate("!document.querySelector('#content-add-files,#content-add-link') && document.getElementById('content-edit-notes').hidden && contentInspector.notesForm.hidden && contentInspector.linkForm.hidden && document.getElementById('content-file-limit').hidden"),'read state has no duplicate Add buttons, editing forms, or technical upload information')
+                check(evaluate("['content-files-empty','content-notes-empty','content-bookmarks-empty'].map(id=>document.getElementById(id).textContent).join('|')==='No files|No notes|No bookmarks'"),'empty content sections remain quiet and explicit')
+                check(evaluate("!document.querySelector('.sidebar-controls .tree-add,.sidebar-controls #add-entry-button') && [...hierarchySidebar.tree.children].every(row=>row.querySelector('.tree-add'))"),'contextual + lives on tree rows rather than beside Search')
+                check(evaluate("!!document.getElementById('reset-view-button').closest('#sidebar-tools') && !!addEntryButton.closest('#sidebar-tools')"),'Fit and top-level Add Galaxy remain in More tools')
+                before=evaluate('JSON.stringify(camera.view)');alpha=evaluate('physics.simulation.alpha()')
+                evaluate('openSelectedRowAdd()')
+                cdp.call('Input.dispatchKeyEvent',type='keyDown',key='ArrowDown',code='ArrowDown',windowsVirtualKeyCode=40)
+                check(evaluate('document.activeElement.dataset.add==="files"'),'contextual + menu supports keyboard navigation to content actions')
+                cdp.call('Input.dispatchKeyEvent',type='keyDown',key='Escape',code='Escape',windowsVirtualKeyCode=27)
+                check(evaluate('addMenu.hidden && document.activeElement===hierarchySidebar.rows.get(selectedNode.dataset.entryId).querySelector(".tree-add") && !panel.hidden'),'Add menu Escape returns focus to the row action without closing Contents')
+                chain_test=[owner]
+                for role in ['Sun','Planet','Moon','Satellite','Astronaut','Astronaut']:
+                    evaluate(f"selectEntry(entries.get({json.dumps(chain_test[-1])}),nodes.get({json.dumps(chain_test[-1])}));openSelectedRowAdd();addChildButton.click()")
+                    check(evaluate("document.activeElement===fields[0]"),f'Add {role} autofocuses Name')
+                    check(evaluate("(()=>{const l=document.querySelector('#entry-name-field label').getBoundingClientRect(),i=fields[0].getBoundingClientRect(),d=dialog.getBoundingClientRect();return i.top-l.bottom>=7&&i.bottom<d.bottom&&d.width<=360&&Math.abs((d.left+d.right)/2-innerWidth/2)<1&&Math.abs((d.top+d.bottom)/2-innerHeight/2)<1&&getComputedStyle(fields[0]).outlineStyle==='none';})()"),f'Add {role} has a spaced label, compact centered dialog and restrained input focus')
+                    check(evaluate("!fields[1].required && document.getElementById('entry-info-fields').hidden && document.getElementById('parent-field').hidden"),f'Add {role} stays Name-only')
+                    if role=='Planet':shot('workspace-add-planet')
+                    evaluate(f"fields[0].value={json.dumps('Workspace '+role)}")
+                    cdp.call('Input.dispatchKeyEvent',type='keyDown',key='Enter',code='Enter',windowsVirtualKeyCode=13,text='\r',unmodifiedText='\r')
+                    cdp.call('Input.dispatchKeyEvent',type='keyUp',key='Enter',code='Enter',windowsVirtualKeyCode=13)
+                    wait_for('!dialog.open');evaluate('physics.pause()')
+                    check(evaluate(f"entries.get(selectedNode.dataset.entryId).role==={json.dumps(role.lower())} && entries.get(selectedNode.dataset.entryId).parentId==={json.dumps(chain_test[-1])}"),f'Enter creates the contextual {role} with one parent')
+                    chain_test.append(evaluate('selectedNode.dataset.entryId'))
+                evaluate('openSelectedRowAdd();addChildButton.click()')
+                cdp.call('Input.dispatchKeyEvent',type='keyDown',key='Escape',code='Escape',windowsVirtualKeyCode=27)
+                cdp.call('Input.dispatchKeyEvent',type='keyUp',key='Escape',code='Escape',windowsVirtualKeyCode=27)
+                wait_for('!dialog.open')
+                check(evaluate("document.activeElement!==document.body && document.activeElement.isConnected"),'modal Escape returns accessible focus')
+                evaluate('openSelectedRowAdd();addChildButton.click();document.getElementById("cancel-add-entry").click()')
+                check(evaluate('!dialog.open'),'modal Cancel closes without creation')
+                evaluate(f"openEntryForm(entries.get({json.dumps(chain_test[-1])}));fields[0].value='A long celestial name '+('x'.repeat(38));form.requestSubmit();physics.pause();hierarchySidebar.select({json.dumps(chain_test[-1])})")
+                check(evaluate("(()=>{const rows=[...hierarchySidebar.tree.querySelectorAll('.hierarchy-row')];return rows.every(row=>{const r=row.getBoundingClientRect(),c=row.querySelector('.tree-disclosure').getBoundingClientRect(),i=row.querySelector('.tree-role-icon').getBoundingClientRect(),n=row.querySelector('.tree-name').getBoundingClientRect();return r.height===32&&Math.abs(c.top+c.height/2-r.top-r.height/2)<.1&&Math.abs(i.top+i.height/2-r.top-r.height/2)<.1&&n.left>i.right&&getComputedStyle(row.querySelector('.tree-name')).textOverflow==='ellipsis';});})()"),'tree rows keep chevrons, celestial icons and long names aligned at every visible depth')
+                check(evaluate("getComputedStyle(hierarchySidebar.rows.get(selectedNode.dataset.entryId)).backgroundColor!==getComputedStyle([...hierarchySidebar.rows.values()].find(row=>row.dataset.entryId!==selectedNode.dataset.entryId)).backgroundColor"),'selected row has its own restrained background')
+                evaluate(f"focusEntry({json.dumps(owner)})");wait_camera();evaluate('physics.pause()');shot('workspace-empty-desktop')
             def inspect(id):
-                evaluate(f"focusEntry({json.dumps(id)})");wait_camera();evaluate('physics.pause();contentInspector.root.open=true;contentInspector.render()')
+                evaluate(f"focusEntry({json.dumps(id)})");wait_camera();evaluate('physics.pause();contentInspector.render()')
             def stable(before,title):
                 check(evaluate('JSON.stringify(camera.view)')==before,title)
             def preview(name):
@@ -325,7 +505,7 @@ def main():
             evaluate("contentInspector.editLink(contentInspector.content().links[0]);document.getElementById('content-link-title').value='Updated recipe';contentInspector.linkForm.requestSubmit()")
             check(evaluate(f"entries.get({json.dumps(owner)}).content.links[0].id==={json.dumps(link_id)} && contentInspector.content().links[0].title==='Updated recipe'"),'link editing retains its canonical ID')
             link('javascript:alert(1)')
-            check(evaluate("contentInspector.content().links.length===2 && contentInspector.status.textContent.includes('http')"),'unsafe URL schemes are rejected before saving')
+            check(evaluate("contentInspector.content().links.length===2 && contentInspector.status.dataset.error==='true'"),'unsafe URL schemes are rejected before saving')
             evaluate("contentInspector.linkForm.hidden=true;document.querySelectorAll('#content-links .content-row-actions')[1].lastElementChild.click()")
             check(evaluate('contentInspector.content().links.length===1'),'link removal removes only its own content record')
             stable(before,'link add/edit/remove leave camera state unchanged');check(evaluate('JSON.stringify(relationships)')==semantic,'web links never create semantic connections')
@@ -345,6 +525,27 @@ def main():
             pick(['image.png','image.jpg','image.jpeg','image.webp','plan.pdf','notes.txt','readme.md'])
             check(evaluate('contentInspector.content().attachments.length===7'),'picker accepts PNG/JPG/JPEG/WebP/PDF/TXT/MD files')
             files=evaluate('contentInspector.content().attachments');image=files[0];pdf_meta=files[4]
+            if options.workspace_only:
+                check(evaluate("[...document.querySelectorAll('.content-item-menu')].every(menu=>!menu.open && menu.querySelector('.content-row-actions').getBoundingClientRect().height===0)"),'normal Files and Bookmarks show contents with closed overflow management')
+                check(evaluate("[...document.querySelectorAll('.bookmark-info small')].every(meta=>meta.textContent&&!meta.textContent.startsWith('http')&&getComputedStyle(meta).display!=='none')"),'bookmark rows show readable titles and concise destinations')
+                check(evaluate("!document.getElementById('content-edit-notes').hidden && document.getElementById('content-edit-notes').getBoundingClientRect().width===26 && contentInspector.notesForm.hidden"),'existing Notes use a small accessible edit icon while remaining read-first')
+                before_menu=evaluate('JSON.stringify(camera.view)');alpha_menu=evaluate('physics.simulation.alpha()')
+                evaluate("window.bookmarkMenu=document.querySelector('#content-links .content-item-menu');bookmarkMenu.querySelector('summary').scrollIntoView({block:'center'})")
+                click_selector('#content-links .content-item-menu summary')
+                check(evaluate('bookmarkMenu.open && [...bookmarkMenu.querySelectorAll("button")].map(b=>b.textContent).join("|")==="Edit|Remove"'),'bookmark overflow reveals Edit and Remove only when requested')
+                cdp.call('Input.dispatchKeyEvent',type='keyDown',key='ArrowDown',code='ArrowDown',windowsVirtualKeyCode=40)
+                check(evaluate('document.activeElement===bookmarkMenu.querySelector("button")'),'bookmark management is keyboard accessible')
+                cdp.call('Input.dispatchKeyEvent',type='keyDown',key='Escape',code='Escape',windowsVirtualKeyCode=27)
+                check(evaluate('!bookmarkMenu.open && !panel.hidden && document.activeElement===bookmarkMenu.querySelector("summary")'),'bookmark menu Escape preserves the Content panel and returns focus')
+                click_selector('#content-links .content-item-menu summary');click_selector('#content-links .content-item-menu button')
+                check(evaluate('!contentInspector.linkForm.hidden && !bookmarkMenu.open'),'requested bookmark edit opens the existing lightweight editor')
+                evaluate('document.getElementById("content-cancel-link").click()')
+                evaluate(f"document.querySelector('[data-attachment-id=\"{image['id']}\"] summary').scrollIntoView({{block:'center'}})")
+                click_selector(f'[data-attachment-id="{image["id"]}"] summary')
+                check(evaluate(f"document.querySelector('[data-attachment-id=\"{image['id']}\"] details').open"),'file overflow exposes the existing confirmed removal action')
+                cdp.call('Input.dispatchKeyEvent',type='keyDown',key='Escape',code='Escape',windowsVirtualKeyCode=27)
+                check(evaluate('JSON.stringify(camera.view)')==before_menu and evaluate('physics.simulation.alpha()')==alpha_menu,'opening/closing content overflow and editing bookmark UI do not move camera or reheat physics')
+                evaluate('panel.scrollTop=0')
             pick([]);check(evaluate('contentInspector.content().attachments.length===7 && contentInspector.jobs.size===0'),'canceled/empty file selection makes no content or storage change')
             wait_for("document.querySelector('#content-attachments img')?.naturalWidth>0")
             check(evaluate("document.querySelector('#content-attachments img').naturalWidth<=240 && [...document.querySelectorAll('#content-attachments pre')].every(p=>p.textContent.length<=2048) && !window.fileXss"),'small image thumbnails and bounded plain-text previews render safely')
@@ -392,9 +593,9 @@ def main():
             drop_before=evaluate('JSON.stringify(camera.view)')
             evaluate("window.dropFiles=new DataTransfer();dropFiles.items.add(new File(['Scoped drop notes'],'dropped.txt',{type:'text/plain'}));graphViewport.dispatchEvent(new DragEvent('drop',{dataTransfer:dropFiles,bubbles:true,cancelable:true}))")
             check(evaluate('contentInspector.content().attachments.length===1'),'the Cosmos canvas is not an attachment drop target')
-            evaluate("document.getElementById('content-drop').dispatchEvent(new DragEvent('drop',{dataTransfer:dropFiles,bubbles:true,cancelable:true}))");wait_for('contentInspector.jobs.size===0')
-            check(evaluate("contentInspector.content().attachments.length===2 && contentInspector.content().attachments[1].filename==='dropped.txt'"),'scoped file drop attaches only to the selected canonical entry')
-            stable(drop_before,'scoped file drop does not move the camera')
+            evaluate("contentInspector.root.dispatchEvent(new DragEvent('drop',{dataTransfer:dropFiles,bubbles:true,cancelable:true}));hierarchySidebar.tree.dispatchEvent(new DragEvent('drop',{dataTransfer:dropFiles,bubbles:true,cancelable:true}))")
+            check(evaluate("contentInspector.content().attachments.length===1 && !document.getElementById('content-drop')"),'content panel and sidebar do not accept file drag/drop')
+            stable(drop_before,'ignored file drop does not move the camera')
             inspect(owner)
             evaluate("contentInspector.notes.value='';document.getElementById('content-notes-form').requestSubmit()")
             cdp.call('Page.reload');load();wait_camera();inspect(owner)
@@ -437,6 +638,9 @@ def main():
             evaluate(f"requestEntryDelete({json.dumps(racing)});document.getElementById('delete-entry-form').requestSubmit()");wait_for('!deleteDialog.open')
             evaluate('resumeRace()');wait_for('contentInspector.jobs.size===0');evaluate('attachmentStore.save=originalBinarySave')
             check(evaluate("(async()=>await attachmentStore.get(raceKey)===null)()"),'deleting an entry during upload cannot create late orphaned file bytes or metadata')
+            # Let queued dialog-close/resume events and the final real-data
+            # position save complete before taking the Sample isolation baseline.
+            evaluate('physics.resume()');wait_for('physics.settled')
             evaluate('physics.pause();if(graphNeedsSave)saveGalaxy()');raw=evaluate("localStorage.getItem('galaxy:user-data')")
             evaluate('loadSampleButton.click()');wait_for("document.readyState==='complete' && typeof sampleMode!=='undefined' && sampleMode");load();wait_camera()
             check(evaluate('contentInspector.previewLoads===0 && attachmentStore.temporary'),'large Sample starts without preloading any attachment previews and uses a temporary store')
@@ -444,10 +648,35 @@ def main():
             check(evaluate("contentInspector.content().notes.text.includes('Prep ahead') && contentInspector.content().links.length===1"),'Sample shows realistic notes/link and a lightweight text attachment')
             preview('rich-content-sample')
             cdp.call('Emulation.setDeviceMetricsOverride',width=390,height=844,deviceScaleFactor=1,mobile=False);time.sleep(.2)
-            inspect('sample-satellite-2-0-0-0');evaluate("contentInspector.root.scrollIntoView({block:'start'})");preview('rich-content-mobile')
+            inspect('sample-satellite-2-0-0-0');evaluate('panel.scrollTop=0');preview('rich-content-mobile')
             check(evaluate('document.documentElement.scrollWidth<=innerWidth && !panel.hidden'),'Content fits the existing mobile inspector without page overflow')
+            if options.organizer_only or options.workspace_only:
+                evaluate('panel.scrollTop=panel.scrollHeight')
+                check(evaluate("[panelName,moreButton,document.getElementById('close-inspector-button')].every(e=>{const r=e.getBoundingClientRect(),p=panel.getBoundingClientRect();return r.top>=p.top&&r.bottom<=p.bottom&&r.width>0})"),'mobile Content header remains reachable while scrolling files')
+                if options.workspace_only:
+                    touch_before=evaluate('JSON.stringify(camera.view)')
+                    check(evaluate("getComputedStyle(document.querySelector('#content-links summary')).opacity==='1' && getComputedStyle(document.getElementById('content-edit-notes')).opacity==='1' && document.getElementById('content-edit-notes').getBoundingClientRect().width===32"),'mobile edit and overflow affordances stay discoverable without hover')
+                    point=evaluate("(()=>{const r=document.querySelector('#content-links summary').getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()")
+                    cdp.call('Input.dispatchTouchEvent',type='touchStart',touchPoints=[point]);cdp.call('Input.dispatchTouchEvent',type='touchEnd',touchPoints=[])
+                    wait_for("document.querySelector('#content-links details').open")
+                    check_rendered("(()=>{const r=document.querySelector('#content-links .content-row-actions').getBoundingClientRect(),p=panel.getBoundingClientRect();return r.top>=p.top&&r.bottom<=p.bottom})()",'touch opens bookmark management inside the bottom sheet, including near its lower edge')
+                    evaluate("document.querySelector('#content-links .content-row-actions button').click()")
+                    check(evaluate('!contentInspector.linkForm.hidden'),'mobile bookmark editing uses the existing temporary form')
+                    evaluate('document.getElementById("content-cancel-link").click()')
+                    check(evaluate('JSON.stringify(camera.view)')==touch_before,'mobile bookmark management preserves camera state')
+                evaluate('hierarchySidebar.setCollapsed(false)');wait_camera();evaluate('physics.pause()')
+                mobile_view=evaluate('JSON.stringify(camera.view)')
+                click_selector('.hierarchy-row.is-selected .tree-add');click_selector('#add-menu [data-add=note]')
+                check(evaluate('hierarchySidebar.collapsed && !panel.hidden && !contentInspector.notesForm.hidden'),'mobile + switches from hierarchy drawer to on-demand Notes editor')
+                check(evaluate('JSON.stringify(camera.view)')==mobile_view,'mobile contextual content creation preserves camera while switching drawers')
+                evaluate('document.getElementById("content-cancel-notes").click()')
+                cdp.call('Input.dispatchKeyEvent',type='keyDown',key='Escape',code='Escape',windowsVirtualKeyCode=27)
+                check(evaluate('panel.hidden'),'mobile Escape closes the Content sheet')
+                mobile_view=evaluate('JSON.stringify(camera.view)');evaluate('setInspectorOpen(true)')
+                check(evaluate('JSON.stringify(camera.view)')==mobile_view,'mobile Content sheet reopening does not pan or zoom')
             evaluate("requestEntryDelete('sample-satellite-2-0-0-0');document.getElementById('delete-entry-form').requestSubmit()");wait_for('!deleteDialog.open')
-            check(evaluate("(async()=>await attachmentStore.get('sample-recipe-file')===null)()") and evaluate("localStorage.getItem('galaxy:user-data')")==raw,'temporary Sample file deletion never affects real metadata or IndexedDB files')
+            check(evaluate("(async()=>await attachmentStore.get('sample-recipe-file')===null)()"),'temporary Sample deletion removes its in-memory file')
+            check(evaluate("localStorage.getItem('galaxy:user-data')")==raw,'temporary Sample file deletion leaves real metadata intact: '+str(evaluate("({sample:sampleMode,temporary:attachmentStore.temporary,remaining:entries.has('sample-satellite-2-0-0-0')})")))
             check(evaluate(f"(async()=>!!await createGalaxyAttachmentStore().get({json.dumps(other_file['storageKey'])}))()"),'real attachment bytes also remain intact after temporary Sample actions')
             check(not cdp.errors,f'no Rich Content browser exceptions: {cdp.errors}')
             print(f'{count} Rich Content browser checks passed',flush=True)
@@ -563,8 +792,9 @@ def main():
                 parent=ids[-1];role=['Galaxy','Sun','Planet','Moon','Satellite','Astronaut'][min(depth,5)]
                 evaluate(f"focusEntry({json.dumps(parent)})");wait_camera()
                 if depth%3==0:
-                    click_selector(f'.hierarchy-row[data-entry-id="{parent}"] .tree-add')
+                    click_selector('.hierarchy-row.is-selected .tree-add');click_selector('#add-child-button')
                 elif depth%3==1:
+                    click_selector('.hierarchy-row.is-selected .tree-add')
                     click_selector('#add-child-button')
                 else:
                     click_selector(f'.entry-node[data-entry-id="{parent}"]',button='right')
@@ -966,6 +1196,7 @@ def main():
             cdp.call('Page.reload');load();wait_camera()
             check(evaluate('JSON.stringify(relationships)')==saved_links,'connection IDs and endpoints survive refresh')
             evaluate(f"focusEntry({json.dumps(source)})");wait_camera()
+            click_selector('#connect-entry-button')
             click_selector('#panel-connection-list .connection-name');wait_camera()
             check(evaluate(f"selectedNode.dataset.entryId==={json.dumps(local)}"),'inspector connection row focuses and selects its endpoint')
             evaluate(f"focusEntry({json.dumps(source)});physics.pause()");wait_camera()
@@ -1152,7 +1383,7 @@ def main():
             preview('desktop-clean')
             evaluate("focusEntry('sample-deep-7')");wait_camera()
             check(evaluate("!panel.hidden && panelName.textContent==='Slow simmer notes' && hierarchySidebar.selectedId==='sample-deep-7'"),'selecting a deep item opens matching Details and keeps the tree synchronized')
-            check(evaluate("!document.getElementById('inspector-metadata').open && panelCategory.closest('details') && !panelCategory.hidden && panelParent.hidden && !document.querySelector('#panel-placement,#panel-role')"),'More contains only the optional label and breadcrumbs supply location')
+            check(evaluate("entryActions.hidden && !document.querySelector('#panel-description,#panel-category,#panel-parent,#panel-placement,#panel-role') && panelAncestry.children.length>0"),'Contents hides management actions and permanent metadata; breadcrumbs supply location')
             evaluate('window.interfacePositions=[...physics.particles].map(([id,n])=>[id,n.x,n.y]);window.inspectedBounds={...physics.bounds};window.inspectedScale=camera.view.scale;window.interfaceExpansion=[...hierarchySidebar.expanded]')
             preview('desktop-inspector')
             click_selector('#close-inspector-button');wait_camera()
@@ -1165,8 +1396,10 @@ def main():
 
             # Put the body near the old right edge before physically selecting it.
             evaluate("(()=>{const e=entries.get('sample-deep-7'),s=camera.view.scale;camera.setView({x:innerWidth-70-e.x*s,y:innerHeight/2-e.y*s,scale:s},false);})()")
+            edge_view=evaluate('JSON.stringify(camera.view)')
             click_selector('.entry-node[data-entry-id="sample-deep-7"]');wait_camera()
-            check(evaluate("(()=>{const r=nodes.get('sample-deep-7').getBoundingClientRect(),p=panel.getBoundingClientRect();return !panel.hidden&&r.right<p.left&&camera.view.scale===inspectedScale;})()"),'opening Details gently keeps a body near the right edge visible')
+            check(evaluate('!panel.hidden && JSON.stringify(camera.view)')==edge_view,'opening Contents at an edge preserves exact camera state')
+            evaluate("focusEntry('sample-deep-7')");wait_camera()
             evaluate("window.interfaceEmptyPoint=(()=>{for(let y=80;y<innerHeight-50;y+=60)for(let x=hierarchySidebar.width+40;x<physics.bounds.right;x+=60)if(document.elementFromPoint(x,y)?.id==='graph-viewport'&&!galaxyAtScreen({x,y}))return {x,y};return null;})()")
             empty=evaluate('interfaceEmptyPoint');check(empty is not None,'empty canvas remains reachable')
             mouse('mousePressed',**empty,button='left',clickCount=1);mouse('mouseReleased',**empty,button='left',clickCount=1);wait_camera()
@@ -1188,11 +1421,12 @@ def main():
             evaluate('hierarchySidebar.setWidth(260,false)');wait_camera()
             check(evaluate('JSON.stringify([...physics.particles].map(([id,n])=>[id,n.x,n.y]))===JSON.stringify(interfacePositions)'),'inspector and sidebar transitions never change world coordinates')
 
-            for path in ['sidebar','inspector','menu']:
+            for path in ['sidebar','keyboard','menu']:
                 evaluate("focusEntry('sample-deep-7')");wait_camera()
                 if path=='sidebar':
-                    click_selector('.hierarchy-row[data-entry-id="sample-deep-7"] .tree-add')
-                elif path=='inspector':
+                    click_selector('.hierarchy-row.is-selected .tree-add');click_selector('#add-child-button')
+                elif path=='keyboard':
+                    evaluate('openSelectedRowAdd()')
                     click_selector('#add-child-button')
                 else:
                     click_selector('.entry-node[data-entry-id="sample-deep-7"]',button='right')
@@ -1213,20 +1447,20 @@ def main():
             check(evaluate("!panel.hidden && !activeNodeDrags && selectedNode.dataset.entryId==='sample-deep-7' && !layout.get('sample-deep-7')?.pinned"),'drag release opens Details and preserves Flowing behavior')
             check(evaluate("!document.querySelector('#pin-position-button,[data-action=pin]') && !panel.textContent.includes('Moves naturally')"),'inspector and context menu expose no positioning actions or status')
             evaluate("selectEntry({...entries.get('sample-deep-7'),category:''},nodes.get('sample-deep-7'))")
-            check(evaluate("document.getElementById('inspector-metadata').hidden"),'More disappears when there is no useful label')
+            check(evaluate("entryActions.hidden && !document.querySelector('#panel-category')"),'optional labels occupy no permanent Content panel space')
             evaluate("selectEntry(entries.get('sample-deep-7'),nodes.get('sample-deep-7'))")
 
             for width,height,label in [(1024,768,'laptop'),(820,740,'small-laptop'),(390,844,'mobile'),(320,700,'small-mobile')]:
                 cdp.call('Emulation.setDeviceMetricsOverride',width=width,height=height,deviceScaleFactor=1,mobile=False)
                 time.sleep(.2);evaluate("focusEntry('sample-deep-7')");wait_camera()
                 check(evaluate('document.documentElement.scrollWidth<=innerWidth'),label+' has no page overflow')
-                check(evaluate("[panelName,addChildButton,editEntryButton,deleteEntryButton].every(e=>{const r=e.getBoundingClientRect(),p=panel.getBoundingClientRect();return r.width>0&&r.top>=p.top&&r.bottom<=p.bottom;})"),label+' keeps names and all inspector actions reachable')
+                check(evaluate("[panelName,moreButton,document.getElementById('connect-entry-button')].every(e=>{const r=e.getBoundingClientRect(),p=panel.getBoundingClientRect();return r.width>0&&r.top>=p.top&&r.bottom<=p.bottom;})"),label+' keeps name, Connect and More reachable')
                 if width<760:
                     check(evaluate('hierarchySidebar.collapsed && panel.getBoundingClientRect().bottom===innerHeight && physics.bounds.bottom<panel.getBoundingClientRect().top'),'mobile uses a contextual bottom sheet and its remaining canvas')
-                    evaluate("document.getElementById('inspector-metadata').open=true")
+                    evaluate("moreButton.click()")
                     wait_for("physics.bounds.bottom<panel.getBoundingClientRect().top");wait_camera()
-                    check(evaluate("panelCategory.getBoundingClientRect().width>0 && !document.querySelector('#panel-role,#panel-placement')"),'More reveals only the optional label on mobile')
-                    evaluate("document.getElementById('inspector-metadata').open=false")
+                    check(evaluate("!entryActions.hidden && editEntryButton.getBoundingClientRect().width>0 && !document.querySelector('#panel-role,#panel-placement')"),'More reveals infrequent item actions on mobile')
+                    evaluate("closeContentMenus()")
                     click_selector('#sidebar-toggle');wait_camera()
                     check(evaluate('!hierarchySidebar.collapsed && panel.hidden'),'mobile navigation drawer gets the space without a competing inspector')
                     check(evaluate("[addEntryButton,document.getElementById('reset-view-button'),searchField].every(e=>{const r=e.getBoundingClientRect();return r.left>=0&&r.right<=innerWidth;})"),'mobile sidebar controls remain within the drawer')
@@ -1267,19 +1501,19 @@ def main():
 
             def submit_context(name):
                 parent=evaluate('parentField.value')
-                check(evaluate("dialog.open && document.getElementById('parent-field').hidden && !creationContext.hidden"),'contextual form shows the chosen parent without requiring another choice')
+                check(evaluate("dialog.open && document.getElementById('parent-field').hidden && creationContext.hidden && document.getElementById('entry-info-fields').hidden"),'contextual form only asks for the name of the child')
                 evaluate(f"fields[0].value={json.dumps(name)};fields[1].value='Navigation test';form.requestSubmit()")
                 check(evaluate('!dialog.open'),'contextual child saves through the shared form')
                 child=evaluate('selectedNode.dataset.entryId')
                 check(evaluate(f"entries.get({json.dumps(child)}).parentId==={json.dumps(parent)} && entries.get({json.dumps(child)}).depth===entries.get({json.dumps(parent)}).depth+1 && hierarchySidebar.selectedId==={json.dumps(child)}"),'created entry has the correct parent, depth and synchronized selection')
                 return child
 
-            check(evaluate("!hierarchySidebar.collapsed && searchField.closest('#hierarchy-sidebar') && addEntryButton.textContent==='+ Add Galaxy'"),'desktop sidebar contains search and keeps a separate top-level Add Galaxy')
+            check(evaluate("!hierarchySidebar.collapsed && searchField.closest('#hierarchy-sidebar') && addEntryButton.textContent==='Add Galaxy' && !!addEntryButton.closest('#sidebar-tools')"),'desktop sidebar contains Search, row actions and top-level creation in More tools')
             g=add('Navigation Galaxy')
             chain=[g]
             for depth in range(1,7):
                 parent=chain[-1]
-                evaluate(f"hierarchySidebar.rows.get({json.dumps(parent)}).querySelector('.tree-add').click()")
+                evaluate(f"selectEntry(entries.get({json.dumps(parent)}),nodes.get({json.dumps(parent)}));openSelectedRowAdd();addChildButton.click()")
                 check(evaluate('parentField.value')==parent,'sidebar + preselects its exact parent')
                 chain.append(submit_context(f'Navigation depth {depth}'))
             check(evaluate(f"entries.get({json.dumps(chain[-1])}).role==='astronaut' && entries.get({json.dumps(chain[-1])}).depth===6"),'sidebar creation supports arbitrary nesting beyond Satellite')
@@ -1291,13 +1525,13 @@ def main():
             for parent in chain[:-1]:
                 menu_for(parent)
                 expected=evaluate(f"cosmosHierarchy.childContext(entries,{json.dumps(parent)}).action")
-                check(evaluate("contextMenu.querySelector('[data-action=create]').textContent")==expected,'context menu offers '+expected)
+                check(evaluate("contextMenu.querySelector('[data-action=create]').textContent")==expected,'context menu offers '+expected+' for '+parent+' (actual '+str(evaluate('contextEntryId'))+')')
                 click_selector('#entry-context-menu [data-action=create]')
                 check(evaluate('parentField.value')==parent,'right-click Add uses the same parent context')
                 submit_context('Menu child')
             for parent in chain[:-1]:
                 select(parent)
-                evaluate('addChildButton.click()')
+                evaluate('openSelectedRowAdd();addChildButton.click()')
                 check(evaluate('parentField.value')==parent,'Entry Details Add uses the same parent context')
                 submit_context('Details child')
             snapshot=evaluate('JSON.parse(localStorage.getItem("galaxy:user-data")).entries.map(e=>({id:e.id,parentId:e.parentId,name:e.name}))')
@@ -1397,7 +1631,7 @@ def main():
             evaluate("hierarchySidebar.setCollapsed(false);hierarchySidebar.select('sample-deep-7')")
             click_selector('.hierarchy-row[data-entry-id="sample-deep-7"] .tree-name');wait_camera()
             check(evaluate("hierarchySidebar.collapsed && selectedNode.dataset.entryId==='sample-deep-7' && camera.view.scale>=1.7"),'mobile tree navigation closes its drawer before focusing the deep body')
-            check(evaluate("[panelName,addChildButton,editEntryButton,deleteEntryButton].every(e=>{const r=e.getBoundingClientRect(),p=panel.getBoundingClientRect();return r.top>=p.top&&r.bottom<=p.bottom&&r.width>0;})"),'mobile Details keeps the selected name and all actions visible')
+            check(evaluate("[panelName,moreButton,document.getElementById('connect-entry-button')].every(e=>{const r=e.getBoundingClientRect(),p=panel.getBoundingClientRect();return r.top>=p.top&&r.bottom<=p.bottom&&r.width>0;})"),'mobile Contents keeps the selected name, Connect and More visible')
             evaluate("hierarchySidebar.setCollapsed(false);searchField.value='Long hierarchy name';searchField.dispatchEvent(new Event('input'))")
             click_selector('#search-result-list button');wait_camera()
             check(evaluate("hierarchySidebar.collapsed && selectedNode.dataset.entryId==='sample-deep-7'"),'mobile search closes the drawer and synchronizes its focused result')
@@ -1641,9 +1875,10 @@ def main():
         check(evaluate(f"entries.get({json.dumps(g1)}).depth===0 && entries.get({json.dumps(s1)}).depth===1 && entries.get({json.dumps(p1)}).depth===2 && entries.get({json.dumps(m1)}).depth===3 && entries.get({json.dumps(t1)}).depth===4 && entries.get({json.dumps(d6)}).depth===6"), "create multiple Galaxies and a hierarchy through depth six")
         check(hierarchy_edge(g1,s1) and hierarchy_edge(s1,p1) and hierarchy_edge(m1,t1) and hierarchy_edge(d5,d6), "all hierarchy links derive from parent IDs")
         check(evaluate(f"relationships.filter(c=>c.from==={json.dumps(t1)}).length===2"), "deep entries retain optional semantic relationships")
-        for entry_id, expected in [(g1,'Sun'),(s1,'Planet'),(p1,'Moon'),(m1,'Satellite'),(t1,'Satellite')]:
+        for entry_id, expected in [(g1,'Sun'),(s1,'Planet'),(p1,'Moon'),(m1,'Satellite'),(t1,'Astronaut')]:
             select(entry_id)
-            check(evaluate('addChildButton.textContent')=='+ Add '+('child' if entry_id==t1 else expected), 'contextual Add '+expected)
+            evaluate('openSelectedRowAdd()')
+            check(evaluate('addChildButton.textContent')=='Add child', 'contextual Add '+expected)
             evaluate('addChildButton.click()')
             check(evaluate('parentField.value')==entry_id, 'contextual Add preselects the current parent')
             evaluate('dialog.close()')

@@ -29,21 +29,22 @@
             <header class="sidebar-brand"><h1>Galaxy</h1><span id="sample-indicator" hidden>Sample</span></header>
             <div class="sidebar-controls">
                 <div class="sidebar-actions">
-                    <button id="add-entry-button" type="button">+ Add Galaxy</button>
-                    <button id="reset-view-button" type="button">Fit Galaxy</button>
-                </div>
-            </div>
             <div class="entry-search">
                 <label class="visually-hidden" for="entry-search">Search entries by name</label>
+                <svg class="search-icon" viewBox="0 0 20 20" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5"/><path d="m13 13 4 4"/></svg>
                 <input id="entry-search" type="search" placeholder="Search entries…" autocomplete="off" aria-controls="search-results">
                 <div id="search-results" hidden>
                     <ul id="search-result-list"></ul>
                     <p id="search-status" role="status"></p>
                 </div>
             </div>
+                </div>
+            </div>
             <div id="hierarchy-tree" role="tree" aria-label="Cosmos hierarchy"></div>
             <details id="sidebar-tools">
                 <summary>More tools</summary>
+                <button id="add-entry-button" type="button">Add Galaxy</button>
+                <button id="reset-view-button" type="button">Fit Galaxy</button>
                 <div class="view-controls"><span id="hierarchy-count"></span><output id="zoom-level" aria-label="Zoom level">100%</output></div>
                 <p class="galaxy-hint">Scroll to zoom · Drag space to pan</p>
                 <aside id="sample-controls" aria-label="Development sample controls">
@@ -57,16 +58,27 @@
         </aside>
 
         <aside id="entry-panel" aria-labelledby="panel-name" hidden>
-            <header class="inspector-header"><span class="panel-eyebrow">Details</span><button id="close-inspector-button" type="button" aria-label="Close details" title="Close details">&times;</button></header>
+            <div class="content-panel-header">
+            <header class="inspector-header"><span class="panel-eyebrow">Contents</span><button id="close-inspector-button" type="button" aria-label="Close contents" title="Close contents">&times;</button></header>
             <div class="panel-content">
                 <h2 id="panel-name">Select an entry</h2>
-                <p id="panel-description">Click a node to see more information.</p>
             </div>
             <nav id="panel-ancestry" aria-label="Entry ancestry" hidden></nav>
-            <p id="panel-parent" hidden></p>
-            <section id="panel-connections" aria-labelledby="connections-heading">
-                <header class="connections-header"><h3 id="connections-heading">Connections</h3><button id="connect-entry-button" type="button">+ Connect</button></header>
-                <ul id="panel-connection-list"></ul>
+            <div class="content-header-actions">
+                <button id="connect-entry-button" type="button" aria-controls="panel-connections" aria-expanded="false"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="m8 12 4-4M7 13l-1 1a3.5 3.5 0 0 1-5-5l3-3a3.5 3.5 0 0 1 5 0m2 1 1-1a3.5 3.5 0 0 1 5 5l-3 3a3.5 3.5 0 0 1-5 0"/></svg><span id="connection-action-label">Connect</span></button>
+                <button id="entry-more-button" type="button" aria-label="More actions" title="More actions" aria-haspopup="menu" aria-controls="entry-actions" aria-expanded="false">•••</button>
+                <div id="entry-actions" role="menu" aria-label="Item actions" hidden>
+                    <button id="edit-entry-button" type="button" role="menuitem">Edit info</button>
+                    <button id="move-entry-button" type="button" role="menuitem">Move / change parent</button>
+                    <button id="delete-entry-button" type="button" role="menuitem">Delete</button>
+                </div>
+                <section id="panel-connections" class="header-popover" role="dialog" aria-labelledby="connections-heading" hidden>
+                    <header class="connections-header"><h3 id="connections-heading">Connections</h3></header>
+                    <ul id="panel-connection-list"></ul>
+                    <button id="new-connection-button" type="button">Connect to…</button>
+                </section>
+            </div>
+            </div>
                 <form id="connection-picker" hidden>
                     <label id="connection-prompt" for="connection-search"></label>
                     <input id="connection-search" type="search" placeholder="Search entries" autocomplete="off" maxlength="60" aria-controls="connection-results">
@@ -74,45 +86,45 @@
                     <p id="connection-status" role="status" aria-live="polite"></p>
                     <button id="cancel-connection" type="button">Cancel</button>
                 </form>
-            </section>
-            <div id="entry-actions" hidden>
-                <div class="inspector-main-actions">
-                    <button id="add-child-button" type="button">+ Add child</button>
-                    <button id="edit-entry-button" type="button">Edit</button>
-                </div>
-                <details id="inspector-metadata">
-                    <summary>More</summary>
-                    <p id="panel-category" hidden></p>
-                </details>
-                <div class="inspector-utility-actions">
-                    <button id="delete-entry-button" type="button">Delete</button>
-                </div>
-            </div>
-            <details id="panel-rich-content">
-                <summary>Content</summary>
-                <form id="content-notes-form">
-                    <label for="content-notes">Notes</label>
+            <section id="panel-rich-content" aria-label="Contents">
+                <section aria-labelledby="files-heading">
+                    <header class="content-heading"><h3 id="files-heading">Files</h3></header>
+                    <input id="content-files" type="file" multiple accept=".jpg,.jpeg,.png,.webp,.pdf,.txt,.md" hidden aria-label="Choose files">
+                    <ul id="content-attachments"></ul>
+                    <p id="content-files-empty" class="content-empty">No files</p>
+                    <small id="content-file-limit" hidden></small>
+                </section>
+                <section aria-labelledby="notes-heading">
+                    <header class="content-heading"><h3 id="notes-heading">Notes</h3><button id="content-edit-notes" class="quiet-icon" type="button" aria-label="Edit note" title="Edit note" hidden><svg viewBox="0 0 20 20" aria-hidden="true"><path d="m12 4 4 4M4 12l9-9a2 2 0 0 1 3 3l-9 9-4 1z"/></svg></button></header>
+                    <p id="content-notes-empty" class="content-empty">No notes</p>
+                    <p id="content-notes-view" hidden></p>
+                    <form id="content-notes-form" hidden>
+                    <label class="visually-hidden" for="content-notes">Notes</label>
                     <textarea id="content-notes" rows="4" placeholder="Write a note"></textarea>
-                    <button type="submit">Save notes</button>
-                </form>
-                <header class="content-heading"><h3>Links</h3><button id="content-add-link" type="button">+ Add link</button></header>
+                    <div class="content-row-actions"><button type="submit">Save note</button><button id="content-cancel-notes" type="button">Cancel</button></div>
+                    </form>
+                </section>
+                <section aria-labelledby="bookmarks-heading">
+                <header class="content-heading"><h3 id="bookmarks-heading">Bookmarks</h3></header>
                 <ul id="content-links"></ul>
+                <p id="content-bookmarks-empty" class="content-empty">No bookmarks</p>
                 <form id="content-link-form" hidden>
-                    <label for="content-link-url">Web URL</label><input id="content-link-url" type="url" required maxlength="2048" placeholder="https://">
-                    <label for="content-link-title">Display title (optional)</label><input id="content-link-title" type="text" maxlength="200">
-                    <div class="content-row-actions"><button type="submit">Save link</button><button id="content-cancel-link" type="button">Cancel</button></div>
+                    <label for="content-link-url">Address</label><input id="content-link-url" type="text" inputmode="url" required maxlength="2048" placeholder="example.com" autocomplete="url">
+                    <label for="content-link-title">Title (optional)</label><input id="content-link-title" type="text" maxlength="200">
+                    <div class="content-row-actions"><button type="submit">Save bookmark</button><button id="content-cancel-link" type="button">Cancel</button></div>
                 </form>
-                <h3>Attachments</h3>
-                <div id="content-drop">
-                    <label for="content-files">Choose files or drop them here for this entry</label>
-                    <input id="content-files" type="file" multiple accept=".jpg,.jpeg,.png,.webp,.pdf,.txt,.md">
-                    <small id="content-file-limit"></small>
-                </div>
-                <ul id="content-attachments"></ul>
+                </section>
                 <p id="content-status" role="status" aria-live="polite" hidden></p>
-            </details>
+            </section>
             <p id="entry-action-status" role="status" hidden></p>
         </aside>
+
+        <div id="add-menu" role="menu" aria-label="Add" hidden>
+            <button id="add-child-button" type="button" role="menuitem">Add child</button>
+            <button type="button" role="menuitem" data-add="files">Add files</button>
+            <button type="button" role="menuitem" data-add="note">Add note</button>
+            <button type="button" role="menuitem" data-add="bookmark">Add bookmark</button>
+        </div>
 
         <div id="connection-hint" role="tooltip" hidden>
             <span id="connection-hint-text"></span>
@@ -131,19 +143,20 @@
         <form id="add-entry-form">
             <h2 id="add-entry-title">Add Entry</h2>
 
-            <label for="entry-name">Entry name</label>
+            <div id="entry-name-field"><label for="entry-name">Name</label>
             <input id="entry-name" name="name" type="text" maxlength="60" required autofocus>
-
+            </div>
+            <div id="entry-info-fields" hidden>
             <label for="entry-description">Description (optional)</label>
             <textarea id="entry-description" name="description" rows="4" maxlength="1000"></textarea>
 
             <label for="entry-category">Category / label (optional)</label>
             <input id="entry-category" name="category" type="text" maxlength="60">
+            </div>
 
-            <output id="entry-role" aria-live="polite">Galaxy</output>
-            <p id="role-help">The parent determines the celestial role. Nest entries as deeply as you need.</p>
+            <output id="entry-role" hidden>Galaxy</output>
             <div id="creation-context" hidden><span></span><button id="change-creation-parent" type="button">Change parent</button></div>
-            <div id="parent-field">
+            <div id="parent-field" hidden>
                 <label id="parent-label" for="entry-parent">Parent</label>
                 <select id="entry-parent" name="parentId" aria-describedby="parent-help"></select>
                 <p id="parent-help"></p>

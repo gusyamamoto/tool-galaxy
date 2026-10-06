@@ -19,6 +19,16 @@ test('links allow only web URLs and preserve stable IDs and optional readable ti
     assert.deepEqual(plain(content.links),[{id:'link-1',url:'https://example.com/path',title:'Reference'}]);
     assert.equal(model.normalizeContent({...content,links:[content.links[0],content.links[0]]},'entry'),null);
 });
+test('bookmark addresses normalize ordinary domains without accepting unsafe or malformed destinations',()=>{
+    for(const [input,expected] of [['google.com','https://google.com/'],[' www.google.com ','https://www.google.com/'],
+        ['example.com/path?q=1#notes','https://example.com/path?q=1#notes'],['example.com:8443/path','https://example.com:8443/path'],['HTTPS://EXAMPLE.COM','https://example.com/']]) {
+        assert.equal(model.webUrl(input),expected);
+    }
+    for(const invalid of ['','not-a-domain','example..com','-bad.com','bad-.com','//example.com','user@example.com','example.com\\evil',
+        'example.com/has space','java\nscript:alert(1)','mailto:user@example.com','ftp://example.com','data:text/html,test','file:///private']) {
+        assert.equal(model.webUrl(invalid),null,invalid);
+    }
+});
 test('notes can be cleared and malformed/future content is preserved through rejection instead of lossy loading',()=>{
     assert.equal(model.normalizeContent(model.emptyContent(),'entry').notes.text,'');
     for(const invalid of [{...model.emptyContent(),version:2},{...model.emptyContent(),notes:{format:'html',text:'<script>'}},

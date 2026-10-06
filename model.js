@@ -13,7 +13,18 @@ const galaxyModel = {
     emptyContent() { return { version: 1, notes: { format: "plain", text: "" }, links: [], attachments: [] }; },
     webUrl(value) {
         if (typeof value !== "string" || value.length > 2048) return null;
-        try { const url = new URL(value.trim()); return ["http:", "https:"].includes(url.protocol) && url.hostname ? url.href : null; }
+        const text = value.trim();
+        if (!text || /[\u0000-\u001f\u007f]/.test(text)) return null;
+        const domainWithPort = /^[^/?#:\s]+\.[^/?#:\s]+:\d+(?:[/?#]|$)/.test(text);
+        const explicitScheme = !domainWithPort && /^[a-z][a-z\d+.-]*:/i.test(text);
+        try {
+            if (!explicitScheme && (/[\s\\]/.test(text) || text.startsWith("/"))) return null;
+            const url = new URL(explicitScheme ? text : `https://${text}`);
+            if (!["http:", "https:"].includes(url.protocol) || !url.hostname) return null;
+            if (!explicitScheme && (url.username || url.password || !url.hostname.includes(".") ||
+                !url.hostname.split(".").every(label => /^[a-z\d](?:[a-z\d-]*[a-z\d])?$/i.test(label)))) return null;
+            return url.href;
+        }
         catch { return null; }
     },
     normalizeContent(value, entryId) {
