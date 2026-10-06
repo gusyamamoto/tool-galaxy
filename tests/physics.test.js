@@ -5,12 +5,12 @@ for(const file of ['vendor/d3-force.bundle.min.js','model.js','physics.js','samp
 const Physics=vm.runInContext('GalaxyPhysics',context),model=vm.runInContext('galaxyModel',context),sample=vm.runInContext('galaxySample',context);
 const bounds={left:50,right:1100,top:200,bottom:900},plain=v=>JSON.parse(JSON.stringify(v));
 const distance=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
-function make(records,layout=new Map(),links=[]){
+function make(records,layout=new Map()){
     const entries=new Map(records.map(r=>[r.id,{name:r.id,description:'Description',category:'',x:400,y:400,...r}]));
     model.normalizeHierarchy(entries);
     const data=[...entries.values()].map(e=>({...e,sizeScale:model.roles[e.role].scale}));
     const physics=new Physics({onTick(){},onSettle(){}});physics.setViewport(bounds,13);
-    physics.setGraph(data,links,layout);physics.simulation.stop();return physics;
+    physics.setGraph(data,layout);physics.simulation.stop();return physics;
 }
 function advance(p,ticks=300){p.simulation.stop().tick(ticks);return [...p.particles.values()];}
 function fixture(){return make(plain(sample.build().entries).map(e=>({...e,seedLayout:true})));}
@@ -23,25 +23,14 @@ test('CRUD graph refresh retains surviving positions/identity and supports restr
     const p=family();advance(p,400);
     const before=new Map(p.ordered.map(n=>[n.id,{node:n,x:n.x,y:n.y,vx:n.vx,vy:n.vy}]));
     const data=p.ordered.map(({id,parentId,role,depth,x,y,sizeScale})=>({id,parentId,role,depth,x,y,sizeScale}));
-    p.setGraph([...data,{id:'new',parentId:'t',role:'astronaut',depth:5,x:400,y:400,sizeScale:.5,seedLayout:true}],[],new Map(),{reheat:.12});
+    p.setGraph([...data,{id:'new',parentId:'t',role:'astronaut',depth:5,x:400,y:400,sizeScale:.5,seedLayout:true}],new Map(),{reheat:.12});
     p.simulation.stop();assert.equal(p.simulation.alpha(),.12);
     before.forEach((old,id)=>{const n=p.particles.get(id);assert.equal(n,old.node);assert.deepEqual([n.x,n.y,n.vx,n.vy],[old.x,old.y,old.vx,old.vy]);});
-    p.setGraph(data,[],new Map(),{reheat:.12});p.simulation.stop();
+    p.setGraph(data,new Map(),{reheat:.12});p.simulation.stop();
     assert.equal(p.particles.has('new'),false);
     before.forEach((old,id)=>{const n=p.particles.get(id);assert.equal(n,old.node);assert.deepEqual([n.x,n.y],[old.x,old.y]);});
 });
 
-test('semantic connections have zero influence on positions, envelopes or orbital bands',()=>{
-    const records=plain(sample.build().entries).map(entry=>({...entry,seedLayout:true}));
-    const a=make(records),b=make(records,new Map(),sample.build().connections);
-    advance(a,300);advance(b,300);
-    for(const [id,node] of a.particles){
-        const other=b.particles.get(id);
-        assert.deepEqual([node.x,node.y,node.vx,node.vy,node.envelope,node.orbitRadius],
-            [other.x,other.y,other.vx,other.vy,other.envelope,other.orbitRadius]);
-    }
-    assert.ok(b.linkForce.links().every(link=>b.linkForce.strength()(link)===0));
-});
 test('187 bodies retain separate Galaxy footprints and local solar trees',()=>{
     const p=fixture(),nodes=advance(p,450),regions=[...p.galaxies.values()];
     assert.equal(regions.length,4);assert.equal(p.systems.size,8);assert.equal(p.ordered.length,187);
@@ -124,7 +113,7 @@ test('relative arrangement survives a graph rebuild and moves with its parent',(
     const p=family();advance(p);const moon=p.particles.get('m');
     p.beginDrag('m');p.moveDrag('m',moon.parent.x-160,moon.parent.y+90);const placement=p.endDrag('m',true);advance(p);
     const data=p.ordered.map(({id,parentId,role,depth,x,y,sizeScale})=>({id,parentId,role,depth,x,y,sizeScale}));
-    p.setGraph(data,[],new Map([['m',placement]]));advance(p);
+    p.setGraph(data,new Map([['m',placement]]));advance(p);
     assert.equal(moon.placement.angle,placement.angle);assert.equal(moon.placement.radius,placement.radius);
     const before={x:moon.x,y:moon.y};p.beginDrag('p');const planet=p.particles.get('p');p.moveDrag('p',planet.x+220,planet.y-120);
     assert.ok(Math.abs(moon.x-before.x-220)<.001);assert.ok(Math.abs(moon.y-before.y+120)<.001);
@@ -169,7 +158,7 @@ test('legacy pins normalize to flowing motion through resize, rebuild and subseq
     assert.equal(moon.x,1300);assert.equal(moon.y,-700);assert.equal(moon.fx,null);assert.equal(moon.placement.pinned,undefined);
     advance(p,1000);assert.ok(distance(moon,{x:1300,y:-700})>100);
     p.setViewport({left:20,right:400,top:200,bottom:500},12);advance(p);assert.equal(moon.fx,null);
-    const data=p.ordered.map(n=>({...n,seedLayout:false}));p.setGraph(data,[],layout);advance(p);
+    const data=p.ordered.map(n=>({...n,seedLayout:false}));p.setGraph(data,layout);advance(p);
     p.beginDrag('m');p.moveDrag('m',1500,-600);const moved=p.endDrag('m',true);advance(p,1000);
     assert.equal(moved.pinned,undefined);assert.equal(moon.fx,null);assert.ok(distance(moon,{x:1500,y:-600})>100);
     assert.ok(Math.abs(p.simulation.velocityDecay()-.42)<1e-12);
@@ -179,16 +168,8 @@ test('reparenting keeps stable particle identity, changes systems and clears obs
     const data=p.ordered.map(({id,parentId,role,depth,x,y,sizeScale})=>({id,parentId,role,depth,x,y,sizeScale}));
     data.find(n=>n.id==='m').parentId='s';
     const entries=new Map(data.map(e=>[e.id,e]));model.normalizeHierarchy(entries);
-    p.setGraph([...entries.values()],[],new Map([['m',moon.placement]]));advance(p);
+    p.setGraph([...entries.values()],new Map([['m',moon.placement]]));advance(p);
     assert.equal(p.particles.get('m'),moon);assert.equal(moon.parentId,'s');assert.equal(moon.role,'planet');assert.equal(moon.placement,null);
-});
-test('semantic relationships between systems never drag a remote branch across Galaxies',()=>{
-    const p=fixture(),control=fixture();advance(p);advance(control);
-    p.beginDrag('sample-moon-0-0-0');p.moveDrag('sample-moon-0-0-0',8000,-7000);p.endDrag('sample-moon-0-0-0',true);
-    p.linkForce.links([{source:'sample-moon-0-0-0',target:'sample-sun-6'}]);
-    assert.equal(p.linkForce.strength()(p.linkForce.links()[0]),0);
-    control.reheat(.28);advance(p);advance(control);
-    assert.ok(distance(p.particles.get('sample-sun-6'),control.particles.get('sample-sun-6'))<5);
 });
 test('held drags keep other active drags responsive; click release adds no energy or influence',()=>{
     const p=family();advance(p);p.beginDrag('s');p.moveDrag('s',500,550);advance(p,120);

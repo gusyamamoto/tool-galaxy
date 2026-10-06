@@ -16,7 +16,7 @@ const galaxyStorage = {
         const data = JSON.parse(stored);
         const records = data?.version === 1 ? data.tools : data?.entries;
         if (!data || ![1, 2, 3, 4, 5].includes(data.version) || !Array.isArray(records) ||
-            !Array.isArray(data.connections) || (data.version < 3 && !Array.isArray(data.builtInPositions)) ||
+            (data.version < 3 && !Array.isArray(data.builtInPositions)) ||
             (data.version >= 4 && !Array.isArray(data.layout)) ||
             (data.portals != null && !Array.isArray(data.portals))) {
             throw new Error("Unsupported or invalid saved galaxy.");
@@ -28,7 +28,8 @@ const galaxyStorage = {
             migrateTree: data.version < 5,
             legacy: data.version < 3,
             entries: data.version < 3 ? [...records, ...data.builtInPositions] : records,
-            connections: data.connections,
+            // Compatibility boundary only: obsolete records never enter active state.
+            ...(data.connections != null && (!Array.isArray(data.connections) || data.connections.length) ? { needsCanonicalSave: true } : {}),
             layout: data.version >= 4 ? data.layout : [],
             ...(data.portals != null ? { portals: data.portals } : {})
         };
@@ -51,7 +52,8 @@ const galaxyStorage = {
             localStorage.setItem(this.treeBackupKey, previous);
         }
         localStorage.setItem(this.key, JSON.stringify({
-            version: 5, entries: snapshot.entries, connections: snapshot.connections, layout: snapshot.layout || [],
+            // Empty legacy slot keeps older version-5 readers able to open the snapshot.
+            version: 5, entries: snapshot.entries, connections: [], layout: snapshot.layout || [],
             ...(snapshot.portals != null ? { portals: snapshot.portals } : {})
         }));
     }

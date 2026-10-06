@@ -98,7 +98,7 @@ class GraphCamera {
         if (view) this.setView(view, options.animate ?? true);
     }
 
-    // Semantic navigation uses the same view, frame loop and completion callback.
+    // Animated navigation uses the same view, frame loop and completion callback.
     // Interpolate the world point at the usable viewport center, so zooming out
     // establishes the route rather than introducing an unrelated translation.
     travelTo(view, viewport, { crossGalaxy = false, differentSystem = false } = {}) {

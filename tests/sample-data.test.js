@@ -19,16 +19,6 @@ test('development query is explicit and generation deterministic and isolated',(
     assert.equal(fs.readFileSync(path.join(__dirname,'../sample-data.js'),'utf8').includes('localStorage'),false);
 });
 
-test('sample has a modest isolated set of cross-hierarchy and cross-Galaxy connections',()=>{
-    const snapshot=sample.build(), entries=new Map(snapshot.entries.map(e=>[e.id,model.normalizeEntry(e)]));
-    model.normalizeHierarchy(entries);
-    const links=plain(model.normalizeConnections(snapshot.connections,entries));
-    assert.equal(links.length,8);assert.deepEqual(links,plain(snapshot.connections));
-    assert.ok(links.every(link=>entries.get(link.from).parentId!==entries.get(link.to).parentId));
-    const root=id=>[...model.ancestors(entries,id)].at(-1)?.id||id;
-    assert.ok(links.some(link=>root(link.from)!==root(link.to)));
-    snapshot.connections[0].type='changed';assert.equal(sample.build().connections[0].type,'related');
-});
 test('187 entries exercise four Galaxies, eight Suns and compact Astronaut branches through depth eight',()=>{
     const snapshot=sample.build(),entries=new Map(snapshot.entries.map(e=>[e.id,model.normalizeEntry(e)]));
     model.normalizeHierarchy(entries);assert.equal(entries.size,187);
@@ -41,5 +31,10 @@ test('187 entries exercise four Galaxies, eight Suns and compact Astronaut branc
     assert.ok(galaxies.every(e=>model.childrenOf(entries,e.id).length===2));
     assert.equal(new Set(galaxies.map(e=>appearance.resolve(e).archetype)).size,4);
     assert.equal(new Set([...entries.values()].filter(e=>e.depth===2).map(e=>appearance.resolve(e).archetype)).size,6);
-    assert.equal(model.buildConnections(entries,[]).length,183);assert.deepEqual(plain(snapshot.layout),[]);
+    assert.equal(model.buildHierarchyEdges(entries).length,183);assert.deepEqual(plain(snapshot.layout),[]);
+});
+
+test('Sample contains hierarchy, Portals and rich content without a semantic Connection collection',()=>{
+    const snapshot=sample.build();assert.equal('connections' in snapshot,false);
+    assert.equal(snapshot.portals.length,3);assert.ok(snapshot.entries.some(e=>e.content?.attachments.length));
 });

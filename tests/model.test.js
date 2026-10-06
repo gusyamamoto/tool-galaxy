@@ -65,41 +65,14 @@ test('old soft positions and pins retain initial coordinates with only flowing i
     assert.ok([...layout.values()].every(p=>!('pinned' in p)&&!('x' in p)));
 });
 
-test('root pins release without changing content, ancestry or semantic relationships',()=>{
-    const entries=chain(5),before=plain([...entries.values()]),links=[{from:'e0',to:'e4'}];
+test('root pins release without changing content or ancestry',()=>{
+    const entries=chain(5),before=plain([...entries.values()]);
     const layout=model.normalizeLayout([{id:'e0',x:500,y:400,pinned:true},
         {id:'e4',x:900,y:600,pinned:true}],entries);
     assert.equal(entries.get('e0').x,500);assert.equal(entries.get('e0').y,400);assert.equal(layout.has('e0'),false);
     assert.equal(layout.get('e4').parentId,'e3');
     entries.forEach((e,id)=>{const old=before.find(e=>e.id===id);assert.equal(e.parentId,old.parentId);assert.equal(e.name,old.name);assert.equal(e.description,old.description);});
-    assert.ok(model.buildConnections(entries,links).some(e=>e.kind==='relationship'&&e.from==='e0'&&e.to==='e4'));
     assert.deepEqual(plain([...model.normalizeLayout([...layout].map(([id,p])=>({id,...p})),entries)]),plain([...layout]));
-});
-test('semantic links remain independent even between a structural parent and child', () => {
-    const entries=chain(4), links=[{from:'e1',to:'e0'},{from:'e0',to:'e3'},{from:'e0',to:'e0'},{from:'e0',to:'missing'}];
-    const edges=model.buildConnections(entries,links);
-    assert.equal(edges.length,5); assert.equal(edges.filter(e=>e.kind==='relationship').length,2);
-    entries.get('e3').parentId='e1';
-    assert.ok(model.buildConnections(entries,links).some(e=>e.from==='e1'&&e.to==='e3'));
-});
-
-test('connection normalization preserves legacy pairs, stable IDs and richer labels', () => {
-    const entries=chain(5), records=[{from:'e1',to:'e3'}, {from:'e3',to:'e1'},
-        {id:'custom-link',from:'e0',to:'e4',type:'uses',label:'Research'},
-        {id:'custom-link',sourceId:'e2',targetId:'e4'}, {from:'e0',to:'missing'},
-        {from:'e0',to:'e0'}, null, {from:3,to:'e2'}];
-    const links=plain(model.normalizeConnections(records,entries));
-    assert.equal(links.length,3); assert.equal(new Set(links.map(link=>link.id)).size,3);
-    assert.deepEqual(links[1],{id:'custom-link',from:'e0',to:'e4',type:'uses',label:'Research'});
-    assert.equal(links[0].type,'related');
-    assert.deepEqual(plain(model.normalizeConnections(links,entries)),links);
-    assert.equal(model.validateConnection(entries,links,'e1','e3'),'These entries are already connected.');
-    assert.equal(model.validateConnection(entries,links,'e3','e1'),'These entries are already connected.');
-    assert.equal(model.validateConnection(entries,links,'e2','e2'),'Choose a different entry.');
-    assert.equal(model.validateConnection(entries,links,'e0','missing'),'Choose an existing entry.');
-    assert.equal(model.validateConnection(entries,links,'e1','e4'),'');
-    entries.delete('e4');
-    assert.deepEqual(plain(model.normalizeConnections(links,entries)),[links[0]]);
 });
 test('normalization preserves optional appearance metadata and rejects invalid content', () => {
     const data={...entry('test'),appearance:{mode:'manual',archetype:'ringed',rings:true,palette:'amber'}};
@@ -142,10 +115,10 @@ test('subtree collection is iterative through thousands of levels and handles cy
 
 test('deletion requires explicit subtree intent but all canonical entries are user-owned',()=>{
     const entries=chain(8), before=plain([...entries.values()]);
-    assert.match(model.deletionPlan(entries,[],'e2').error,/Confirm/);
-    assert.equal(model.deletionPlan(entries,[],'e7').error,'');
-    assert.equal(model.deletionPlan(entries,[],'e2',{subtree:true,protectedIds:new Set(['e6'])}).error,'');
-    assert.match(model.deletionPlan(entries,[],'missing',{subtree:true}).error,/no longer/);
+    assert.match(model.deletionPlan(entries,'e2').error,/Confirm/);
+    assert.equal(model.deletionPlan(entries,'e7').error,'');
+    assert.equal(model.deletionPlan(entries,'e2',{subtree:true,protectedIds:new Set(['e6'])}).error,'');
+    assert.match(model.deletionPlan(entries,'missing',{subtree:true}).error,/no longer/);
     assert.deepEqual(plain([...entries.values()]),before,'planning never mutates or promotes entries');
 });
 test('legacy ownership flags normalize away without changing IDs, ancestry or saved content',()=>{
@@ -160,19 +133,16 @@ test('legacy ownership flags normalize away without changing IDs, ancestry or sa
         assert.deepEqual(plain(normalized),expected);
         assert.deepEqual(plain(model.normalizeEntry(normalized)),plain(normalized));
         const entries=new Map([['coding',entry('coding')],[id,normalized]]);
-        assert.equal(model.deletionPlan(entries,[],'coding',{subtree:true}).error,'');
-        assert.deepEqual([...model.deletionPlan(entries,[],'coding',{subtree:true}).ids],['coding',id]);
+        assert.equal(model.deletionPlan(entries,'coding',{subtree:true}).error,'');
+        assert.deepEqual([...model.deletionPlan(entries,'coding',{subtree:true}).ids],['coding',id]);
     }
 });
 
-test('subtree deletion plan cleans incident links in either direction and preserves unrelated metadata',()=>{
-    const entries=chain(8);entries.set('remote',entry('remote'));
-    const links=[{id:'local',from:'e4',to:'e6',type:'related'},
-        {id:'outgoing',from:'e7',to:'remote',type:'uses',label:'Keep meaning'},
-        {id:'incoming',from:'e0',to:'e5',type:'references'},
-        {id:'unrelated',from:'e1',to:'remote',type:'uses',label:'Unchanged'}];
-    const before=plain(links), plan=model.deletionPlan(entries,links,'e4',{subtree:true});
-    assert.equal(plan.error,'');assert.deepEqual([...plan.ids],['e4','e5','e6','e7']);
-    assert.deepEqual(plain(plan.relationships),[links[3]]);
-    assert.equal(plan.relationships[0],links[3]);assert.deepEqual(plain(links),before);
+
+test('hierarchy edges derive only from the canonical structural parent',()=>{
+    const entries=chain(5),edges=model.buildHierarchyEdges(entries);
+    assert.equal(edges.length,4);assert.ok(edges.every(e=>e.kind==='hierarchy'&&entries.get(e.to).parentId===e.from));
+    const before=plain([...entries.values()]),plan=model.deletionPlan(entries,'e2',{subtree:true});
+    assert.deepEqual([...plan.ids],['e2','e3','e4']);assert.equal(plan.error,'');
+    assert.deepEqual(plain([...entries.values()]),before);assert.equal('relationships' in plan,false);
 });

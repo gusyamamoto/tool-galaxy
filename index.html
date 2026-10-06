@@ -18,7 +18,7 @@
         </div>
         <div id="graph-viewport">
             <div id="graph-world">
-                <svg id="connections" role="group" aria-label="Cosmos connections"></svg>
+                <svg id="hierarchy-paths" aria-hidden="true"></svg>
             </div>
             <div id="regions-layer" aria-hidden="true"></div>
             <div id="nodes-layer"></div>
@@ -62,30 +62,17 @@
             <header class="inspector-header"><span class="panel-eyebrow">Contents</span><button id="close-inspector-button" type="button" aria-label="Close contents" title="Close contents">&times;</button></header>
             <div class="panel-content">
                 <h2 id="panel-name">Select an entry</h2>
-            </div>
-            <nav id="panel-ancestry" aria-label="Entry ancestry" hidden></nav>
             <div class="content-header-actions">
-                <button id="connect-entry-button" type="button" aria-controls="panel-connections" aria-expanded="false"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="m8 12 4-4M7 13l-1 1a3.5 3.5 0 0 1-5-5l3-3a3.5 3.5 0 0 1 5 0m2 1 1-1a3.5 3.5 0 0 1 5 5l-3 3a3.5 3.5 0 0 1-5 0"/></svg><span id="connection-action-label">Connect</span></button>
                 <button id="entry-more-button" type="button" aria-label="More actions" title="More actions" aria-haspopup="menu" aria-controls="entry-actions" aria-expanded="false">•••</button>
                 <div id="entry-actions" role="menu" aria-label="Item actions" hidden>
                     <button id="edit-entry-button" type="button" role="menuitem">Edit info</button>
                     <button id="move-entry-button" type="button" role="menuitem">Move / change parent</button>
                     <button id="delete-entry-button" type="button" role="menuitem">Delete</button>
                 </div>
-                <section id="panel-connections" class="header-popover" role="dialog" aria-labelledby="connections-heading" hidden>
-                    <header class="connections-header"><h3 id="connections-heading">Connections</h3></header>
-                    <ul id="panel-connection-list"></ul>
-                    <button id="new-connection-button" type="button">Connect to…</button>
-                </section>
             </div>
             </div>
-                <form id="connection-picker" hidden>
-                    <label id="connection-prompt" for="connection-search"></label>
-                    <input id="connection-search" type="search" placeholder="Search entries" autocomplete="off" maxlength="60" aria-controls="connection-results">
-                    <ul id="connection-results" aria-label="Connection targets"></ul>
-                    <p id="connection-status" role="status" aria-live="polite"></p>
-                    <button id="cancel-connection" type="button">Cancel</button>
-                </form>
+            <nav id="panel-ancestry" aria-label="Entry ancestry" hidden></nav>
+            </div>
             <section id="panel-rich-content" aria-label="Contents">
                 <section aria-labelledby="files-heading">
                     <header class="content-heading"><h3 id="files-heading">Files</h3></header>
@@ -126,14 +113,9 @@
             <button type="button" role="menuitem" data-add="bookmark">Add bookmark</button>
         </div>
 
-        <div id="connection-hint" role="tooltip" hidden>
-            <span id="connection-hint-text"></span>
-            <div id="connection-hint-actions" hidden><button id="connection-hint-go" type="button"></button><button id="connection-hint-close" type="button" aria-label="Close connection preview">×</button></div>
-        </div>
         <div id="entry-context-menu" role="menu" aria-label="Entry actions" hidden>
             <span id="context-entry-name" class="context-entry-name" aria-hidden="true"></span>
             <button type="button" role="menuitem" data-action="create">Add child</button>
-            <button type="button" role="menuitem" data-action="connect">Connect to...</button>
             <button type="button" role="menuitem" data-action="portal">Create Portal...</button>
             <button type="button" role="menuitem" data-action="edit">Edit</button>
             <button type="button" role="menuitem" data-action="delete">Delete</button>
@@ -203,7 +185,6 @@
     <script src="rich-content.js"></script>
     <script src="appearance.js"></script>
     <script src="cosmos-view.js"></script>
-    <script src="connection-view.js"></script>
     <script src="sample-data.js"></script>
     <script src="storage.js"></script>
     <script src="vendor/d3-force.bundle.min.js"></script>

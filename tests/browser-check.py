@@ -112,36 +112,23 @@ def main():
     args.add_argument("--navigation-only", action="store_true", help="Check hierarchy navigation, contextual creation and right-click menus")
     args.add_argument("--interface-only", action="store_true", help="Check sidebar controls, contextual inspector and responsive camera space")
     args.add_argument("--arrangement-only", action="store_true", help="Measure native sizes and test moderate/extreme Planet and Moon drags")
-    args.add_argument("--connections-only", action="store_true", help="Check semantic connection creation, persistence, cleanup and sample visibility")
-    args.add_argument("--connection-lines-only", action="store_true", help="Check semantic line hover, hit-testing, navigation, synchronization and touch previews")
-    args.add_argument("--travel-only", action="store_true", help="Check optional descriptions and distance-aware semantic travel, arrival and interruption")
     args.add_argument("--cloud-fade-only", action="store_true", help="Check early responsive cloud fading, identity, smooth zoom and stability on desktop/laptop/narrow canvas")
-    args.add_argument("--astronaut-only", action="store_true", help="Check deep Astronaut creation, tethers, compact clusters, persistence, search and semantic links")
+    args.add_argument("--astronaut-only", action="store_true", help="Check deep Astronaut creation, tethers, compact clusters, persistence, search and Portal references")
     args.add_argument("--crud-only", action="store_true", help="Check camera-stable CRUD, blank descriptions, safe subtree deletion and selection/storage recovery")
     args.add_argument("--ownership-only", action="store_true", help="Check starter/migrated deletion, legacy flag loading, subtree file/link cleanup, persistence and Sample isolation")
     args.add_argument("--portals-only", action="store_true", help="Check Portal creation, reference-only sidebar, canonical travel/content, persistence, cleanup, rollback and touch/Sample isolation")
+    args.add_argument("--no-connections-only", action="store_true", help="Check legacy record disposal, no Connection UI/lines, preserved hierarchy/tethers, Portal travel and cleanup")
     args.add_argument("--content-only", action="store_true", help="Check notes/links, binary IndexedDB files, previews, failure atomicity, deletion and Sample isolation")
     args.add_argument("--organizer-only", action="store_true", help="Check contextual Add, read-first contents, item menus, breadcrumbs and the full Rich Content backend")
-    args.add_argument("--workspace-only", action="store_true", help="Check polished tree/modal, quiet content, overflow management and header connections alongside Rich Content storage")
+    args.add_argument("--workspace-only", action="store_true", help="Check polished tree/modal, quiet content, overflow management and item management alongside Rich Content storage")
     args.add_argument("--row-actions-only", action="store_true", help="Check row-specific Add targeting, hover/focus/touch access and header More alignment")
-    args.add_argument("--connections-performance-only", action="store_true", help="Measure the large sample's deep-focus motion with and without semantic line paint")
-    args.add_argument("--baseline-head", action="store_true", help="Use a temporary read-only HEAD snapshot for the connection performance comparison")
     args.add_argument("--capture-baseline", action="store_true", help="Capture sizes before tuning without running new arrangement assertions")
     args.add_argument("--sizes-only", action="store_true", help="Check desktop/mobile native sizes without repeating drag cases")
     args.add_argument("--extremes-only", action="store_true", help="Check only extreme Planet/Moon recovery in the arrangement suite")
     options = args.parse_args()
-    if options.baseline_head and not options.connections_performance_only:
-        args.error('--baseline-head requires --connections-performance-only')
     browser = find_browser()
     temp_root = Path(tempfile.gettempdir()).resolve()
-    baseline_root = None
-    if options.baseline_head:
-        baseline_root = Path(tempfile.mkdtemp(prefix='galaxy-baseline-')).resolve()
-        assert baseline_root.is_relative_to(temp_root)
-        for name in ['index.html','style.css','model.js','appearance.js','cosmos-view.js','sample-data.js','storage.js','vendor/d3-force.bundle.min.js','physics.js','background.js','camera.js','hierarchy.js','script.js']:
-            target=baseline_root/name;target.parent.mkdir(parents=True,exist_ok=True)
-            target.write_bytes(subprocess.run(['git','-c',f'safe.directory={ROOT.as_posix()}','show',f'HEAD:{name}'],cwd=ROOT,check=True,stdout=subprocess.PIPE).stdout)
-    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), functools.partial(QuietHandler, directory=str(baseline_root or ROOT)))
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), functools.partial(QuietHandler, directory=str(ROOT)))
     threading.Thread(target=server.serve_forever, daemon=True).start()
     with socket.socket() as port_socket:
         port_socket.bind(("127.0.0.1", 0))
@@ -237,7 +224,6 @@ def main():
                 form.requestSubmit();""")
             assert evaluate("!dialog.open"), evaluate("formError.textContent")
             assert evaluate("(()=>{const p=physics.particles.get(selectedNode.dataset.entryId),e=entries.get(p.id);return p.x===e.x&&p.y===e.y;})()"), "Add must reveal/save the actual seeded position immediately"
-            assert evaluate("!relationships.some(c=>c.from===selectedNode.dataset.entryId||c.to===selectedNode.dataset.entryId)"), "Creation must add no semantic relationships"
             return evaluate("selectedNode.dataset.entryId")
 
         def edit(entry_id, name=None, parent=None):
@@ -249,7 +235,7 @@ def main():
             evaluate("form.requestSubmit()")
 
         def hierarchy_edge(parent, child):
-            return evaluate(f"connections.some(c=>c.from==={json.dumps(parent)} && c.to==={json.dumps(child)} && c.kind==='hierarchy')")
+            return evaluate(f"galaxyModel.buildHierarchyEdges(entries).some(c=>c.from==={json.dumps(parent)} && c.to==={json.dumps(child)} && c.kind==='hierarchy')")
 
         def select(entry_id):
             evaluate(f"selectEntry(entries.get({json.dumps(entry_id)}),nodes.get({json.dumps(entry_id)}))")
@@ -279,7 +265,7 @@ def main():
 
         def aligned():
             return evaluate("""lines.every(({from,to,element})=>{
-                const m=connectionsLayer.getScreenCTM();return [[from,'x1','y1'],[to,'x2','y2']].every(([id,x,y])=>{
+                const m=hierarchyLayer.getScreenCTM();return [[from,'x1','y1'],[to,'x2','y2']].every(([id,x,y])=>{
                     const p=new DOMPoint(+element.getAttribute(x),+element.getAttribute(y)).matrixTransform(m);
                     const entry=entries.get(id),r=nodes.get(id).getBoundingClientRect();
                     const center=entry.depth===0&&element.dataset.kind==='hierarchy'?camera.worldToScreen(entry.x,entry.y):{x:r.x+r.width/2,y:r.y+r.height/2};
@@ -303,10 +289,68 @@ def main():
         cdp.call("Page.navigate", url=origin)
         load()
         check(evaluate("entries.size===6 && entries.get('old-star').role==='sun' && entries.get('old-moon').parentId==='migration-my-galaxy'"), "legacy records migrate intact into My Galaxy")
-        check(evaluate("relationships.length===3"), "legacy semantic relationships remain separate")
+        check(evaluate("typeof relationships==='undefined' && JSON.parse(localStorage.getItem('galaxy:user-data')).connections.length===0"), 'legacy pairwise records no longer enter application state')
         check(evaluate("localStorage.getItem('galaxy:user-data:pre-cosmic-tree')") == old_raw, "exact original snapshot retained before migration")
         check(evaluate("JSON.parse(localStorage.getItem('galaxy:user-data')).version===5 && JSON.parse(localStorage.getItem('galaxy:user-data')).entries.every(e=>!('role' in e) && !('depth' in e))"), "version 5 persists generic ancestry without hardcoded roles or depth")
         check(evaluate("!document.querySelector('#pin-position-button,[data-action=pin],#panel-placement,#panel-role,#connection-options') && !panel.textContent.includes('Moves naturally') && !dialog.textContent.includes('Other connections') && roleField.tagName==='OUTPUT' && [...entries.values()].every(e=>e.depth>=0)"), "normal UI derives roles without pin, physics status or relationship controls")
+
+        if options.no_connections_only:
+            root=add('Kept Galaxy');parent=add('Kept Sun',root);chain=[parent]
+            for name in ['Planet','Moon','Satellite','Astronaut']:chain.append(add(name,chain[-1]))
+            target=chain[-1];other=add('Other Galaxy')
+            wait_for('physics.settled');evaluate('physics.pause()');select(target)
+            evaluate("contentInspector.upload([new File(['Saved original bytes'],'kept.txt',{type:'text/plain'})]);void 0");wait_for('contentInspector.jobs.size===0')
+            evaluate(f"saveEntryContent({json.dumps(target)},{{...contentInspector.content(),notes:{{format:'plain',text:'Kept notes'}},links:[{{id:'bookmark-kept',url:'https://example.com/',title:'Kept bookmark'}}]}});openPortalDialog({json.dumps(target)});portalParentId={json.dumps(other)};document.getElementById('portal-form').requestSubmit();physics.pause()")
+            ref=evaluate('[...portals.keys()][0]');key=evaluate(f"entries.get({json.dumps(target)}).content.attachments[0].storageKey")
+            expected=evaluate(f"JSON.stringify(entries.get({json.dumps(target)}).content)");ancestry=evaluate('JSON.stringify([...entries].map(([id,e])=>[id,e.parentId,e.role,e.depth]))')
+            evaluate(f"(()=>{{const data=JSON.parse(localStorage.getItem('galaxy:user-data'));data.connections=[{{id:'old:pair',from:{json.dumps(parent)},to:{json.dumps(other)},type:'related',label:'Legacy pair'}}];localStorage.setItem('galaxy:user-data',JSON.stringify(data));}})()")
+            cdp.call('Page.reload');load();wait_camera();evaluate('physics.pause()')
+            check(evaluate('JSON.stringify([...entries].map(([id,e])=>[id,e.parentId,e.role,e.depth]))')==ancestry,'legacy records load without changing canonical parents, roles or depth')
+            check(evaluate(f"JSON.stringify(entries.get({json.dumps(target)}).content)")==expected and evaluate(f"(async()=>await(await attachmentStore.get({json.dumps(key)})).blob.text()==='Saved original bytes')()"),'legacy cleanup preserves notes/bookmark IDs, file metadata and IndexedDB bytes')
+            check(evaluate(f"portals.get({json.dumps(ref)}).targetEntryId==={json.dumps(target)}"),'legacy cleanup retains valid Portal references')
+            check(evaluate("JSON.parse(localStorage.getItem('galaxy:user-data')).version===5&&JSON.parse(localStorage.getItem('galaxy:user-data')).connections.length===0&&!('connections' in getGalaxySnapshot())"),'canonical save clears pairwise records in version 5 and exposes no active collection')
+            check(evaluate("typeof relationships==='undefined'&&typeof startConnectionMode==='undefined'&&typeof hitConnection==='undefined'&&typeof connectionView==='undefined'&&typeof galaxyModel.normalizeConnections==='undefined'&&typeof galaxyModel.validateConnection==='undefined'"),'removed feature has no active state, validators or hit-testing orchestration')
+            check(evaluate("!document.querySelector('#connect-entry-button,#connection-picker,#panel-connections,#connection-hint,[data-action=connect],.connection-line,[data-kind=relationship]')&&!document.querySelector('script[src*=connection-view]')"),'no Connection controls, picker, tooltip, semantic strokes or script remain')
+            check(evaluate("lines.every(l=>l.kind==='hierarchy'&&entries.get(l.to).parentId===l.from&&l.element.getAttribute('aria-hidden')==='true')&&physics.simulation.force('relationships')===undefined"),'all paths derive from structural parents and the pairwise physics hook is gone')
+            evaluate(f"focusEntry({json.dumps(target)})");wait_camera();evaluate('physics.pause()')
+            check(evaluate("(()=>{const line=lines.find(l=>l.element.classList.contains('astronaut-tether'));return line.element.tagName==='path'&&line.element.getAttribute('d').includes('Q')&&getComputedStyle(line.element).strokeDasharray==='none'&&+line.element.style.opacity>0})()"),'Astronaut curved solid tethers still render in detailed hierarchy views')
+            check(evaluate("(()=>{const h=panelName.getBoundingClientRect(),m=moreButton.getBoundingClientRect(),b=panelAncestry.getBoundingClientRect();return Math.abs(h.top-m.top)<.1&&m.left>h.right&&b.top>=h.bottom&&!document.querySelector('.content-header-actions #connect-entry-button')})()"),'Content title, More and breadcrumbs have no empty Connection row')
+            if screenshot_dir:
+                result=cdp.call('Page.captureScreenshot',format='png',captureBeyondViewport=False);(screenshot_dir/'no-connections-desktop.png').write_bytes(base64.b64decode(result['data']))
+            evaluate(f"focusEntry({json.dumps(other)})");wait_camera();evaluate('physics.pause()')
+            evaluate(f"hierarchySidebar.rows.get({json.dumps(ref)}).querySelector('.tree-name').click()")
+            check(evaluate('!!camera.travel&&camera.travel.duration>=1200'),'cross-Galaxy Portal still starts generic context/travel/arrival motion')
+            time.sleep(.12)
+            point=evaluate('({x:(physics.bounds.left+physics.bounds.right)/2,y:(physics.bounds.top+physics.bounds.bottom)/2})')
+            mouse('mouseWheel',**point,deltaY=80,deltaX=0)
+            check(evaluate('!camera.travel'),'wheel interrupts Portal travel without any Connection layer')
+            wait_camera();evaluate(f"focusEntry({json.dumps(other)})");wait_camera();evaluate(f"openPortal({json.dumps(ref)})")
+            cdp.call('Input.dispatchKeyEvent',type='keyDown',key='Escape',code='Escape',windowsVirtualKeyCode=27)
+            check(evaluate('!camera.travel&&!panel.hidden'),'Escape interrupts generic Portal travel while keeping canonical Contents')
+            evaluate(f"openPortal({json.dumps(ref)})");wait_camera();evaluate('physics.pause()')
+            check(evaluate(f"selectedNode.dataset.entryId==={json.dumps(target)}&&contentInspector.entryId==={json.dumps(target)}&&panelAncestry.textContent.includes('Kept Sun')&&!panelAncestry.textContent.includes('Other Galaxy')"),'Portal arrival still selects original content and true-location breadcrumbs')
+            before=evaluate('JSON.stringify(camera.view)')
+            evaluate("contentInspector.editNotes();contentInspector.notes.value='Edited notes';contentInspector.notesForm.requestSubmit();contentInspector.editLink();document.getElementById('content-link-url').value='google.com';contentInspector.linkForm.requestSubmit()")
+            check(evaluate('JSON.stringify(camera.view)')==before,'notes and bookmark operations remain camera-stable')
+            evaluate(f"requestEntryDelete({json.dumps(parent)});document.getElementById('delete-entry-form').requestSubmit()")
+            wait_for('!deleteDialog.open');evaluate('physics.pause()')
+            check(evaluate(f"(async()=>!entries.has({json.dumps(target)})&&!portals.has({json.dumps(ref)})&&await attachmentStore.get({json.dumps(key)})===null&&entries.has({json.dumps(other)}))()"),'subtree deletion still cleans Portal targets and file bytes, preserving unrelated entries')
+            check(evaluate('JSON.stringify(camera.view)')==before,'subtree deletion preserves the visible camera')
+            evaluate("(()=>{const data=JSON.parse(localStorage.getItem('galaxy:user-data'));data.connections={obsolete:true};localStorage.setItem('galaxy:user-data',JSON.stringify(data))})()")
+            cdp.call('Page.reload');load()
+            check(evaluate("storageAvailable&&JSON.parse(localStorage.getItem('galaxy:user-data')).connections.length===0"),'malformed obsolete collections are ignored without blocking valid saved hierarchy')
+            evaluate('physics.pause();if(graphNeedsSave)saveGalaxy()');raw=evaluate("localStorage.getItem('galaxy:user-data')")
+            evaluate('loadSampleButton.click()');wait_for("document.readyState==='complete'&&typeof sampleMode!=='undefined'&&sampleMode");load();wait_camera()
+            check(evaluate("entries.size===187&&portals.size===3&&lines.length===183&&!('connections' in galaxySample.build())&&lines.every(l=>l.kind==='hierarchy')"),'Sample keeps hierarchy/Portals/content with no semantic data or lines')
+            cdp.call('Emulation.setDeviceMetricsOverride',width=390,height=844,deviceScaleFactor=1,mobile=False);time.sleep(.2)
+            evaluate("openPortal('sample-portal-recipe')");wait_camera()
+            check(evaluate("!panel.hidden&&contentInspector.entryId==='sample-satellite-2-0-0-0'&&document.documentElement.scrollWidth<=innerWidth&&!document.querySelector('#panel-connections,#connection-picker')"),'mobile Portal and Content sheet remain usable with the simplified header')
+            if screenshot_dir:
+                result=cdp.call('Page.captureScreenshot',format='png',captureBeyondViewport=False);(screenshot_dir/'no-connections-mobile.png').write_bytes(base64.b64decode(result['data']))
+            check(evaluate("localStorage.getItem('galaxy:user-data')")==raw,'Sample navigation leaves real saved data isolated')
+            check(not cdp.errors,f'no cleanup browser exceptions: {cdp.errors}')
+            print(f'{count} removal regression browser checks passed',flush=True)
+            return
 
         if options.portals_only:
             g1=add('Portal home Galaxy');sun=add('Coding',g1);chain=[sun]
@@ -317,10 +361,10 @@ def main():
             wait_for('physics.settled');evaluate('physics.pause()')
             select(target)
             evaluate("contentInspector.upload([new File(['Canonical bytes'],'original.txt',{type:'text/plain'})]);void 0");wait_for('contentInspector.jobs.size===0')
-            evaluate(f"saveEntryContent({json.dumps(target)},{{...entries.get({json.dumps(target)}).content,notes:{{format:'plain',text:'Canonical notes'}},links:[{{id:'original-bookmark',url:'https://example.com/',title:'Canonical bookmark'}}]}});startConnectionMode({json.dumps(target)});connectEntries({json.dumps(outside)});physics.pause()")
+            evaluate(f"saveEntryContent({json.dumps(target)},{{...entries.get({json.dumps(target)}).content,notes:{{format:'plain',text:'Canonical notes'}},links:[{{id:'original-bookmark',url:'https://example.com/',title:'Canonical bookmark'}}]}});physics.pause()")
             key=evaluate('contentInspector.content().attachments[0].storageKey')
             canonical=evaluate('JSON.stringify([...entries].map(([id,e])=>[id,e.parentId,e.depth,e.role,e.content]))')
-            semantic=evaluate('JSON.stringify(relationships)');size=evaluate('entries.size')
+            size=evaluate('entries.size')
             def shot(name):
                 if screenshot_dir:
                     result=cdp.call('Page.captureScreenshot',format='png',captureBeyondViewport=False);(screenshot_dir/(name+'.png')).write_bytes(base64.b64decode(result['data']))
@@ -348,7 +392,7 @@ def main():
             evaluate('galaxyStorage.save=originalPortalSave;document.getElementById("portal-form").requestSubmit();physics.pause()')
             p1=evaluate('[...portals.keys()][0]')
             check(evaluate('JSON.stringify(camera.view)')==before and evaluate('physics.simulation.alpha()')==alpha,'Portal creation leaves camera and physics heat unchanged')
-            check(evaluate('JSON.stringify([...entries].map(([id,e])=>[id,e.parentId,e.depth,e.role,e.content]))')==canonical and evaluate('JSON.stringify(relationships)')==semantic,'Portal placement changes no canonical hierarchy, role, content or semantic link')
+            check(evaluate('JSON.stringify([...entries].map(([id,e])=>[id,e.parentId,e.depth,e.role,e.content]))')==canonical,'Portal placement changes no canonical hierarchy, role, content or canonical content')
             check(evaluate(f"entries.size==={size}&&nodes.size==={size}&&physics.particles.size==={size}&&!nodes.has({json.dumps(p1)})&&!physics.particles.has({json.dumps(p1)})"),'Portal creates no extra celestial body or physics particle')
             check(evaluate(f"(()=>{{const row=hierarchySidebar.rows.get({json.dumps(p1)});return row.dataset.portalId==={json.dumps(p1)}&&!row.dataset.role&&!row.dataset.entryId&&!row.hasAttribute('aria-expanded')&&!row.querySelector('.tree-add,.tree-disclosure')&&row.querySelector('.tree-portal-icon svg')&&row.getBoundingClientRect().height===32&&row.getAttribute('aria-level')==='3'&&row.title.includes('Portal to Canonical target');}})()"),'Portal is a distinct aligned leaf under its chosen parent, with no inherited celestial role, + or chevron')
             check(evaluate(f"hierarchySidebar.index.children.get({json.dumps(remote)}).includes({json.dumps(p1)})&&!hierarchySidebar.index.children.has({json.dumps(p1)})"),'target subtree is never expanded beneath the Portal')
@@ -397,7 +441,7 @@ def main():
             check(evaluate(f"portals.has({json.dumps(p1)})&&hierarchySidebar.rows.has({json.dumps(p1)})"),'failed Portal removal keeps its existing reference and sidebar row')
             evaluate(f"galaxyStorage.save=originalPortalSave;removePortal({json.dumps(p1)})")
             check(evaluate(f"!portals.has({json.dumps(p1)})&&portals.has({json.dumps(p2)})&&entries.has({json.dumps(target)})") and evaluate('JSON.stringify(camera.view)')==before,'Remove Portal removes only that reference with no camera movement')
-            check(evaluate(f"JSON.stringify(entries.get({json.dumps(target)}).content)")==content_before and evaluate('JSON.stringify(relationships)')==semantic,'Portal removal preserves original files, notes, bookmarks and semantic connections')
+            check(evaluate(f"JSON.stringify(entries.get({json.dumps(target)}).content)")==content_before,'Portal removal preserves original files, notes, bookmarks and canonical content')
             p_place=create_ref(target,sun)
             p_desc=create_ref(child,remote)
             p_unrelated=create_ref(outside,g2)
@@ -456,8 +500,7 @@ def main():
             parent_file=evaluate(f"entries.get({json.dumps(coding)}).content.attachments[0].storageKey")
             unrelated_file=evaluate(f"entries.get({json.dumps(remote)}).content.attachments[0].storageKey")
             evaluate("saveEntryContent('vs-code',{...entries.get('vs-code').content,notes:{format:'plain',text:'Keep starter notes'},links:[{id:'kept-bookmark',url:'https://example.com/',title:'Keep this'}]})")
-            evaluate(f"startConnectionMode({json.dumps(work)});connectEntries({json.dumps(remote)});startConnectionMode('vs-code');connectEntries({json.dumps(remote)});physics.pause();saveGalaxy()")
-            unrelated=evaluate(f"JSON.stringify(relationships.filter(link=>link.from==={json.dumps(work)}&&link.to==={json.dumps(remote)}))")
+            evaluate(f"physics.pause();saveGalaxy()")
             saved_content=evaluate("JSON.stringify(entries.get('vs-code').content)")
             ancestry=evaluate('JSON.stringify([...entries.values()].map(e=>[e.id,e.parentId,e.name]))')
             evaluate("(()=>{const data=JSON.parse(localStorage.getItem('galaxy:user-data'));data.entries.forEach(entry=>{entry.protected=true;entry.isProtected=true;entry.builtIn=true;entry.isBuiltIn=true});localStorage.setItem('galaxy:user-data',JSON.stringify(data))})()")
@@ -477,12 +520,11 @@ def main():
             wait_for('!deleteDialog.open');evaluate('physics.pause()')
             check(evaluate(f"{json.dumps(removed)}.every(id=>!entries.has(id)&&!nodes.has(id)&&!hierarchySidebar.rows.has(id)&&!physics.particles.has(id))"),'confirmed deletion removes the complete branch without promoting descendants')
             check(evaluate(f"(async()=>await attachmentStore.get({json.dumps(starter_file)})===null&&await attachmentStore.get({json.dumps(parent_file)})===null&&!!await attachmentStore.get({json.dumps(unrelated_file)}))()"),'subtree cleanup deletes starter and parent bytes while retaining unrelated files')
-            check(evaluate('JSON.stringify(relationships)')==unrelated,'incident semantic links are removed and unrelated connection records remain intact')
             check(evaluate(f"selectedNode.dataset.entryId==={json.dumps(work)}&&hierarchySidebar.selectedId==={json.dumps(work)}&&panelName.textContent==='Work'"),'deleted selection falls back to the nearest surviving ancestor')
             check(evaluate('JSON.stringify(camera.view)')==before,'starter subtree deletion preserves the exact camera')
             check(evaluate(f"{json.dumps(expanded)}.filter(id=>entries.has(id)).every(id=>hierarchySidebar.expanded.has(id))"),'surviving sidebar expansions remain stable')
             cdp.call('Page.reload');load();wait_camera();evaluate('physics.pause()')
-            check(evaluate(f"{json.dumps(removed)}.every(id=>!entries.has(id))&&entries.has({json.dumps(work)})&&entries.has({json.dumps(remote)})") and evaluate('JSON.stringify(relationships)')==unrelated,'refresh persists deletion and never resurrects starter defaults')
+            check(evaluate(f"{json.dumps(removed)}.every(id=>!entries.has(id))&&entries.has({json.dumps(work)})&&entries.has({json.dumps(remote)})"),'refresh persists deletion and never resurrects starter defaults')
             evaluate('physics.resume()');wait_for('physics.settled');evaluate('physics.pause();if(graphNeedsSave)saveGalaxy()')
             real_raw=evaluate("localStorage.getItem('galaxy:user-data')")
             evaluate('loadSampleButton.click()');wait_for("document.readyState==='complete'&&typeof sampleMode!=='undefined'&&sampleMode");load();wait_camera()
@@ -546,8 +588,7 @@ def main():
             evaluate('contentInspector.files.dispatchEvent(new Event("cancel"))')
             evaluate(f"hierarchySidebar.rows.get({json.dumps(target)}).querySelector('.tree-add').click();addMenu.querySelector('[data-add=bookmark]').click();document.getElementById('content-link-url').value='google.com';contentInspector.linkForm.requestSubmit()")
             check(evaluate(f"entries.get({json.dumps(target)}).content.links[0].url==='https://google.com/' && !entries.get({json.dumps(first)}).content"),'Add bookmark saves to the clicked row through the existing handler')
-            evaluate(f"startConnectionMode({json.dumps(first)});connectEntries({json.dumps(target)})")
-            check(evaluate("(()=>{const c=document.getElementById('connect-entry-button').getBoundingClientRect(),m=moreButton.getBoundingClientRect();return Math.abs(c.top+c.height/2-m.top-m.height/2)<.1&&m.width===28&&m.height===28&&m.left>c.right&&moreButton.ariaLabel==='More actions'&&moreButton.title==='More actions'})()"),'More actions has a compact footprint aligned with Connections and the requested accessible label')
+            check(evaluate("(()=>{const h=panelName.getBoundingClientRect(),m=moreButton.getBoundingClientRect();return Math.abs(h.top-m.top)<.1&&m.width===28&&m.height===28&&m.left>h.right&&moreButton.ariaLabel==='More actions'&&moreButton.title==='More actions'})()"),'More actions remains compact and associated with the selected-item title')
             for action,condition in [('edit-entry-button',"dialog.open && !document.getElementById('entry-info-fields').hidden"),('move-entry-button',"dialog.open && !document.getElementById('parent-field').hidden"),('delete-entry-button','deleteDialog.open')]:
                 click_selector('#entry-more-button');click_selector('#'+action)
                 check(evaluate(condition),'header More reuses '+action)
@@ -612,14 +653,6 @@ def main():
                 check(evaluate("dialog.open && !document.getElementById('parent-field').hidden && document.getElementById('entry-info-fields').hidden"),'Move exposes the existing parent selector without duplicate CRUD')
                 evaluate("form.requestSubmit();physics.pause()")
                 check(evaluate("entries.get(selectedNode.dataset.entryId).description==='Preserved description' && entries.get(selectedNode.dataset.entryId).category==='Preserved label'"),'Move preserves metadata and contents')
-                evaluate("document.getElementById('connect-entry-button').click()")
-                check(evaluate("!connectionPicker.hidden && connectionSourceId===selectedNode.dataset.entryId"),'header Connect launches existing target selection')
-                evaluate(f"connectEntries({json.dumps(other)})")
-                check(evaluate(f"relationships.some(r=>r.from==={json.dumps(owner)}&&r.to==={json.dumps(other)}) && document.getElementById('connection-action-label').textContent==='Connections 1' && document.getElementById('panel-connections').hidden"),'existing connections appear as a compact header count')
-                evaluate("document.getElementById('connect-entry-button').click()")
-                check(evaluate("!document.getElementById('panel-connections').hidden && document.getElementById('new-connection-button').textContent.includes('Connect')"),'Connections reveals existing destinations and the existing Connect workflow together')
-                evaluate("document.querySelector('#panel-connection-list .connection-name').click()");wait_camera();evaluate('physics.pause()')
-                check(evaluate(f"selectedNode.dataset.entryId==={json.dumps(other)} && contentInspector.entryId==={json.dumps(other)}"),'connected-item navigation updates contents through existing travel')
                 select(owner);evaluate('physics.pause()');before=evaluate('JSON.stringify(camera.view)')
                 evaluate('openSelectedRowAdd();addMenu.querySelector("[data-add=note]").click()')
                 check(evaluate("!contentInspector.notesForm.hidden && document.activeElement===contentInspector.notes"),'sidebar Add note activates one on-demand Notes editor')
@@ -700,7 +733,6 @@ def main():
             evaluate(f"contentInspector.notes.value={json.dumps(note)};document.getElementById('content-notes-form').requestSubmit()")
             def link(url,title=''):
                 evaluate(f"contentInspector.editLink();document.getElementById('content-link-url').value={json.dumps(url)};document.getElementById('content-link-title').value={json.dumps(title)};contentInspector.linkForm.requestSubmit()")
-            semantic=evaluate('JSON.stringify(relationships)')
             link('https://example.com/recipe','Recipe');link('https://example.org/reference')
             check(evaluate(f"entries.get({json.dumps(owner)}).content.links.length===2 && [...document.querySelectorAll('#content-links a')].every(a=>a.target==='_blank'&&a.rel.includes('noopener'))"),'multiple readable links have stable IDs and safe new-tab actions')
             link_id=evaluate(f"entries.get({json.dumps(owner)}).content.links[0].id")
@@ -710,7 +742,7 @@ def main():
             check(evaluate("contentInspector.content().links.length===2 && contentInspector.status.dataset.error==='true'"),'unsafe URL schemes are rejected before saving')
             evaluate("contentInspector.linkForm.hidden=true;document.querySelectorAll('#content-links .content-row-actions')[1].lastElementChild.click()")
             check(evaluate('contentInspector.content().links.length===1'),'link removal removes only its own content record')
-            stable(before,'link add/edit/remove leave camera state unchanged');check(evaluate('JSON.stringify(relationships)')==semantic,'web links never create semantic connections')
+            stable(before,'link add/edit/remove leave camera state unchanged')
             fixtures=profile/'attachment-fixtures';fixtures.mkdir()
             for ext,mime in [('png','image/png'),('jpg','image/jpeg'),('jpeg','image/jpeg'),('webp','image/webp')]:
                 encoded=evaluate(f"new Promise(resolve=>{{const c=document.createElement('canvas');c.width=640;c.height=320;const x=c.getContext('2d');x.fillStyle='#386978';x.fillRect(0,0,640,320);x.fillStyle='#dfca91';x.fillRect(180,70,280,180);c.toBlob(b=>{{const r=new FileReader();r.onload=()=>resolve(r.result.split(',')[1]);r.readAsDataURL(b);}},'{mime}',.8);}})")
@@ -931,14 +963,7 @@ def main():
             for i in range(2):add('Branch sibling '+str(i),ids[2])
             wait_for('physics.settled');evaluate('physics.pause()')
             branch=ids[2];deep=ids[6]
-            links=[{'id':'crud-local','from':ids[4],'to':ids[5],'type':'related'},
-                {'id':'crud-system','from':deep,'to':outside,'type':'uses','label':'Research'},
-                {'id':'crud-galaxy','from':'codex','to':ids[5],'type':'references'},
-                {'id':'crud-unrelated','from':outside,'to':remote,'type':'uses','label':'Keep intact'}]
-            evaluate(f"relationships.push(...galaxyModel.normalizeConnections({json.dumps(links)},entries));refreshConnectionViews();saveGalaxy();focusEntry({json.dumps(deep)})");wait_camera()
-            old_links=evaluate('JSON.stringify(relationships)');before=evaluate('({...camera.view})')
             evaluate(f"openEntryForm(entries.get({json.dumps(deep)}));parentField.value={json.dumps(ids[4])};form.requestSubmit();physics.pause()")
-            check(equal_view(before,evaluate('({...camera.view})')) and evaluate('JSON.stringify(relationships)')==old_links,'reparenting preserves camera and stable semantic records')
             evaluate(f"openEntryForm(entries.get({json.dumps(deep)}));parentField.value={json.dumps(ids[5])};form.requestSubmit();physics.pause()")
             evaluate(f"focusEntry({json.dumps(deep)})");wait_camera();wait_for('physics.settled');evaluate('physics.pause();saveGalaxy()')
             evaluate("hierarchySidebar.setCollapsed(false);hierarchySidebar.tree.style.maxHeight='180px';hierarchySidebar.tree.scrollTop=120")
@@ -953,15 +978,13 @@ def main():
             check(evaluate('JSON.stringify(getGalaxySnapshot())')==model_before and evaluate("localStorage.getItem('galaxy:user-data')")==raw and equal_view(before,evaluate('({...camera.view})')),'Cancel leaves model, storage and camera untouched')
             check(evaluate('[...hierarchySidebar.expanded]')==expanded and evaluate('hierarchySidebar.tree.scrollTop')==scroll,'Cancel preserves sidebar expansion and scroll')
             deleted_ids=evaluate(f"[...galaxyModel.subtreeIds(entries,{json.dumps(branch)})]")
-            unrelated=evaluate(f"JSON.stringify(relationships.filter(l=>!{json.dumps(deleted_ids)}.includes(l.from)&&!{json.dumps(deleted_ids)}.includes(l.to)))")
             result=evaluate(f"(()=>{{const positions=[...physics.particles].filter(([id])=>!{json.dumps(deleted_ids)}.includes(id)).map(([id,n])=>[id,n.x,n.y]);requestEntryDelete({json.dumps(branch)});document.getElementById('delete-entry-form').requestSubmit();physics.pause();return {{view:{{...camera.view}},positions:positions.every(([id,x,y])=>physics.particles.get(id).x===x&&physics.particles.get(id).y===y)}};}})()")
             check(equal_view(before,result['view']) and result['positions'],'subtree deletion preserves camera and surviving world coordinates')
             check(evaluate(f"{json.dumps(deleted_ids)}.every(id=>!entries.has(id)&&!nodes.has(id)&&!layout.has(id)&&!physics.particles.has(id)&&!hierarchySidebar.rows.has(id))"),'one confirmation removes the entire deep branch from every derived index')
-            check(evaluate('JSON.stringify(relationships)')==unrelated and evaluate("relationships.every(l=>entries.has(l.from)&&entries.has(l.to)) && lines.every(l=>entries.has(l.from)&&entries.has(l.to))"),'local/system/Galaxy incident links disappear while unrelated metadata remains intact')
             check(evaluate(f"selectedNode.dataset.entryId==={json.dumps(parent)} && hierarchySidebar.selectedId==={json.dumps(parent)} && panelName.textContent===entries.get({json.dumps(parent)}).name && !panelAncestry.textContent.includes('CRUD depth 6')"),'deleted selection recovers to its surviving ancestor without stale inspector data')
             check(evaluate(f"{json.dumps(expanded)}.filter(id=>!{json.dumps(deleted_ids)}.includes(id)).every(id=>hierarchySidebar.expanded.has(id)) && Math.abs(hierarchySidebar.tree.scrollTop-Math.min({scroll},hierarchySidebar.tree.scrollHeight-hierarchySidebar.tree.clientHeight))<1"),'unaffected branch expansion and practical scroll position survive deletion')
             cdp.call('Page.reload');load();wait_camera();evaluate('physics.pause()')
-            check(evaluate(f"{json.dumps(deleted_ids)}.every(id=>!entries.has(id)) && entries.has({json.dumps(outside)}) && entries.has({json.dumps(remote)})") and evaluate('JSON.stringify(relationships)')==unrelated,'refresh persists subtree removal and unrelated hierarchy/connections')
+            check(evaluate(f"{json.dumps(deleted_ids)}.every(id=>!entries.has(id)) && entries.has({json.dumps(outside)}) && entries.has({json.dumps(remote)})"),'refresh persists subtree removal and unrelated hierarchy')
             # A new member added after confirmation cannot be silently included.
             evaluate(f"requestEntryDelete({json.dumps(ids[0])});window.confirmedSize=deleteConfirmationIds.size;const late={{id:'late-child',name:'Late child',description:'',category:'',parentId:{json.dumps(parent)},x:400,y:350}};entries.set(late.id,late);document.getElementById('delete-entry-form').requestSubmit()")
             check(evaluate(f"deleteDialog.open && entries.has({json.dumps(ids[0])}) && deleteConfirmationIds.size===confirmedSize+1"),'changed subtree impact is refreshed and requires another explicit confirmation')
@@ -974,7 +997,7 @@ def main():
             evaluate('deleteDialog.close()')
             evaluate(f"focusEntry({json.dumps(remote)})");wait_camera();before=evaluate('({...camera.view})')
             evaluate(f"requestEntryDelete({json.dumps(remote)});document.getElementById('delete-entry-form').requestSubmit();physics.pause()")
-            check(equal_view(before,evaluate('({...camera.view})')) and evaluate("selectedNode===null && panel.hidden && panelAncestry.children.length===0 && document.getElementById('panel-connection-list').children.length===0"),'root deletion clears selection/inspector safely without reframing')
+            check(equal_view(before,evaluate('({...camera.view})')) and evaluate("selectedNode===null && panel.hidden && panelAncestry.children.length===0"),'root deletion clears selection/inspector safely without reframing')
             evaluate(f"focusEntry({json.dumps(parent)})");wait_camera();selected=evaluate('selectedNode.dataset.entryId')
             evaluate(f"requestEntryDelete({json.dumps(outside)});document.getElementById('delete-entry-form').requestSubmit();physics.pause()")
             check(evaluate('selectedNode.dataset.entryId')==selected,'deleting an unselected item retains the current selection')
@@ -984,7 +1007,7 @@ def main():
             raw=evaluate("localStorage.getItem('galaxy:user-data')")
             evaluate('loadSampleButton.click()');wait_for("document.readyState==='complete' && typeof sampleMode!=='undefined' && sampleMode");load();wait_camera()
             evaluate("requestEntryDelete('sample-planet-0-0');document.getElementById('delete-entry-form').requestSubmit()")
-            check(evaluate("sampleMode && !entries.has('sample-planet-0-0') && relationships.every(l=>entries.has(l.from)&&entries.has(l.to))") and evaluate("localStorage.getItem('galaxy:user-data')")==raw,'temporary Sample subtree deletion never changes real saved data')
+            check(evaluate("sampleMode && !entries.has('sample-planet-0-0')") and evaluate("localStorage.getItem('galaxy:user-data')")==raw,'temporary Sample subtree deletion never changes real saved data')
             check(not cdp.errors,f'no CRUD browser exceptions: {cdp.errors}')
             print(f'{count} CRUD browser checks passed',flush=True)
             return
@@ -1020,7 +1043,6 @@ def main():
             check(evaluate("[...physics.particles.values()].filter(n=>n.role==='astronaut').every(n=>n.childOrbit===0 && Math.hypot(n.x-n.clusterAnchor.x,n.y-n.clusterAnchor.y)<n.clusterAnchor.clusterRadius+30)"),'deep chains remain compact and add no orbit bands')
             def tethers_aligned():
                 return evaluate("""lines.filter(l=>l.element.classList.contains('astronaut-tether')).every(l=>{const e=l.element,m=e.getScreenCTM(),a=e.getPointAtLength(0),z=e.getPointAtLength(e.getTotalLength());return [[l.from,a],[l.to,z]].every(([id,p])=>{const projected=new DOMPoint(p.x,p.y).matrixTransform(m),entry=entries.get(id),actual=camera.worldToScreen(entry.x,entry.y);return Math.hypot(projected.x-actual.x,projected.y-actual.y)<.7;});})""")
-            check(evaluate("lines.filter(l=>l.element.classList.contains('astronaut-tether')).every(l=>l.kind==='hierarchy' && l.element.tagName==='path' && l.element.getAttribute('d').includes('Q') && l.element.getAttribute('aria-hidden')==='true' && !l.interactive && getComputedStyle(l.element).strokeDasharray==='none')") and tethers_aligned(),'curved solid hierarchy tethers remain separate from interactive relationships')
             def preview(name):
                 if screenshot_dir:
                     result=cdp.call('Page.captureScreenshot',format='png',captureBeyondViewport=False)
@@ -1038,18 +1060,8 @@ def main():
             cdp.call('Page.reload');load();wait_camera();evaluate('physics.pause()')
             check(evaluate("[...nodes].filter(([id,n])=>n.dataset.body==='astronaut').map(([id,n])=>[id,n.dataset.archetype,n.querySelector('.astronaut-figure').outerHTML])")==identities,'Astronaut silhouette and deterministic pose survive refresh and old Satellite metadata')
             check(evaluate('JSON.stringify([...entries.values()].map(e=>[e.id,e.parentId,e.name]))')==parents and evaluate(f"entries.get({json.dumps(ids[5])}).appearance.future==='preserve' && storageAvailable && JSON.parse(localStorage.getItem('galaxy:user-data')).version===5"),'existing deep records preserve IDs, parents, content and future appearance metadata without schema migration')
-            evaluate(f"focusEntry({json.dumps(deep)})");wait_camera()
-            evaluate(f"startConnectionMode({json.dumps(deep)});connectionSearch.value='Codex';connectionSearch.dispatchEvent(new Event('input'));connectionResults.querySelector('button:not(:disabled)').click()")
-            check(evaluate(f"relationships.some(l=>l.from==={json.dumps(deep)}&&l.to==='codex') && entries.get({json.dumps(deep)}).parentId==={json.dumps(ids[7])}"),'Astronaut semantic connections preserve the single structural parent')
-            evaluate('fitGalaxy(false)');wait_camera()
-            point=evaluate(f"(()=>{{const l=lines.find(l=>l.kind==='relationship'&&l.from==={json.dumps(deep)}),{{start,end}}=connectionSegment(l);return {{x:(start.x+end.x)/2,y:(start.y+end.y)/2}};}})()")
-            mouse('mouseMoved',**point)
-            check(evaluate("!connectionHint.hidden && connectionHint.textContent.includes('EVA Astronaut 8') && connectionHint.textContent.includes('Codex') && lines.filter(l=>l.element.classList.contains('astronaut-tether')).every(l=>+l.element.style.opacity===0)"),'far zoom keeps interactive dashed semantic links distinct from hidden tethers')
-            mouse('mousePressed',**point,button='left',clickCount=1);mouse('mouseReleased',**point,button='left',clickCount=1);wait_camera()
-            check(evaluate("selectedNode.dataset.entryId==='codex' && panelName.textContent==='Codex'"),'Astronaut relationship line preserves opposite-endpoint semantic travel')
             evaluate(f"focusEntry({json.dumps(deep)});saveGalaxy()");wait_camera()
             cdp.call('Page.reload');load();wait_camera();evaluate('physics.pause()')
-            check(evaluate(f"relationships.some(l=>l.from==={json.dumps(deep)}&&l.to==='codex') && entries.get({json.dumps(deep)}).description===''") ,'deep semantic links and optional descriptions survive refresh')
             evaluate(f"clearSelection();camera.setView({{...camera.view,scale:.2}},false);searchField.value='EVA Astronaut 8';searchField.dispatchEvent(new Event('input'))")
             check(evaluate(f"nodes.get({json.dumps(deep)}).classList.contains('temporarily-revealed') && lines.some(l=>l.to==={json.dumps(deep)}&&l.element.classList.contains('astronaut-tether')&&+l.element.style.opacity>0)"),'search reveals a deep Astronaut and its tether ancestry at far zoom')
             evaluate('searchResultList.querySelector("button").click()');wait_camera()
@@ -1118,386 +1130,16 @@ def main():
             print(f'{count} responsive-cloud browser checks passed',flush=True)
             return
 
-        if options.travel_only:
-            # Use actual submit clicks so both native and custom validation run.
-            ids = []
-            for depth, role in enumerate(['Galaxy', 'Sun', 'Planet', 'Moon', 'Satellite', 'Astronaut']):
-                parent = ids[-1] if ids else None
-                evaluate(f"{'createChildEntry('+json.dumps(parent)+')' if parent else 'openEntryForm()'};fields[0].value={json.dumps('Name only '+role)};fields[1].value='';fields[2].value=''")
-                check(evaluate("form.checkValidity() && fields[0].required && !fields[1].required && !fields[2].required"), role+' accepts an empty Description in native validation')
-                click_selector('#entry-submit')
-                check(evaluate(f"!dialog.open && entries.get(selectedNode.dataset.entryId).description==='' && entries.get(selectedNode.dataset.entryId).depth==={depth} && entries.get(selectedNode.dataset.entryId).parentId==={json.dumps(parent)}"), 'name-only '+role+' saves with its contextual parent')
-                ids.append(evaluate('selectedNode.dataset.entryId'))
-                wait_camera()
-            evaluate(f"openEntryForm(entries.get({json.dumps(ids[2])}));fields[1].value='Remove this description';form.requestSubmit()")
-            evaluate(f"openEntryForm(entries.get({json.dumps(ids[2])}));fields[1].value='';form.requestSubmit()")
-            check(evaluate(f"!dialog.open && entries.get({json.dumps(ids[2])}).description===''") ,'Edit can remove an existing Description completely')
-            evaluate("openEntryForm();fields[0].value='';fields[1].value='';form.requestSubmit()")
-            check(evaluate('dialog.open && fields[0].validity.valueMissing && !fields[1].validity.valueMissing'),'empty name remains required without requiring Description')
-            evaluate('dialog.close()');wait_camera()
-            cdp.call('Page.reload');load();wait_camera()
-            check(evaluate(f"storageAvailable && {json.dumps(ids)}.every(id=>entries.get(id)?.description==='')"),'all hierarchy levels and cleared descriptions survive refresh')
-            check(evaluate(f"JSON.parse(localStorage.getItem('galaxy:user-data')).entries.filter(e=>{json.dumps(ids)}.includes(e.id)).every(e=>e.description==='')"),'persistence stores empty descriptions as strings in schema 5')
 
-            evaluate('loadSampleButton.click()');wait_for("document.readyState==='complete' && typeof sampleMode!=='undefined' && sampleMode");load();wait_camera()
-            evaluate('physics.pause();camera.setReducedMotion(false)')
-            raw = evaluate("localStorage.getItem('galaxy:user-data')")
-            def preview(name):
-                if screenshot_dir:
-                    result=cdp.call('Page.captureScreenshot',format='png',captureBeyondViewport=False)
-                    (screenshot_dir/(name+'.png')).write_bytes(base64.b64decode(result['data']))
-            def frame(entry_id):
-                evaluate(f"focusEntry({json.dumps(entry_id)})");wait_camera()
-            def record():
-                evaluate("window.travelFrames=[];window.travelOriginal=camera.onChange;camera.onChange=v=>{travelOriginal(v);travelFrames.push({...v,time:performance.now()});}")
-            def stop_record():
-                evaluate('camera.onChange=travelOriginal')
-                return evaluate('travelFrames')
-            def row_click(target_id):
-                evaluate(f"[...document.querySelectorAll('#panel-connection-list .connection-name')].find(b=>b.textContent===entries.get({json.dumps(target_id)}).name).click()")
-            def line_click(id):
-                point=evaluate(f"(()=>{{const {{start,end}}=connectionSegment(lines.find(l=>l.id==={json.dumps(id)}));return {{x:(start.x+end.x)/2,y:(start.y+end.y)/2}};}})()")
-                mouse('mouseMoved',**point);mouse('mousePressed',**point,button='left',clickCount=1);mouse('mouseReleased',**point,button='left',clickCount=1)
-            def arrived(target_id):
-                return evaluate(f"(()=>{{const e=entries.get({json.dumps(target_id)}),p=camera.worldToScreen(e.x,e.y),r=nodes.get(e.id).getBoundingClientRect(),row=hierarchySidebar.rows.get(e.id),b=hierarchySidebar.tree.getBoundingClientRect();return selectedNode.dataset.entryId===e.id && panelName.textContent===e.name && hierarchySidebar.selectedId===e.id && row.classList.contains('is-selected') && row.getBoundingClientRect().top>=b.top-1 && row.getBoundingClientRect().bottom<=b.bottom+1 && galaxyModel.ancestors(entries,e.id).every(a=>hierarchySidebar.expanded.has(a.id)) && !nodes.get(e.id).inert && Math.abs(p.x-(physics.bounds.left+physics.bounds.right)/2)<1 && Math.abs(p.y-(physics.bounds.top+physics.bounds.bottom)/2)<1 && !camera.travel;}})()")
-            codex='sample-moon-0-1-0';editor='sample-satellite-0-0-0-0'
-            frame(codex);record();line_click('sample-connection-0')
-            near_plan=evaluate('({duration:camera.travel?.duration,distant:camera.travel?.distant,startScale:camera.travel?.startScale})')
-            check(near_plan['distant'] is False and 450<=near_plan['duration']<=650,'same-system line click starts a short eased local transition')
-            wait_camera();near_frames=stop_record()
-            check(min(v['scale'] for v in near_frames)>=near_plan['startScale']-.001,'nearby travel avoids unnecessary zoom-out')
-            check(arrived(editor),'line travel selects and reveals the destination in the inspector and expanded visible sidebar')
-            line_target=evaluate('({...camera.target})')
-            frame(codex);record();row_click(editor)
-            check(evaluate('camera.travel!==null'),'inspector connection row invokes semantic travel')
-            wait_camera();stop_record()
-            check(evaluate('({...camera.target})')==line_target and arrived(editor),'row and line travel share the exact focus destination')
-            row_click(codex);wait_camera()
-            check(arrived(codex),'opposite endpoint can travel back through its inspector row')
 
-            recipe='sample-satellite-2-0-0-0';ingredient='sample-moon-3-2-0'
-            frame(recipe);record();row_click(ingredient)
-            system_plan=evaluate('({duration:camera.travel?.duration,distant:camera.travel?.distant,contextScale:camera.travel?.contextScale})')
-            check(system_plan['distant'] and 800<=system_plan['duration']<=1100,'separate solar systems use distance-aware context travel')
-            wait_camera();system_frames=stop_record()
-            check(min(v['scale'] for v in system_frames)<=system_plan['contextScale']+.005 and arrived(ingredient),'cross-system travel zooms out and arrives at an identifiable local hierarchy')
 
-            hiking='sample-moon-5-2-0';cardio='sample-moon-7-0-1'
-            frame(hiking);preview('travel-depart');record();row_click(cardio)
-            far_plan=evaluate('({duration:camera.travel?.duration,distant:camera.travel?.distant,startScale:camera.travel?.startScale,contextScale:camera.travel?.contextScale})')
-            check(far_plan['distant'] and 1200<=far_plan['duration']<=1500 and far_plan['contextScale']<far_plan['startScale'],'cross-Galaxy route uses noticeable context and a capped duration')
-            time.sleep(far_plan['duration']/2000);preview('travel-context')
-            wait_camera();far_frames=stop_record();preview('travel-arrive')
-            check(min(v['scale'] for v in far_frames)<=far_plan['contextScale']+.005 and far_frames[-1]['scale']>=1.2 and arrived(cardio),'cross-Galaxy travel departs, traverses context, and restores useful arrival zoom')
-            check(len(far_frames)>=8 and far_frames[-1]['time']-far_frames[0]['time']<=far_plan['duration']+180,'travel presents multiple intermediate frames and completes promptly')
-            if screenshot_dir:
-                (screenshot_dir/'travel-traces.json').write_text(json.dumps({'near':near_frames,'system':system_frames,'crossGalaxy':far_frames,'plans':[near_plan,system_plan,far_plan]},indent=2),encoding='utf-8')
-            row_click(hiking);wait_camera();check(arrived(hiking),'cross-Galaxy travel works in the reverse direction')
-
-            # Interrupt the actual semantic row route through real pointer/key input.
-            row_click(cardio);time.sleep(.12)
-            point=evaluate('({x:(physics.bounds.left+physics.bounds.right)/2,y:(physics.bounds.top+physics.bounds.bottom)/2})')
-            visible=evaluate('({...camera.view})')
-            mouse('mouseWheel',**point,deltaY=90,deltaX=0)
-            check(evaluate('!camera.travel'),'wheel immediately cancels the semantic route')
-            wait_camera();check(evaluate('camera.view.scale')<visible['scale'],'wheel applies zoom from the visible view instead of the travel destination')
-            frame(hiking);row_click(cardio);time.sleep(.12)
-            before_pan=evaluate('({...camera.view})')
-            mouse('mousePressed',x=1050,y=890,button='left',clickCount=1)
-            frozen=evaluate('({...camera.view})')
-            mouse('mouseMoved',x=1080,y=910,button='left',buttons=1);mouse('mouseReleased',x=1080,y=910,button='left',clickCount=1)
-            check(evaluate('!camera.travel && camera.frame===null') and abs(evaluate('camera.view.x')-frozen['x']-30)<.1 and abs(evaluate('camera.view.y')-frozen['y']-20)<.1,'pan interrupts travel and immediately follows the pointer')
-            frame(hiking);row_click(cardio);time.sleep(.12)
-            cdp.call('Input.dispatchKeyEvent',type='keyDown',key='Escape',code='Escape',windowsVirtualKeyCode=27)
-            stopped=evaluate('({...camera.view})');time.sleep(.15)
-            check(evaluate('!camera.travel && camera.frame===null && !panel.hidden') and evaluate('({...camera.view})')==stopped,'Escape freezes the route without closing the inspector')
-            frame(hiking);row_click(cardio)
-            # The selected target may be off-screen; use the still-visible source body.
-            point=evaluate(f"(()=>{{const r=nodes.get({json.dumps(hiking)}).getBoundingClientRect();return {{x:r.x+r.width/2,y:r.y+r.height/2}};}})()")
-            mouse('mousePressed',**point,button='left',clickCount=1)
-            check(evaluate('!camera.travel && activeNodeDrags===1 && camera.frame===null'),'starting a body drag stops travel before converting pointer coordinates')
-            mouse('mouseReleased',**point,button='left',clickCount=1);evaluate('physics.pause()')
-            cdp.call('Emulation.setEmulatedMedia',features=[{'name':'prefers-reduced-motion','value':'reduce'}]);wait_for('camera.reducedMotion')
-            frame(hiking);row_click(cardio)
-            check(evaluate('camera.frame===null && !camera.travel') and arrived(cardio),'reduced motion uses simple immediate focus with full selection and arrival state')
-            check(evaluate("localStorage.getItem('galaxy:user-data')")==raw,'travel does not alter saved relationships or real data during Sample use')
-            check(not cdp.errors,f'no optional-description/travel browser exceptions: {cdp.errors}')
-            print(f'{count} optional-description/travel browser checks passed',flush=True)
-            return
-
-        if options.connection_lines_only:
-            evaluate('loadSampleButton.click()');wait_for("document.readyState==='complete' && typeof sampleMode!=='undefined' && sampleMode");load();wait_camera()
-            evaluate('physics.pause()')
-            raw=evaluate("localStorage.getItem('galaxy:user-data')")
-            codex='sample-moon-0-1-0';editor='sample-satellite-0-0-0-0';link_id='sample-connection-0'
-            def frame(entry_id):
-                evaluate(f"focusEntry({json.dumps(entry_id)})");wait_camera()
-            def line_point(id,t=.5,offset=0):
-                return evaluate(f"(()=>{{const link=lines.find(link=>link.id==={json.dumps(id)}),{{start,end}}=connectionSegment(link),dx=end.x-start.x,dy=end.y-start.y,d=Math.hypot(dx,dy);return {{x:start.x+dx*{t}-dy/d*{offset},y:start.y+dy*{t}+dx/d*{offset}}};}})()")
-            def line_click(id,t=.5):
-                point=line_point(id,t)
-                mouse('mouseMoved',**point);mouse('mousePressed',**point,button='left',clickCount=1);mouse('mouseReleased',**point,button='left',clickCount=1)
-                wait_camera()
-            def preview(name):
-                if screenshot_dir:
-                    result=cdp.call('Page.captureScreenshot',format='png',captureBeyondViewport=False)
-                    (screenshot_dir/(name+'.png')).write_bytes(base64.b64decode(result['data']))
-            frame(codex)
-            target_outline=evaluate(f"parseFloat(getComputedStyle(nodes.get({json.dumps(editor)})).outlineColor.split(',').at(-1))")
-            point=line_point(link_id,offset=4);mouse('mouseMoved',**point)
-            check(evaluate(f"hoveredConnectionId==={json.dumps(link_id)} && !connectionHint.hidden && connectionHint.textContent.includes('Codex') && connectionHint.textContent.includes('VS Code')"),'hover within the invisible hit margin shows both endpoint names')
-            check(evaluate("connectionHint.textContent.includes('Related')"),'generic relationship type appears in the tooltip')
-            check(evaluate(f"Math.abs(parseFloat(lines.find(link=>link.id==={json.dumps(link_id)}).element.style.strokeWidth)*camera.view.scale-1)<.001 && !connectionsLayer.querySelector('.connection-hit')"),'hover hit area does not thicken or duplicate the visible stroke')
-            check(evaluate(f"nodes.get({json.dumps(codex)}).classList.contains('connection-hover-endpoint') && nodes.get({json.dumps(editor)}).classList.contains('connection-hover-endpoint')"),'hover emphasizes both endpoints without dimming the scene')
-            check(evaluate(f"parseFloat(getComputedStyle(nodes.get({json.dumps(editor)})).outlineColor.split(',').at(-1))>{target_outline}+.1"),'hover emphasis visibly overrides the target’s quieter selection-context outline')
-            check(evaluate('(()=>{const r=connectionHint.getBoundingClientRect();return r.left>=8&&r.top>=8&&r.right<=innerWidth-7&&r.bottom<=innerHeight-7&&getComputedStyle(connectionHint).pointerEvents===\'none\'})()'),'desktop tooltip stays inside the viewport and does not intercept input')
-            preview('semantic-line-hover')
-            check(evaluate(f"hitConnection({json.dumps(line_point(link_id,offset=7))})?.link.id!=={json.dumps(link_id)}"),'desktop hit margin stops outside six screen pixels')
-            evaluate("relationships.find(link=>link.id==='sample-connection-0').label='Research reference';refreshConnectionViews()")
-            mouse('mouseMoved',**line_point(link_id))
-            check(evaluate("connectionHint.textContent.includes('Research reference') && !connectionHint.textContent.includes('sample-connection')"),'custom relationship label replaces generic wording without exposing IDs')
-            mouse('mouseMoved',x=1100,y=900)
-            check(evaluate('connectionHint.hidden && !hoveredConnectionId && !document.querySelector(\'.connection-hover-endpoint\')'),'leaving the line immediately clears tooltip and endpoint emphasis')
-            evaluate('positionConnectionHint({x:innerWidth-1,y:innerHeight-1});connectionHint.hidden=false;positionConnectionHint({x:innerWidth-1,y:innerHeight-1})')
-            check(evaluate('(()=>{const r=connectionHint.getBoundingClientRect();return r.right<=innerWidth-7&&r.bottom<=innerHeight-7})()'),'long tooltip clamps against the lower-right viewport edge')
-            evaluate('dismissConnectionHint()')
-            before_pan=evaluate('({...camera.view})');point=line_point(link_id,offset=4)
-            mouse('mousePressed',**point,button='left',clickCount=1);mouse('mouseMoved',x=point['x']+30,y=point['y']+20,button='left',buttons=1);mouse('mouseReleased',x=point['x']+30,y=point['y']+20,button='left',clickCount=1)
-            check(evaluate(f"selectedNode.dataset.entryId==={json.dumps(codex)} && connectionHint.hidden && Math.abs(camera.view.x-({before_pan['x']}+30))<.01 && Math.abs(camera.view.y-({before_pan['y']}+20))<.01"),'dragging from a line pans instead of navigating or dragging a body')
-            frame(codex)
-            line_click(link_id)
-            check(evaluate(f"selectedNode.dataset.entryId==={json.dumps(editor)} && panelName.textContent==='VS Code' && hierarchySidebar.selectedId==={json.dumps(editor)} && galaxyModel.ancestors(entries,{json.dumps(editor)}).every(parent=>hierarchySidebar.expanded.has(parent.id))"),'clicking the selected Codex link focuses VS Code and synchronizes inspector and expanded sidebar')
-            line_click(link_id,.85)
-            check(evaluate(f"selectedNode.dataset.entryId==={json.dumps(codex)}"),'clicking from VS Code navigates back to Codex')
-            expected=evaluate('({...camera.target})')
-            frame(editor)
-            evaluate("document.querySelector('#panel-connection-list .connection-name').click()");wait_camera()
-            check(evaluate(f"selectedNode.dataset.entryId==={json.dumps(codex)}") and evaluate('({...camera.target})')==expected,'connection row and line navigation use the same focus destination and camera target')
-            # With no selected endpoint, a temporarily body-revealed link uses
-            # nearest-endpoint navigation. Retain that context through its edge.
-            frame(codex);evaluate('clearSelection()');wait_camera()
-            point=evaluate("(()=>{const r=nodes.get('sample-moon-0-1-0').getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()")
-            mouse('mouseMoved',**point)
-            for t in [.05,.1,.15,.2]:
-                mouse('mouseMoved',**line_point(link_id,t))
-            line_click(link_id,.25)
-            check(evaluate(f"selectedNode?.dataset.entryId==={json.dumps(codex)}"),'when neither endpoint is selected the endpoint nearest the pointer wins')
-            frame('sample-moon-5-2-0');evaluate('fitGalaxy(false)');wait_camera()
-            point=line_point('sample-connection-7');mouse('mouseMoved',**point)
-            check(evaluate("!connectionHint.hidden && connectionHint.textContent.includes('Hiking') && connectionHint.textContent.includes('Cardio')"),'a selected cross-Galaxy line reveals its endpoint names at far zoom')
-            preview('semantic-line-cross-galaxy');line_click('sample-connection-7')
-            check(evaluate("selectedNode.dataset.entryId==='sample-moon-7-0-1' && hierarchySidebar.selectedId==='sample-moon-7-0-1' && panelName.textContent==='Cardio'"),'cross-Galaxy line navigation selects and focuses its remote endpoint')
-            point=evaluate('({x:(physics.bounds.left+physics.bounds.right)/2,y:(physics.bounds.top+physics.bounds.bottom)/2})')
-            mouse('mouseWheel',**point,deltaY=90,deltaX=0);wait_camera()
-            check(evaluate('camera.view.scale<1.2'),'wheel zoom resumes immediately after connection navigation')
-            evaluate('clearSelection();hoveredEntryId=null;camera.setView({...camera.view,scale:.2},false)')
-            check(evaluate("lines.filter(link=>link.kind==='relationship').every(link=>!link.interactive && link.element.tabIndex===-1 && link.element.getAttribute('aria-hidden')==='true') && !hitConnection({x:700,y:500})"),'hidden links leave no pointer or keyboard traps')
-            evaluate('camera.setView({...camera.view,scale:1},false);renderGraph()')
-            check(evaluate("lines.filter(link=>link.kind==='relationship'&&+link.element.style.opacity<=.055).every(link=>!link.interactive)"),'very faint background links do not intercept ordinary canvas gestures')
-            frame(codex)
-            evaluate("lines.find(link=>link.id==='sample-connection-0').element.focus()")
-            check(evaluate("!connectionHint.hidden && document.activeElement.getAttribute('role')==='link' && document.activeElement.getAttribute('aria-label').includes('Codex')"),'visible semantic lines expose accessible names and keyboard focus')
-            cdp.call('Input.dispatchKeyEvent',type='keyDown',key='Enter',code='Enter',windowsVirtualKeyCode=13);wait_camera()
-            check(evaluate(f"selectedNode.dataset.entryId==={json.dumps(editor)}"),'Enter on a focused semantic line navigates to the opposite endpoint')
-            frame(codex)
-            point=line_point(link_id);mouse('mouseMoved',**point)
-            evaluate("const moving=physics.particles.get('sample-satellite-0-0-0-0');physics.beginDrag(moving.id);physics.moveDrag(moving.id,moving.x+30,moving.y+15);physics.onTick(physics.particles)")
-            check(aligned(),'semantic geometry stays synchronized during parent/body motion')
-            check(evaluate(f"hitConnection({json.dumps(line_point(link_id))})?.link.id==={json.dumps(link_id)}"),'interaction geometry follows a moving endpoint without stale hit coordinates')
-            evaluate("physics.endDrag('sample-satellite-0-0-0-0',true);physics.pause();dismissConnectionHint()")
-            frame(codex)
-            point=line_point(link_id);mouse('mouseMoved',**point)
-            evaluate('camera.panTo(camera.view.x+150,camera.view.y+100)')
-            check(evaluate('connectionHint.hidden && !hoveredConnectionId'),'moving the line away from a stationary pointer clears stale hover')
-            # Touch chooses a visible line first, then a compact action or repeat tap.
-            cdp.call('Emulation.setDeviceMetricsOverride',width=390,height=844,deviceScaleFactor=1,mobile=False);time.sleep(.2)
-            frame('sample-moon-5-2-0');evaluate('fitGalaxy(false)');wait_camera()
-            def tap(point):
-                cdp.call('Input.dispatchTouchEvent',type='touchStart',touchPoints=[{'x':point['x'],'y':point['y']}]);cdp.call('Input.dispatchTouchEvent',type='touchEnd',touchPoints=[])
-            point=line_point('sample-connection-7');tap(point)
-            check(evaluate("touchConnectionPreview?.id==='sample-connection-7' && selectedNode.dataset.entryId==='sample-moon-5-2-0' && !connectionHint.hidden && connectionHint.getAttribute('role')==='dialog'"),'first touch previews the relationship without navigating')
-            check(evaluate("document.getElementById('connection-hint-go').textContent==='Go to Cardio'"),'touch preview provides a clear compact destination action')
-            preview('semantic-line-touch');click_selector('#connection-hint-go');wait_camera()
-            check(evaluate("selectedNode.dataset.entryId==='sample-moon-7-0-1' && connectionHint.hidden"),'touch preview action navigates and dismisses the preview')
-            frame('sample-moon-5-2-0');evaluate('fitGalaxy(false)');wait_camera();point=line_point('sample-connection-7');tap(point);tap(point);wait_camera()
-            check(evaluate("selectedNode.dataset.entryId==='sample-moon-7-0-1'"),'second tap on the same semantic line navigates to its opposite endpoint')
-            frame('sample-moon-5-2-0');evaluate('fitGalaxy(false)');wait_camera();point=line_point('sample-connection-7');tap(point)
-            click_selector('#connection-hint-close')
-            check(evaluate("connectionHint.hidden && !touchConnectionPreview && selectedNode.dataset.entryId==='sample-moon-5-2-0'"),'touch preview can close without changing selection')
-            check(evaluate("localStorage.getItem('galaxy:user-data')")==raw,'line interactions and Sample edits preserve real saved data')
-            check(not cdp.errors,f"no interactive-line browser exceptions: {cdp.errors}")
-            print(f'{count} interactive-line browser checks passed',flush=True)
-            return
-
-        if options.connections_performance_only:
-            evaluate('loadSampleButton.click()');wait_for("document.readyState==='complete' && typeof sampleMode!=='undefined' && sampleMode");load();wait_camera()
-            evaluate("focusEntry('sample-deep-7')");wait_camera()
-            visible=evaluate("lines.filter(link=>link.element.dataset.kind==='relationship'&&getComputedStyle(link.element).display!=='none').length")
-            baseline=motion_metrics()
-            evaluate("document.head.insertAdjacentHTML('beforeend','<style id=semantic-paint-probe>.connection-line[data-kind=relationship]{display:none!important}</style>')")
-            without=motion_metrics()
-            evaluate("document.getElementById('semantic-paint-probe').remove()")
-            print('Connection paint comparison: '+json.dumps({'revision':'HEAD' if options.baseline_head else 'working tree','visibleLinks':visible,'current':baseline,'withoutSemanticPaint':without}),flush=True)
-            check(baseline['renderP95']<20,'large sample projection stays within the existing budget')
-            check(baseline['frameMedian']<55 and baseline['frameP95']<120,'isolated large-sample frame timing stays within the existing budget')
-            check(not cdp.errors,f"no connection performance exceptions: {cdp.errors}")
-            return
-
-        if options.connections_only:
-            def preview(name):
-                if screenshot_dir:
-                    time.sleep(.25)
-                    result=cdp.call('Page.captureScreenshot',format='png',captureBeyondViewport=False)
-                    (screenshot_dir/(name+'.png')).write_bytes(base64.b64decode(result['data']))
-
-            def begin(entry_id):
-                evaluate(f"focusEntry({json.dumps(entry_id)})");wait_camera()
-                click_selector(f'.entry-node[data-entry-id="{entry_id}"]',button='right')
-                check(evaluate("!contextMenu.hidden && !!contextMenu.querySelector('[data-action=connect]')"),'right-click offers Connect to...')
-                click_selector('#entry-context-menu [data-action=connect]');wait_camera()
-                check(evaluate(f"connectionSourceId==={json.dumps(entry_id)} && !connectionPicker.hidden && nodes.get(connectionSourceId).classList.contains('connection-source')"),'connection mode highlights its source and offers target search')
-
-            g=add('Other domain');s=add('Remote system',g);target=add('Remote target',s)
-            local=add('Local target','old-star');source=add('Connection source',local)
-            wait_for('physics.settled');evaluate('physics.pause()')
-            parents=evaluate('JSON.stringify([...entries].map(([id,e])=>[id,e.parentId]))')
-            begin(source);preview('connection-picker')
-            before=evaluate('relationships.length')
-            click_selector(f'.entry-node[data-entry-id="{local}"]')
-            check(evaluate(f"!connectionSourceId && relationships.some(link=>link.from==={json.dumps(source)}&&link.to==={json.dumps(local)})"),'visible-body click creates a semantic connection')
-            check(evaluate('!physics.dragging.size && activeNodeDrags===0 && physics.settled'),'choosing a target neither drags nor reheats physics')
-            check(evaluate('JSON.stringify([...entries].map(([id,e])=>[id,e.parentId]))')==parents,'connecting leaves every structural parent unchanged')
-            check(evaluate(f"connections.some(link=>link.kind==='hierarchy'&&link.from==={json.dumps(local)}&&link.to==={json.dumps(source)}) && connections.some(link=>link.kind==='relationship'&&link.from==={json.dumps(source)}&&link.to==={json.dumps(local)})"),'semantic parent-child link coexists independently with its hierarchy edge')
-            check(evaluate("document.querySelectorAll('#panel-connection-list li').length===1 && document.querySelector('#panel-connection-list .connection-name').textContent==='Local target'"),'inspector lists the connected entry without internal IDs')
-
-            begin(source);click_selector(f'.entry-node[data-entry-id="{source}"]')
-            check(evaluate('relationships.length')==before+1 and evaluate("connectionSourceId!==null && connectionStatus.textContent==='Choose a different entry.'"),'self-connection is rejected without leaving target mode')
-            click_selector(f'.entry-node[data-entry-id="{local}"]')
-            check(evaluate('relationships.length')==before+1 and evaluate("connectionStatus.textContent==='These entries are already connected.'"),'exact duplicate is rejected')
-            cdp.call('Input.dispatchKeyEvent',type='keyDown',key='Escape',code='Escape',windowsVirtualKeyCode=27)
-            check(evaluate('!connectionSourceId && !panel.hidden && !physics.dragging.size'),'Escape cancels only connection mode')
-            begin(local);click_selector(f'.entry-node[data-entry-id="{source}"]')
-            check(evaluate('relationships.length')==before+1,'reverse pair is also rejected as an undirected duplicate')
-            evaluate("document.getElementById('cancel-connection').click()")
-
-            begin(source)
-            # Choose a genuinely empty visible point, outside every cloud and body.
-            empty=evaluate("(()=>{for(let y=70;y<innerHeight-40;y+=45)for(let x=physics.bounds.left+30;x<physics.bounds.right-30;x+=45){if(!galaxyAtScreen({x,y})&&document.elementFromPoint(x,y)?.closest('#graph-viewport')&&!document.elementFromPoint(x,y).closest('.entry-node'))return {x,y};}return null;})()")
-            assert empty,'Need an empty canvas point'
-            mouse('mousePressed',**empty,button='left',clickCount=1);mouse('mouseReleased',**empty,button='left',clickCount=1)
-            check(evaluate('!connectionSourceId'),'empty-space click cancels connection mode')
-
-            begin(source)
-            evaluate("connectionSearch.value='Remote target';connectionSearch.dispatchEvent(new Event('input'))")
-            check(evaluate(f"connectionResults.querySelector('button').dataset.entryId==={json.dumps(target)} && connectionResults.textContent.includes('Other domain / Remote system')"),'target search reaches another Galaxy and shows its location')
-            preview('connection-search');click_selector('#connection-results button')
-            check(evaluate(f"relationships.some(link=>link.from==={json.dumps(source)}&&link.to==={json.dumps(target)}) && !connectionSourceId"),'search selection creates the same undirected connection across Galaxies')
-            check(evaluate('JSON.stringify([...entries].map(([id,e])=>[id,e.parentId]))')==parents,'search connection also preserves hierarchy')
-            check(evaluate('physics.settled'),'search-based connection does not start physics')
-            saved_links=evaluate('JSON.stringify(relationships)')
-            check(evaluate("JSON.parse(localStorage.getItem('galaxy:user-data')).connections.every(link=>link.id&&link.type&&typeof link.from==='string'&&typeof link.to==='string')"),'connections persist as normalized ID references and optional semantics')
-            cdp.call('Page.reload');load();wait_camera()
-            check(evaluate('JSON.stringify(relationships)')==saved_links,'connection IDs and endpoints survive refresh')
-            evaluate(f"focusEntry({json.dumps(source)})");wait_camera()
-            click_selector('#connect-entry-button')
-            click_selector('#panel-connection-list .connection-name');wait_camera()
-            check(evaluate(f"selectedNode.dataset.entryId==={json.dumps(local)}"),'inspector connection row focuses and selects its endpoint')
-            evaluate(f"focusEntry({json.dumps(source)});physics.pause()");wait_camera()
-            relation=evaluate(f"relationships.find(link=>link.to==={json.dumps(target)}).id")
-            baseline=evaluate('JSON.stringify([...physics.particles].map(([id,n])=>[id,n.x,n.y,n.orbitRadius]))')
-            evaluate(f"document.querySelectorAll('#panel-connection-list .remove-connection')[1].click()")
-            check(evaluate(f"!relationships.some(link=>link.id==={json.dumps(relation)}) && document.querySelectorAll('#panel-connection-list li').length===1"),'compact remove action removes only the chosen relationship')
-            check(evaluate('JSON.stringify([...physics.particles].map(([id,n])=>[id,n.x,n.y,n.orbitRadius]))')==baseline,'removing a connection leaves physics positions and orbital bands untouched')
-            cdp.call('Page.reload');load()
-            check(evaluate(f"!relationships.some(link=>link.id==={json.dumps(relation)})"),'removed relationship stays removed after refresh')
-
-            evaluate(f"startConnectionMode({json.dumps(source)});connectEntries({json.dumps(target)})")
-            unrelated=evaluate(f"JSON.stringify(relationships.filter(link=>link.from!=={json.dumps(source)}&&link.to!=={json.dumps(source)}))")
-            evaluate(f"requestEntryDelete({json.dumps(local)})")
-            check(evaluate('deleteDialog.open && deleteConfirmationIds.size>1'),'parent deletion requires explicit subtree confirmation')
-            evaluate('deleteDialog.close()')
-            evaluate(f"requestEntryDelete({json.dumps(source)});document.getElementById('delete-entry-form').requestSubmit()")
-            check(evaluate(f"!entries.has({json.dumps(source)}) && !relationships.some(link=>link.from==={json.dumps(source)}||link.to==={json.dumps(source)})"),'deleting an endpoint removes all of its relationships')
-            check(evaluate('JSON.stringify(relationships)')==unrelated,'deletion preserves unrelated connections')
-            check(evaluate("galaxyStorage.load().version===5"),'storage container version and migration strategy remain version 5')
-            wait_for('physics.settled');evaluate('saveGalaxy()')
-            real_snapshot=evaluate("localStorage.getItem('galaxy:user-data')")
-            real_ui=evaluate("localStorage.getItem('galaxy:navigation-ui')")
-            evaluate('loadSampleButton.click()');wait_for("document.readyState==='complete' && typeof sampleMode!=='undefined' && sampleMode");load();wait_camera()
-            check(evaluate('entries.size===187 && relationships.length===8'),'large sample has eight realistic semantic connections')
-            evaluate('physics.pause();clearSelection();hoveredEntryId=null;camera.setView({...camera.view,scale:.2},false);renderGraph()')
-            check(evaluate("lines.filter(link=>link.element.dataset.kind==='relationship').every(link=>getComputedStyle(link.element).display==='none')"),'Universe view hides all unselected semantic links')
-            preview('connections-universe')
-            evaluate("focusEntry('sample-moon-0-1-0')");wait_camera();time.sleep(.25)
-            check(evaluate("lines.filter(link=>link.element.dataset.kind==='relationship'&&link.element.classList.contains('selected')).length===2 && lines.filter(link=>link.element.dataset.kind==='relationship'&&link.element.classList.contains('selected')).every(link=>parseFloat(getComputedStyle(link.element).opacity)>=.49)"),'selecting Codex clearly reveals only its direct connections')
-            check(evaluate("nodes.get('sample-satellite-0-0-0-0').classList.contains('semantic-connected') && document.querySelectorAll('#panel-connection-list li').length===2"),'direct targets receive restrained emphasis and inspector rows')
-            check(evaluate("lines.filter(link=>link.element.dataset.kind==='relationship'&&!link.element.classList.contains('selected')).every(link=>parseFloat(getComputedStyle(link.element).opacity)<=.055)"),'unrelated close-zoom links remain very faint')
-            check(evaluate("lines.filter(link=>link.element.dataset.kind==='relationship'&&!link.element.classList.contains('selected')&&!link.element.classList.contains('hovered')&&[link.from,link.to].some(id=>nodes.get(id).dataset.culled==='true')).every(link=>getComputedStyle(link.element).display==='none')"),'unrelated offscreen semantic links skip paint')
-            preview('connections-codex')
-            evaluate("clearSelection();hoveredEntryId=null;camera.setView({...camera.view,scale:.65},false)")
-            check(evaluate("lines.filter(link=>link.element.dataset.kind==='relationship').every(link=>getComputedStyle(link.element).display==='none')"),'system view hides unselected semantic links')
-            evaluate("nodes.get('sample-moon-0-1-0').dispatchEvent(new PointerEvent('pointerenter'))")
-            check(evaluate("lines.filter(link=>link.element.dataset.kind==='relationship'&&link.element.classList.contains('hovered')).every(link=>parseFloat(getComputedStyle(link.element).opacity)===.3)"),'hover temporarily reveals incident connections')
-            evaluate("nodes.get('sample-moon-0-1-0').dispatchEvent(new PointerEvent('pointerleave'))")
-
-            # A real target-choice gesture must not become a drag, even with pointer motion.
-            evaluate("focusEntry('sample-moon-0-1-0')");wait_camera();evaluate("startConnectionMode('sample-moon-0-1-0')");wait_camera()
-            point=evaluate("(()=>{const r=nodes.get('sample-satellite-0-0-0-0').getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2};})()")
-            # That remote body can be offscreen; use the visible source to test drag suppression.
-            point=evaluate("(()=>{const r=nodes.get(connectionSourceId).getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2};})()")
-            pos=evaluate("({x:entries.get(connectionSourceId).x,y:entries.get(connectionSourceId).y})")
-            mouse('mousePressed',**point,button='left',clickCount=1);mouse('mouseMoved',x=point['x']+20,y=point['y']+10,button='left',buttons=1);mouse('mouseReleased',x=point['x']+20,y=point['y']+10,button='left',clickCount=1)
-            check(evaluate('!physics.dragging.size && activeNodeDrags===0') and evaluate("({x:entries.get(connectionSourceId).x,y:entries.get(connectionSourceId).y})")==pos,'connection mode prevents accidental body dragging')
-            evaluate('cancelConnectionMode()')
-            # Sidebar context action supports any depth without a permanent row icon.
-            evaluate("hierarchySidebar.setCollapsed(false);hierarchySidebar.select('sample-deep-7');hierarchySidebar.rows.get('sample-deep-7').dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,clientX:140,clientY:320}))")
-            check(evaluate("contextEntryId==='sample-deep-7' && !contextMenu.hidden && !hierarchySidebar.rows.get('sample-deep-7').querySelector('.tree-connect')"),'sidebar context menu offers Connect without adding row clutter')
-            click_selector('#entry-context-menu [data-action=connect]');wait_camera()
-            check(evaluate("connectionSourceId==='sample-deep-7'"),'arbitrary-depth entries can start connection mode')
-            evaluate('cancelConnectionMode();clearSelection();fitGalaxy(false)');wait_camera()
-            # Galaxies can be endpoints too, with line anchors at their visible names.
-            for a,b in [('sample-galaxy-0','sample-galaxy-1'),('sample-sun-0','sample-sun-4')]:
-                evaluate(f"openContextMenu({json.dumps(a)},600,200);contextMenu.querySelector('[data-action=connect]').click();connectionSearch.value=entries.get({json.dumps(b)}).name;connectionSearch.dispatchEvent(new Event('input'));connectionResults.querySelector('button').click()")
-                check(evaluate(f"relationships.some(link=>link.from==={json.dumps(a)}&&link.to==={json.dumps(b)})"),'connection workflow supports '+a.split('-')[1]+' endpoints')
-            evaluate("focusEntry('sample-moon-5-2-0')");wait_camera();evaluate('fitGalaxy(false)');wait_camera()
-            check(evaluate("lines.some(link=>link.element.dataset.kind==='relationship'&&link.element.classList.contains('selected')&&parseFloat(getComputedStyle(link.element).opacity)>.2)"),'selected cross-Galaxy link remains readable at Universe zoom')
-            check(evaluate("lines.filter(link=>link.element.dataset.kind==='relationship'&&link.element.classList.contains('selected')).every(link=>Math.abs(parseFloat(getComputedStyle(link.element).strokeWidth)*camera.view.scale-1)<.001)"),'selected semantic strokes stay one screen pixel at fitted Universe zoom')
-            preview('connections-cross-galaxy')
-            check(aligned(),'all hierarchy and semantic endpoints align with native bodies and Galaxy names')
-            evaluate("focusEntry('sample-moon-0-1-0')");wait_camera();evaluate('physics.resume()')
-            tracked=evaluate("new Promise(resolve=>{const tick=physics.onTick;let frames=0,okay=true;physics.onTick=p=>{tick(p);okay&&=lines.filter(link=>link.element.dataset.kind==='relationship'&&entries.get(link.from).depth>0&&entries.get(link.to).depth>0).every(link=>+link.element.getAttribute('x1')===entries.get(link.from).x&&+link.element.getAttribute('y2')===entries.get(link.to).y);if(++frames===20){physics.onTick=tick;resolve(okay)}};physics.reheat(.3)})")
-            check(tracked,'semantic endpoints track every physics frame')
-            wait_for('physics.settled')
-            old=evaluate("({...entries.get('sample-moon-0-1-0')})")
-            drag_to('sample-moon-0-1-0',old['x']+80,old['y']+35)
-            check(aligned(),'semantic lines stay aligned through real pointer dragging and release')
-            metrics=motion_metrics();print('Connection sample motion: '+json.dumps(metrics),flush=True)
-            check(metrics['renderP95']<16,'187-entry connection sample projection stays within a frame budget')
-            cdp.call('Emulation.setDeviceMetricsOverride',width=390,height=844,deviceScaleFactor=1,mobile=False);time.sleep(.2)
-            evaluate("focusEntry('sample-moon-0-1-0')");wait_camera();evaluate("startConnectionMode('sample-moon-0-1-0');connectionSearch.value='Chicken';connectionSearch.dispatchEvent(new Event('input'))")
-            check(evaluate('(()=>{const r=panel.getBoundingClientRect();return !connectionPicker.hidden&&r.left>=0&&r.right<=innerWidth&&r.bottom<=innerHeight+1&&connectionResults.children.length>0})()'),'connection search fits the mobile inspector sheet')
-            preview('connections-mobile');evaluate("connectionResults.querySelector('button:not(:disabled)').click()")
-            check(evaluate('!connectionSourceId'),'mobile target search completes a connection')
-            check(evaluate("localStorage.getItem('galaxy:user-data')")==real_snapshot and evaluate("localStorage.getItem('galaxy:navigation-ui')")==real_ui,'sample connection edits leave real data and sidebar preferences untouched')
-            evaluate('removeSampleButton.click()');wait_for("document.readyState==='complete' && typeof sampleMode!=='undefined' && !sampleMode");load()
-            restored=evaluate("JSON.parse(localStorage.getItem('galaxy:user-data'))")
-            original=json.loads(real_snapshot)
-            # Reload legitimately lets Flowing coordinates settle again; compare
-            # saved content, ancestry, arrangements and connection records exactly.
-            for snapshot in (restored,original):
-                for entry in snapshot['entries']:
-                    entry.pop('x',None);entry.pop('y',None)
-            check(restored==original,'leaving Sample mode restores real saved content and connections')
-            check(not cdp.errors,f"no connection browser exceptions: {cdp.errors}")
-            print(f'{count} connection browser checks passed',flush=True)
-            return
 
         if options.arrangement_only:
             evaluate('loadSampleButton.click()');wait_for("document.readyState==='complete' && typeof sampleMode!=='undefined' && sampleMode");load();wait_camera()
             evaluate('physics.pause();clearSelection()')
             report={'bands':evaluate("({planet:physics.particles.get('sample-sun-0').childOrbit,moon:physics.particles.get('sample-planet-0-0').childOrbit,satellite:physics.particles.get('sample-moon-0-0-0').childOrbit,foodRadius:physics.galaxies.get('sample-galaxy-1').radius})")}
             ids=['sample-sun-0','sample-planet-0-0','sample-moon-0-0-0','sample-satellite-0-0-0-0','sample-planet-0-2']
-            evaluate(f"window.sizeIds={json.dumps(ids)};window.sizePositions=[...physics.particles].map(([id,n])=>[id,n.x,n.y]);sizeIds.forEach((id,i)=>{{const n=physics.particles.get(id);n.x=400+i*165;n.y=420;}});[...nodes].forEach(([id,n])=>n.hidden=!sizeIds.includes(id));[...regions.values()].forEach(r=>r.style.visibility='hidden');connectionsLayer.style.visibility='hidden';physics.onTick(physics.particles);camera.setView({{x:0,y:0,scale:1}},false)")
+            evaluate(f"window.sizeIds={json.dumps(ids)};window.sizePositions=[...physics.particles].map(([id,n])=>[id,n.x,n.y]);sizeIds.forEach((id,i)=>{{const n=physics.particles.get(id);n.x=400+i*165;n.y=420;}});[...nodes].forEach(([id,n])=>n.hidden=!sizeIds.includes(id));[...regions.values()].forEach(r=>r.style.visibility='hidden');hierarchyLayer.style.visibility='hidden';physics.onTick(physics.particles);camera.setView({{x:0,y:0,scale:1}},false)")
             wait_for("sizeIds.every(id=>nodes.get(id).dataset.body==='satellite'||nodes.get(id).dataset.textureReady==='true')")
             time.sleep(.2)
             report['sizes']=evaluate("sizeIds.map(id=>{const n=nodes.get(id),s=getComputedStyle(n),p=physics.particles.get(id),r=n.getBoundingClientRect(),craft=n.querySelector('.satellite-craft');return {id,role:p.role,width:r.width,height:r.height,collisionBodyRadius:p.radius,craftWidth:craft?.getBoundingClientRect().width||null,font:parseFloat(getComputedStyle(n.querySelector('.node-label')).fontSize)};})")
@@ -1517,7 +1159,7 @@ def main():
             if options.capture_baseline:
                 return
             # Restore the sample before exercising real pointer drags.
-            evaluate("sizePositions.forEach(([id,x,y])=>Object.assign(physics.particles.get(id),{x,y,lastX:x,lastY:y,vx:0,vy:0}));[...nodes.values()].forEach(n=>n.hidden=false);[...regions.values()].forEach(r=>r.style.visibility='');connectionsLayer.style.visibility='';clearSelection();physics.onTick(physics.particles)")
+            evaluate("sizePositions.forEach(([id,x,y])=>Object.assign(physics.particles.get(id),{x,y,lastX:x,lastY:y,vx:0,vy:0}));[...nodes.values()].forEach(n=>n.hidden=false);[...regions.values()].forEach(r=>r.style.visibility='');hierarchyLayer.style.visibility='';clearSelection();physics.onTick(physics.particles)")
             sizes={s['role']:s['width'] for s in report['sizes']}
             check(42<=sizes['sun']<=48 and 24<=sizes['planet']<=30 and 15<=sizes['moon']<=20 and 14<=sizes['satellite']<=18,'100% native body diameters meet the visual targets')
             check(sizes['planet']<=38*.7 and sizes['moon']<=25.078125*.7,'Planet and Moon diameters are materially smaller than the captured baseline')
@@ -1657,7 +1299,7 @@ def main():
                 cdp.call('Emulation.setDeviceMetricsOverride',width=width,height=height,deviceScaleFactor=1,mobile=False)
                 time.sleep(.2);evaluate("focusEntry('sample-deep-7')");wait_camera()
                 check(evaluate('document.documentElement.scrollWidth<=innerWidth'),label+' has no page overflow')
-                check(evaluate("[panelName,moreButton,document.getElementById('connect-entry-button')].every(e=>{const r=e.getBoundingClientRect(),p=panel.getBoundingClientRect();return r.width>0&&r.top>=p.top&&r.bottom<=p.bottom;})"),label+' keeps name, Connect and More reachable')
+                check(evaluate("[panelName,moreButton].every(e=>{const r=e.getBoundingClientRect(),p=panel.getBoundingClientRect();return r.width>0&&r.top>=p.top&&r.bottom<=p.bottom;})"),label+' keeps name and More reachable')
                 if width<760:
                     check(evaluate('hierarchySidebar.collapsed && panel.getBoundingClientRect().bottom===innerHeight && physics.bounds.bottom<panel.getBoundingClientRect().top'),'mobile uses a contextual bottom sheet and its remaining canvas')
                     evaluate("moreButton.click()")
@@ -1781,7 +1423,7 @@ def main():
 
             leaf=chain[-1]
             menu_for(leaf)
-            check(evaluate("[...contextMenu.querySelectorAll('button:not([hidden])')].map(b=>b.dataset.action).join(',')==='create,connect,portal,edit,delete'"),'context menus contain Add, Connect, Create Portal, Edit and Delete')
+            check(evaluate("[...contextMenu.querySelectorAll('button:not([hidden])')].map(b=>b.dataset.action).join(',')==='create,portal,edit,delete'"),'context menus contain Add, Create Portal, Edit and Delete')
             evaluate('closeContextMenu()')
             menu_for(leaf);evaluate("contextMenu.querySelector('[data-action=edit]').click()")
             check(evaluate(f"dialog.open && editingId==={json.dumps(leaf)} && fields[0].value===entries.get({json.dumps(leaf)}).name"),'context menu Edit opens the existing editor')
@@ -1800,8 +1442,6 @@ def main():
             check(evaluate(f'document.activeElement===nodes.get({json.dumps(leaf)})'),'Escape returns keyboard focus to the body without moving the camera')
             cdp.call('Input.dispatchKeyEvent',type='keyDown',key='F10',code='F10',modifiers=8,windowsVirtualKeyCode=121)
             check(evaluate('!contextMenu.hidden'),'Shift+F10 opens celestial actions from the keyboard')
-            cdp.call('Input.dispatchKeyEvent',type='keyDown',key='ArrowDown',code='ArrowDown',windowsVirtualKeyCode=40)
-            check(evaluate("document.activeElement.dataset.action==='connect'"),'menu arrow keys reach the existing Connect action')
             cdp.call('Input.dispatchKeyEvent',type='keyDown',key='ArrowDown',code='ArrowDown',windowsVirtualKeyCode=40)
             check(evaluate("document.activeElement.dataset.action==='portal'"),'menu arrow keys reach Create Portal')
             cdp.call('Input.dispatchKeyEvent',type='keyDown',key='ArrowDown',code='ArrowDown',windowsVirtualKeyCode=40)
@@ -1836,7 +1476,7 @@ def main():
             evaluate("hierarchySidebar.setCollapsed(false);hierarchySidebar.select('sample-deep-7')")
             click_selector('.hierarchy-row[data-entry-id="sample-deep-7"] .tree-name');wait_camera()
             check(evaluate("hierarchySidebar.collapsed && selectedNode.dataset.entryId==='sample-deep-7' && camera.view.scale>=1.7"),'mobile tree navigation closes its drawer before focusing the deep body')
-            check(evaluate("[panelName,moreButton,document.getElementById('connect-entry-button')].every(e=>{const r=e.getBoundingClientRect(),p=panel.getBoundingClientRect();return r.top>=p.top&&r.bottom<=p.bottom&&r.width>0;})"),'mobile Contents keeps the selected name, Connect and More visible')
+            check(evaluate("[panelName,moreButton].every(e=>{const r=e.getBoundingClientRect(),p=panel.getBoundingClientRect();return r.top>=p.top&&r.bottom<=p.bottom&&r.width>0;})"),'mobile Contents keeps the selected name and More visible')
             evaluate("hierarchySidebar.setCollapsed(false);searchField.value='Long hierarchy name';searchField.dispatchEvent(new Event('input'))")
             click_selector('#search-result-list button');wait_camera()
             check(evaluate("hierarchySidebar.collapsed && selectedNode.dataset.entryId==='sample-deep-7'"),'mobile search closes the drawer and synchronizes its focused result')
@@ -2000,15 +1640,16 @@ def main():
             time.sleep(.2);measure_case('2x close')
             cdp.call('Emulation.setDeviceMetricsOverride',width=1440,height=1000,deviceScaleFactor=1,mobile=False)
             time.sleep(.2);measure_case('restored 1x close')
-            evaluate("connectionsLayer.style.display='none'");measure_case('without SVG connections')
-            evaluate("connectionsLayer.style.display='';nodesLayer.style.display='none'");measure_case('without bodies')
+            evaluate("hierarchyLayer.style.display='none'");measure_case('without structural SVG paths')
+            evaluate("hierarchyLayer.style.display='';nodesLayer.style.display='none'");measure_case('without bodies')
             evaluate("nodesLayer.style.display='';document.head.insertAdjacentHTML('beforeend','<style>.entry-node::before{background:none!important}</style>')");measure_case('without surface texture')
             check(not cdp.errors,f"no profiling browser exceptions: {cdp.errors}")
             return
 
         if options.migration_only:
-            # Inspect restored coordinates before the first live physics frame.
-            cdp.call('Page.addScriptToEvaluateOnNewDocument',source="document.addEventListener('DOMContentLoaded',()=>physics.pause(),{once:true})")
+            # Freeze startup animation frames in this load-time fixture so the
+            # assertions inspect restoration, not subsequent flowing motion.
+            cdp.call('Page.addScriptToEvaluateOnNewDocument',source="window.requestAnimationFrame=()=>0;document.addEventListener('DOMContentLoaded',()=>{physics.pause();physics.resume=()=>{}},{once:true})")
             def load_storage_fixture():
                 wait_for("typeof window.storageReloadMarker==='undefined' && document.readyState==='complete' && typeof physics!=='undefined'")
                 # Pause the flowing fixture while checking its exact initial data.
@@ -2032,7 +1673,6 @@ def main():
             check(evaluate("entries.get('github').parentId==='migration-my-galaxy' && entries.get('migration-my-galaxy').name==='My Galaxy'"), "v4 former Sun gains a neutral Galaxy parent")
             check(evaluate("entries.get('saved-moon').x===1050 && entries.get('saved-moon').y===680 && !layout.get('saved-moon').pinned && layout.get('saved-moon').parentId==='saved-planet' && physics.particles.get('saved-moon').fx===null"), "v4 legacy pin keeps its initial coordinates while becoming a flowing relative influence")
             check(evaluate("!('x' in layout.get('saved-planet')) && layout.get('saved-planet').parentId==='github' && Number.isFinite(layout.get('saved-planet').angle) && physics.particles.get('saved-planet').fx===null"), "v4 old soft placement becomes an initial position and relative flowing influence")
-            check(evaluate("relationships.length===1 && connections.filter(c=>c.kind==='hierarchy').length===3 && entries.get('github').category==='Keep label' && entries.get('saved-planet').description==='Saved category'"), "v4 labels, descriptions and semantic relationships survive")
             check(evaluate("nodes.get('saved-planet').dataset.archetype==='desert' && nodes.get('saved-planet').dataset.rings==='true'"), "migration preserves optional appearance metadata")
             identity = evaluate("JSON.stringify([...entries.values()].map(e=>[e.id,galaxyAppearance.resolve(e)]))")
             reload_storage_fixture()
@@ -2045,14 +1685,10 @@ def main():
             reload_storage_fixture()
             check(evaluate("entries.get('migration-my-galaxy').x===420 && entries.get('migration-my-galaxy').y===360 && !layout.has('migration-my-galaxy') && entries.get('saved-moon').x===1050 && physics.particles.get('saved-moon').fx===null"),'v5 root and child pins retain initial coordinates without permanent constraints')
             check(evaluate("JSON.parse(localStorage.getItem('galaxy:user-data')).layout.every(p=>!('pinned' in p)&&!('x' in p))"),'normal save replaces historical pins with relative influences in schema 5')
-            semantic=evaluate("JSON.stringify(relationships)")
             edit('saved-moon',name='Updated saved Moon');evaluate('physics.pause()')
-            check(evaluate("JSON.stringify(relationships)")==semantic and evaluate("!document.getElementById('connection-options')"),'editing content preserves existing semantic relationships without relationship fields')
             edit('saved-moon',parent='github');evaluate('physics.pause()')
-            check(evaluate("JSON.stringify(relationships)")==semantic and evaluate("entries.get('saved-moon').parentId==='github'"),'changing the single structural parent preserves a semantic link to the same pair')
             edit('saved-moon',parent='saved-planet');evaluate('physics.pause();saveGalaxy()')
             reload_storage_fixture()
-            check(evaluate("JSON.stringify(relationships)")==semantic and evaluate("connections.some(c=>c.kind==='relationship'&&c.to==='saved-moon') && entries.get('saved-moon').name==='Updated saved Moon'"),'semantic links survive reparenting, saving and reload')
 
             corrupt = json.dumps({"version": 5, "entries": [{"id": "bad", "name": "", "description": "", "parentId": None}], "connections": [], "layout": []})
             evaluate(f"physics.pause();graphNeedsSave=false;localStorage.setItem('galaxy:user-data',{json.dumps(corrupt)})")
@@ -2073,13 +1709,11 @@ def main():
         p1=add('Italian',s1);p2=add('Japanese',s1)
         m1=add('Chicken',p1);m2=add('Pasta',p1)
         t1=add('Chicken Parmigiana',m1);t2=add('Chicken Piccata',m1)
-        # Seed historical semantic links internally; the creation UI cannot configure them.
-        evaluate(f"relationships.push({{from:{json.dumps(t1)},to:'github'}},{{from:{json.dumps(t1)},to:'codex'}});rebuildConnections();syncPhysicsGraph();saveGalaxy()")
+        # Seed historical Portal references internally; the creation UI cannot configure them.
         d5=add('Preparation',t1);d6=add('Slow simmer notes',d5)
         wait_for("physics.settled")
         check(evaluate(f"entries.get({json.dumps(g1)}).depth===0 && entries.get({json.dumps(s1)}).depth===1 && entries.get({json.dumps(p1)}).depth===2 && entries.get({json.dumps(m1)}).depth===3 && entries.get({json.dumps(t1)}).depth===4 && entries.get({json.dumps(d6)}).depth===6"), "create multiple Galaxies and a hierarchy through depth six")
         check(hierarchy_edge(g1,s1) and hierarchy_edge(s1,p1) and hierarchy_edge(m1,t1) and hierarchy_edge(d5,d6), "all hierarchy links derive from parent IDs")
-        check(evaluate(f"relationships.filter(c=>c.from==={json.dumps(t1)}).length===2"), "deep entries retain optional semantic relationships")
         for entry_id, expected in [(g1,'Sun'),(s1,'Planet'),(p1,'Moon'),(m1,'Satellite'),(t1,'Astronaut')]:
             select(entry_id)
             evaluate('openSelectedRowAdd()')
@@ -2132,7 +1766,6 @@ def main():
         edit(t1,parent=s1);wait_for('physics.settled')
         check(evaluate(f"entries.get({json.dumps(t1)}).role==='planet' && entries.get({json.dumps(d6)}).depth===4 && nodes.get({json.dumps(t1)}).dataset.body==='planet'"), "reparenting across depths recomputes descendant roles and appearance")
         edit(t1,parent=m1);wait_for('physics.settled')
-        check(evaluate(f"entries.get({json.dumps(d6)}).depth===6 && relationships.filter(c=>c.from==={json.dumps(t1)}).length===2"), "deep nesting can be restored without losing semantic links")
 
         # The appearance UI is intentionally deferred; verify its model contract through Edit/save/refresh.
         evaluate(f"entries.get({json.dumps(p1)}).appearance={{archetype:'oceanic',rings:true,palette:'teal'}};syncPhysicsGraph();saveGalaxy()")
@@ -2166,7 +1799,7 @@ def main():
                     check(evaluate("[...nodes.values()].filter(n=>n.dataset.culled==='false' && !['galaxy','satellite','astronaut'].includes(n.dataset.body)).every(n=>getComputedStyle(n,'::before').mixBlendMode==='normal' && n.style.getPropertyValue('--surface-map').includes('blob:'))"),prefix+' close surface detail uses cached native overlays')
                 check(evaluate('galaxy.dataset.detailLevel')==level,prefix+' semantic tier '+level)
                 check_native_rendering(prefix+' native body and text dimensions at '+level)
-                check(aligned(),prefix+' hierarchy and semantic endpoints align at '+level)
+                check(aligned(),prefix+' hierarchy endpoints align at '+level)
                 check(visible_guides()==0,prefix+' has no blanket orbit rings at '+level)
                 if level=='universe':
                     check(evaluate("[...entries.values()].filter(e=>e.depth>0).every(e=>getComputedStyle(nodes.get(e.id)).opacity==='0')"),prefix+' Universe hides lower detail')
@@ -2183,7 +1816,7 @@ def main():
                     if screenshot_dir:
                         result=cdp.call('Page.captureScreenshot',format='png',captureBeyondViewport=False)
                         (screenshot_dir/f'{prefix}-{level}-selected.png').write_bytes(base64.b64decode(result['data']))
-            check(evaluate("orbitGuides.every(g=>g.element.tagName==='ellipse') && !connectionsLayer.querySelector('path.orbit-guide')"),prefix+' has no partial decorative orbit arcs')
+            check(evaluate("orbitGuides.every(g=>g.element.tagName==='ellipse') && !hierarchyLayer.querySelector('path.orbit-guide')"),prefix+' has no partial decorative orbit arcs')
             metrics=evaluate("""new Promise(resolve=>{const widths=[],native=[],label=selectedNode.querySelector('.node-label');const original=camera.onChange,costs=[];
                 camera.onChange=v=>{const start=performance.now();original(v);costs.push(performance.now()-start);};
                 camera.zoomAt(600,500,1.1);const frame=()=>{widths.push(label.getBoundingClientRect().width);const m=new DOMMatrix(getComputedStyle(label).transform);native.push(m.a===1&&m.d===1);
@@ -2214,7 +1847,6 @@ def main():
         check(evaluate('entries.size===187 && physics.galaxies.size===4 && physics.systems.size===8'), "stress sample contains 187 entries across four Galaxies and eight Suns")
         check(evaluate("new Set([...entries.values()].filter(e=>e.depth===0).map(e=>galaxyAppearance.resolve(e).archetype)).size===4"), "sample shows four stable Galaxy archetypes")
         check(evaluate("new Set([...entries.values()].filter(e=>e.depth===2).map(e=>galaxyAppearance.resolve(e).archetype)).size===6 && [...nodes.values()].filter(n=>n.dataset.rings==='true').length>0 && [...nodes.values()].filter(n=>n.dataset.rings==='true').length<12"), "sample shows six Planet archetypes with occasional rings")
-        check(evaluate("entries.get('sample-deep-7').depth===7 && connections.filter(link=>link.kind==='hierarchy').length===183 && relationships.length===8"), "sample exercises depth seven, all hierarchy edges and eight semantic links")
         check(evaluate("localStorage.getItem('galaxy:user-data')")==real_snapshot, "sample loading never modifies real saved data")
         check(evaluate("loadSampleButton.disabled && !removeSampleButton.disabled && !location.search.includes('sample')"), "sample activation is temporary and explicit")
         check(evaluate("(()=>{const g=[...physics.galaxies.values()];return g.every((a,i)=>g.slice(i+1).every(b=>Math.hypot(a.root.x-b.root.x,a.root.y-b.root.y)>(a.radius+b.radius)*.85));})()"), "Galaxy regions retain separate soft footprints")
@@ -2267,9 +1899,6 @@ def main():
         server.shutdown()
         assert profile.is_relative_to(temp_root) and profile.name.startswith("galaxy-test-profile-")
         shutil.rmtree(profile, ignore_errors=True)
-        if baseline_root:
-            assert baseline_root.is_relative_to(temp_root) and baseline_root.name.startswith('galaxy-baseline-')
-            shutil.rmtree(baseline_root,ignore_errors=True)
 
 
 if __name__ == "__main__":
