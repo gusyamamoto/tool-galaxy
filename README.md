@@ -6,8 +6,8 @@ open `http://localhost:8000`. Use the same browser, address and port for saved d
 
 ## Creating and navigating
 
-- **Add:** each hierarchy row has a small **+**, shown on hover/focus and always
-  available on touch layouts. It opens Add child, Add files, Add note and Add
+- **Add:** each hierarchy row has a small **+**, shown on hover/focus on desktop
+  and on the selected/focused row in the mobile drawer. It opens Add child, Add files, Add note and Add
   bookmark for that row without selecting or navigating first. Add Galaxy remains
   under More; Search has no global contextual +.
 - **Add child:** use **+ → Add child** or the body's right-click menu. Both use
@@ -24,7 +24,9 @@ open `http://localhost:8000`. Use the same browser, address and port for saved d
   notes and bookmarks live in the Content panel rather than cluttering the tree.
 - **Sidebar:** Search sits above the compact tree. Consistent
   32px rows align SVG chevrons and celestial icons, with subtle hover/selection
-  states and ellipsis for long names; deep paths still scroll horizontally.
+  states and ellipsis for long names; deep desktop paths still scroll horizontally.
+  Mobile rows use 44px height, compressed depth indentation and no horizontal
+  scrolling; the selected name can wrap to two lines.
   The small Galaxy title stays in the sidebar above separate Hierarchy and
   Constellations sections. **More** at the bottom holds Add Galaxy, Fit Galaxy, zoom/count information, navigation
   hints and temporary Sample controls. A small Sample label identifies that mode.
@@ -82,6 +84,29 @@ open `http://localhost:8000`. Use the same browser, address and port for saved d
   parent-relative angle and gently bounded orbital region. An extreme drop
   returns gradually toward its parent; release preserves inertia. There are no
   fixed-position controls or physics-status messages.
+
+## Mobile interaction polish
+
+The existing drawer and Content/Constellation bottom sheets remain. Outside taps
+and Escape dismiss an open mobile drawer; the dismissal tap never starts a canvas
+gesture. Add is visible on selected/focused rows, with the normal desktop hover
+route unchanged. Primary icon controls use 44px touch targets; chevrons stay
+compact at 32px wide by 44px high. Portal and Constellation actions remain visible.
+
+Portrait sheets have a bounded 58dvh height; short touch landscape retains the
+same drawer/sheet model with up to 72dvh. Sheets scroll independently from the
+canvas. Menus clamp/flip inside the actual visual viewport and can scroll if
+needed. `visualViewport` resize/scroll events update presentation bounds without
+camera navigation or physics reheating. A reduced editing header and larger
+usable sheet keep inputs reachable when the keyboard leaves little space;
+normal read mode restores breadcrumbs and management controls. Native keyboard
+behavior should still be checked on iOS/Android.
+
+Semantic-zoom thresholds and label collision/hysteresis remain unchanged. Mobile
+ordinary labels that are mostly outside usable bounds are suppressed; interaction
+labels get a bounded inward offset. No new gesture architecture, schema or storage
+fields were added. Run `python tests/browser-check.py --mobile-polish-only --screenshots`
+for 390×844, 430×932 and 844×390 workflows plus 1440px desktop restoration.
 
 ## Visual density and restrained motion
 
@@ -343,7 +368,7 @@ the universal contextual Add menu. Files and Bookmarks also have a quiet heading
 `+` shortcut; clicking **No notes** opens the single existing note editor. These
 reuse `chooseFiles()`, `editNotes()` and `editLink()`, targeting the selected
 canonical entry even after Portal navigation. Heading shortcuts appear on desktop
-section hover/focus and use small icons with padded 32px targets on touch/mobile.
+section hover/focus and use small icons with padded 44px targets on mobile.
 They preserve the active Constellation, camera, physics heat and memberships;
 storage remains unchanged. Existing Notes have a small edit icon, and files/bookmarks have overflow actions
 instead of permanent management buttons. These actions remain visible on touch

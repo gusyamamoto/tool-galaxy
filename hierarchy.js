@@ -45,13 +45,22 @@ class HierarchySidebar {
         this.resize = document.getElementById("sidebar-resize");
         this.entries = new Map(); this.rows = new Map(); this.expanded = new Set();
         this.index = { children: new Map(), roots: [] }; this.selectedId = null; this.activeId = null; this.searchMatches = new Set();
-        this.narrow = window.matchMedia("(max-width: 760px)").matches;
+        this.mobileQuery = window.matchMedia('(max-width: 760px), (pointer: coarse) and (max-width: 1024px) and (max-height: 500px)');
+        this.narrow = this.mobileQuery.matches;
         let preference = {};
         try { if (persist) preference = JSON.parse(localStorage.getItem("galaxy:navigation-ui") || "{}") || {}; } catch { /* UI remains usable without storage. */ }
         this.collapsed = this.narrow || preference.collapsed === true;
         this.width = Number.isFinite(preference.width) ? preference.width : 260;
         this.applyLayout();
         this.toggle.addEventListener("click", () => this.setCollapsed(!this.collapsed));
+        document.addEventListener('pointerdown',event=>{
+            if(!this.narrow||this.collapsed||event.button!==0||event.target.closest('#hierarchy-sidebar,#sidebar-toggle,#add-menu,#entry-context-menu,dialog'))return;
+            this.setCollapsed(true);event.preventDefault();event.stopPropagation();
+        },true);
+        document.addEventListener('keydown',event=>{
+            if(event.key!=='Escape'||!this.narrow||this.collapsed||document.querySelector('dialog[open],#add-menu:not([hidden]),#entry-context-menu:not([hidden]),#search-results:not([hidden])'))return;
+            this.setCollapsed(true);event.preventDefault();event.stopPropagation();
+        },true);
         this.tree.addEventListener("keydown", event => this.onKey(event));
         let drag = null;
         this.resize.addEventListener("pointerdown", event => {
@@ -104,7 +113,7 @@ class HierarchySidebar {
     }
     setWidth(width, animate) { this.width = width; this.applyLayout(); this.onViewportChange(animate); }
     onWindowResize() {
-        const narrow = window.matchMedia("(max-width: 760px)").matches;
+        const narrow = this.mobileQuery.matches;
         if (narrow !== this.narrow) { this.narrow = narrow; if (narrow) this.collapsed = true; }
         this.applyLayout();
     }
@@ -181,6 +190,8 @@ class HierarchySidebar {
             const entry = this.entries.get(portal ? portal.targetEntryId : id), row = this.rows.get(id) || (portal ? this.createPortalRow(id) : this.createRow(id));
             const hasChildren = !portal && this.index.children.get(id).length > 0;
             row.style.setProperty("--tree-indent", `${(level - 1) * 14}px`);
+            const mobileIndent=level<=5?(level-1)*9:Math.min(60,36+7*Math.log2(level-4));
+            row.style.setProperty('--mobile-tree-indent',`${mobileIndent}px`);
             row.setAttribute("aria-level", level); row.setAttribute("aria-posinset", position); row.setAttribute("aria-setsize", size);
             const location = portal ? galaxyModel.ancestors(this.entries, entry.id).reverse().map(parent => parent.name).join(" › ") || "Universe" : "";
             row.setAttribute("aria-label", portal ? `Portal to ${entry.name}, ${location}` : `${entry.name}, ${galaxyModel.roles[entry.role].name}`);
@@ -240,6 +251,7 @@ class HierarchySidebar {
         else if (target.bottom > bounds.bottom) this.tree.scrollTop += target.bottom - bounds.bottom;
         // Extremely deep indentation may need horizontal scrolling. Reveal the
         // name and action rather than aligning an oversized row's empty start.
+        if(this.narrow){this.tree.scrollLeft=0;return;}
         const name = row.querySelector(".tree-name").getBoundingClientRect();
         if (name.left < bounds.left + 38) this.tree.scrollLeft += name.left - bounds.left - 38;
         else if (name.right > bounds.right - 38) this.tree.scrollLeft += name.right - bounds.right + 38;
