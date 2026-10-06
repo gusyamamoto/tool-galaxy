@@ -3,6 +3,26 @@ const { test } = require('node:test');
 function load() { const context = vm.createContext({}); vm.runInContext(fs.readFileSync(path.join(__dirname, '../cosmos-view.js'), 'utf8'), context); return vm.runInContext('cosmosView', context); }
 const plain = value => JSON.parse(JSON.stringify(value));
 
+test('Constellation lens keeps bodies distinct from labels and restores non-entry context through normal role fades', () => {
+    const view = load(), roles = ['galaxy', 'sun', 'planet', 'moon', 'satellite', 'astronaut'];
+    for (const role of roles) {
+        assert.deepEqual(plain(view.constellationVisibility(.2, role, { member: true })), { body: 1, label: 0 });
+        assert.deepEqual(plain(view.constellationVisibility(.2, role)), { body: 0, label: 0 });
+        assert.deepEqual(plain(view.constellationVisibility(.2, role, { priority: true })), { body: 1, label: 1 });
+        let previous = 0;
+        for (let scale = .2; scale <= 1.2; scale += .01) {
+            const normal = role === 'galaxy' ? 1 : view.detail(scale)[role], lens = view.constellationVisibility(scale, role);
+            assert.ok(lens.body <= normal); assert.ok(lens.body >= previous); previous = lens.body;
+            assert.equal(view.constellationVisibility(scale, role, { member: true }).body, 1);
+        }
+        assert.equal(view.constellationVisibility(1.2, role).body, .78);
+    }
+    assert.ok(view.constellationVisibility(.6, 'sun').body > 0);
+    assert.equal(view.constellationVisibility(.6, 'planet').body > 0, true);
+    assert.equal(view.constellationVisibility(.6, 'moon').body, 0);
+    assert.ok(view.constellationVisibility(.7, 'planet').body > view.constellationVisibility(.7, 'moon').body);
+});
+
 test('each zoom tier summarizes the intended hierarchy without residual body opacity', () => {
     const view = load();
     for (const [scale, tier, visible] of [[.10, 'universe', []], [.58, 'system', ['sun']], [.68, 'system', ['sun', 'planet']], [.80, 'close', ['sun', 'planet', 'moon', 'satellite']]]) {

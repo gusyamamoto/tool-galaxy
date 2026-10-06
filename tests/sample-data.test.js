@@ -1,8 +1,16 @@
 const assert=require('node:assert/strict'), fs=require('node:fs'), vm=require('node:vm'), path=require('node:path');
 const {test}=require('node:test'),c=vm.createContext({URLSearchParams,URL});
-for(const file of ['model.js','portals.js','appearance.js','sample-data.js']) vm.runInContext(fs.readFileSync(path.join(__dirname,'..',file),'utf8'),c);
+for(const file of ['model.js','portals.js','constellations.js','appearance.js','sample-data.js']) vm.runInContext(fs.readFileSync(path.join(__dirname,'..',file),'utf8'),c);
 const model=vm.runInContext('galaxyModel',c),sample=vm.runInContext('galaxySample',c),appearance=vm.runInContext('galaxyAppearance',c);
 const plain=v=>JSON.parse(JSON.stringify(v));
+test('three restrained Sample Constellations include local, cross-Galaxy and deep Astronaut memberships',()=>{
+    const snapshot=sample.build(),entries=new Map(snapshot.entries.map(e=>[e.id,model.normalizeEntry(e)]));model.normalizeHierarchy(entries);
+    const collections=vm.runInContext('galaxyConstellations',c).normalizeAll(snapshot.constellations,entries);
+    const root=id=>model.ancestors(entries,id).at(-1)?.id||id;
+    assert.equal(collections.length,3);assert.ok(collections.some(c=>new Set(c.memberEntryIds.map(root)).size===1));
+    assert.ok(collections.some(c=>new Set(c.memberEntryIds.map(root)).size>1));assert.ok(collections.some(c=>c.memberEntryIds.some(id=>entries.get(id).depth>=7)));
+    snapshot.constellations[0].memberEntryIds.pop();assert.equal(sample.build().constellations[0].memberEntryIds.length,3);
+});
 test('Sample has three isolated Portal leaves including same-Galaxy, cross-Galaxy and deep Astronaut targets',()=>{
     const snapshot=sample.build(),entries=new Map(snapshot.entries.map(e=>[e.id,model.normalizeEntry(e)]));model.normalizeHierarchy(entries);
     const refs=vm.runInContext('galaxyPortals',c).normalizeAll(snapshot.portals,entries);

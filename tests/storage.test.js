@@ -10,6 +10,14 @@ function make(records=[]){
     return {data,localStorage,adapter:vm.runInContext('galaxyStorage',context)};
 }
 test('empty storage has no snapshot',()=>assert.equal(make().adapter.load(),null));
+test('optional Constellations round-trip additively at version 5; old snapshots remain valid',()=>{
+    const constellations=[{id:'collection',name:'Favorites',memberEntryIds:['entry'],createdAt:'2026-01-01T00:00:00Z'}];
+    const {adapter,data}=make();adapter.save({entries:[entry],portals:[reference],layout:[],constellations});
+    assert.equal(JSON.parse(data.get(key)).version,5);assert.deepEqual(plain(adapter.load().constellations),constellations);
+    assert.deepEqual(plain(adapter.load().portals),[reference]);
+    const raw=JSON.stringify({version:5,entries:[entry],layout:[],constellations:{invalid:true}});data.set(key,raw);
+    assert.throws(()=>adapter.load());assert.equal(data.get(key),raw);
+});
 test('legacy pairwise records are discarded at the boundary without altering canonical content, Portals or layout',()=>{
     for(const connections of [[{from:'entry',to:'parent',id:'old',type:'uses'}],{malformed:true},'obsolete']){
         const snapshot={version:5,entries:[entry,{id:'parent',name:'Parent',content:{version:1,notes:{format:'plain',text:'Keep notes'},links:[],attachments:[]}}],connections,portals:[reference],layout:[{id:'entry',parentId:'parent',angle:1,radius:50}]};
