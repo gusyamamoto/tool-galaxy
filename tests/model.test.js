@@ -3,7 +3,7 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const path = require('node:path');
 const { test } = require('node:test');
-const context = vm.createContext({});
+const context = vm.createContext({ URL });
 vm.runInContext(fs.readFileSync(path.join(__dirname, '../model.js'), 'utf8'), context);
 const model = vm.runInContext('galaxyModel', context);
 const entry = (id, parentId = null) => ({ id, parentId, name: id, description: 'Description', category: '', x: 400, y: 350 });

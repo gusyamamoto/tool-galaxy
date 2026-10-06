@@ -1,5 +1,5 @@
 const assert=require('node:assert/strict'), fs=require('node:fs'), vm=require('node:vm'), path=require('node:path');
-const {test}=require('node:test'),c=vm.createContext({URLSearchParams});
+const {test}=require('node:test'),c=vm.createContext({URLSearchParams,URL});
 for(const file of ['model.js','appearance.js','sample-data.js']) vm.runInContext(fs.readFileSync(path.join(__dirname,'..',file),'utf8'),c);
 const model=vm.runInContext('galaxyModel',c),sample=vm.runInContext('galaxySample',c),appearance=vm.runInContext('galaxyAppearance',c);
 const plain=v=>JSON.parse(JSON.stringify(v));

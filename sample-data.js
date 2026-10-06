@@ -55,6 +55,14 @@ const galaxySample = {
         rename("sample-planet-3-2", "Protein");
         rename("sample-moon-3-2-0", "Chicken");
         rename("sample-moon-3-2-1", "Tofu");
+        const recipe = entries.find(entry => entry.id === "sample-satellite-2-0-0-0");
+        recipe.content = { version: 1, notes: { format: "plain", text: "Prep ahead: bread the chicken, then chill.\nFinish the sauce while the chicken rests." },
+            links: [{ id: "sample-recipe-link", url: "https://www.seriouseats.com/", title: "Recipe inspiration" }],
+            attachments: [{ id: "sample-recipe-file", kind: "upload", entryId: recipe.id, filename: "prep-notes.txt", mimeType: "text/plain",
+                size: this.fileText.length, storageKey: "sample-recipe-file", createdAt: "2026-01-01T00:00:00.000Z" }] };
+        entries.find(entry => entry.id === "sample-moon-0-1-0").content = { version: 1, notes: { format: "plain", text: "Keep prompts and review notes together.\nCheck changes before committing." }, links: [
+            { id: "sample-codex-link", url: "https://openai.com/codex/", title: "Codex" },
+            { id: "sample-github-link", url: "https://github.com/", title: "Repositories" }], attachments: [] };
         const pairs = [
             ["sample-moon-0-1-0", "sample-satellite-0-0-0-0"], // Codex / VS Code
             ["sample-moon-0-1-0", "sample-satellite-0-0-1-0"], // Codex / GitHub
@@ -66,5 +74,7 @@ const galaxySample = {
             ["sample-moon-5-2-0", "sample-moon-7-0-1"] // Hiking / Cardio, across Galaxies
         ];
         return { entries, connections: pairs.map(([from, to], index) => ({ id: `sample-connection-${index}`, from, to, type: "related" })), layout: [] };
-    }
+    },
+    fileText: "Parmigiana prep checklist\nBread the chicken and chill.\nPrepare sauce separately.\nRest briefly before serving.\n",
+    files() { return [{ key: "sample-recipe-file", entryId: "sample-satellite-2-0-0-0", blob: new Blob([this.fileText], { type: "text/plain" }) }]; }
 };

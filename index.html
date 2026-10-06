@@ -88,6 +88,29 @@
                     <button id="delete-entry-button" type="button">Delete</button>
                 </div>
             </div>
+            <details id="panel-rich-content">
+                <summary>Content</summary>
+                <form id="content-notes-form">
+                    <label for="content-notes">Notes</label>
+                    <textarea id="content-notes" rows="4" placeholder="Write a note"></textarea>
+                    <button type="submit">Save notes</button>
+                </form>
+                <header class="content-heading"><h3>Links</h3><button id="content-add-link" type="button">+ Add link</button></header>
+                <ul id="content-links"></ul>
+                <form id="content-link-form" hidden>
+                    <label for="content-link-url">Web URL</label><input id="content-link-url" type="url" required maxlength="2048" placeholder="https://">
+                    <label for="content-link-title">Display title (optional)</label><input id="content-link-title" type="text" maxlength="200">
+                    <div class="content-row-actions"><button type="submit">Save link</button><button id="content-cancel-link" type="button">Cancel</button></div>
+                </form>
+                <h3>Attachments</h3>
+                <div id="content-drop">
+                    <label for="content-files">Choose files or drop them here for this entry</label>
+                    <input id="content-files" type="file" multiple accept=".jpg,.jpeg,.png,.webp,.pdf,.txt,.md">
+                    <small id="content-file-limit"></small>
+                </div>
+                <ul id="content-attachments"></ul>
+                <p id="content-status" role="status" aria-live="polite" hidden></p>
+            </details>
             <p id="entry-action-status" role="status" hidden></p>
         </aside>
 
@@ -146,6 +169,8 @@
     </dialog>
 
     <script src="model.js"></script>
+    <script src="attachment-store.js"></script>
+    <script src="rich-content.js"></script>
     <script src="appearance.js"></script>
     <script src="cosmos-view.js"></script>
     <script src="connection-view.js"></script>
