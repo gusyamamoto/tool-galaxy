@@ -86,7 +86,9 @@ const entries = new Map();
 let layout = new Map();
 const relationships = [];
 let connections = [];
-const builtInIds = new Set(initialEntries.map((entry) => entry.id));
+// Match partial v1/v2 saved positions to starter templates during loading only.
+// Starter IDs never grant special permissions or deletion protection.
+const starterIds = new Set(initialEntries.map((entry) => entry.id));
 const nodes = new Map();
 const lines = [];
 const orbitGuides = [];
@@ -333,7 +335,6 @@ function openContextMenu(id, x, y) {
     contextMenu.setAttribute("aria-label", `Actions for ${entry.name}`);
     document.getElementById("context-entry-name").textContent = entry.name;
     contextMenu.querySelector('[data-action="create"]').textContent = cosmosHierarchy.childContext(entries, id).action;
-    contextMenu.querySelector('[data-action="delete"]').disabled = builtInIds.has(id);
     contextMenu.hidden = false;
     const bounds = contextMenu.getBoundingClientRect();
     contextMenu.style.left = `${Math.max(8, Math.min(x, innerWidth - bounds.width - 8))}px`;
@@ -504,11 +505,12 @@ function initializeGalaxy() {
     records.forEach((record) => {
         const entry = galaxyModel.normalizeEntry(record);
         if (entry && !entries.has(entry.id)) entries.set(entry.id, entry);
-        if (!entry && !(saved?.legacy && builtInIds.has(record?.id)) && !sampleMode) {
+        if (!entry && !(saved?.legacy && starterIds.has(record?.id)) && !sampleMode) {
             storageAvailable = false;
             reportStorageFailure("Some saved entries are invalid. The original saved data is preserved; changes are available for this session only.");
         }
     });
+    if (!sampleMode && records.some(record => record && ["protected", "isProtected", "builtIn", "isBuiltIn"].some(key => Object.hasOwn(record, key)))) graphNeedsSave = true;
     if (!sampleMode && (!saved || saved.migrateTree)) {
         galaxyModel.migrateLegacy(entries, [...initialEntries, ...records]);
         graphNeedsSave = true;
@@ -560,7 +562,6 @@ function selectEntry(entry, node, { openInspector = true, reframe = false, scrol
         panelAncestry.appendChild(button);
     });
     panelAncestry.hidden = !parent;
-    deleteEntryButton.hidden = builtInIds.has(entry.id);
     actionStatus.hidden = true;
     refreshInspectorConnections();
     updateHierarchyEmphasis();
@@ -1579,7 +1580,7 @@ function requestEntryDelete(id) {
     const entry = entries.get(id);
     if (!entry) return;
     beginCrudOperation();
-    const plan = galaxyModel.deletionPlan(entries, relationships, id, { subtree: true, protectedIds: builtInIds });
+    const plan = galaxyModel.deletionPlan(entries, relationships, id, { subtree: true });
     if (plan.error) {
         reportAction(plan.error, { reframe: false }); finishCrudOperation();
         return;
@@ -1600,7 +1601,7 @@ document.getElementById("delete-entry-form").addEventListener("submit", async (e
     event.preventDefault();
     if (deletionBusy) return;
     const entry = entries.get(deletingId);
-    const plan = galaxyModel.deletionPlan(entries, relationships, deletingId, { subtree: true, protectedIds: builtInIds });
+    const plan = galaxyModel.deletionPlan(entries, relationships, deletingId, { subtree: true });
     if (!entry || plan.error) {
         deleteDialog.close();
         reportAction(plan.error, { reframe: false }); finishCrudOperation();
@@ -1622,7 +1623,7 @@ document.getElementById("delete-entry-form").addEventListener("submit", async (e
         let metadataWritten = false;
         try {
             await attachmentStore.deleteEntries(plan.ids, () => {
-                const current = galaxyModel.deletionPlan(entries, relationships, entry.id, { subtree: true, protectedIds: builtInIds });
+                const current = galaxyModel.deletionPlan(entries, relationships, entry.id, { subtree: true });
                 if (current.error || current.ids.size !== plan.ids.size || [...current.ids].some(id => !plan.ids.has(id))) throw new Error("The branch changed. Cancel and review its new deletion count.");
                 const snapshot = getGalaxySnapshot();
                 if (!sampleMode) {

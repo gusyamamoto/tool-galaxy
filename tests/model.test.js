@@ -140,13 +140,29 @@ test('subtree collection is iterative through thousands of levels and handles cy
     assert.equal(model.subtreeIds(entries,'e4').size,2496);
 });
 
-test('guarded deletion requires explicit subtree intent and protects built-ins anywhere in a branch',()=>{
+test('deletion requires explicit subtree intent but all canonical entries are user-owned',()=>{
     const entries=chain(8), before=plain([...entries.values()]);
     assert.match(model.deletionPlan(entries,[],'e2').error,/Confirm/);
     assert.equal(model.deletionPlan(entries,[],'e7').error,'');
-    assert.match(model.deletionPlan(entries,[],'e2',{subtree:true,protectedIds:new Set(['e6'])}).error,/protected/);
+    assert.equal(model.deletionPlan(entries,[],'e2',{subtree:true,protectedIds:new Set(['e6'])}).error,'');
     assert.match(model.deletionPlan(entries,[],'missing',{subtree:true}).error,/no longer/);
     assert.deepEqual(plain([...entries.values()]),before,'planning never mutates or promotes entries');
+});
+test('legacy ownership flags normalize away without changing IDs, ancestry or saved content',()=>{
+    for (const id of ['github','vs-code','codex','migrated-entry','seeded-example']) {
+        const saved={...entry(id,'coding'),protected:true,isProtected:true,builtIn:true,isBuiltIn:true,
+            appearance:{archetype:'desert',future:'keep'},content:{...model.emptyContent(),notes:{format:'plain',text:'Keep notes'},
+                links:[{id:'bookmark',url:'https://example.com/',title:'Keep title'}],attachments:[{id:'file',kind:'upload',entryId:id,
+                    filename:'notes.txt',mimeType:'text/plain',size:4,storageKey:'owned-file',createdAt:'2026-01-01T00:00:00Z'}]}};
+        const normalized=model.normalizeEntry(saved);
+        for(const key of ['protected','isProtected','builtIn','isBuiltIn'])assert.equal(key in normalized,false);
+        const {protected:oldProtected,isProtected,builtIn,isBuiltIn,...expected}=saved;
+        assert.deepEqual(plain(normalized),expected);
+        assert.deepEqual(plain(model.normalizeEntry(normalized)),plain(normalized));
+        const entries=new Map([['coding',entry('coding')],[id,normalized]]);
+        assert.equal(model.deletionPlan(entries,[],'coding',{subtree:true}).error,'');
+        assert.deepEqual([...model.deletionPlan(entries,[],'coding',{subtree:true}).ids],['coding',id]);
+    }
 });
 
 test('subtree deletion plan cleans incident links in either direction and preserves unrelated metadata',()=>{

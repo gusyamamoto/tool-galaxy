@@ -53,6 +53,8 @@ const galaxyModel = {
         return { version: 1, notes: { format: "plain", text: value.notes.text }, links, attachments };
     },
     normalizeEntry(record) {
+        // Canonical entries are user-owned. This allowlist intentionally drops
+        // legacy protected/isProtected/builtIn flags while preserving content.
         const content = record?.content == null ? null : this.normalizeContent(record.content, record.id);
         if (record?.content != null && !content) return null;
         if (!record || typeof record.id !== "string" || !record.id.trim() || record.id.length > 100 ||
@@ -84,10 +86,9 @@ const galaxyModel = {
         }
         return ids;
     },
-    deletionPlan(entries, relationships, id, { subtree = false, protectedIds = new Set() } = {}) {
+    deletionPlan(entries, relationships, id, { subtree = false } = {}) {
         const ids = this.subtreeIds(entries, id);
         if (!ids.size) return { ids, error: "This entry no longer exists." };
-        if ([...ids].some(id => protectedIds.has(id))) return { ids, error: "This branch contains protected entries and cannot be deleted." };
         if (ids.size > 1 && !subtree) return { ids, error: "Confirm deletion of this entry and everything inside it." };
         return { ids, error: "", relationships: relationships.filter(link => !ids.has(link.from) && !ids.has(link.to)) };
     },
