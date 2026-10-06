@@ -48,15 +48,15 @@
                 <ul id="constellation-list" aria-label="Constellations"></ul>
             </section>
             <details id="sidebar-tools">
-                <summary>More tools</summary>
+                <summary>More</summary>
                 <button id="add-entry-button" type="button">Add Galaxy</button>
                 <button id="reset-view-button" type="button">Fit Galaxy</button>
                 <div class="view-controls"><span id="hierarchy-count"></span><output id="zoom-level" aria-label="Zoom level">100%</output></div>
                 <p class="galaxy-hint">Scroll to zoom · Drag space to pan</p>
-                <aside id="sample-controls" aria-label="Development sample controls">
-                    <span><strong id="sample-mode-label">Development data</strong> <span id="sample-mode-count">Temporary stress test</span></span>
-                    <button id="load-sample-button" type="button">Load Sample Galaxy</button>
-                    <button id="remove-sample-button" type="button">Remove Sample Galaxy</button>
+                <aside id="sample-controls" aria-label="Sample controls">
+                    <span><strong id="sample-mode-label">Sample data</strong> <span id="sample-mode-count">Example entries</span></span>
+                    <button id="load-sample-button" type="button">Load Sample</button>
+                    <button id="remove-sample-button" type="button">Leave Sample</button>
                 </aside>
             </details>
             <p id="storage-status" role="status" hidden></p>
@@ -74,7 +74,7 @@
                 <div id="entry-actions" role="menu" aria-label="Item actions" hidden>
                     <button id="edit-entry-button" type="button" role="menuitem">Edit info</button>
                     <button id="move-entry-button" type="button" role="menuitem">Move / change parent</button>
-                    <button id="delete-entry-button" type="button" role="menuitem">Delete</button>
+                    <button id="delete-entry-button" type="button" role="menuitem">Delete entry</button>
                     <button id="rename-constellation-button" type="button" role="menuitem" data-collection-action hidden>Rename</button>
                     <button id="delete-constellation-button" type="button" role="menuitem" data-collection-action hidden>Delete Constellation</button>
                 </div>
@@ -131,11 +131,12 @@
         <div id="entry-context-menu" role="menu" aria-label="Entry actions" hidden>
             <span id="context-entry-name" class="context-entry-name" aria-hidden="true"></span>
             <button type="button" role="menuitem" data-action="create">Add child</button>
-            <button type="button" role="menuitem" data-action="portal">Create Portal...</button>
+            <button type="button" role="menuitem" data-action="files">Add files</button>
             <button type="button" role="menuitem" data-action="constellation">Add to Constellation</button>
-            <button type="button" role="menuitem" data-action="edit">Edit</button>
-            <button type="button" role="menuitem" data-action="delete">Delete</button>
-            <button type="button" role="menuitem" data-action="open-portal" data-portal-action hidden>Open Portal</button>
+            <button type="button" role="menuitem" data-action="portal">Create Portal...</button>
+            <button type="button" role="menuitem" data-action="edit">Edit info</button>
+            <button type="button" role="menuitem" data-action="delete">Delete entry</button>
+            <button type="button" role="menuitem" data-action="open-portal" data-portal-action hidden>Go to original</button>
             <button type="button" role="menuitem" data-action="remove-portal" data-portal-action hidden>Remove Portal</button>
             <div id="constellation-memberships" hidden></div>
         </div>
@@ -194,14 +195,14 @@
     </dialog>
     <dialog id="constellation-picker-dialog" class="collection-dialog" aria-labelledby="constellation-picker-title">
         <form id="constellation-picker-form"><h2 id="constellation-picker-title">Add entry</h2>
-            <label class="visually-hidden" for="constellation-member-search">Search canonical entries</label><input id="constellation-member-search" type="search" placeholder="Search entries…" maxlength="60" autocomplete="off" aria-controls="constellation-picker-results" autofocus>
-            <ul id="constellation-picker-results" aria-label="Canonical entry choices"></ul><p id="constellation-picker-status" role="status" hidden></p>
+            <label class="visually-hidden" for="constellation-member-search">Search entries</label><input id="constellation-member-search" type="search" placeholder="Search entries…" maxlength="60" autocomplete="off" aria-controls="constellation-picker-results" autofocus>
+            <ul id="constellation-picker-results" aria-label="Entry choices"></ul><p id="constellation-picker-status" role="status" hidden></p>
             <div class="form-actions"><button id="close-constellation-picker" type="button">Done</button></div>
         </form>
     </dialog>
     <dialog id="delete-constellation-dialog" class="collection-dialog" aria-labelledby="delete-constellation-title">
         <form id="delete-constellation-form"><h2 id="delete-constellation-title">Delete Constellation?</h2>
-            <p>This removes only the collection. Its entities, Portals and files stay intact.</p><p id="delete-constellation-error" role="status" hidden></p>
+            <p>This removes only the collection. Its entries, Portals and files stay intact.</p><p id="delete-constellation-error" role="status" hidden></p>
             <div class="form-actions"><button id="cancel-delete-constellation" type="button" autofocus>Cancel</button><button type="submit">Delete Constellation</button></div>
         </form>
     </dialog>

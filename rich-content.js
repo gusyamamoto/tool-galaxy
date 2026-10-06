@@ -1,3 +1,33 @@
+// Shared panel overflow interaction for content and collection entries.
+function createPanelItemMenu(actions, label, root) {
+    const menu = document.createElement("details"), summary = document.createElement("summary");
+    menu.className = "content-item-menu"; summary.textContent = "•••";
+    summary.ariaLabel = `Actions for ${label}`; summary.title = summary.ariaLabel;
+    actions.setAttribute("role", "menu"); actions.setAttribute("aria-label", summary.ariaLabel);
+    actions.querySelectorAll("button").forEach(button => button.setAttribute("role", "menuitem"));
+    menu.append(summary, actions);
+    menu.addEventListener("toggle", () => {
+        if (menu.open) {
+            root.querySelectorAll(".content-item-menu[open]").forEach(other => { if (other !== menu) other.open = false; });
+            const bounds = root.closest("#entry-panel").getBoundingClientRect(), point = summary.getBoundingClientRect();
+            menu.classList.toggle("opens-up", point.bottom + actions.offsetHeight + 6 > bounds.bottom && point.top - bounds.top > actions.offsetHeight + 6);
+        }
+    });
+    menu.addEventListener("keydown", event => {
+        if (event.key === "Escape" && menu.open) {
+            event.preventDefault(); event.stopPropagation(); menu.open = false; summary.focus({ preventScroll: true });
+        } else if (["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) {
+            event.preventDefault(); event.stopPropagation(); menu.open = true;
+            const buttons = [...actions.querySelectorAll("button:not(:disabled)")];
+            const current = buttons.indexOf(document.activeElement);
+            const next = event.key === "Home" ? 0 : event.key === "End" ? buttons.length - 1 : current < 0 ? 0 : (current + (event.key === "ArrowDown" ? 1 : -1) + buttons.length) % buttons.length;
+            buttons[next]?.focus({ preventScroll: true });
+        }
+    });
+    menu.addEventListener("focusout", event => { if (event.relatedTarget && !menu.contains(event.relatedTarget)) menu.open = false; });
+    return menu;
+}
+
 // Content presentation over canonical entry content and a replaceable file store.
 class EntryContentInspector {
     constructor({ store, getEntry, save, rollback, onAction, onLayout }) {
@@ -119,32 +149,7 @@ class EntryContentInspector {
         button.addEventListener("click", action); return button;
     }
     itemMenu(actions, label) {
-        const menu = document.createElement("details"), summary = document.createElement("summary");
-        menu.className = "content-item-menu"; summary.textContent = "•••";
-        summary.ariaLabel = `Actions for ${label}`; summary.title = summary.ariaLabel;
-        actions.setAttribute("role", "menu"); actions.setAttribute("aria-label", summary.ariaLabel);
-        actions.querySelectorAll("button").forEach(button => button.setAttribute("role", "menuitem"));
-        menu.append(summary, actions);
-        menu.addEventListener("toggle", () => {
-            if (menu.open) {
-                this.root.querySelectorAll(".content-item-menu[open]").forEach(other => { if (other !== menu) other.open = false; });
-                const bounds = this.root.closest("#entry-panel").getBoundingClientRect(), point = summary.getBoundingClientRect();
-                menu.classList.toggle("opens-up", point.bottom + actions.offsetHeight + 6 > bounds.bottom && point.top - bounds.top > actions.offsetHeight + 6);
-            }
-        });
-        menu.addEventListener("keydown", event => {
-            if (event.key === "Escape" && menu.open) {
-                event.preventDefault(); event.stopPropagation(); menu.open = false; summary.focus({ preventScroll: true });
-            } else if (["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) {
-                event.preventDefault(); event.stopPropagation(); menu.open = true;
-                const buttons = [...actions.querySelectorAll("button:not(:disabled)")];
-                const current = buttons.indexOf(document.activeElement);
-                const next = event.key === "Home" ? 0 : event.key === "End" ? buttons.length - 1 : current < 0 ? 0 : (current + (event.key === "ArrowDown" ? 1 : -1) + buttons.length) % buttons.length;
-                buttons[next]?.focus({ preventScroll: true });
-            }
-        });
-        menu.addEventListener("focusout", event => { if (event.relatedTarget && !menu.contains(event.relatedTarget)) menu.open = false; });
-        return menu;
+        return createPanelItemMenu(actions, label, this.root);
     }
     clearPreviews() { this.generation++; this.urls.forEach(url => URL.revokeObjectURL(url)); this.urls.clear(); }
     renderLists() {

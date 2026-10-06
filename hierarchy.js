@@ -151,7 +151,7 @@ class HierarchySidebar {
         icon.innerHTML = '<svg viewBox="0 0 20 20"><ellipse cx="10" cy="10" rx="8" ry="4" transform="rotate(-30 10 10)"/><ellipse cx="10" cy="10" rx="6" ry="3" transform="rotate(-30 10 10)"/><circle cx="10" cy="10" r="2.5"/></svg>';
         const name = document.createElement("span"); name.className = "tree-name";
         const actions = document.createElement("button"); actions.type = "button"; actions.className = "tree-portal-actions";
-        actions.textContent = "•••"; actions.ariaLabel = "Portal actions"; actions.title = "Portal actions"; actions.setAttribute("aria-haspopup", "menu");
+        actions.textContent = "•••"; actions.ariaLabel = "Portal actions"; actions.title = "Portal actions"; actions.setAttribute("aria-haspopup", "menu");actions.setAttribute("aria-controls","entry-context-menu");actions.setAttribute('aria-expanded','false');
         row.append(slot, icon, name, actions);
         row.addEventListener("click", event => { if (!event.target.closest("button")) this.activatePortal(id); });
         row.addEventListener("focus", () => { this.activeId = id; this.updateTabStops(); });
@@ -172,6 +172,7 @@ class HierarchySidebar {
         const scroll = { top: this.tree.scrollTop, left: this.tree.scrollLeft };
         const focusedRow = document.activeElement?.closest(".hierarchy-row");
         const focused = focusedRow?.dataset.entryId || focusedRow?.dataset.portalId;
+        const focusedAction = document.activeElement?.closest('.tree-add,.tree-portal-actions,.tree-disclosure')?.className;
         this.visibleRows = cosmosHierarchy.visible(this.entries, this.index, this.expanded, this.portals);
         if (!this.visibleRows.some(row => row.id === this.activeId)) this.activeId = this.visibleRows.some(row => row.id === this.selectedId) ? this.selectedId : this.visibleRows[0]?.id;
         const fragment = document.createDocumentFragment();
@@ -190,7 +191,7 @@ class HierarchySidebar {
             if (!portal) row.dataset.role = entry.role;
             row.title = portal ? `Portal to ${entry.name}\n${location}` : `${entry.name} · ${galaxyModel.roles[entry.role].name}`;
             row.querySelector(".tree-name").textContent = entry.name;
-            if (portal) row.querySelector(".tree-portal-actions").ariaLabel = `Portal actions for ${entry.name}`;
+            if (portal) { const actions=row.querySelector(".tree-portal-actions"); actions.ariaLabel=actions.title=`Portal actions for ${entry.name}`; }
             if (!portal) {
                 const disclosure = row.querySelector(".tree-disclosure");
                 disclosure.disabled = !hasChildren; disclosure.ariaLabel = `${this.expanded.has(id) ? "Collapse" : "Expand"} ${entry.name}`;
@@ -199,7 +200,10 @@ class HierarchySidebar {
             fragment.appendChild(row);
         });
         this.tree.replaceChildren(fragment); this.updateTabStops();
-        if (focused && this.tree.contains(this.rows.get(focused))) this.rows.get(focused).focus({ preventScroll: true });
+        if (focused && this.tree.contains(this.rows.get(focused))) {
+            const row=this.rows.get(focused),action=focusedAction?row.querySelector(`.${focusedAction}`):null;
+            (action&&!action.disabled?action:row).focus({ preventScroll: true });
+        }
         this.tree.scrollTop = scroll.top; this.tree.scrollLeft = scroll.left;
     }
     updateTabStops() {
