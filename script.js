@@ -25,12 +25,6 @@ const initialEntries = [
     }
 ];
 
-// Connections use stable IDs so entries can share a display name.
-const initialConnections = [
-    { from: "github", to: "vs-code" },
-    { from: "vs-code", to: "codex" }
-];
-
 const entryRoles = galaxyModel.roles;
 const sampleMode = galaxySample.isRequested(window.location.search);
 if (sampleMode) {
@@ -46,7 +40,7 @@ const graphViewport = document.getElementById("graph-viewport");
 const graphWorld = document.getElementById("graph-world");
 const nodesLayer = document.getElementById("nodes-layer");
 const zoomLevel = document.getElementById("zoom-level");
-const connectionsLayer = document.getElementById("connections");
+const hierarchyLayer = document.getElementById("hierarchy-paths");
 const panel = document.getElementById("entry-panel");
 const panelName = document.getElementById("panel-name");
 const entryActions = document.getElementById("entry-actions");
@@ -81,13 +75,11 @@ const fields = ["entry-name", "entry-description", "entry-category"].map((id) =>
     document.getElementById(id)
 );
 
-// Plain entry/connection data is kept separate from the rendered DOM.
+// Plain entry data is kept separate from the rendered DOM.
 const entries = new Map();
 const portals = new Map();
 // Parent-relative arrangement influences are separate from content.
 let layout = new Map();
-const relationships = [];
-let connections = [];
 // Match partial v1/v2 saved positions to starter templates during loading only.
 // Starter IDs never grant special permissions or deletion protection.
 const starterIds = new Set(initialEntries.map((entry) => entry.id));
@@ -109,13 +101,6 @@ const deletingContentIds = new Set();
 let contextEntryId = null, contextReturnFocus = null;
 let contextPortalId = null, portalTargetId = null, portalParentId = null, portalResultsLimit = 8;
 let searchOpen = false;
-let connectionSourceId = null, hoveredEntryId = null;
-let hoveredConnectionId = null, connectionPointer = null, touchConnectionPreview = null;
-const connectionHint = document.getElementById("connection-hint");
-const connectionPicker = document.getElementById("connection-picker");
-const connectionSearch = document.getElementById("connection-search");
-const connectionResults = document.getElementById("connection-results");
-const connectionStatus = document.getElementById("connection-status");
 let keyboardNavigation = false;
 document.addEventListener("keydown", event => {
     if (event.key === "Tab") keyboardNavigation = true;
@@ -128,7 +113,7 @@ let lastRegionSample = -Infinity, lastRegionFrame = 0;
 let semanticDetail = cosmosView.detail(1);
 const focusRevealIds = new Set();
 const hierarchySidebar = new HierarchySidebar({ host: galaxy, persist: !sampleMode,
-    onNavigate: id => connectionSourceId ? connectEntries(id) : focusEntry(id), onCreate: (id, button) => toggleContentMenu(addMenu, button, id),
+    onNavigate: id => focusEntry(id), onCreate: (id, button) => toggleContentMenu(addMenu, button, id),
     portals, onOpenPortal: id => openPortal(id), onPortalMenu: (id, x, y) => openPortalContextMenu(id, x, y),
     onViewportChange: animate => crudActive || panelChangeActive ? updateGraphViewport() : navigationViewportChanged(animate) });
 const smoothDetail = (scale, start, end) => cosmosView.smooth(scale, start, end);
@@ -159,7 +144,7 @@ const camera = new GraphCamera({
         updateRegionFootprints();
         renderRegions();
         entries.forEach(entry => renderNode(entry, nodes.get(entry.id)));
-        updateConnections();
+        updateHierarchyPaths();
         updateOrbitGuides();
     }
 });
@@ -174,7 +159,7 @@ function pointerInWorld(event) {
 graphViewport.addEventListener("wheel", (event) => {
     event.preventDefault();
     if (activeNodeDrags || pan) return;
-    dismissConnectionHint();
+
     closeContextMenu();
     autoFitPending = false;
     dismissTemporaryReveal();
@@ -190,17 +175,15 @@ graphViewport.addEventListener("pointerdown", (event) => {
     dismissTemporaryReveal();
     camera.stopAnimation();
     const point = { x: event.clientX - graphViewport.getBoundingClientRect().left, y: event.clientY - graphViewport.getBoundingClientRect().top };
-    const hit = connectionSourceId ? null : hitConnection(point, event.pointerType === "touch" ? 10 : 6);
-    if (!hit) dismissConnectionHint();
     // Clouds stay in a non-intercepting paint layer. Hit-test their visible core
     // behind bodies so space remains pannable and a click can focus the region.
-    pan = { id: event.pointerId, x: event.clientX, y: event.clientY, view: { ...camera.view }, galaxyId: galaxyAtScreen(point), connectionId: hit?.link.id, touch: event.pointerType === "touch", moved: false };
+    pan = { id: event.pointerId, x: event.clientX, y: event.clientY, view: { ...camera.view }, galaxyId: galaxyAtScreen(point), moved: false };
     graphViewport.setPointerCapture(event.pointerId);
     graphViewport.classList.add("is-panning");
 });
 graphViewport.addEventListener("pointermove", (event) => {
     if (event.pointerId !== pan?.id) return;
-    if (Math.hypot(event.clientX - pan.x, event.clientY - pan.y) > 3 && !pan.moved) { pan.moved = true; dismissConnectionHint(); }
+    if (Math.hypot(event.clientX - pan.x, event.clientY - pan.y) > 3) pan.moved = true;
     if (!pan.moved) return;
     camera.panTo(pan.view.x + event.clientX - pan.x, pan.view.y + event.clientY - pan.y);
 });
@@ -208,18 +191,10 @@ function endPan(event) {
     if (event.pointerId !== pan?.id) return;
     const clicked = event.type === "pointerup" && !pan.moved;
     const galaxyId = clicked ? pan.galaxyId : null;
-    const connectionId = clicked ? pan.connectionId : null, touch = pan.touch;
     pan = null;
     graphViewport.classList.remove("is-panning");
     if (graphViewport.hasPointerCapture(event.pointerId)) graphViewport.releasePointerCapture(event.pointerId);
-    const point = viewportPoint(event);
-    const hit = connectionId && hitConnection(point, touch ? 10 : 6);
-    if (hit && hit.link.id === connectionId) {
-        if (touch && touchConnectionPreview?.id !== connectionId) showTouchConnection(hit, point);
-        else navigateConnection(hit.link, point);
-    } else if (connectionSourceId) {
-        if (galaxyId) connectEntries(galaxyId); else if (clicked) cancelConnectionMode();
-    } else if (galaxyId) focusEntry(galaxyId);
+    if (galaxyId) focusEntry(galaxyId);
     else if (clicked) closeInspector();
 }
 ["pointerup", "pointercancel", "lostpointercapture"].forEach((type) => graphViewport.addEventListener(type, endPan));
@@ -228,99 +203,6 @@ function galaxyAtScreen(point) {
         .map(([id, r]) => ({ id, distance: ((point.x-r.renderX)/(r.renderWidth*.4)) ** 2 + ((point.y-r.renderY)/(r.renderHeight*.4)) ** 2 }))
         .filter(r => r.distance <= 1).sort((a, b) => a.distance - b.distance)[0]?.id;
 }
-function viewportPoint(event) {
-    const rect = graphViewport.getBoundingClientRect();
-    return { x: event.clientX - rect.left, y: event.clientY - rect.top };
-}
-function connectionSegment(link) {
-    return { start: camera.worldToScreen(link.element.renderFromX, link.element.renderFromY),
-        end: camera.worldToScreen(link.element.renderToX, link.element.renderToY) };
-}
-function hitConnection(point, tolerance = 6) {
-    if (connectionSourceId || activeNodeDrags) return null;
-    const selectedId = selectedNode?.dataset.entryId, hits = [];
-    lines.forEach(link => {
-        if (!link.interactive || link.element.style.display === "none") return;
-        const { start, end } = connectionSegment(link), nearest = connectionView.nearest(point, start, end);
-        if (nearest.distance <= tolerance) hits.push({ link, ...nearest, incident: link.from === selectedId || link.to === selectedId });
-    });
-    // At near-equal crossings prefer the selected entry's link, then a stable
-    // ID; otherwise the nearest line wins, independently of SVG insertion order.
-    return connectionView.pick(hits);
-}
-function setConnectionHover(link) {
-    if (hoveredConnectionId === (link?.id || null)) return;
-    const previous = lines.find(line => line.id === hoveredConnectionId);
-    if (previous) [previous.from, previous.to].forEach(id => nodes.get(id)?.classList.remove("connection-hover-endpoint"));
-    hoveredConnectionId = link?.id || null;
-    if (link) [link.from, link.to].forEach(id => nodes.get(id)?.classList.add("connection-hover-endpoint"));
-}
-function dismissConnectionHint() {
-    const changed = !!hoveredConnectionId;
-    setConnectionHover(null); connectionPointer = null; touchConnectionPreview = null;
-    connectionHint.hidden = true; graphViewport.classList.remove("over-connection");
-    if (changed) updateConnections();
-}
-function positionConnectionHint(point) {
-    const rect = graphViewport.getBoundingClientRect(), bounds = connectionHint.getBoundingClientRect();
-    connectionHint.style.left = `${Math.max(8, Math.min(innerWidth - bounds.width - 8, point.x + rect.left + 12))}px`;
-    connectionHint.style.top = `${Math.max(8, Math.min(innerHeight - bounds.height - 8, point.y + rect.top + 12))}px`;
-}
-function refreshConnectionHint() {
-    if (!hoveredConnectionId || pan || activeNodeDrags) return;
-    const link = lines.find(line => line.id === hoveredConnectionId);
-    if (!link?.interactive || connectionSourceId) { dismissConnectionHint(); return; }
-    const { start, end } = connectionSegment(link);
-    let point;
-    if (touchConnectionPreview) {
-        point = { x: start.x + (end.x - start.x) * touchConnectionPreview.t, y: start.y + (end.y - start.y) * touchConnectionPreview.t };
-    } else if (connectionPointer) {
-        const nearest = connectionView.nearest(connectionPointer, start, end);
-        if (nearest.distance > 6) { dismissConnectionHint(); return; }
-        point = nearest;
-    } else point = { x: (start.x + end.x) / 2, y: (start.y + end.y) / 2 };
-    const text = connectionView.description(link, entries);
-    document.getElementById("connection-hint-text").textContent = text;
-    connectionHint.hidden = false; connectionHint.dataset.touch = String(!!touchConnectionPreview);
-    connectionHint.setAttribute("role", touchConnectionPreview ? "dialog" : "tooltip");
-    connectionHint.setAttribute("aria-label", text);
-    document.getElementById("connection-hint-actions").hidden = !touchConnectionPreview;
-    if (touchConnectionPreview) {
-        const target = entries.get(touchConnectionPreview.targetId);
-        if (!target) { dismissConnectionHint(); return; }
-        document.getElementById("connection-hint-go").textContent = `Go to ${target.name}`;
-    }
-    positionConnectionHint(point);
-}
-function navigateConnection(link, point) {
-    const { start, end } = connectionSegment(link);
-    const targetId = connectionView.destination(link, selectedNode?.dataset.entryId, point, start, end);
-    dismissConnectionHint(); focusEntry(targetId, { semantic: true });
-}
-function showTouchConnection(hit, point) {
-    const { start, end } = connectionSegment(hit.link);
-    touchConnectionPreview = { id: hit.link.id, t: hit.t,
-        targetId: connectionView.destination(hit.link, selectedNode?.dataset.entryId, point, start, end) };
-    connectionPointer = null; setConnectionHover(hit.link); updateConnections();
-}
-graphViewport.addEventListener("pointermove", event => {
-    if (event.pointerType === "touch" || pan || activeNodeDrags || connectionSourceId || touchConnectionPreview) return;
-    if (event.target.closest(".entry-node")) { dismissConnectionHint(); return; }
-    const point = viewportPoint(event), hit = hitConnection(point);
-    connectionPointer = hit ? point : null;
-    if (hit) {
-        setConnectionHover(hit.link); graphViewport.classList.add("over-connection"); updateConnections();
-    } else dismissConnectionHint();
-});
-graphViewport.addEventListener("pointerleave", () => { if (!touchConnectionPreview) dismissConnectionHint(); });
-document.getElementById("connection-hint-go").addEventListener("click", () => {
-    const id = touchConnectionPreview?.targetId; dismissConnectionHint(); if (id) focusEntry(id, { semantic: true });
-});
-document.getElementById("connection-hint-close").addEventListener("click", dismissConnectionHint);
-document.addEventListener("pointerdown", event => {
-    if (!event.target.closest("#connection-hint,#graph-viewport")) dismissConnectionHint();
-});
-
 graphViewport.addEventListener("contextmenu", event => {
     if (event.defaultPrevented) return;
     const rect = graphViewport.getBoundingClientRect();
@@ -330,8 +212,8 @@ graphViewport.addEventListener("contextmenu", event => {
 
 function openContextMenu(id, x, y) {
     if (activeNodeDrags || pan || !entries.has(id)) return;
-    dismissConnectionHint();
-    cancelConnectionMode();
+
+
     const entry = entries.get(id);
     contextReturnFocus = nodes.get(id);
     contextEntryId = id; contextMenu.dataset.entryId = id;
@@ -383,7 +265,6 @@ contextMenu.addEventListener("click", event => {
     if (!action || !entries.has(id)) return;
     closeContextMenu(action === "delete");
     if (action === "create") createChildEntry(id);
-    else if (action === "connect") startConnectionMode(id);
     else if (action === "portal") openPortalDialog(id);
     else if (action === "edit") openEntryForm(entries.get(id));
     else if (action === "delete") requestEntryDelete(id);
@@ -489,8 +370,6 @@ function getGalaxySnapshot() {
     return {
         entries: [...entries.values()].map(({ id, name, description, category, parentId, x, y, appearance, content }) =>
             ({ id, name, description, category, parentId, x, y, ...(appearance ? { appearance } : {}), ...(content ? { content } : {}) })),
-        // Only optional relationships are stored here; hierarchy edges come from parentId.
-        connections: galaxyModel.normalizeConnections(relationships, entries),
         portals: [...portals.values()].map(portal => ({ ...portal })),
         layout: [...layout].map(([id, placement]) => ({ id, ...placement }))
     };
@@ -527,6 +406,7 @@ function initializeGalaxy() {
         }
     }
 
+    if (saved?.needsCanonicalSave) graphNeedsSave = true;
     const records = saved?.entries || [];
     (sampleMode || (saved && !saved.legacy) ? [] : initialEntries).forEach((initialEntry) => {
         const stored = records.find((entry) => entry?.id === initialEntry.id);
@@ -554,11 +434,7 @@ function initializeGalaxy() {
     layout = galaxyModel.normalizeLayout(saved?.layout || [], entries);
     if (!sampleMode && saved?.layout?.some(record => record?.pinned === true)) graphNeedsSave = true;
     [...entries.values()].forEach(createEntryNode);
-    const storedLinks = sampleMode ? saved.connections :
-        (!saved || saved.legacy) ? [...initialConnections, ...(saved?.connections || [])] : saved.connections;
-    relationships.push(...galaxyModel.normalizeConnections(storedLinks, entries));
-    if (!sampleMode && JSON.stringify(storedLinks) !== JSON.stringify(relationships)) graphNeedsSave = true;
-    rebuildConnections();
+    rebuildHierarchyPaths();
 }
 
 loadSampleButton.addEventListener("click", () => {
@@ -577,8 +453,7 @@ removeSampleButton.addEventListener("click", () => {
 function selectEntry(entry, node, { openInspector = true, reframe = false, scroll = true } = {}) {
     closeContentMenus();
     const changingEntry = selectedNode?.dataset.entryId !== entry.id;
-    dismissConnectionHint();
-    if (connectionSourceId && connectionSourceId !== entry.id) cancelConnectionMode();
+
     if (selectedNode) {
         selectedNode.classList.remove("selected");
         selectedNode.setAttribute("aria-pressed", "false");
@@ -598,7 +473,6 @@ function selectEntry(entry, node, { openInspector = true, reframe = false, scrol
     });
     panelAncestry.hidden = !parent;
     actionStatus.hidden = true;
-    refreshInspectorConnections();
     updateHierarchyEmphasis();
     hierarchySidebar.select(entry.id, { scroll });
     if (openInspector && !activeNodeDrags) setInspectorOpen(true, { reframe });
@@ -608,7 +482,7 @@ function selectEntry(entry, node, { openInspector = true, reframe = false, scrol
 
 function setInspectorOpen(open, { reframe = false } = {}) {
     if (activeNodeDrags || (open && !selectedNode)) return;
-    if (!open) { dismissConnectionHint(); cancelConnectionMode(); closeContentMenus(); }
+    if (!open) closeContentMenus();
     if (open && hierarchySidebar.narrow) {
         panelChangeActive = true;
         try { hierarchySidebar.setCollapsed(true); } finally { panelChangeActive = false; }
@@ -639,141 +513,25 @@ function closeInspector(restoreFocus = false) {
 }
 document.getElementById("close-inspector-button").addEventListener("click", () => closeInspector(true));
 
-function refreshInspectorConnections() {
-    const id = selectedNode?.dataset.entryId, list = document.getElementById("panel-connection-list");
-    list.replaceChildren();
-    relationships.filter(link => link.from === id || link.to === id).forEach(link => {
-        const targetId = link.from === id ? link.to : link.from, target = entries.get(targetId);
-        if (!target) return;
-        const row = document.createElement("li"), navigate = document.createElement("button"), remove = document.createElement("button");
-        navigate.type = remove.type = "button";
-        navigate.className = "connection-name"; navigate.textContent = target.name;
-        navigate.title = [...galaxyModel.ancestors(entries, targetId)].reverse().map(entry => entry.name).concat(target.name).join(" / ");
-        navigate.addEventListener("click", () => { cancelConnectionMode(); focusEntry(targetId, { semantic: true }); });
-        remove.className = "remove-connection"; remove.textContent = "×";
-        remove.ariaLabel = `Remove connection to ${target.name}`; remove.title = remove.ariaLabel;
-        remove.addEventListener("click", () => {
-            const index = relationships.indexOf(link);
-            if (index < 0) return;
-            relationships.splice(index, 1); refreshConnectionViews(); saveGalaxy();
-            document.getElementById("connect-entry-button").focus({ preventScroll: true });
-            reportAction(`Connection to ${target.name} removed.`);
-        });
-        row.append(navigate, remove); list.appendChild(row);
-    });
-    list.hidden = !list.children.length;
-    const count = list.children.length, connect = document.getElementById("connect-entry-button");
-    document.getElementById("connection-action-label").textContent = count ? `Connections ${count}` : "Connect";
-    connect.ariaLabel = count ? `View ${count} connections` : "Connect to another entry";
-    connect.setAttribute("aria-controls", count ? "panel-connections" : "connection-picker");
-    if (count) connect.setAttribute("aria-haspopup", "dialog"); else connect.removeAttribute("aria-haspopup");
-    if (!count) { document.getElementById("panel-connections").hidden = true; connect.setAttribute("aria-expanded", "false"); }
-}
-
-function refreshConnectionViews() {
-    // Relationship edits update presentation only: no graph rebuild or reheating.
-    rebuildConnections(); rebuildOrbitGuides(); refreshInspectorConnections(); updateHierarchyEmphasis();
-    if (connectionSourceId) refreshConnectionTargets();
-    if (!panel.hidden) updateGraphViewport();
-}
-
-function startConnectionMode(id) {
-    if (!entries.has(id) || activeNodeDrags || pan || dialog.open || deleteDialog.open) return;
-    dismissConnectionHint();
-    cancelConnectionMode(); closeContextMenu(); dismissTemporaryReveal();
-    selectEntry(entries.get(id), nodes.get(id));
-    connectionSourceId = id;
-    galaxy.classList.add("connection-mode"); nodes.get(id).classList.add("connection-source");
-    connectionPicker.hidden = false; document.getElementById("connect-entry-button").hidden = true;
-    document.getElementById("connection-prompt").textContent = `Connect ${entries.get(id).name} to...`;
-    connectionSearch.value = ""; refreshConnectionTargets();
-    updateGraphViewport(); updateConnections(); connectionSearch.focus({ preventScroll: true });
-}
-
-function cancelConnectionMode(restoreFocus = false) {
-    if (!connectionSourceId) return;
-    nodes.get(connectionSourceId)?.classList.remove("connection-source");
-    connectionSourceId = null; galaxy.classList.remove("connection-mode");
-    connectionPicker.hidden = true; connectionResults.replaceChildren(); connectionSearch.value = "";
-    document.getElementById("connect-entry-button").hidden = false;
-    if (restoreFocus) document.getElementById("connect-entry-button").focus({ preventScroll: true });
-    updateGraphViewport();
-    updateConnections();
-}
-
-function connectEntries(targetId) {
-    if (!connectionSourceId) return;
-    const sourceId = connectionSourceId, error = galaxyModel.validateConnection(entries, relationships, sourceId, targetId);
-    if (error) { connectionStatus.textContent = error; return; }
-    const pair = galaxyModel.connectionKey(sourceId, targetId);
-    relationships.push({ id: `connection:${pair}`, from: sourceId, to: targetId, type: "related" });
-    cancelConnectionMode(true); refreshConnectionViews(); saveGalaxy();
-    reportAction(`Connected to ${entries.get(targetId).name}.`);
-}
-
-function connectionMatches() {
-    return galaxyModel.search(entries, connectionSearch.value).filter(entry => entry.id !== connectionSourceId);
-}
-
-function refreshConnectionTargets() {
-    connectionResults.replaceChildren();
-    const matches = connectionMatches();
-    matches.slice(0, 8).forEach(entry => {
-        const row = document.createElement("li"), button = document.createElement("button"), location = document.createElement("small");
-        button.type = "button"; button.dataset.entryId = entry.id;
-        button.append(document.createTextNode(entry.name));
-        location.textContent = galaxyModel.ancestors(entries, entry.id).reverse().map(parent => parent.name).join(" / ") || "Universe";
-        button.append(location);
-        const duplicate = !!galaxyModel.validateConnection(entries, relationships, connectionSourceId, entry.id);
-        button.disabled = duplicate;
-        if (duplicate) { location.textContent += " · Already connected"; button.title = "Already connected"; }
-        button.addEventListener("click", () => connectEntries(entry.id));
-        row.appendChild(button); connectionResults.appendChild(row);
-    });
-    connectionStatus.textContent = !connectionSearch.value.trim() ? "Click an entry, or search for one. Escape cancels." :
-        !matches.length ? "No matching entries." : `${matches.length} ${matches.length === 1 ? "match" : "matches"}${matches.length > 8 ? " · showing the first 8" : ""}`;
-    if (!panel.hidden) updateGraphViewport();
-}
-document.getElementById("connect-entry-button").addEventListener("click", () => {
-    const button = document.getElementById("connect-entry-button");
-    if (document.getElementById("panel-connection-list").children.length) toggleContentMenu(document.getElementById("panel-connections"), button);
-    else startConnectionMode(selectedNode?.dataset.entryId);
-});
-document.getElementById("new-connection-button").addEventListener("click", () => startConnectionMode(selectedNode?.dataset.entryId));
-document.getElementById("cancel-connection").addEventListener("click", () => cancelConnectionMode(true));
-connectionSearch.addEventListener("input", refreshConnectionTargets);
-connectionSearch.addEventListener("keydown", event => {
-    if (event.key === "ArrowDown") { event.preventDefault(); connectionResults.querySelector("button:not(:disabled)")?.focus(); }
-});
-connectionPicker.addEventListener("submit", event => {
-    event.preventDefault();
-    connectionResults.querySelector("button:not(:disabled)")?.click();
-});
-
 function updateHierarchyEmphasis() {
     const id = selectedNode?.dataset.entryId, selected = physics.particles.get(id);
     galaxy.classList.toggle("has-selection", !!selected);
     const ancestorIds = new Set(selected ? galaxyModel.ancestors(entries, id).map(entry => entry.id) : []);
-    const relatedIds = new Set(ancestorIds), connectedIds = new Set();
+    const relatedIds = new Set(ancestorIds);
     if (selected) {
         physics.children.get(id)?.forEach(node => relatedIds.add(node.id));
         if (selected.parent) physics.children.get(selected.parent.id).forEach(node => relatedIds.add(node.id));
-        connections.filter(link => link.kind === "relationship").forEach(({ from, to }) => {
-            if (from === id) { relatedIds.add(to); connectedIds.add(to); }
-            if (to === id) { relatedIds.add(from); connectedIds.add(from); }
-        });
     }
     nodes.forEach((element, nodeId) => {
         const particle = physics.particles.get(nodeId);
         element.classList.toggle("related", relatedIds.has(nodeId));
-        element.classList.toggle("semantic-connected", connectedIds.has(nodeId));
         element.classList.toggle("selected-ancestor", ancestorIds.has(nodeId));
         element.classList.toggle("in-system", !!selected && particle?.systemId === selected.systemId && !!selected.systemId);
         element.classList.toggle("in-galaxy", !!selected && particle?.galaxyId === selected.galaxyId);
     });
     lines.forEach(({ from, to, element }) => element.classList.toggle("selected", from === id || to === id));
     entries.forEach(entry => renderNode(entry, nodes.get(entry.id)));
-    updateConnections(); updateOrbitGuides();
+    updateHierarchyPaths(); updateOrbitGuides();
 }
 
 // Initial entries and form submissions share all rendering and interactions.
@@ -788,7 +546,6 @@ function createEntryNode(entry) {
     node.dataset.entryId = entry.id;
     node.setAttribute("aria-pressed", "false");
     node.addEventListener("click", event => {
-        if (connectionSourceId) { connectEntries(entry.id); return; }
         if (event.detail && didMove) return;
         if (entry.depth <= 1) focusEntry(entry.id);
         else selectEntry(entry, node);
@@ -807,25 +564,13 @@ function createEntryNode(entry) {
     node.addEventListener("focus", () => {
         // Browsers can restore old focus when a window receives pointer input.
         // Only intentional keyboard navigation should move the camera on focus.
-        if (!crudActive && !activeNodeDrags && !connectionSourceId && keyboardNavigation) focusEntry(entry.id);
+        if (!crudActive && !activeNodeDrags && keyboardNavigation) focusEntry(entry.id);
     });
     node.addEventListener("pointerenter", () => {
-        dismissConnectionHint();
-        hoveredEntryId = entry.id; updateConnections();
         hoveredSystemId = physics.particles.get(entry.id)?.systemId || null;
         updateOrbitGuides();
     });
-    node.addEventListener("pointerleave", event => {
-        // Transfer a body's temporarily revealed line to line-hover context
-        // before removing body hover, avoiding a disappearing target at its edge.
-        if (event.pointerType !== "touch" && !connectionSourceId && !activeNodeDrags) {
-            const point = viewportPoint(event), hit = hitConnection(point);
-            if (hit && (hit.link.from === entry.id || hit.link.to === entry.id)) {
-                connectionPointer = point; setConnectionHover(hit.link);
-            }
-        }
-        if (hoveredEntryId === entry.id) hoveredEntryId = null;
-        updateConnections();
+    node.addEventListener("pointerleave", () => {
         hoveredSystemId = null;
         updateOrbitGuides();
     });
@@ -836,8 +581,7 @@ function createEntryNode(entry) {
     let offsetY = 0;
 
     node.addEventListener("pointerdown", (event) => {
-        dismissConnectionHint();
-        if (connectionSourceId) { didMove = false; return; }
+
         if (event.button !== 0 || dragPointerId !== null || pan) return;
         dismissTemporaryReveal();
         camera.stopAnimation();
@@ -952,7 +696,7 @@ function syncPhysicsGraph({ updateUI = true, reheat = .55 } = {}) {
     galaxyModel.normalizeHierarchy(entries);
     if (updateUI) entries.forEach(entry => updateEntryNode(entry, nodes.get(entry.id)));
     physics.setGraph([...entries.values()].map(({ id, role, depth, parentId, x, y, seedLayout }) =>
-        ({ id, role, depth, parentId, x, y, seedLayout, sizeScale: entryRoles[role].scale })), connections, layout, { reheat });
+        ({ id, role, depth, parentId, x, y, seedLayout, sizeScale: entryRoles[role].scale })), layout, { reheat });
     // Seeding can move fresh particles synchronously. Use the
     // actual coordinates for the first render, save and Add/focus handoff.
     physics.particles.forEach((particle, id) => {
@@ -1042,7 +786,7 @@ function galaxyBounds() {
 }
 
 function fitGalaxy(animate = true) {
-    dismissConnectionHint();
+
     dismissTemporaryReveal();
     updateGraphViewport();
     camera.fitBounds(galaxyBounds(), physics.bounds, { padding: 32, animate });
@@ -1094,7 +838,7 @@ function renderGraph() {
     updateRegionFootprints();
     renderRegions();
     entries.forEach((entry) => renderNode(entry, nodes.get(entry.id)));
-    updateConnections();
+    updateHierarchyPaths();
     updateOrbitGuides();
 }
 
@@ -1149,7 +893,7 @@ function rebuildOrbitGuides() {
         element.setAttribute("aria-hidden", "true");
         element.classList.add("orbit-guide");
         element.dataset.role = node.role;
-        connectionsLayer.prepend(element);
+        hierarchyLayer.prepend(element);
         orbitGuides.push({ id: node.id, element });
     });
 }
@@ -1184,21 +928,16 @@ function updateOrbitGuides() {
     });
 }
 
-function updateConnections() {
+function updateHierarchyPaths() {
     const selected = physics.particles.get(selectedNode?.dataset.entryId);
     const ancestry = selected ? new Set([selected.id, ...galaxyModel.ancestors(entries, selected.id).map(entry => entry.id)]) : new Set();
     lines.forEach(link => {
-        const { id, from, to, element } = link;
+        const { from, to, element } = link;
         const fromEntry = entries.get(from);
         const toEntry = entries.get(to);
         // Selection clears during deletion before the derived edge list rebuilds.
         if (!fromEntry || !toEntry) return;
-        const semantic = element.dataset.kind === "relationship";
-        // Galaxy names are native projections above their cloud; connect to the
-        // selectable name rather than an invisible root underneath the cloud.
-        const anchor = entry => semantic && entry.depth === 0 ?
-            camera.screenToWorld(nodes.get(entry.id).renderX, nodes.get(entry.id).renderY) : entry;
-        const start = anchor(fromEntry), end = anchor(toEntry);
+        const start = fromEntry, end = toEntry;
         if (element.renderFromX !== start.x || element.renderFromY !== start.y ||
             element.renderToX !== end.x || element.renderToY !== end.y) {
             element.setAttribute("x1", start.x);
@@ -1215,38 +954,7 @@ function updateConnections() {
             element.renderToX = end.x;
             element.renderToY = end.y;
         }
-        if (semantic) {
-            const focused = selected && (from === selected.id || to === selected.id);
-            const lineHovered = id === hoveredConnectionId;
-            const hovered = from === hoveredEntryId || to === hoveredEntryId;
-            const endpointsVisible = [from, to].every(id => {
-                const node = nodes.get(id);
-                return node.dataset.semanticHidden !== "true" && node.dataset.culled !== "true";
-            });
-            // Selected links remain available across Galaxies and zoom levels;
-            // unrelated links need two visible endpoints and close detail.
-            const opacity = lineHovered ? .62 : focused ? (camera.view.scale < .45 ? .4 : .5) :
-                hovered && camera.view.scale >= .45 ? .3 : endpointsVisible ? smoothDetail(camera.view.scale, .78, 1) * .055 : 0;
-            const segment = connectionSegment(link);
-            link.interactive = opacity >= .18 && !connectionSourceId &&
-                connectionView.intersects(segment.start, segment.end, physics.bounds);
-            const tabIndex = link.interactive ? 0 : -1;
-            if (element.tabIndex !== tabIndex) element.tabIndex = tabIndex;
-            element.setAttribute("aria-hidden", String(!link.interactive));
-            element.setAttribute("aria-label", connectionView.description(link, entries));
-            const stroke = focused || hovered || lineHovered ? 1 : .7, appearance = `${opacity}:${stroke}:${camera.view.scale}`;
-            if (element.renderAppearance !== appearance) {
-                element.style.opacity = opacity;
-                element.style.display = opacity ? "" : "none";
-                // The world is scaled by an HTML transform outside the SVG. Size
-                // semantic strokes/dashes explicitly in native pixels at every zoom.
-                element.style.strokeWidth = stroke / camera.view.scale;
-                element.style.strokeDasharray = `${3 / camera.view.scale} ${5 / camera.view.scale}`;
-                element.renderAppearance = appearance;
-            }
-            element.classList.toggle("hovered", !!hovered);
-            element.classList.toggle("line-hovered", lineHovered);
-        } else if (element.classList.contains("astronaut-tether")) {
+        if (element.classList.contains("astronaut-tether")) {
             const parentNode = nodes.get(from), childNode = nodes.get(to);
             const endpointsVisible = [parentNode, childNode].every(node => node.dataset.semanticHidden !== "true");
             const revealed = [parentNode, childNode].every(node => node.classList.contains("temporarily-revealed"));
@@ -1262,42 +970,23 @@ function updateConnections() {
             element.classList.toggle("context-link", camera.view.scale > cosmosView.tiers.system && (!!selectedAncestry || !!stretched || physics.dragging.has(to)));
         }
     });
-    refreshConnectionHint();
 }
 
-function rebuildConnections() {
-    dismissConnectionHint();
-    connections = galaxyModel.buildConnections(entries, relationships);
-    connectionsLayer.replaceChildren();
+function rebuildHierarchyPaths() {
+    hierarchyLayer.replaceChildren();
     lines.length = 0;
-    connections.forEach(connection => {
-        const { id, from, to, kind } = connection;
-        const tether = kind === "hierarchy" && entries.get(to).role === "astronaut";
+    galaxyModel.buildHierarchyEdges(entries).forEach(edge => {
+        const { from, to } = edge;
+        const tether = entries.get(to).role === "astronaut";
         const element = document.createElementNS("http://www.w3.org/2000/svg", tether ? "path" : "line");
-        element.classList.add("connection-line");
+        element.classList.add("hierarchy-line");
         if (tether) element.classList.add("astronaut-tether");
-        element.dataset.kind = kind;
-        if (id) element.dataset.connectionId = id;
-        connectionsLayer.appendChild(element);
-        const link = { ...connection, element, interactive: false };
-        if (kind === "relationship") {
-            element.setAttribute("role", "link");
-            element.addEventListener("focus", () => {
-                if (!link.interactive || connectionSourceId) return;
-                connectionPointer = null; setConnectionHover(link); updateConnections();
-            });
-            element.addEventListener("blur", () => { if (hoveredConnectionId === id) dismissConnectionHint(); });
-            element.addEventListener("keydown", event => {
-                if (!link.interactive || connectionSourceId || activeNodeDrags || pan) return;
-                if (event.key !== "Enter" && event.key !== " ") return;
-                event.preventDefault();
-                const { start, end } = connectionSegment(link);
-                navigateConnection(link, { x: (start.x + end.x) / 2, y: (start.y + end.y) / 2 });
-            });
-        } else element.setAttribute("aria-hidden", "true");
-        lines.push(link);
+        element.dataset.kind = "hierarchy";
+        element.setAttribute("aria-hidden", "true");
+        hierarchyLayer.appendChild(element);
+        lines.push({ ...edge, element });
     });
-    updateConnections();
+    updateHierarchyPaths();
 }
 
 function getNewEntryId() {
@@ -1346,7 +1035,7 @@ function beginCrudOperation() {
     autoFitPending = false;
     camera.stopAnimation();
     physics.pause();
-    dismissConnectionHint();
+
 }
 
 function finishCrudOperation() {
@@ -1366,7 +1055,6 @@ function commitCrudMutation(mutate, { selectionId, topologyChanged = true, revea
     if (topologyChanged || selectionId !== previousSelection) focusRevealIds.clear();
     if (!entries.has(selectedNode?.dataset.entryId)) selectedNode = null;
     galaxyModel.normalizeHierarchy(entries);
-    connections = galaxyModel.buildConnections(entries, relationships);
     if (topologyChanged) syncPhysicsGraph({ updateUI: false, reheat: .12 });
     if (!persisted) saveGalaxy(); else graphNeedsSave = false;
     nodes.forEach((node, id) => {
@@ -1378,7 +1066,7 @@ function commitCrudMutation(mutate, { selectionId, topologyChanged = true, revea
         if (!node) createEntryNode(entry);
         else if (entry.id === selectionId || node.dataset.role !== entry.role || Number(node.dataset.depth) !== entry.depth) updateEntryNode(entry, node);
     });
-    rebuildConnections();
+    rebuildHierarchyPaths();
     if (topologyChanged) updateRegionFootprints(true);
     hierarchySidebar.setEntries(entries);
     const entry = entries.get(selectionId);
@@ -1410,7 +1098,7 @@ function restoreCrudFocus() {
 function openEntryForm(entry = null, parentId = null, contextual = false, mode = "info") {
     if (deletionBusy) return;
     beginCrudOperation();
-    cancelConnectionMode();
+
     closeContextMenu();
     closeContentMenus();
     editingId = entry?.id || null;
@@ -1450,8 +1138,6 @@ const addMenu = document.getElementById("add-menu"), moreButton = document.getEl
 let addMenuTargetId = null, addMenuTrigger = null;
 function closeContentMenus() {
     addMenu.hidden = entryActions.hidden = true;
-    document.getElementById("panel-connections").hidden = true;
-    document.getElementById("connect-entry-button").setAttribute("aria-expanded", "false");
     addMenuTrigger?.setAttribute("aria-expanded", "false");
     addMenuTargetId = null; addMenuTrigger = null;
     moreButton.setAttribute("aria-expanded", "false");
@@ -1496,13 +1182,12 @@ document.getElementById("move-entry-button").addEventListener("click", () => {
 });
 entryActions.addEventListener("click", () => closeContentMenus());
 document.addEventListener("pointerdown", event => {
-    if (!event.target.closest("#add-menu,.tree-add,#entry-actions,#entry-more-button,#panel-connections,#connect-entry-button")) closeContentMenus();
+    if (!event.target.closest("#add-menu,.tree-add,#entry-actions,#entry-more-button")) closeContentMenus();
 });
 document.addEventListener("keydown", event => {
-    const connectionsPanel = document.getElementById("panel-connections");
-    const menu = !addMenu.hidden ? addMenu : !entryActions.hidden ? entryActions : !connectionsPanel.hidden ? connectionsPanel : null;
+    const menu = !addMenu.hidden ? addMenu : !entryActions.hidden ? entryActions : null;
     if (!menu) return;
-    const button = menu === addMenu ? addMenuTrigger : menu === connectionsPanel ? document.getElementById("connect-entry-button") : moreButton;
+    const button = menu === addMenu ? addMenuTrigger : moreButton;
     if (event.key === "Escape" || event.key === "Tab") {
         closeContentMenus();
         if (event.key === "Escape") { event.preventDefault(); event.stopImmediatePropagation(); button.focus({ preventScroll: true }); }
@@ -1575,7 +1260,7 @@ form.addEventListener("submit", (event) => {
 });
 
 function clearSelection({ reframe = false } = {}) {
-    dismissConnectionHint();
+
     focusRevealIds.clear();
     selectedNode = null;
     contentInspector.select(null, false);
@@ -1584,7 +1269,6 @@ function clearSelection({ reframe = false } = {}) {
     panelAncestry.replaceChildren();
     panelAncestry.hidden = true;
     panelName.textContent = "Select an entry";
-    refreshInspectorConnections();
     [entryActions, actionStatus].forEach((element) => { element.hidden = true; });
     nodes.forEach((node) => {
         node.classList.remove("related", "selected");
@@ -1605,8 +1289,8 @@ function showDeleteConfirmation(entry, ids) {
     document.getElementById("delete-entry-title").textContent = ids.size > 1 ?
         `Delete “${entry.name}” and everything inside it?` : "Delete entry?";
     document.getElementById("delete-entry-message").textContent = ids.size > 1 ?
-        `This will permanently delete ${ids.size} entries and their connections. This cannot be undone.` :
-        `Delete “${entry.name}” and its connections? This cannot be undone.`;
+        `This will permanently delete ${ids.size} entries. This cannot be undone.` :
+        `Delete “${entry.name}”? This cannot be undone.`;
     document.getElementById("confirm-delete-entry").textContent = ids.size > 1 ? `Delete ${ids.size} entries` : "Delete entry";
 }
 
@@ -1615,7 +1299,7 @@ function requestEntryDelete(id) {
     const entry = entries.get(id);
     if (!entry) return;
     beginCrudOperation();
-    const plan = galaxyModel.deletionPlan(entries, relationships, id, { subtree: true });
+    const plan = galaxyModel.deletionPlan(entries, id, { subtree: true });
     if (plan.error) {
         reportAction(plan.error, { reframe: false }); finishCrudOperation();
         return;
@@ -1636,7 +1320,7 @@ document.getElementById("delete-entry-form").addEventListener("submit", async (e
     event.preventDefault();
     if (deletionBusy) return;
     const entry = entries.get(deletingId);
-    const plan = galaxyModel.deletionPlan(entries, relationships, deletingId, { subtree: true });
+    const plan = galaxyModel.deletionPlan(entries, deletingId, { subtree: true });
     if (!entry || plan.error) {
         deleteDialog.close();
         reportAction(plan.error, { reframe: false }); finishCrudOperation();
@@ -1658,13 +1342,12 @@ document.getElementById("delete-entry-form").addEventListener("submit", async (e
         let metadataWritten = false;
         try {
             await attachmentStore.deleteEntries(plan.ids, () => {
-                const current = galaxyModel.deletionPlan(entries, relationships, entry.id, { subtree: true });
+                const current = galaxyModel.deletionPlan(entries, entry.id, { subtree: true });
                 if (current.error || current.ids.size !== plan.ids.size || [...current.ids].some(id => !plan.ids.has(id))) throw new Error("The branch changed. Cancel and review its new deletion count.");
                 const snapshot = getGalaxySnapshot();
                 if (!sampleMode) {
                     if (!storageAvailable) throw new Error("Saved data cannot be updated in this browser.");
                     galaxyStorage.save({ ...snapshot, entries: snapshot.entries.filter(e => !plan.ids.has(e.id)),
-                        connections: snapshot.connections.filter(link => !plan.ids.has(link.from) && !plan.ids.has(link.to)),
                         portals: galaxyPortals.withoutEntries(snapshot.portals, plan.ids),
                         layout: snapshot.layout.filter(value => !plan.ids.has(value.id)) });
                 }
@@ -1680,8 +1363,6 @@ document.getElementById("delete-entry-form").addEventListener("submit", async (e
     commitCrudMutation(() => {
         portals.forEach((portal, id) => { if (plan.ids.has(portal.targetEntryId) || plan.ids.has(portal.parentEntryId)) portals.delete(id); });
         plan.ids.forEach(id => { entries.delete(id); layout.delete(id); focusRevealIds.delete(id); });
-        relationships.splice(0, relationships.length, ...plan.relationships);
-        if (plan.ids.has(hoveredEntryId)) hoveredEntryId = null;
         if (plan.ids.has(hoveredSystemId)) hoveredSystemId = null;
     }, { selectionId: fallbackId, persisted: hasFiles });
     deleteDialog.close();
@@ -1691,7 +1372,7 @@ document.getElementById("delete-entry-form").addEventListener("submit", async (e
 function openPortal(id) {
     const portal = portals.get(id), targetId = portal?.targetEntryId;
     if (entries.has(targetId)) {
-        focusEntry(targetId, { semantic: true, sourceId: selectedNode?.dataset.entryId || portal.parentEntryId });
+        focusEntry(targetId, { travel: true, sourceId: selectedNode?.dataset.entryId || portal.parentEntryId });
         if (!hierarchySidebar.collapsed) hierarchySidebar.rows.get(targetId)?.focus({ preventScroll: true });
     }
 }
@@ -1762,7 +1443,7 @@ function refreshPortalDestinations() {
 }
 function openPortalDialog(targetId) {
     if (!entries.has(targetId) || deletionBusy || activeNodeDrags || dialog.open || deleteDialog.open || portalDialog.open) return;
-    beginCrudOperation(); cancelConnectionMode(); closeContextMenu(); closeContentMenus();
+    beginCrudOperation();  closeContextMenu(); closeContentMenus();
     portalTargetId = targetId; portalParentId = null; portalResultsLimit = 8;
     document.getElementById("portal-target-name").textContent = entries.get(targetId).name;
     document.getElementById("portal-parent-search").value = "";
@@ -1809,12 +1490,12 @@ document.getElementById("portal-form").addEventListener("submit", event => {
     }
 });
 
-function focusEntry(id, { semantic = false, sourceId = selectedNode?.dataset.entryId } = {}) {
+function focusEntry(id, { travel = false, sourceId = selectedNode?.dataset.entryId } = {}) {
     const entry = entries.get(id);
     if (!entry || activeNodeDrags || pan) return;
     const source = physics.particles.get(sourceId);
-    dismissConnectionHint();
-    cancelConnectionMode();
+
+
     if (hierarchySidebar.narrow) hierarchySidebar.setCollapsed(true);
     closeContextMenu();
     autoFitPending = false;
@@ -1829,7 +1510,7 @@ function focusEntry(id, { semantic = false, sourceId = selectedNode?.dataset.ent
     selectEntry(entry, nodes.get(id), { reframe: false });
     const { left, right, top, bottom } = physics.bounds;
     const particle = physics.particles.get(id);
-    const applyView = view => semantic ? camera.travelTo(view, physics.bounds, {
+    const applyView = view => travel ? camera.travelTo(view, physics.bounds, {
         crossGalaxy: !!source && source.galaxyId !== particle.galaxyId,
         differentSystem: !!source && source.systemId !== particle.systemId
     }) : camera.setView(view);
@@ -1865,7 +1546,7 @@ function refreshSearchResults() {
     const matchIds = new Set(matches.map(entry => entry.id));
     nodes.forEach((node, id) => node.classList.toggle("search-match", matchIds.has(id)));
     entries.forEach(entry => renderNode(entry, nodes.get(entry.id)));
-    updateConnections();
+    updateHierarchyPaths();
     searchResults.hidden = !searchOpen || !searchField.value.trim();
     matches.slice(0, 8).forEach((entry) => {
         const item = document.createElement("li");
@@ -1894,9 +1575,7 @@ searchField.addEventListener("keydown", (event) => {
 });
 document.addEventListener("keydown", (event) => {
     if (event.key === "Escape" && !event.defaultPrevented && !dialog.open && !deleteDialog.open && !portalDialog.open) {
-        if (camera.travel) { camera.stopAnimation(); dismissConnectionHint(); event.preventDefault(); return; }
-        if (!connectionHint.hidden) { dismissConnectionHint(); event.preventDefault(); return; }
-        if (connectionSourceId) { cancelConnectionMode(true); event.preventDefault(); return; }
+        if (camera.travel) { camera.stopAnimation();  event.preventDefault(); return; }
         const dismissingSearch = searchOpen;
         dismissTemporaryReveal();
         if (!dismissingSearch) closeInspector(true);

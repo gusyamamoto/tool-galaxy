@@ -8,21 +8,18 @@ class GalaxyPhysics {
         this.bounds = { left: 60, right: 900, top: 140, bottom: 700 };
         this.baseNodeRadius = 13; this.paused = false; this.settled = true; this.origin = null;
         this.collisionForce = d3.forceCollide(node => node.radius + (node.role === "astronaut" ? 10 : 12)).strength(1).iterations(4);
-        this.linkForce = d3.forceLink().id(node => node.id).distance(link => link.source.radius + link.target.radius + 80)
-            .strength(0); // Semantic relationships are informational, never layout constraints.
         this.galaxyCollision = d3.forceCollide(region => region.radius + 60).strength(.65).iterations(3);
         this.simulation = d3.forceSimulation([]).stop().alphaMin(.002).alphaDecay(.032).velocityDecay(.42)
             .force("follow", () => this.followParents())
             .force("regions", alpha => this.arrangeRegions(alpha))
             .force("orbits", alpha => this.attractToOrbits(alpha))
-            .force("relationships", this.linkForce)
             .force("local", alpha => this.systems.forEach(system => system.repulsion(alpha)))
             .force("siblings", alpha => this.separateSiblings(alpha))
             .force("collision", this.collisionForce)
             .on("tick", () => this.onTick(this.particles))
             .on("end", () => { this.settled = true; this.onSettle(); });
     }
-    setGraph(entries, connections, placements = null, { reheat = .55 } = {}) {
+    setGraph(entries, placements = null, { reheat = .55 } = {}) {
         const next = new Map(), fresh = new Set();
         entries.forEach(entry => {
             let node = this.particles.get(entry.id);
@@ -38,7 +35,7 @@ class GalaxyPhysics {
         this.particles = next;
         this.dragging = new Set([...this.dragging].filter(id => next.has(id)));
         this.origin ||= { x: (this.bounds.left + this.bounds.right) / 2, y: (this.bounds.top + this.bounds.bottom) / 2 };
-        this.linkForce.links([]); this.simulation.nodes([...next.values()]); this.buildSystems();
+        this.simulation.nodes([...next.values()]); this.buildSystems();
         this.ordered.forEach(node => {
             if (fresh.has(node.id) && node.seedLayout) {
                 if (!node.parent) Object.assign(node, this.galaxies.get(node.id).home);
@@ -53,8 +50,6 @@ class GalaxyPhysics {
             }
             node.lastX = node.x; node.lastY = node.y;
         });
-        this.linkForce.links(connections.filter(link => link.kind !== "hierarchy" && next.has(link.from) && next.has(link.to))
-            .map(({ from, to }) => ({ source: from, target: to })));
         this.simulation.alphaTarget(this.dragging.size ? .1 : 0); this.reheat(reheat);
     }
     buildSystems() {

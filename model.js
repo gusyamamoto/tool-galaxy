@@ -86,11 +86,11 @@ const galaxyModel = {
         }
         return ids;
     },
-    deletionPlan(entries, relationships, id, { subtree = false } = {}) {
+    deletionPlan(entries, id, { subtree = false } = {}) {
         const ids = this.subtreeIds(entries, id);
         if (!ids.size) return { ids, error: "This entry no longer exists." };
         if (ids.size > 1 && !subtree) return { ids, error: "Confirm deletion of this entry and everything inside it." };
-        return { ids, error: "", relationships: relationships.filter(link => !ids.has(link.from) && !ids.has(link.to)) };
+        return { ids, error: "" };
     },
     ancestors(entries, id) {
         const result = [], visited = new Set([id]);
@@ -182,39 +182,9 @@ const galaxyModel = {
         }
         return "";
     },
-    connectionKey(from, to) { return JSON.stringify([from, to].sort()); },
-    validateConnection(entries, relationships, from, to) {
-        if (!entries.has(from) || !entries.has(to)) return "Choose an existing entry.";
-        if (from === to) return "Choose a different entry.";
-        const key = this.connectionKey(from, to);
-        if (relationships.some(link => this.connectionKey(link.from, link.to) === key)) return "These entries are already connected.";
-        return "";
-    },
-    normalizeConnections(records, entries) {
-        const result = [], pairs = new Set(), ids = new Set();
-        records.forEach(record => {
-            if (!record || typeof record !== "object") return;
-            const from = record.from ?? record.sourceId, to = record.to ?? record.targetId;
-            if (typeof from !== "string" || typeof to !== "string" || from === to || !entries.has(from) || !entries.has(to)) return;
-            const pair = this.connectionKey(from, to);
-            if (pairs.has(pair)) return;
-            let id = typeof record.id === "string" && record.id.trim() && record.id.length <= 300 ? record.id : `connection:${pair}`;
-            if (ids.has(id)) id = `connection:${pair}`;
-            while (ids.has(id)) id += ":duplicate-id";
-            const type = typeof record.type === "string" && record.type.trim() && record.type.length <= 60 ? record.type : "related";
-            result.push({ id, from, to, type,
-                ...(typeof record.label === "string" && record.label.trim() && record.label.length <= 60 ? { label: record.label } : {}) });
-            pairs.add(pair); ids.add(id);
-        });
-        return result;
-    },
-    buildConnections(entries, relationships) {
-        // A semantic link may relate a parent and child, but never replaces ancestry.
-        const edges = this.normalizeConnections(relationships, entries).map(link => ({ ...link, kind: "relationship" }));
-        entries.forEach(entry => {
-            if (entry.parentId && entries.has(entry.parentId)) edges.push({ from: entry.parentId, to: entry.id, kind: "hierarchy" });
-        });
-        return edges;
+    buildHierarchyEdges(entries) {
+        return [...entries.values()].filter(entry => entry.parentId && entries.has(entry.parentId))
+            .map(entry => ({ from: entry.parentId, to: entry.id, kind: "hierarchy" }));
     },
     search(entries, query) {
         const term = query.trim().toLocaleLowerCase();

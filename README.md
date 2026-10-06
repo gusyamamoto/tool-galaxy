@@ -38,10 +38,9 @@ open `http://localhost:8000`. Use the same browser, address and port for saved d
 - **Contents:** selecting a tree item, body or search result opens a narrow right
   drawer. It starts hidden and can be closed with its ×, Escape or an empty-canvas
   click. Closing preserves selection and tree state; selecting again reopens it.
-  A sticky header shows the name and clickable ancestor-only breadcrumb, followed
-  by **Connect** (or **Connections N**) and **•••**. Files, read-first Notes and
-  Bookmarks follow in that order. Connections N opens a compact header popover
-  with existing destinations and Connect to…; there is no separate permanent list. Metadata is
+  A sticky header shows the name, **•••** beside the title, and a clickable
+  ancestor-only breadcrumb below. Files, read-first Notes and Bookmarks follow in
+  that order. Metadata is
   available under **••• → Edit info**, **Move / change parent**, and **Delete**.
   On mobile it becomes a bottom sheet; opening navigation closes it, and selecting
   from navigation switches back to Contents. Right-click updates selection and
@@ -49,20 +48,20 @@ open `http://localhost:8000`. Use the same browser, address and port for saved d
   Contents measures available space without changing the camera;
   it waits for drag release before opening if a pointer is held.
 - **Body actions:** right-click a body, Galaxy name, cloud or sidebar row for Add child,
-  Connect to..., Edit and Delete. Existing deletion protections and confirmation
+  Create Portal..., Edit and Delete. Existing deletion protections and confirmation
   remain. The menu stays inside the viewport, closes on outside clicks/Escape,
   and does not start dragging or camera focus. Shift+F10 opens it from a focused
   body; arrows/Home/End navigate its actions.
 - **Edit / Move:** Edit info retains name, description and category/label. Move
   reuses the existing single-parent selector. Quick creation only shows Name.
-  Relationship fields are absent. IDs and existing semantic links stay stable.
+  IDs and existing Portal references stay stable.
   Moving a branch changes its descendants' computed depths/roles together.
   Self/descendant parent choices are excluded, with model
   validation also rejecting cycles. Appearance overrides survive ordinary edits.
 - **Delete:** leaves use a simple confirmation. Parents offer an explicit
   **Delete N entries** confirmation naming the entry and everything inside it.
-  Cancel makes no graph/storage changes. All descendants and incident semantic
-  links are removed together; children are never promoted. All visible entries,
+  Cancel makes no graph/storage changes. All descendants and affected Portal
+  references are removed together; children are never promoted. All visible entries,
   including starters and migrated examples, are user-owned and deletable. Legacy
   ownership flags are discarded during normalization; storage stays at version 5.
 - **Search:** in the sidebar, names at every depth, case insensitive. Matching
@@ -97,13 +96,13 @@ positions with restrained 0.12 reheating instead of the initialization 0.55.
 The synchronous mutation pipeline updates model/derived particles, saves, then
 publishes nodes, lines, tree, selection and inspector. Subtree IDs are collected
 iteratively with a visited set, so arbitrary depth/cycles cannot overflow the
-stack. Both connection endpoints are checked against the deleted set. Confirmation
+stack. Portal targets and placement parents are checked against the deleted set. Confirmation
 is revalidated before mutation; a changed subtree displays its new impact and
-requires another explicit click. Unrelated links retain IDs/type/label metadata.
+requires another explicit click. Unrelated Portals retain their stable reference IDs.
 Deleted selection falls back to the nearest surviving ancestor; an unrelated
 selection stays selected and a deleted root clears Contents. Recovery never
 focuses the camera. Surviving expansions and practical tree scroll are retained.
-Normal sidebar/search/connection navigation and explicit Fit keep their existing
+Normal sidebar/search/Portal navigation and explicit Fit keep their existing
 camera behavior. Storage remains version 5, with Sample edits isolated.
 
 Version 5 stores entries with `id`, `parentId`, `name`, `description`, `category`,
@@ -124,16 +123,12 @@ parents/cycles in stored trees are repaired into roots without dropping valid
 records. Invalid records disable saving for that session so the original snapshot
 is preserved. `category` is only an optional text label, separate from ancestry.
 
-Optional, undirected relationships reuse the existing `connections` array and
-`from`/`to` entry-ID references. Records now contain `{id,from,to,type}` with an
-optional `label`; the first workflow defaults to `type:"related"`. Legacy pairs
-receive a deterministic stable ID from their sorted endpoints. Existing valid IDs,
-types and labels survive normalization and saving; self-links, missing endpoints
-and reversed/exact duplicate pairs are rejected. A semantic parent/child connection
-coexists with its derived hierarchy edge. Creation adds no semantic links; content
-edits and parent changes preserve them. Deleting a leaf removes only its incident
-relationships. These additive fields keep the version 5 storage container and
-existing migration/backups; `parentId` and layout records are unchanged.
+Legacy pairwise Connection records are ignored at the storage boundary and never
+enter the active model. A normal save clears those records. Storage stays at
+version 5: saves retain only `connections: []` as a compatibility slot for older
+readers; this is not application state. Existing exact raw migration backups are
+left untouched. Hierarchy, Portals, layout, notes, bookmarks and attachment metadata
+remain intact. IndexedDB storage is unchanged.
 
 ## Portals v1
 
@@ -154,11 +149,11 @@ Global search remains canonical-only to avoid duplicate results.
 
 Portal rows use a small accretion-ring icon, the original's current name, and a
 tooltip with its real location. They have no celestial role, expand chevron or
-folder +. Click/Enter opens the original via the existing semantic `focusEntry`
+folder +. Click/Enter opens the original via the existing animated `focusEntry`
 travel path, including cross-Galaxy context zoom and reduced-motion behavior.
 Selection, ancestor expansion, Content panel and breadcrumbs all resolve to the
 original. Rename/reparent updates labels and locations through stable entry IDs.
-No additional Cosmos node, physics particle or semantic relationship is created.
+No additional Cosmos node or physics particle is created.
 
 Right-click a Portal, or use its row action button on touch/keyboard, for **Open
 Portal** and **Remove Portal**. Removal changes only that reference. Creation and
@@ -210,7 +205,7 @@ internal `links` model, stable IDs, optional titles and Add/Edit/Remove handlers
 Their compact editor accepts ordinary domains such as `google.com`, normalizing
 them to HTTPS, and permits only valid HTTP/HTTPS destinations. Text and URLs
 are never interpreted as HTML. No remote metadata, thumbnails or favicons are
-fetched, and content links never create semantic relationships.
+fetched, and bookmarks remain ordinary entry content.
 
 Entry/content metadata uses the existing version-5 localStorage snapshot. Older
 entries without `content` still load unchanged; no destructive migration or
@@ -268,79 +263,25 @@ metadata/binary quota failure and rollback, rename/reparent, explicit removal,
 subtree/unreferenced cleanup, upload ownership/deletion races, ignored file drops,
 camera stability, mobile layout, and real metadata/binary Sample isolation.
 `python tests/browser-check.py --organizer-only --screenshots` adds contextual +,
-name-only creation through deep Astronauts, breadcrumbs, header Connect/More,
+name-only creation through deep Astronauts, breadcrumbs and item management,
 read-first Notes/Bookmarks, domain normalization and camera-stable content actions.
 `python tests/browser-check.py --workspace-only --screenshots` also checks the
 Search and row + actions, aligned deep tree, Name label spacing and keyboard submission,
 quiet content sections, file/bookmark overflow actions and responsive presentation.
 `python tests/browser-check.py --row-actions-only --screenshots` checks row-specific
 Add targeting without navigation, hover/focus/touch access, deep indentation and
-the Connections/More header alignment and existing management handlers.
+the title/More header alignment and existing management handlers.
 
-## Semantic connections
+## Navigation travel
 
-Choose **Connect to...** from a body's or tree row's context menu, or **Connect**
-in the Content panel header. The target picker prompts “Connect [name] to...” and highlights the source.
-Click a visible body or Galaxy cloud/name to relate it; body dragging is suppressed
-until target selection ends. The source and already-connected targets are rejected.
-Escape, Cancel, the inspector's × or an empty-space click cancel. Space remains
-pannable and wheel zoom remains available. Target search reaches all entries,
-including hidden bodies and other Galaxies; results show ancestry to distinguish
-duplicate names, with already-connected results disabled. Enter chooses the first
-eligible match; Arrow Down reaches result buttons. Sidebar row activation can also
-choose a target. No type picker or constellation UI is included.
-
-The header Connections N popover lists connected names with navigation and a
-compact × removal action, plus Connect to… for the existing target picker. With
-no connections, the header Connect action opens that picker directly. Editing connections updates the
-presentation and saves immediately without rebuilding/reheating physics. All
-semantic force strengths are zero, including links within a single solar system.
-
-Semantic lines are thin dashed SVG lines, distinct from faint solid hierarchy
-cues and orbital guides. Strokes/dashes compensate for the HTML world transform,
-remaining 1px for selected/hovered links and 0.7px otherwise at any zoom.
-Their world-space endpoints update on every physics tick,
-drag frame and camera change. Galaxy endpoints follow the projected Galaxy names.
-Universe and system views hide unrelated links; close zoom fades them up to only
-5.5% opacity when both endpoints are visible onscreen. Hover reveals incident
-links at 30% opacity from Galaxy zoom; selection reveals direct links at 50%
-(40% in Universe view), including cross-Galaxy links. Connected visible targets
-receive a restrained outline/name emphasis. Body semantic hiding is unchanged,
-and inspector navigation can focus a hidden or distant endpoint. Unrelated bodies
-retain at least 72% contextual opacity.
-
-Semantic lines have presentation-only screen-space hit-testing: a 6px radius on
-desktop and 10px on touch, including gaps between dashes. The rendered stroke
-stays 1px. Only lines at least 18% opaque and intersecting the usable viewport are
-interactive; hidden and 5.5% background links leave no pointer or keyboard traps.
-Bodies/labels take priority over line hits. At crossings, nearest half-pixel
-distance wins, then an incident link of the selected entry, then stable ID.
-Hovering shows endpoint names and the relationship label/type in a compact,
-viewport-clamped tooltip, emphasizing the line and both bodies without dimming
-unrelated content. Leaving clears the emphasis. Pointer hit-testing and tooltip
-anchors use current projected geometry on every movement/physics/camera update.
-
-Clicking a line focuses the opposite endpoint when one endpoint is selected;
-otherwise it focuses the endpoint nearest the pointer (exact ties choose `from`).
-It uses the same semantic `focusEntry` path as inspector rows, updating Details and
-the expanded tree. Nearby routes ease directly in 450–650ms without context zoom.
-Distance is measured in usable viewport lengths at the current/destination scale;
-different-system/distant same-Galaxy routes take 800–1100ms, and cross-Galaxy routes
-take 1200–1500ms, with durations capped even for extreme distances.
-Longer routes zoom out during the first 32%, pan continuously through spatial
-context, and zoom into the normal target hierarchy during the final 38%. A quintic
-smootherstep gives the pan a slow–fast–slow velocity profile. Zoom interpolates
-logarithmic scale with the same easing, keeping proportional size changes smooth
-across large zoom ranges. The phases overlap without camera jumps. Normal tree/body
-focus retains its faster behavior. Wheel, pan, body drag and Escape cancel travel
-at the visible view; reduced motion uses immediate focus without the sequence.
-Dragging space from a line still pans. Wheel/Fit/navigation
-dismiss hover context. Touch first previews endpoint names and a **Go to [name]**
-action; that action or a second tap on the same line navigates. The preview can
-be closed or dismissed by another canvas/control interaction. Visible eligible
-lines have accessible labels and support Tab then Enter/Space; inspector rows
-remain the keyboard navigation alternative. No connection, hierarchy, layout or
-storage fields change for this refinement.
+Portals use the generic `focusEntry(..., {travel:true})` and `GraphCamera.travelTo`
+path. Nearby routes take about 450–650ms, different systems about 800–1100ms,
+and cross-Galaxy routes about 1200–1500ms, capped and distance-aware. Longer routes
+depart, zoom out for context, travel, then approach and zoom into the canonical
+target. Quintic smootherstep provides slow–fast–slow movement and logarithmic
+zoom interpolation keeps phases continuous. Wheel, pan, body drag and Escape
+interrupt at the visible view. Reduced motion uses immediate focus. Ordinary
+hierarchy navigation retains its existing focus behavior.
 
 Descriptions may be empty at every hierarchy depth. Add/Edit trim to an empty
 string, persisted-record normalization accepts empty/missing/null descriptions
@@ -369,7 +310,7 @@ the appropriate backup too.
 records remain readable by compatibility normalization. Relative influences are
 independent of camera and travel with a parent naturally. Reparenting clears that
 entry's obsolete influence while preserving descendants' valid local influences.
-Content, ancestry, appearance and semantic relationships are unaffected by normalization.
+Content, ancestry, appearance and Portals are unaffected by normalization.
 
 The entry/storage schema remains version 5. Navigation adds only the optional
 `galaxy:navigation-ui` preference key containing sidebar width and collapse state.
@@ -453,7 +394,7 @@ decay 0.12 and velocity decay 0.6. Settled/hidden/dialog states stop or pause wo
 ## Native rendering, semantic zoom and appearance
 
 Bodies and names are projected into unscaled screen layers. Dimensions and fonts
-are repainted at native resolution during zoom. Only SVG connections/orbit guides
+are repainted at native resolution during zoom. Only SVG hierarchy paths/orbit guides
 use the scaled world transform. Existing defined spherical shading/seeded texture
 and restrained Sun glow remain. Procedural Galaxy SVG regions are built once per
 identity; their names stay in the native text layer.
@@ -493,7 +434,7 @@ lower fitted scale. Galaxy names remain native,
 14–16px, high contrast and anchored over their cloud.
 Offscreen bodies/clouds are hidden from paint and compositor hints; their world
 positions and physics continue normally. Invisible hierarchy lines use
-`display:none` while retaining their derived connections and coordinates.
+`display:none` while retaining their derived hierarchy edges and coordinates.
 Surface noise fields use seeded procedural textures, generated lazily in idle
 time for visible natural bodies from 68% zoom. Reusable 64–1024px tiers match physical display
 pixels; grain, terrain and stable orientation share one overlay. This avoids filter rasterization
@@ -526,11 +467,7 @@ manual wheel zoom, panning, dragging, Fit, or search dismissal. Search text and
 selection are preserved. Reopening search or focusing again can reveal a deep
 entry again. Ordinary
 hierarchy lines are invisible. Deep selected ancestry, stretched selected
-branches and dragging may show very subtle context lines. Semantic relationships
-keep explicit lines. Orbit guides show only for a selected/hovered system above
-0.58, fading to full subtle opacity by 0.78; close selection may add the immediate parent/child band. At most three
-guides are shown, never whole-Universe concentric rings. There are no decorative
-partial orbit fragments.
+branches and dragging may show very subtle context lines.
 
 `appearance.js` hashes stable IDs (FNV-1a) and resolves optional overrides:
 
@@ -568,11 +505,11 @@ Astronaut parent-child edges render as low-contrast, solid quadratic SVG tethers
 with deterministic slack (one path per existing hierarchy edge). They update
 from live world endpoints on physics, drag and camera changes, with a 0.65px
 screen-space stroke. They are noninteractive and remain hierarchy edges, separate
-from dashed semantic relationships. Astronaut bodies fade in at 0.74–0.86,
+from ordinary hierarchy context cues. Astronaut bodies fade in at 0.74–0.86,
 labels at 0.82–0.96 and tethers at 0.78–0.96. Search/focus can temporarily reveal
 the required ancestry and tethers at far zoom; ordinary zoom-out hides it again.
 Existing tiers and other body fades remain unchanged. Stored depth-5+ entries
-automatically derive Astronaut roles; schema 5, IDs, parents, connections, content
+automatically derive Astronaut roles; schema 5, IDs, parents, Portals, content
 and appearance metadata stay intact without a new migration.
 
 The model already preserves `appearance` for a future small Edit Appearance UI:
@@ -586,8 +523,7 @@ independent of subscription/features. No customization UI is added yet.
 **Load Sample Galaxy** opens 187 temporary entries: four Galaxies (Work, Food,
 Travel, Personal), eight Suns, 24 Planets, 48 Moons, 96 Satellites and seven
 Astronauts, including a depth-eight recipe branch with several Astronaut siblings
-and eight semantic links demonstrating technology,
-recipes/ingredients, travel, business and cross-Galaxy interests. Normal interactions use the same model/renderer/
+and three useful Portal references. Normal interactions use the same model/renderer/
 physics. Sample mode neither reads nor writes real saved data. Remove Sample or
 refresh returns to it; the activation query is removed immediately.
 
@@ -598,14 +534,14 @@ Run isolated real-browser regression/visual checks:
 at every role and deeper Astronaut, reload/clearing, Add/Edit/Delete camera state
 at Universe/Galaxy/close zoom with sidebar and inspector open/closed, deferred Fit
 cancellation, same-scale offscreen reveal, metadata edit physics stability,
-save-before-sidebar order, reparented connections, counted subtree confirmation/
-Cancel, deep incident-link cleanup, selection/tree/inspector recovery, stale
+save-before-sidebar order, reparented hierarchy, counted subtree confirmation/
+Cancel, Portal/attachment cleanup, selection/tree/inspector recovery, stale
 confirmation, starter/migrated branches, persistence, explicit Fit and Sample isolation.
 
 `python tests/browser-check.py --astronaut-only --screenshots` checks contextual
 creation through depth eight, sidebar icons, sibling/cluster clearance, curved
 tether geometry through drag/zoom, search reveal and focus, old deep Satellite
-metadata on refresh, stable poses, semantic line navigation and persistence,
+metadata on refresh, stable poses, Portal navigation and persistence,
 Sample isolation, mobile presentation and projection cost.
 `python tests/browser-check.py --screenshots`. The standard-library harness
 launches headless Chrome/Edge with a temporary profile and local HTTP server;
@@ -622,37 +558,12 @@ Use `--extremes-only` to isolate the two extreme-return cases and their recovery
 `python tests/browser-check.py --migration-only` additionally exercises a full
 saved v4 family with soft positions/pins, invalid records and future-version
 overwrite protection.
-`python tests/browser-check.py --connections-only --screenshots` checks actual
-right-click and pointer target selection, search across Galaxies, self/reverse
-duplicate rejection, cancellation, inspector navigation/removal, refresh and
-endpoint deletion. It also checks sample isolation, zero physics effects,
-moving/dragged/camera-aligned endpoints, Galaxy/Sun/deep endpoints, contextual
-line visibility, native motion cost and mobile target search. Screenshots show
-the picker, search, selected Codex, far zoom, cross-Galaxy links and mobile sheet.
-`python tests/browser-check.py --connections-performance-only` repeats the full
-regression's deep-focus motion scene in isolation, comparing normal rendering
-with semantic line painting disabled and enforcing the existing frame budget.
-Add `--baseline-head` to serve a temporary snapshot of the committed app for the
-same comparison, without modifying workspace files. Headless frame budgets can
-fail even on that baseline; report this separately from functional checks and
-verify smooth motion on a native display.
 `python tests/browser-check.py --cloud-fade-only --screenshots` checks early fade
 on desktop, laptop and narrow canvas with sidebar/inspector open, strong Universe
 clouds, faint system clouds, independent Galaxy identity, smooth actual zoom in/
 out, translation stability and cached pixel reuse. It retains comparison views
 and measured opacity values.
 
-`python tests/browser-check.py --travel-only --screenshots` checks native blank
-description submission at every depth, clearing during Edit, reload, local/system/
-Galaxy travel from rows and lines, arrival visibility, reverse routes, manual
-wheel/pan/drag/Escape interruption and reduced motion. It retains departure,
-context and arrival screenshots and camera traces.
-
-`python tests/browser-check.py --connection-lines-only --screenshots` checks
-actual line hover/click gestures, label wording, invisible hit margins, endpoint
-emphasis, tooltip clamping, opposite/nearest navigation, inspector-row parity,
-cross-Galaxy focus, wheel resumption, hidden-link pointer/keyboard safety, keyboard
-activation, moving geometry and mobile touch preview/action/repeat-tap behavior.
 `python tests/browser-check.py --navigation-only --screenshots` checks all three
 contextual creation paths through depth six, synchronized tree/body/search
 selection, branch/sidebar collapse, pointer/keyboard resizing, viewport Fit,
@@ -664,7 +575,7 @@ contextual creation paths, drag camera stability, management More, desktop/lapto
 layouts and panel-aware Fit. Its screenshots include the clean and immersive canvas.
 The migration-only suite pauses fixtures before their first physics frame to
 verify exact initial coordinates, then exercises normal save, v4/v5 pin normalization,
-semantic links through content edits/reparenting/reload, and corrupt/future-data safeguards.
+Portal references through content edits/reparenting/reload, and corrupt/future-data safeguards.
 Motion/settling assertions remain in the physics and full browser regressions.
 `python tests/browser-check.py --performance-only` profiles active/idle rendering,
 display-scale changes and individual paint layers using the isolated sample.
@@ -711,13 +622,15 @@ remove the temporary sample, then confirm your saved hierarchy and sidebar prefe
 are restored.
 For the Content panel, upload an image, PDF and text file; open each, edit and
 cancel a note, add `google.com` as a bookmark, then refresh. Check ancestor
-breadcrumbs, Connect, Edit info and Move, camera stability during content edits,
+breadcrumbs, Edit info and Move, camera stability during content edits,
 and scrolling/closing the mobile sheet. Confirm file and subtree deletion cleanup.
 At extreme fitted zoom on narrow screens, temporarily revealed search labels can
 crowd together; focus and the ancestry breadcrumbs restore local reading.
-Before committing connections, try a visible target and a distant search target
-with your own data, including duplicate names. Cancel with Escape/empty space,
-refresh, navigate/remove a connection in Details, and inspect the Sample at far
-and close zoom. Check cross-Galaxy line contrast and mobile result scrolling on
-your display. Connections do not provide richer relationship classification or
-named collections yet.
+
+`python tests/browser-check.py --no-connections-only --screenshots` verifies legacy
+record disposal, no pairwise UI/lines, retained tethers and hierarchy zoom, Portal
+travel/interruption, canonical content, subtree Portal/file cleanup, camera
+stability and Sample isolation. Before committing, open existing saved data with
+legacy records; follow a cross-Galaxy Portal, interrupt travel, edit content,
+delete a subtree, refresh, and check the mobile header and Astronaut tethers.
+Constellations are deferred to a separate feature branch.

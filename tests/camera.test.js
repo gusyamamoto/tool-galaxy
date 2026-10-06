@@ -163,7 +163,7 @@ test("focus completion fires once after settling, including reduced motion, and 
 });
 
 const travelViewport = {left: 260, right: 1100, top: 40, bottom: 900};
-test('nearby semantic travel eases without a context zoom and ends at the exact focus view', () => {
+test('nearby navigation travel eases without a context zoom and ends at the exact focus view', () => {
     const {camera, step, settle} = makeCamera();
     const destination = {x: -160, y: 40, scale: 1.2};
     camera.travelTo(destination, travelViewport);
@@ -229,7 +229,7 @@ test('wheel, pan, drag cancellation and ordinary focus replace travel from its v
     }
 });
 
-test('reduced motion skips semantic travel, including when preference changes mid-route', () => {
+test('reduced motion skips navigation travel, including when preference changes mid-route', () => {
     const {camera,step,frames} = makeCamera();
     const destination = {x:-2000,y:-1000,scale:1.7};
     camera.travelTo(destination,travelViewport,{crossGalaxy:true});step();step();
@@ -240,7 +240,7 @@ test('reduced motion skips semantic travel, including when preference changes mi
     assert.equal(camera.travel,null);assert.equal(frames.size,0);near(camera.view.x,10);
 });
 
-test('semantic travel accelerates through the middle and uses proportional continuous zoom', () => {
+test('navigation travel accelerates through the middle and uses proportional continuous zoom', () => {
     const {camera,step} = makeCamera();
     camera.travelTo({x:-2200,y:-1500,scale:1.7},travelViewport,{crossGalaxy:true});
     const {duration,startScale,contextScale} = camera.travel;
