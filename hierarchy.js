@@ -1,14 +1,17 @@
 // Disposable navigation state over the existing generic tree. No graph writes.
 const cosmosHierarchy = {
-    index(entries) {
+    index(entries, portals = new Map()) {
         const children = new Map([...entries.keys()].map(id => [id, []])), roots = [];
         entries.forEach(entry => {
             if (children.has(entry.parentId)) children.get(entry.parentId).push(entry.id);
             else roots.push(entry.id);
         });
+        portals.forEach(portal => {
+            if (entries.has(portal.parentEntryId) && entries.has(portal.targetEntryId)) children.get(portal.parentEntryId).push(portal.id);
+        });
         return { children, roots };
     },
-    visible(entries, index, expanded) {
+    visible(entries, index, expanded, portals = new Map()) {
         const rows = [], visited = new Set();
         const push = (ids, level, stack) => {
             for (let i = ids.length - 1; i >= 0; i--) stack.push({ id: ids[i], level, position: i + 1, size: ids.length });
@@ -16,9 +19,11 @@ const cosmosHierarchy = {
         const stack = []; push(index.roots, 1, stack);
         while (stack.length) {
             const row = stack.pop();
-            if (visited.has(row.id) || !entries.has(row.id)) continue;
+            const portal = portals.get(row.id);
+            if (visited.has(row.id) || (!entries.has(row.id) && !portal)) continue;
+            if (portal) { row.kind = "portal"; row.parentId = portal.parentEntryId; }
             visited.add(row.id); rows.push(row);
-            if (expanded.has(row.id)) push(index.children.get(row.id), row.level + 1, stack);
+            if (!portal && expanded.has(row.id)) push(index.children.get(row.id), row.level + 1, stack);
         }
         return rows;
     },
@@ -32,8 +37,8 @@ const cosmosHierarchy = {
 };
 
 class HierarchySidebar {
-    constructor({ host, onNavigate, onCreate, onViewportChange, persist = true }) {
-        Object.assign(this, { host, onNavigate, onCreate, onViewportChange, persist });
+    constructor({ host, onNavigate, onCreate, onOpenPortal, onPortalMenu, portals = new Map(), onViewportChange, persist = true }) {
+        Object.assign(this, { host, onNavigate, onCreate, onOpenPortal, onPortalMenu, portals, onViewportChange, persist });
         this.sidebar = document.getElementById("hierarchy-sidebar");
         this.tree = document.getElementById("hierarchy-tree");
         this.toggle = document.getElementById("sidebar-toggle");
@@ -104,10 +109,10 @@ class HierarchySidebar {
         const scroll = { top: this.tree.scrollTop, left: this.tree.scrollLeft };
         this.entries = entries;
         const previousRoots = new Set(this.index.roots);
-        this.index = cosmosHierarchy.index(entries);
+        this.index = cosmosHierarchy.index(entries, this.portals);
         this.index.roots.forEach(id => { if (!previousRoots.has(id)) this.expanded.add(id); });
         this.expanded.forEach(id => { if (!entries.has(id)) this.expanded.delete(id); });
-        this.rows.forEach((row, id) => { if (!entries.has(id)) { row.remove(); this.rows.delete(id); } });
+        this.rows.forEach((row, id) => { if (!entries.has(id) && !this.portals.has(id)) { row.remove(); this.rows.delete(id); } });
         document.getElementById("hierarchy-count").textContent = `${entries.size} entries`;
         this.render();
         this.tree.scrollTop = scroll.top; this.tree.scrollLeft = scroll.left;
@@ -135,27 +140,59 @@ class HierarchySidebar {
         add.addEventListener("click", event => { event.stopPropagation(); this.onCreate(id, add); });
         this.rows.set(id, row); return row;
     }
+    createPortalRow(id) {
+        const row = document.createElement("div");
+        row.className = "hierarchy-row portal-row"; row.dataset.portalId = id; row.setAttribute("role", "treeitem");
+        const slot = document.createElement("span"); slot.className = "tree-disclosure-slot"; slot.ariaHidden = "true";
+        const icon = document.createElement("span"); icon.className = "tree-portal-icon"; icon.ariaHidden = "true";
+        icon.innerHTML = '<svg viewBox="0 0 20 20"><ellipse cx="10" cy="10" rx="8" ry="4" transform="rotate(-30 10 10)"/><ellipse cx="10" cy="10" rx="6" ry="3" transform="rotate(-30 10 10)"/><circle cx="10" cy="10" r="2.5"/></svg>';
+        const name = document.createElement("span"); name.className = "tree-name";
+        const actions = document.createElement("button"); actions.type = "button"; actions.className = "tree-portal-actions";
+        actions.textContent = "•••"; actions.ariaLabel = "Portal actions"; actions.title = "Portal actions"; actions.setAttribute("aria-haspopup", "menu");
+        row.append(slot, icon, name, actions);
+        row.addEventListener("click", event => { if (!event.target.closest("button")) this.activatePortal(id); });
+        row.addEventListener("focus", () => { this.activeId = id; this.updateTabStops(); });
+        actions.addEventListener("focus", () => { this.activeId = id; this.updateTabStops(); });
+        actions.addEventListener("click", event => {
+            event.stopPropagation(); const rect = actions.getBoundingClientRect();
+            this.onPortalMenu(id, rect.right, rect.bottom);
+        });
+        this.rows.set(id, row); return row;
+    }
+    activatePortal(id) {
+        const row = this.rows.get(id);
+        row?.classList.add("portal-activated");
+        setTimeout(() => row?.classList.remove("portal-activated"), 300);
+        this.onOpenPortal(id);
+    }
     render() {
         const scroll = { top: this.tree.scrollTop, left: this.tree.scrollLeft };
-        const focused = document.activeElement?.closest(".hierarchy-row")?.dataset.entryId;
-        this.visibleRows = cosmosHierarchy.visible(this.entries, this.index, this.expanded);
+        const focusedRow = document.activeElement?.closest(".hierarchy-row");
+        const focused = focusedRow?.dataset.entryId || focusedRow?.dataset.portalId;
+        this.visibleRows = cosmosHierarchy.visible(this.entries, this.index, this.expanded, this.portals);
         if (!this.visibleRows.some(row => row.id === this.activeId)) this.activeId = this.visibleRows.some(row => row.id === this.selectedId) ? this.selectedId : this.visibleRows[0]?.id;
         const fragment = document.createDocumentFragment();
-        this.visibleRows.forEach(({ id, level, position, size }) => {
-            const entry = this.entries.get(id), row = this.rows.get(id) || this.createRow(id);
-            const hasChildren = this.index.children.get(id).length > 0;
+        this.visibleRows.forEach(({ id, level, position, size, kind }) => {
+            const portal = kind === "portal" ? this.portals.get(id) : null;
+            const entry = this.entries.get(portal ? portal.targetEntryId : id), row = this.rows.get(id) || (portal ? this.createPortalRow(id) : this.createRow(id));
+            const hasChildren = !portal && this.index.children.get(id).length > 0;
             row.style.setProperty("--tree-indent", `${(level - 1) * 14}px`);
             row.setAttribute("aria-level", level); row.setAttribute("aria-posinset", position); row.setAttribute("aria-setsize", size);
-            row.setAttribute("aria-label", `${entry.name}, ${galaxyModel.roles[entry.role].name}`);
+            const location = portal ? galaxyModel.ancestors(this.entries, entry.id).reverse().map(parent => parent.name).join(" › ") || "Universe" : "";
+            row.setAttribute("aria-label", portal ? `Portal to ${entry.name}, ${location}` : `${entry.name}, ${galaxyModel.roles[entry.role].name}`);
             if (hasChildren) row.setAttribute("aria-expanded", String(this.expanded.has(id))); else row.removeAttribute("aria-expanded");
             row.classList.toggle("is-selected", id === this.selectedId);
             row.classList.toggle("is-search-match", this.searchMatches.has(id));
             row.setAttribute("aria-selected", String(id === this.selectedId));
-            row.dataset.role = entry.role; row.title = `${entry.name} · ${galaxyModel.roles[entry.role].name}`;
+            if (!portal) row.dataset.role = entry.role;
+            row.title = portal ? `Portal to ${entry.name}\n${location}` : `${entry.name} · ${galaxyModel.roles[entry.role].name}`;
             row.querySelector(".tree-name").textContent = entry.name;
-            const disclosure = row.querySelector(".tree-disclosure");
-            disclosure.disabled = !hasChildren; disclosure.ariaLabel = `${this.expanded.has(id) ? "Collapse" : "Expand"} ${entry.name}`;
-            const add = row.querySelector(".tree-add"); add.ariaLabel = add.title = `Add to ${entry.name}`;
+            if (portal) row.querySelector(".tree-portal-actions").ariaLabel = `Portal actions for ${entry.name}`;
+            if (!portal) {
+                const disclosure = row.querySelector(".tree-disclosure");
+                disclosure.disabled = !hasChildren; disclosure.ariaLabel = `${this.expanded.has(id) ? "Collapse" : "Expand"} ${entry.name}`;
+                const add = row.querySelector(".tree-add"); add.ariaLabel = add.title = `Add to ${entry.name}`;
+            }
             fragment.appendChild(row);
         });
         this.tree.replaceChildren(fragment); this.updateTabStops();
@@ -165,7 +202,7 @@ class HierarchySidebar {
     updateTabStops() {
         this.visibleRows?.forEach(({ id }) => {
             const row = this.rows.get(id); row.tabIndex = id === this.activeId ? 0 : -1;
-            row.querySelector(".tree-add").tabIndex = id === this.activeId ? 0 : -1;
+            row.querySelector(".tree-add,.tree-portal-actions").tabIndex = id === this.activeId ? 0 : -1;
         });
     }
     toggleBranch(id) {
@@ -207,17 +244,18 @@ class HierarchySidebar {
     }
     onKey(event) {
         if (event.target.closest("button")) return;
-        const id = event.target.closest(".hierarchy-row")?.dataset.entryId;
+        const source = event.target.closest(".hierarchy-row"), id = source?.dataset.entryId || source?.dataset.portalId;
         if (!id) return;
-        const index = this.visibleRows.findIndex(row => row.id === id), children = this.index.children.get(id);
+        const portal = this.portals.get(id);
+        const index = this.visibleRows.findIndex(row => row.id === id), children = this.index.children.get(id) || [];
         let target;
         if (event.key === "ArrowDown") target = this.visibleRows[Math.min(index + 1, this.visibleRows.length - 1)]?.id;
         else if (event.key === "ArrowUp") target = this.visibleRows[Math.max(0, index - 1)]?.id;
         else if (event.key === "Home") target = this.visibleRows[0]?.id;
         else if (event.key === "End") target = this.visibleRows.at(-1)?.id;
         else if (event.key === "ArrowRight") { if (children.length && !this.expanded.has(id)) this.toggleBranch(id); else target = children[0]; }
-        else if (event.key === "ArrowLeft") { if (children.length && this.expanded.has(id)) this.toggleBranch(id); else target = this.entries.get(id).parentId; }
-        else if (event.key === "Enter" || event.key === " ") { if (this.narrow) this.setCollapsed(true); this.onNavigate(id); }
+        else if (event.key === "ArrowLeft") { if (children.length && this.expanded.has(id)) this.toggleBranch(id); else target = portal ? portal.parentEntryId : this.entries.get(id).parentId; }
+        else if (event.key === "Enter" || event.key === " ") { if (portal) this.activatePortal(id); else { if (this.narrow) this.setCollapsed(true); this.onNavigate(id); } }
         else return;
         event.preventDefault();
         if (target) {

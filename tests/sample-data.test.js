@@ -1,8 +1,18 @@
 const assert=require('node:assert/strict'), fs=require('node:fs'), vm=require('node:vm'), path=require('node:path');
 const {test}=require('node:test'),c=vm.createContext({URLSearchParams,URL});
-for(const file of ['model.js','appearance.js','sample-data.js']) vm.runInContext(fs.readFileSync(path.join(__dirname,'..',file),'utf8'),c);
+for(const file of ['model.js','portals.js','appearance.js','sample-data.js']) vm.runInContext(fs.readFileSync(path.join(__dirname,'..',file),'utf8'),c);
 const model=vm.runInContext('galaxyModel',c),sample=vm.runInContext('galaxySample',c),appearance=vm.runInContext('galaxyAppearance',c);
 const plain=v=>JSON.parse(JSON.stringify(v));
+test('Sample has three isolated Portal leaves including same-Galaxy, cross-Galaxy and deep Astronaut targets',()=>{
+    const snapshot=sample.build(),entries=new Map(snapshot.entries.map(e=>[e.id,model.normalizeEntry(e)]));model.normalizeHierarchy(entries);
+    const refs=vm.runInContext('galaxyPortals',c).normalizeAll(snapshot.portals,entries);
+    assert.equal(refs.length,3);
+    const root=id=>model.ancestors(entries,id).at(-1)?.id||id;
+    assert.ok(refs.some(p=>root(p.targetEntryId)===root(p.parentEntryId)));
+    assert.ok(refs.some(p=>root(p.targetEntryId)!==root(p.parentEntryId)));
+    assert.ok(refs.some(p=>entries.get(p.targetEntryId).role==='astronaut'));
+    snapshot.portals.pop();assert.equal(sample.build().portals.length,3);
+});
 test('development query is explicit and generation deterministic and isolated',()=>{
     assert.equal(sample.isRequested('?sample=large'),true);assert.equal(sample.isRequested(''),false);
     assert.deepEqual(plain(sample.build()),plain(sample.build()));

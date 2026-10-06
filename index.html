@@ -134,8 +134,11 @@
             <span id="context-entry-name" class="context-entry-name" aria-hidden="true"></span>
             <button type="button" role="menuitem" data-action="create">Add child</button>
             <button type="button" role="menuitem" data-action="connect">Connect to...</button>
+            <button type="button" role="menuitem" data-action="portal">Create Portal...</button>
             <button type="button" role="menuitem" data-action="edit">Edit</button>
             <button type="button" role="menuitem" data-action="delete">Delete</button>
+            <button type="button" role="menuitem" data-action="open-portal" data-portal-action hidden>Open Portal</button>
+            <button type="button" role="menuitem" data-action="remove-portal" data-portal-action hidden>Remove Portal</button>
         </div>
     </main>
 
@@ -170,6 +173,19 @@
         </form>
     </dialog>
 
+    <dialog id="portal-dialog" aria-labelledby="portal-dialog-title">
+        <form id="portal-form">
+            <h2 id="portal-dialog-title">Create Portal</h2>
+            <p class="portal-target-label">Portal to <strong id="portal-target-name"></strong></p>
+            <label for="portal-parent-search">Place under</label>
+            <input id="portal-parent-search" type="search" placeholder="Search hierarchy…" autocomplete="off" maxlength="60" aria-controls="portal-parent-results" autofocus>
+            <ul id="portal-parent-results" aria-label="Portal placement choices"></ul>
+            <p id="portal-placement" hidden></p>
+            <p id="portal-form-error" role="status" aria-live="polite" hidden></p>
+            <div class="form-actions"><button id="cancel-portal" type="button">Cancel</button><button id="create-portal" type="submit" disabled>Create Portal</button></div>
+        </form>
+    </dialog>
+
     <dialog id="delete-entry-dialog" aria-labelledby="delete-entry-title" aria-describedby="delete-entry-message">
         <form id="delete-entry-form">
             <h2 id="delete-entry-title">Delete entry?</h2>
@@ -182,6 +198,7 @@
     </dialog>
 
     <script src="model.js"></script>
+    <script src="portals.js"></script>
     <script src="attachment-store.js"></script>
     <script src="rich-content.js"></script>
     <script src="appearance.js"></script>

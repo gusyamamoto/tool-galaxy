@@ -33,6 +33,16 @@ function plain(value) { return JSON.parse(JSON.stringify(value)); }
 test("an empty browser has no saved snapshot", () => {
     assert.equal(makeStorage().adapter.load(), null);
 });
+test('version 5 accepts additive Portal references and preserves existing metadata without a schema bump',()=>{
+    const reference={id:'portal:a',targetEntryId:'target',parentEntryId:'parent',createdAt:'2026-01-01T00:00:00Z'};
+    const snapshot={entries:[{id:'target',name:'Original',parentId:'parent',content:{version:1,notes:{format:'plain',text:'Keep'}}},{id:'parent',name:'Parent'}],connections:[],layout:[],portals:[reference]};
+    const {adapter,data}=makeStorage();adapter.save(snapshot);
+    assert.deepEqual(JSON.parse(data.get(currentKey)),{version:5,...snapshot});
+    assert.deepEqual(plain(adapter.load().portals),[reference]);
+    assert.equal(adapter.load().version,5);
+    const bad={version:5,...snapshot,portals:{broken:true}};
+    data.set(currentKey,JSON.stringify(bad));assert.throws(()=>adapter.load(),/invalid/);assert.deepEqual(JSON.parse(data.get(currentKey)),bad);
+});
 
 test("legacy snapshots become generic entries without changing IDs or the old key", () => {
     const raw = JSON.stringify(legacy);
