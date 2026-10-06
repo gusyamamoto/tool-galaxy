@@ -68,6 +68,7 @@ const dialog = document.getElementById("add-entry-dialog");
 const form = document.getElementById("add-entry-form");
 const storageStatus = document.getElementById("storage-status");
 const deleteDialog = document.getElementById("delete-entry-dialog");
+const portalDialog = document.getElementById("portal-dialog");
 const searchField = document.getElementById("entry-search");
 const searchResults = document.getElementById("search-results");
 const searchResultList = document.getElementById("search-result-list");
@@ -82,6 +83,7 @@ const fields = ["entry-name", "entry-description", "entry-category"].map((id) =>
 
 // Plain entry/connection data is kept separate from the rendered DOM.
 const entries = new Map();
+const portals = new Map();
 // Parent-relative arrangement influences are separate from content.
 let layout = new Map();
 const relationships = [];
@@ -105,6 +107,7 @@ let panelChangeActive = false;
 let deletionBusy = false;
 const deletingContentIds = new Set();
 let contextEntryId = null, contextReturnFocus = null;
+let contextPortalId = null, portalTargetId = null, portalParentId = null, portalResultsLimit = 8;
 let searchOpen = false;
 let connectionSourceId = null, hoveredEntryId = null;
 let hoveredConnectionId = null, connectionPointer = null, touchConnectionPreview = null;
@@ -126,6 +129,7 @@ let semanticDetail = cosmosView.detail(1);
 const focusRevealIds = new Set();
 const hierarchySidebar = new HierarchySidebar({ host: galaxy, persist: !sampleMode,
     onNavigate: id => connectionSourceId ? connectEntries(id) : focusEntry(id), onCreate: (id, button) => toggleContentMenu(addMenu, button, id),
+    portals, onOpenPortal: id => openPortal(id), onPortalMenu: (id, x, y) => openPortalContextMenu(id, x, y),
     onViewportChange: animate => crudActive || panelChangeActive ? updateGraphViewport() : navigationViewportChanged(animate) });
 const smoothDetail = (scale, start, end) => cosmosView.smooth(scale, start, end);
 const renderBackground = createUniverseBackground(galaxy);
@@ -331,19 +335,36 @@ function openContextMenu(id, x, y) {
     const entry = entries.get(id);
     contextReturnFocus = nodes.get(id);
     contextEntryId = id; contextMenu.dataset.entryId = id;
+    contextPortalId = null;
+    contextMenu.removeAttribute("data-portal-id");
+    contextMenu.querySelectorAll("button").forEach(button => { button.hidden = button.hasAttribute("data-portal-action"); });
     selectEntry(entry, nodes.get(id), { openInspector: false });
     contextMenu.setAttribute("aria-label", `Actions for ${entry.name}`);
     document.getElementById("context-entry-name").textContent = entry.name;
     contextMenu.querySelector('[data-action="create"]').textContent = cosmosHierarchy.childContext(entries, id).action;
+    positionContextMenu(x, y);
+}
+function positionContextMenu(x, y) {
     contextMenu.hidden = false;
     const bounds = contextMenu.getBoundingClientRect();
     contextMenu.style.left = `${Math.max(8, Math.min(x, innerWidth - bounds.width - 8))}px`;
     contextMenu.style.top = `${Math.max(8, Math.min(y, innerHeight - bounds.height - 8))}px`;
-    contextMenu.querySelector('button:not(:disabled)').focus({ preventScroll: true });
+    contextMenu.querySelector('button:not([hidden]):not(:disabled)').focus({ preventScroll: true });
+}
+function openPortalContextMenu(id, x, y) {
+    const portal = portals.get(id), target = entries.get(portal?.targetEntryId);
+    if (!target || activeNodeDrags || pan) return;
+    closeContextMenu(); closeContentMenus();
+    contextPortalId = id; contextReturnFocus = hierarchySidebar.rows.get(id);
+    contextMenu.removeAttribute("data-entry-id"); contextMenu.dataset.portalId = id;
+    contextMenu.setAttribute("aria-label", `Portal actions for ${target.name}`);
+    document.getElementById("context-entry-name").textContent = `Portal to ${target.name}`;
+    contextMenu.querySelectorAll("button").forEach(button => { button.hidden = !button.hasAttribute("data-portal-action"); });
+    positionContextMenu(x, y);
 }
 function closeContextMenu(restoreFocus = false) {
     if (contextMenu.hidden) return;
-    contextMenu.hidden = true; contextEntryId = null;
+    contextMenu.hidden = true; contextEntryId = null; contextPortalId = null;
     if (restoreFocus && contextReturnFocus?.isConnected) {
         // Returning keyboard focus must not launch a new Cosmos focus transition.
         keyboardNavigation = false; contextReturnFocus.focus({ preventScroll: true });
@@ -352,10 +373,18 @@ function closeContextMenu(restoreFocus = false) {
 }
 contextMenu.addEventListener("click", event => {
     const action = event.target.closest("button")?.dataset.action, id = contextEntryId;
+    if (contextPortalId) {
+        const portalId = contextPortalId;
+        closeContextMenu();
+        if (action === "open-portal") openPortal(portalId);
+        else if (action === "remove-portal") removePortal(portalId);
+        return;
+    }
     if (!action || !entries.has(id)) return;
     closeContextMenu(action === "delete");
     if (action === "create") createChildEntry(id);
     else if (action === "connect") startConnectionMode(id);
+    else if (action === "portal") openPortalDialog(id);
     else if (action === "edit") openEntryForm(entries.get(id));
     else if (action === "delete") requestEntryDelete(id);
 });
@@ -363,7 +392,7 @@ contextMenu.addEventListener("keydown", event => {
     if (event.key === "Escape" || event.key === "Tab") {
         closeContextMenu(true); if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); } return;
     }
-    const buttons = [...contextMenu.querySelectorAll('button:not(:disabled)')], index = buttons.indexOf(document.activeElement);
+    const buttons = [...contextMenu.querySelectorAll('button:not([hidden]):not(:disabled)')], index = buttons.indexOf(document.activeElement);
     const target = { ArrowDown: (index + 1) % buttons.length, ArrowUp: (index + buttons.length - 1) % buttons.length, Home: 0, End: buttons.length - 1 }[event.key];
     if (target !== undefined) { event.preventDefault(); buttons[target].focus(); }
 });
@@ -378,14 +407,16 @@ hierarchySidebar.tree.addEventListener("contextmenu", event => {
     const row = event.target.closest(".hierarchy-row");
     if (!row) return;
     event.preventDefault();
-    openContextMenu(row.dataset.entryId, event.clientX, event.clientY);
+    if (row.dataset.portalId) openPortalContextMenu(row.dataset.portalId, event.clientX, event.clientY);
+    else openContextMenu(row.dataset.entryId, event.clientX, event.clientY);
     contextReturnFocus = row;
 });
 hierarchySidebar.tree.addEventListener("keydown", event => {
     const row = event.target.closest(".hierarchy-row");
     if (!row || !(event.key === "ContextMenu" || (event.shiftKey && event.key === "F10"))) return;
     event.preventDefault(); const rect = row.getBoundingClientRect();
-    openContextMenu(row.dataset.entryId, rect.left + 40, rect.top + rect.height / 2);
+    if (row.dataset.portalId) openPortalContextMenu(row.dataset.portalId, rect.left + 40, rect.top + rect.height / 2);
+    else openContextMenu(row.dataset.entryId, rect.left + 40, rect.top + rect.height / 2);
     contextReturnFocus = row;
 });
 document.getElementById("reset-view-button").addEventListener("click", () => {
@@ -460,6 +491,7 @@ function getGalaxySnapshot() {
             ({ id, name, description, category, parentId, x, y, ...(appearance ? { appearance } : {}), ...(content ? { content } : {}) })),
         // Only optional relationships are stored here; hierarchy edges come from parentId.
         connections: galaxyModel.normalizeConnections(relationships, entries),
+        portals: [...portals.values()].map(portal => ({ ...portal })),
         layout: [...layout].map(([id, placement]) => ({ id, ...placement }))
     };
 }
@@ -515,6 +547,9 @@ function initializeGalaxy() {
         galaxyModel.migrateLegacy(entries, [...initialEntries, ...records]);
         graphNeedsSave = true;
     } else galaxyModel.normalizeHierarchy(entries);
+    const savedPortals = saved?.portals || [], normalizedPortals = galaxyPortals.normalizeAll(savedPortals, entries);
+    normalizedPortals.forEach(portal => portals.set(portal.id, portal));
+    if (!sampleMode && JSON.stringify(savedPortals) !== JSON.stringify(normalizedPortals)) graphNeedsSave = true;
     if (sampleMode) entries.forEach(entry => { entry.seedLayout = true; });
     layout = galaxyModel.normalizeLayout(saved?.layout || [], entries);
     if (!sampleMode && saved?.layout?.some(record => record?.pinned === true)) graphNeedsSave = true;
@@ -1315,7 +1350,7 @@ function beginCrudOperation() {
 }
 
 function finishCrudOperation() {
-    if (dialog.open || deleteDialog.open) return;
+    if (dialog.open || deleteDialog.open || portalDialog.open) return;
     crudActive = false;
     if (!document.hidden) physics.resume();
 }
@@ -1630,6 +1665,7 @@ document.getElementById("delete-entry-form").addEventListener("submit", async (e
                     if (!storageAvailable) throw new Error("Saved data cannot be updated in this browser.");
                     galaxyStorage.save({ ...snapshot, entries: snapshot.entries.filter(e => !plan.ids.has(e.id)),
                         connections: snapshot.connections.filter(link => !plan.ids.has(link.from) && !plan.ids.has(link.to)),
+                        portals: galaxyPortals.withoutEntries(snapshot.portals, plan.ids),
                         layout: snapshot.layout.filter(value => !plan.ids.has(value.id)) });
                 }
                 metadataWritten = true;
@@ -1642,6 +1678,7 @@ document.getElementById("delete-entry-form").addEventListener("submit", async (e
         }
     }
     commitCrudMutation(() => {
+        portals.forEach((portal, id) => { if (plan.ids.has(portal.targetEntryId) || plan.ids.has(portal.parentEntryId)) portals.delete(id); });
         plan.ids.forEach(id => { entries.delete(id); layout.delete(id); focusRevealIds.delete(id); });
         relationships.splice(0, relationships.length, ...plan.relationships);
         if (plan.ids.has(hoveredEntryId)) hoveredEntryId = null;
@@ -1651,10 +1688,131 @@ document.getElementById("delete-entry-form").addEventListener("submit", async (e
     restoreCrudFocus(); finishCrudOperation();
 });
 
-function focusEntry(id, { semantic = false } = {}) {
+function openPortal(id) {
+    const portal = portals.get(id), targetId = portal?.targetEntryId;
+    if (entries.has(targetId)) {
+        focusEntry(targetId, { semantic: true, sourceId: selectedNode?.dataset.entryId || portal.parentEntryId });
+        if (!hierarchySidebar.collapsed) hierarchySidebar.rows.get(targetId)?.focus({ preventScroll: true });
+    }
+}
+
+// Reference-only writes publish the sidebar after a successful metadata save.
+// They never rebuild/reheat physics or invoke camera navigation.
+function commitPortalReferences(next) {
+    autoFitPending = false; keyboardNavigation = false; camera.stopAnimation();
+    if (!sampleMode) {
+        if (!storageAvailable) throw new Error("Saved data is unavailable. The original snapshot is being preserved.");
+        galaxyStorage.save({ ...getGalaxySnapshot(), portals: [...next.values()] });
+        storageStatus.hidden = true;
+    }
+    portals.clear(); next.forEach((portal, id) => portals.set(id, portal));
+    graphNeedsSave = false;
+    hierarchySidebar.setEntries(entries);
+}
+function removePortal(id) {
+    const portal = portals.get(id);
+    if (!portal) return;
+    const next = new Map(portals); next.delete(id);
+    try {
+        commitPortalReferences(next);
+        const parentRow = hierarchySidebar.rows.get(portal.parentEntryId);
+        if (!hierarchySidebar.collapsed && hierarchySidebar.tree.contains(parentRow)) {
+            hierarchySidebar.activeId = portal.parentEntryId; hierarchySidebar.updateTabStops(); parentRow.focus({ preventScroll: true });
+        } else hierarchySidebar.toggle.focus({ preventScroll: true });
+    } catch (error) { reportStorageFailure(`Portal could not be removed. ${error.message}`); }
+}
+function portalLocation(id) {
+    return [...galaxyModel.ancestors(entries, id)].reverse().map(entry => entry.name).concat(entries.get(id)?.name || []).join(" › ");
+}
+function refreshPortalDestinations() {
+    const list = document.getElementById("portal-parent-results"), search = document.getElementById("portal-parent-search");
+    list.replaceChildren();
+    const matches = galaxyModel.search(entries, search.value);
+    matches.slice(0, portalResultsLimit).forEach(entry => {
+        const item = document.createElement("li"), button = document.createElement("button"), location = document.createElement("small");
+        button.type = "button"; button.dataset.entryId = entry.id;
+        button.append(document.createTextNode(entry.name));
+        location.textContent = galaxyModel.ancestors(entries, entry.id).reverse().map(parent => parent.name).join(" › ") || "Universe";
+        button.append(location); button.setAttribute("aria-pressed", String(entry.id === portalParentId));
+        button.addEventListener("click", () => {
+            portalParentId = entry.id;
+            document.getElementById("portal-placement").textContent = portalLocation(entry.id);
+            document.getElementById("portal-placement").hidden = false;
+            const error = galaxyPortals.placementError(entries, portals, portalTargetId, portalParentId);
+            document.getElementById("portal-form-error").textContent = error;
+            document.getElementById("portal-form-error").hidden = !error;
+            document.getElementById("create-portal").disabled = !!error;
+            list.querySelectorAll("button").forEach(other => other.setAttribute("aria-pressed", String(other === button)));
+        });
+        item.append(button); list.append(item);
+    });
+    if (!matches.length) {
+        const item = document.createElement("li"); item.className = "portal-no-results"; item.textContent = "No matching places."; list.append(item);
+    }
+    if (matches.length > portalResultsLimit) {
+        const item = document.createElement("li"), more = document.createElement("button"); more.type = "button";
+        more.textContent = "Show more places";
+        more.addEventListener("click", () => {
+            const previousLimit = portalResultsLimit; portalResultsLimit += 8; refreshPortalDestinations();
+            const next = list.querySelectorAll("button[data-entry-id]")[previousLimit];
+            next?.focus({ preventScroll: true }); next?.scrollIntoView({ block: "nearest" });
+        });
+        item.append(more); list.append(item);
+    }
+}
+function openPortalDialog(targetId) {
+    if (!entries.has(targetId) || deletionBusy || activeNodeDrags || dialog.open || deleteDialog.open || portalDialog.open) return;
+    beginCrudOperation(); cancelConnectionMode(); closeContextMenu(); closeContentMenus();
+    portalTargetId = targetId; portalParentId = null; portalResultsLimit = 8;
+    document.getElementById("portal-target-name").textContent = entries.get(targetId).name;
+    document.getElementById("portal-parent-search").value = "";
+    document.getElementById("portal-placement").hidden = true;
+    document.getElementById("portal-form-error").hidden = true;
+    document.getElementById("create-portal").disabled = true;
+    refreshPortalDestinations(); portalDialog.showModal();
+    document.getElementById("portal-parent-search").focus({ preventScroll: true });
+}
+document.getElementById("portal-parent-search").addEventListener("input", () => {
+    portalParentId = null; portalResultsLimit = 8; document.getElementById("create-portal").disabled = true;
+    document.getElementById("portal-placement").hidden = document.getElementById("portal-form-error").hidden = true;
+    refreshPortalDestinations();
+});
+document.getElementById("portal-parent-search").addEventListener("keydown", event => {
+    if (event.key === "ArrowDown") { event.preventDefault(); document.querySelector("#portal-parent-results button")?.focus(); }
+    if (event.key === "Enter" && !portalParentId) { event.preventDefault(); document.querySelector("#portal-parent-results button")?.click(); }
+});
+function cancelPortalDialog() { portalDialog.close(); restoreCrudFocus(); }
+document.getElementById("cancel-portal").addEventListener("click", cancelPortalDialog);
+portalDialog.addEventListener("cancel", event => { event.preventDefault(); cancelPortalDialog(); });
+portalDialog.addEventListener("close", () => {
+    // A queued close from an earlier use must not clear a newly opened picker.
+    if (portalDialog.open) return;
+    portalTargetId = portalParentId = null; finishCrudOperation();
+});
+document.getElementById("portal-form").addEventListener("submit", event => {
+    event.preventDefault();
+    const error = galaxyPortals.placementError(entries, portals, portalTargetId, portalParentId);
+    if (error) { document.getElementById("portal-form-error").textContent = error; document.getElementById("portal-form-error").hidden = false; return; }
+    const portal = { id: `portal:${crypto.randomUUID()}`, targetEntryId: portalTargetId, parentEntryId: portalParentId, createdAt: new Date().toISOString() };
+    const next = new Map(portals); next.set(portal.id, portal);
+    try {
+        commitPortalReferences(next);
+        // Reveal the alternate location in the tree, preserving canonical selection.
+        galaxyModel.ancestors(entries, portal.parentEntryId).forEach(parent => hierarchySidebar.expanded.add(parent.id));
+        hierarchySidebar.expanded.add(portal.parentEntryId); hierarchySidebar.render();
+        hierarchySidebar.scrollRow(portal.id); hierarchySidebar.activeId = portal.id; hierarchySidebar.updateTabStops();
+        portalDialog.close();
+        if (!hierarchySidebar.collapsed) hierarchySidebar.rows.get(portal.id).focus({ preventScroll: true }); else restoreCrudFocus();
+    } catch (failure) {
+        document.getElementById("portal-form-error").textContent = `Portal could not be saved. ${failure.message}`;
+        document.getElementById("portal-form-error").hidden = false;
+    }
+});
+
+function focusEntry(id, { semantic = false, sourceId = selectedNode?.dataset.entryId } = {}) {
     const entry = entries.get(id);
     if (!entry || activeNodeDrags || pan) return;
-    const source = physics.particles.get(selectedNode?.dataset.entryId);
+    const source = physics.particles.get(sourceId);
     dismissConnectionHint();
     cancelConnectionMode();
     if (hierarchySidebar.narrow) hierarchySidebar.setCollapsed(true);
@@ -1735,7 +1893,7 @@ searchField.addEventListener("keydown", (event) => {
     }
 });
 document.addEventListener("keydown", (event) => {
-    if (event.key === "Escape" && !event.defaultPrevented && !dialog.open && !deleteDialog.open) {
+    if (event.key === "Escape" && !event.defaultPrevented && !dialog.open && !deleteDialog.open && !portalDialog.open) {
         if (camera.travel) { camera.stopAnimation(); dismissConnectionHint(); event.preventDefault(); return; }
         if (!connectionHint.hidden) { dismissConnectionHint(); event.preventDefault(); return; }
         if (connectionSourceId) { cancelConnectionMode(true); event.preventDefault(); return; }
@@ -1790,7 +1948,7 @@ document.addEventListener("visibilitychange", () => {
         if (graphNeedsSave) {
             saveGalaxy();
         }
-    } else if (!dialog.open && !deleteDialog.open) {
+    } else if (!dialog.open && !deleteDialog.open && !portalDialog.open) {
         physics.resume();
     }
 });

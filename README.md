@@ -135,6 +135,53 @@ edits and parent changes preserve them. Deleting a leaf removes only its inciden
 relationships. These additive fields keep the version 5 storage container and
 existing migration/backups; `parentId` and layout records are unchanged.
 
+## Portals v1
+
+A Portal is a sidebar reference to one canonical entry, stored separately in the
+version-5 snapshot's optional `portals` collection:
+
+```json
+{ "id": "portal:uuid", "targetEntryId": "original-id", "parentEntryId": "place-id", "createdAt": "2026-01-01T00:00:00.000Z" }
+```
+
+Right-click a canonical body/tree row and choose **Create Portal...**. The compact
+picker asks where it should appear; search spans canonical entries at every depth,
+with ancestor paths for duplicate names and Show more places for additional results.
+Portals can point across Galaxies or back into their own branch. The placement
+must be a real entry; duplicate target/parent pairs are rejected. There are no
+Portal chains, custom names, Portal-owned content, or expandable target subtrees.
+Global search remains canonical-only to avoid duplicate results.
+
+Portal rows use a small accretion-ring icon, the original's current name, and a
+tooltip with its real location. They have no celestial role, expand chevron or
+folder +. Click/Enter opens the original via the existing semantic `focusEntry`
+travel path, including cross-Galaxy context zoom and reduced-motion behavior.
+Selection, ancestor expansion, Content panel and breadcrumbs all resolve to the
+original. Rename/reparent updates labels and locations through stable entry IDs.
+No additional Cosmos node, physics particle or semantic relationship is created.
+
+Right-click a Portal, or use its row action button on touch/keyboard, for **Open
+Portal** and **Remove Portal**. Removal changes only that reference. Creation and
+removal save metadata before publishing the sidebar, preserve the camera, and do
+not rebuild/reheat physics. A canonical subtree deletion removes every reference
+whose target **or placement parent** is in the deleted set, in the existing
+attachment/metadata transaction; rollback keeps references with the original data.
+Dangling, colliding or duplicate references in imported snapshots normalize away
+without changing valid canonical content. Old snapshots without Portals still
+load; the schema container stays at version 5 and IndexedDB is unchanged.
+
+The temporary Sample includes Chicken Parmigiana and Codex Portals under Food,
+and a deep Slow simmer notes Portal under Travel. Sample references never write
+real saved entries, references or file bytes. Before committing, create same- and
+cross-Galaxy references, follow them, rename/move the original, refresh, remove one
+reference, and delete a target/placement branch. Check touch menus and keyboard
+navigation, and confirm unrelated content/references remain.
+
+`python tests/browser-check.py --portals-only --screenshots` checks the picker,
+leaf/reference rendering, canonical travel/content, rename/reparent, duplicate
+handling, persistence and write/deletion rollback, subtree cleanup, keyboard/
+reduced-motion/touch navigation and Sample isolation.
+
 ## Rich Content v1
 
 Every canonical entry, at every depth, can hold an optional `content` object:
