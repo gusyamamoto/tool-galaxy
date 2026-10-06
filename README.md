@@ -62,8 +62,9 @@ open `http://localhost:8000`. Use the same browser, address and port for saved d
 - **Delete:** leaves use a simple confirmation. Parents offer an explicit
   **Delete N entries** confirmation naming the entry and everything inside it.
   Cancel makes no graph/storage changes. All descendants and incident semantic
-  links are removed together; children are never promoted. Original built-in IDs
-  remain protected, including against deletion through an ancestor.
+  links are removed together; children are never promoted. All visible entries,
+  including starters and migrated examples, are user-owned and deletable. Legacy
+  ownership flags are discarded during normalization; storage stays at version 5.
 - **Search:** in the sidebar, names at every depth, case insensitive. Matching
   visible tree rows are highlighted; choosing a result opens its ancestor path.
   While results are open,
@@ -552,7 +553,7 @@ at Universe/Galaxy/close zoom with sidebar and inspector open/closed, deferred F
 cancellation, same-scale offscreen reveal, metadata edit physics stability,
 save-before-sidebar order, reparented connections, counted subtree confirmation/
 Cancel, deep incident-link cleanup, selection/tree/inspector recovery, stale
-confirmation, protected branches, persistence, explicit Fit and Sample isolation.
+confirmation, starter/migrated branches, persistence, explicit Fit and Sample isolation.
 
 `python tests/browser-check.py --astronaut-only --screenshots` checks contextual
 creation through depth eight, sidebar icons, sibling/cluster clearance, curved
