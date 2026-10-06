@@ -958,3 +958,56 @@ summary:focus-visible { outline: 1px solid #b9d0e9; outline-offset: 3px; }
 @media (hover: none), (pointer: coarse) { .collection-add { opacity: 1; pointer-events: auto; } }
 @media (max-width: 760px) { .collection-add { opacity: 1; pointer-events: auto; } }
 @media (prefers-reduced-motion: reduce) { #galaxy.constellation-active .entry-node { transition: none; } }
+
+/* Touch refinements keep the drawer + bottom sheet model, including short phone landscape. */
+@media (max-width: 760px), (pointer: coarse) and (max-width: 1024px) and (max-height: 500px) {
+    #hierarchy-sidebar { padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom); }
+    #sidebar-resize { display: none; }
+    #sidebar-toggle { width: 44px; height: 44px; padding: 12px; top: 6px; left: calc(var(--sidebar-width) - 48px); }
+    #galaxy.sidebar-collapsed #sidebar-toggle { top: max(8px,env(safe-area-inset-top)); left: max(8px,env(safe-area-inset-left)); }
+    #hierarchy-tree { overflow-x: hidden; touch-action: pan-y; overscroll-behavior: contain; }
+    .node-label { left: calc(50% + var(--label-edge-x,0px)); top: calc(100% + 5px + var(--label-edge-y,0px)); }
+    .hierarchy-row { min-width: 0; height: auto; min-height: 44px; grid-template-columns: 32px 14px minmax(0,1fr) 44px; gap: 3px; padding: 0 2px 0 calc(var(--mobile-tree-indent,0px) + 2px); }
+    .hierarchy-row button { height: 44px; width: 44px; }
+    .hierarchy-row .tree-disclosure { width: 32px !important; }
+    .hierarchy-row .tree-add { opacity: 0; visibility: hidden; pointer-events: none; }
+    .hierarchy-row:is(.is-selected,:focus-within) .tree-add { opacity: 1; visibility: visible; pointer-events: auto; }
+    .hierarchy-row.is-selected .tree-name { white-space: normal; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; padding: 4px 0; }
+    #hierarchy-sidebar #entry-search { min-height: 40px; font-size: 16px; }
+    #sidebar-tools summary, #sidebar-tools > button { min-height: 44px; }
+    .sidebar-section-header { min-height: 44px; }
+    #constellations-toggle { width: 32px !important; height: 44px; }
+    .constellation-row { height: 44px; grid-template-columns: minmax(0,1fr) 44px; padding-right: 0; }
+    .constellation-open { height: 44px; }
+    .collection-add { width: 44px; height: 44px; opacity: 1; pointer-events: auto; }
+    #entry-panel { inset: auto 0 var(--mobile-keyboard-inset,0px); width: 100%; height: auto; max-height: min(58dvh,calc(var(--mobile-visible-height,100dvh) - 60px)); padding: 12px max(16px,env(safe-area-inset-right)) max(16px,env(safe-area-inset-bottom)) max(16px,env(safe-area-inset-left)); border-left: 0; border-top: 1px solid #50627c55; border-radius: 12px 12px 0 0; touch-action: pan-y; overscroll-behavior: contain; scroll-padding-block: var(--sheet-header-height,140px) 12px; }
+    .content-panel-header { top: -12px; }
+    .inspector-header { margin-bottom: 4px; }
+    #entry-panel h2 { font-size: 18px; }
+    #close-inspector-button, #entry-more-button, #deactivate-constellation-button { width: 44px; height: 44px; flex-basis: 44px; }
+    #active-constellation-name { min-height: 44px; }
+    #panel-ancestry { max-height: 48px; margin-top: 6px; }
+    #panel-ancestry button { min-height: 32px; }
+    #panel-rich-content .content-section-add, #panel-rich-content .quiet-icon, .content-item-menu summary { width: 44px; height: 44px; padding: 12px; margin: 0; opacity: 1; }
+    #panel-rich-content .content-file { grid-template-columns: 36px minmax(0,1fr) 44px; }
+    #panel-rich-content .content-bookmark { grid-template-columns: 16px minmax(0,1fr) 44px; }
+    #panel-rich-content .content-empty-action, #panel-add-member, .constellation-member-name { min-height: 44px; }
+    #constellation-member-list li { grid-template-columns: minmax(0,1fr) 44px; }
+    :is(#add-menu,#entry-context-menu,#entry-actions,.content-row-actions) button { min-height: 44px; }
+    :is(#add-menu,#entry-context-menu,#entry-actions,.content-row-actions) { overscroll-behavior: contain; touch-action: pan-y; }
+    #panel-rich-content :is(input:not([type='file']),textarea) { font-size: 16px; }
+    #panel-rich-content textarea { max-height: min(160px,calc(var(--mobile-visible-height,100dvh)*.35)); }
+    #panel-rich-content form button { min-height: 44px; }
+    :is(#add-entry-dialog,#portal-dialog,.collection-dialog,#delete-entry-dialog) { max-height: calc(var(--mobile-visible-height,100dvh) - 24px); position: fixed; top: var(--mobile-viewport-top,0px); bottom: var(--mobile-keyboard-inset,0px); overflow-y: auto; }
+    :is(#add-entry-dialog,#portal-dialog,.collection-dialog,#delete-entry-dialog) :is(input,textarea,select) { min-height: 44px; font-size: 16px; }
+    :is(#add-entry-dialog,#portal-dialog,.collection-dialog,#delete-entry-dialog) .form-actions button { min-height: 44px; }
+    #galaxy.mobile-keyboard-open #entry-panel:has(#panel-rich-content:not([hidden]) form:not([hidden])) { max-height: calc(var(--mobile-visible-height,100dvh) - 16px); }
+    #galaxy.mobile-keyboard-open #entry-panel:has(#panel-rich-content:not([hidden]) form:not([hidden])) :is(.content-header-actions,#panel-ancestry) { display: none; }
+}
+@media (pointer: coarse) and (max-width: 1024px) and (max-height: 500px) {
+    #entry-panel { max-height: min(72dvh,calc(var(--mobile-visible-height,100dvh) - 60px)); }
+    #sidebar-tools { margin-block: 4px; }
+    #constellation-list { max-height: 20dvh; }
+    #entry-panel:has(#panel-rich-content:not([hidden]) form:not([hidden])) { max-height: calc(var(--mobile-visible-height,100dvh) - 16px); }
+    #entry-panel:has(#panel-rich-content:not([hidden]) form:not([hidden])) :is(.content-header-actions,#panel-ancestry) { display: none; }
+}

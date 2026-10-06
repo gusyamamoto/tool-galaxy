@@ -241,9 +241,7 @@ function openContextMenu(id, x, y) {
 }
 function positionContextMenu(x, y) {
     contextMenu.hidden = false;
-    const bounds = contextMenu.getBoundingClientRect();
-    contextMenu.style.left = `${Math.max(8, Math.min(x, innerWidth - bounds.width - 8))}px`;
-    contextMenu.style.top = `${Math.max(8, Math.min(y, innerHeight - bounds.height - 8))}px`;
+    positionCosmosMenu(contextMenu,x,y);
     contextMenu.querySelector('button:not([hidden]):not(:disabled)').focus({ preventScroll: true });
 }
 function openPortalContextMenu(id, x, y) {
@@ -383,7 +381,7 @@ const contentInspector = new EntryContentInspector({ store: attachmentStore, mot
 const labelDensity = new LabelDensity();
 function requestLabelLayout(force=false) {
     labelDensity.request(()=>{
-        const candidates=[],labels=[],rank={galaxy:4,sun:5,planet:6,moon:7,satellite:8,astronaut:9};
+        const candidates=[],labels=[],offsets=[],rank={galaxy:4,sun:5,planet:6,moon:7,satellite:8,astronaut:9};
         nodes.forEach((node,id)=>{
             const entry=entries.get(id),label=node.querySelector('.node-label');
             const selected=selectedNode===node,interactive=hoveredEntryId===id||document.activeElement===node||node.classList.contains('dragging');
@@ -391,10 +389,20 @@ function requestLabelLayout(force=false) {
             const protectedLabel=selected||interactive||search||context;
             const eligible=node.dataset.culled!=='true'&&node.dataset.semanticHidden!=='true'&&(protectedLabel||node.labelOpacity>.18);
             labels.push({id,label,eligible});if(!eligible)return;
-            const rect=label.getBoundingClientRect(),b=physics.bounds;
+            let rect=label.getBoundingClientRect();const b=physics.bounds;
+            if(hierarchySidebar.narrow){
+                const old=label.edgeOffset||{x:0,y:0},base={left:rect.left-old.x,top:rect.top-old.y,width:rect.width,height:rect.height};
+                const near=node.renderX>=b.left-56&&node.renderX<=b.right+56&&node.renderY>=b.top-56&&node.renderY<=b.bottom+56;
+                const x=near&&(selected||interactive||search)?Math.max(-120,Math.min(120,Math.max(b.left,Math.min(b.right-base.width,base.left))-base.left)):0;
+                const y=near&&(selected||interactive||search)?Math.max(-120,Math.min(120,Math.max(b.top,Math.min(b.bottom-base.height,base.top))-base.top)):0;
+                offsets.push({label,x,y});rect={left:base.left+x,top:base.top+y,right:base.left+x+base.width,bottom:base.top+y+base.height,width:base.width,height:base.height};
+                const visible=Math.max(0,Math.min(rect.right,b.right)-Math.max(rect.left,b.left))*Math.max(0,Math.min(rect.bottom,b.bottom)-Math.max(rect.top,b.top));
+                if(!protectedLabel&&visible<rect.width*rect.height*.65)return;
+            }else if(label.edgeOffset){offsets.push({label,x:0,y:0});}
             if(rect.right<b.left||rect.left>b.right||rect.bottom<b.top||rect.top>b.bottom)return;
             candidates.push({id,rect,protected:protectedLabel,priority:selected?0:interactive?1:search?2:node.classList.contains('selected-ancestor')?3:rank[entry.role]-(activeConstellationMembers.has(id) ? .25 : 0)});
-        });return {candidates,labels};
+        });offsets.forEach(({label,x,y})=>{const old=label.edgeOffset;if(old?.x===x&&old.y===y||!old&&x===0&&y===0)return;label.edgeOffset={x,y};label.style.setProperty('--label-edge-x',`${x}px`);label.style.setProperty('--label-edge-y',`${y}px`);});
+        return {candidates,labels};
     },force);
 }
 
@@ -893,9 +901,10 @@ function syncPhysicsGraph({ updateUI = true, reheat = .55 } = {}) {
 function updateGraphViewport() {
     const rect = galaxy.getBoundingClientRect();
     const panelRect = panel.getBoundingClientRect();
+    if(!panel.hidden&&hierarchySidebar.narrow)panel.style.setProperty('--sheet-header-height',`${panel.querySelector('.content-panel-header').offsetHeight+8}px`);
     baseNodeRadius = parseFloat(getComputedStyle(galaxy).getPropertyValue("--node-size")) / 2;
     const radius = getNodeRadius();
-    const narrow = window.matchMedia("(max-width: 760px)").matches;
+    const narrow = hierarchySidebar.narrow;
     const sidebarRight = hierarchySidebar.collapsed ? 0 : hierarchySidebar.sidebar.getBoundingClientRect().right - rect.left;
     const left = sidebarRight + radius + 24;
     const top = radius + 24;
@@ -1350,8 +1359,9 @@ function toggleContentMenu(menu, button, targetId = null) {
         addMenuTargetId = targetId; addMenuTrigger = button;
         menu.setAttribute("aria-label", `Add to ${entries.get(targetId).name}`);
         const rect = button.getBoundingClientRect();
-        menu.style.left = `${Math.max(8, Math.min(rect.left, innerWidth - 190))}px`;
-        menu.style.top = `${Math.max(8, Math.min(rect.bottom + 6, innerHeight - menu.offsetHeight - 8))}px`;
+        positionCosmosMenu(menu,rect.left,rect.bottom+6,{above:rect.top-6});
+    } else {
+        const rect=button.getBoundingClientRect();positionCosmosMenu(menu,rect.right-menu.offsetWidth,rect.bottom+5,{above:rect.top-5});
     }
     menu.querySelector("button:not([hidden]):not(:disabled)")?.focus({ preventScroll: true });
 }
@@ -1394,7 +1404,13 @@ document.addEventListener("keydown", event => {
     const button = menu === addMenu ? addMenuTrigger : moreButton;
     if (event.key === "Escape" || event.key === "Tab") {
         closeContentMenus();
-        if (event.key === "Escape") { event.preventDefault(); event.stopImmediatePropagation(); button.focus({ preventScroll: true }); }
+        if (event.key === "Escape") {
+            event.preventDefault(); event.stopImmediatePropagation();
+            // An unselected touch row hides its + while focus is in the menu.
+            // Focus the row first so its action is visible before returning focus.
+            if(hierarchySidebar.narrow)button.closest('.hierarchy-row')?.focus({preventScroll:true});
+            button.focus({ preventScroll: true });
+        }
     } else if (["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) {
         event.preventDefault(); event.stopImmediatePropagation();
         const items = [...menu.querySelectorAll("button:not([hidden]):not(:disabled)")];
@@ -1836,11 +1852,32 @@ motionPreference.addEventListener("change", (event) => {
 });
 
 window.addEventListener("resize", () => {
-    closeContextMenu(); hierarchySidebar.onWindowResize();
+    closeContextMenu(); closeContentMenus(); closePanelItemMenus(); hierarchySidebar.onWindowResize();syncMobileViewport();
     renderBackground();
     navigationViewportChanged(false);
     updateOrbitGuides();
 });
+function closePanelItemMenus(){panel.querySelectorAll('.content-item-menu[open]').forEach(menu=>{menu.open=false;if(menu.contains(document.activeElement))menu.querySelector('summary').focus({preventScroll:true});});}
+panel.addEventListener('scroll',()=>{
+    if(!hierarchySidebar.narrow)return;
+    panel.querySelectorAll('.content-item-menu[open]').forEach(menu=>{const actions=menu.querySelector('.content-row-actions'),r=menu.querySelector('summary').getBoundingClientRect();positionCosmosMenu(actions,r.right-actions.offsetWidth,r.bottom+4,{above:r.top-4});});
+    if(!entryActions.hidden){const r=moreButton.getBoundingClientRect();positionCosmosMenu(entryActions,r.right-entryActions.offsetWidth,r.bottom+5,{above:r.top-5});}
+}, {passive:true});
+function syncMobileViewport(){
+    const v=cosmosVisibleViewport(),style=document.documentElement.style;
+    style.setProperty('--mobile-visible-height',`${v.height}px`);
+    style.setProperty('--mobile-viewport-top',`${v.top}px`);
+    style.setProperty('--mobile-keyboard-inset',`${Math.max(0,innerHeight-v.top-v.height)}px`);
+    galaxy.classList.toggle('mobile-keyboard-open',hierarchySidebar.narrow&&innerHeight-v.top-v.height>80);
+}
+syncMobileViewport();
+function mobileViewportChanged(){
+    if(!hierarchySidebar.narrow)return;
+    syncMobileViewport();closeContextMenu();closeContentMenus();closePanelItemMenus();updateGraphViewport();requestLabelLayout(true);
+    if(panel.contains(document.activeElement)&&document.activeElement.matches('input,textarea'))document.activeElement.scrollIntoView({block:'nearest',inline:'nearest'});
+}
+window.visualViewport?.addEventListener('resize',mobileViewportChanged);
+window.visualViewport?.addEventListener('scroll',mobileViewportChanged);
 window.addEventListener("pagehide", () => {
     labelDensity.destroy();
     motion.destroy();ambient.destroy();

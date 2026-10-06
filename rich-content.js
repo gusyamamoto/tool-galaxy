@@ -1,3 +1,14 @@
+// Visible viewport bounds account for browser chrome and the on-screen keyboard.
+function cosmosVisibleViewport(){const v=window.visualViewport;return {left:v?.offsetLeft||0,top:v?.offsetTop||0,width:v?.width||innerWidth,height:v?.height||innerHeight};}
+function positionCosmosMenu(menu,x,y,{above=null}={}) {
+    const v=cosmosVisibleViewport(),gap=8;
+    Object.assign(menu.style,{position:'fixed',right:'auto',bottom:'auto',maxWidth:`${v.width-gap*2}px`,maxHeight:`${v.height-gap*2}px`,overflowY:'auto'});
+    const rect=menu.getBoundingClientRect();
+    const up=above!==null&&y+rect.height>v.top+v.height-gap&&above-rect.height>=v.top+gap;
+    menu.style.left=`${Math.max(v.left+gap,Math.min(x,v.left+v.width-rect.width-gap))}px`;
+    menu.style.top=`${Math.max(v.top+gap,Math.min(up?above-rect.height:y,v.top+v.height-rect.height-gap))}px`;
+    return up;
+}
 // Shared panel overflow interaction for content and collection entries.
 function createPanelItemMenu(actions, label, root) {
     const menu = document.createElement("details"), summary = document.createElement("summary");
@@ -9,8 +20,13 @@ function createPanelItemMenu(actions, label, root) {
     menu.addEventListener("toggle", () => {
         if (menu.open) {
             root.querySelectorAll(".content-item-menu[open]").forEach(other => { if (other !== menu) other.open = false; });
-            const bounds = root.closest("#entry-panel").getBoundingClientRect(), point = summary.getBoundingClientRect();
-            menu.classList.toggle("opens-up", point.bottom + actions.offsetHeight + 6 > bounds.bottom && point.top - bounds.top > actions.offsetHeight + 6);
+            const point = summary.getBoundingClientRect();
+            if(window.matchMedia('(max-width: 760px), (pointer: coarse) and (max-width: 1024px) and (max-height: 500px)').matches){
+                menu.classList.toggle('opens-up',positionCosmosMenu(actions,point.right-actions.offsetWidth,point.bottom+4,{above:point.top-4}));
+            }else{
+                actions.removeAttribute('style');const bounds=root.closest('#entry-panel').getBoundingClientRect();
+                menu.classList.toggle('opens-up',point.bottom+actions.offsetHeight+6>bounds.bottom&&point.top-bounds.top>actions.offsetHeight+6);
+            }
         }
     });
     menu.addEventListener("keydown", event => {
