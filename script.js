@@ -78,6 +78,11 @@ const fields = ["entry-name", "entry-description", "entry-category"].map((id) =>
 // Plain entry data is kept separate from the rendered DOM.
 const entries = new Map();
 const portals = new Map();
+const constellations = new Map();
+let activeConstellationId = null;
+let activeConstellationMembers = new Set();
+let activeConstellationGalaxyIds = new Set();
+let constellationOverview = false;
 // Parent-relative arrangement influences are separate from content.
 let layout = new Map();
 // Match partial v1/v2 saved positions to starter templates during loading only.
@@ -146,6 +151,7 @@ const camera = new GraphCamera({
         entries.forEach(entry => renderNode(entry, nodes.get(entry.id)));
         updateHierarchyPaths();
         updateOrbitGuides();
+        constellationOverlay.update();
     }
 });
 let pan = null;
@@ -219,7 +225,8 @@ function openContextMenu(id, x, y) {
     contextEntryId = id; contextMenu.dataset.entryId = id;
     contextPortalId = null;
     contextMenu.removeAttribute("data-portal-id");
-    contextMenu.querySelectorAll("button").forEach(button => { button.hidden = button.hasAttribute("data-portal-action"); });
+    document.getElementById('constellation-memberships').hidden = true;
+    contextMenu.querySelectorAll(":scope > button").forEach(button => { button.hidden = button.hasAttribute("data-portal-action"); });
     selectEntry(entry, nodes.get(id), { openInspector: false });
     contextMenu.setAttribute("aria-label", `Actions for ${entry.name}`);
     document.getElementById("context-entry-name").textContent = entry.name;
@@ -241,7 +248,8 @@ function openPortalContextMenu(id, x, y) {
     contextMenu.removeAttribute("data-entry-id"); contextMenu.dataset.portalId = id;
     contextMenu.setAttribute("aria-label", `Portal actions for ${target.name}`);
     document.getElementById("context-entry-name").textContent = `Portal to ${target.name}`;
-    contextMenu.querySelectorAll("button").forEach(button => { button.hidden = !button.hasAttribute("data-portal-action"); });
+    document.getElementById('constellation-memberships').hidden = true;
+    contextMenu.querySelectorAll(":scope > button").forEach(button => { button.hidden = !button.hasAttribute("data-portal-action"); });
     positionContextMenu(x, y);
 }
 function closeContextMenu(restoreFocus = false) {
@@ -263,6 +271,7 @@ contextMenu.addEventListener("click", event => {
         return;
     }
     if (!action || !entries.has(id)) return;
+    if (action === 'constellation') { showConstellationMemberships(id); return; }
     closeContextMenu(action === "delete");
     if (action === "create") createChildEntry(id);
     else if (action === "portal") openPortalDialog(id);
@@ -273,7 +282,7 @@ contextMenu.addEventListener("keydown", event => {
     if (event.key === "Escape" || event.key === "Tab") {
         closeContextMenu(true); if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); } return;
     }
-    const buttons = [...contextMenu.querySelectorAll('button:not([hidden]):not(:disabled)')], index = buttons.indexOf(document.activeElement);
+    const buttons = [...contextMenu.querySelectorAll('button:not([hidden]):not(:disabled)')].filter(button => button.getClientRects().length), index = buttons.indexOf(document.activeElement);
     const target = { ArrowDown: (index + 1) % buttons.length, ArrowUp: (index + buttons.length - 1) % buttons.length, Home: 0, End: buttons.length - 1 }[event.key];
     if (target !== undefined) { event.preventDefault(); buttons[target].focus(); }
 });
@@ -361,6 +370,120 @@ const contentInspector = new EntryContentInspector({ store: attachmentStore, get
     onAction() { autoFitPending = false; keyboardNavigation = false; camera.stopAnimation(); },
     onLayout() { if (cameraViewReady) updateGraphViewport(); } });
 
+const constellationOverlay = new ConstellationOverlay(document.getElementById('constellation-overlay'), id => {
+    const node = nodes.get(id);
+    return node ? { x: node.renderX, y: node.renderY } : null;
+});
+const constellationWorkspace = new ConstellationWorkspace({ entries, portals, collections: constellations,
+    getActive: () => activeConstellationId, activate: activateConstellation, inspect: id => focusEntry(id),
+    commit: commitConstellations, showMembershipMenu: showConstellationMemberships, overview: showConstellationOverview, persist: !sampleMode,
+    onModal() { closeContextMenu(); closeContentMenus(); beginCrudOperation(); }, onModalClose: finishCrudOperation,
+    onLayout() { if (cameraViewReady) updateGraphViewport(); } });
+
+function showConstellationMemberships(id) {
+    if (!entries.has(id)) return;
+    const rect = contextMenu.hidden ? (hierarchySidebar.rows.get(id) || nodes.get(id)).getBoundingClientRect() : contextMenu.getBoundingClientRect();
+    contextEntryId = id; contextPortalId = null;
+    contextMenu.dataset.entryId = id;
+    contextReturnFocus = hierarchySidebar.rows.get(id) || nodes.get(id);
+    contextMenu.setAttribute('aria-label', `Add ${entries.get(id).name} to Constellation`);
+    document.getElementById('context-entry-name').textContent = 'Add to Constellation';
+    contextMenu.querySelectorAll(':scope > button').forEach(button => { button.hidden = true; });
+    const container = document.getElementById('constellation-memberships');
+    container.hidden = false; constellationWorkspace.renderMemberships(container, id);
+    positionContextMenu(rect.left, rect.top);
+}
+
+function commitConstellations(next) {
+    if (deletionBusy) throw new Error('Wait for entry deletion to finish.');
+    autoFitPending = false; keyboardNavigation = false; camera.stopAnimation();
+    const records = galaxyConstellations.normalizeAll([...next.values()], entries);
+    if (records.length !== next.size) throw new Error('Choose a valid Constellation name and entries.');
+    // Publish only after persistence succeeds. Collection edits never rebuild or
+    // reheat the graph and never frame the camera.
+    if (!sampleMode) {
+        if (!storageAvailable) throw new Error('Saved data is unavailable. The original data is being preserved.');
+        galaxyStorage.save({ ...getGalaxySnapshot(), constellations: records });
+    }
+    constellations.clear(); records.forEach(record => constellations.set(record.id, record));
+    graphNeedsSave = false;
+    if (activeConstellationId && !constellations.has(activeConstellationId)) exitConstellation();
+    else refreshConstellation();
+}
+
+function entityPanelMode() {
+    constellationOverview = false;
+    const closeButton = document.getElementById('close-inspector-button');
+    closeButton.setAttribute('aria-label', 'Close contents'); closeButton.title = 'Close contents';
+    document.getElementById('panel-kind').textContent = 'Contents';
+    document.getElementById('panel-rich-content').hidden = false;
+    document.getElementById('constellation-content').hidden = true;
+    document.getElementById('constellation-count').hidden = true;
+    entryActions.querySelectorAll('button').forEach(button => { button.hidden = button.hasAttribute('data-collection-action'); });
+    updateConstellationIndicator();
+}
+
+function updateConstellationIndicator() {
+    const collection = constellations.get(activeConstellationId), indicator = document.getElementById('active-constellation-indicator');
+    indicator.hidden = !collection || constellationOverview;
+    document.getElementById('active-constellation-name').textContent = collection ? `✦ ${collection.name} active` : '';
+    document.getElementById('active-constellation-name').title = collection ? `Open ${collection.name} overview` : '';
+}
+function showConstellationOverview() {
+    if (!activeConstellationId || activeNodeDrags) return;
+    closeContentMenus(); constellationOverview = true; contentInspector.hide();
+    updateConstellationIndicator(); setInspectorOpen(true);
+}
+document.getElementById('active-constellation-name').addEventListener('click', showConstellationOverview);
+document.getElementById('deactivate-constellation-button').addEventListener('click', () => exitConstellation());
+
+function refreshConstellation() {
+    const collection = constellations.get(activeConstellationId);
+    activeConstellationMembers = new Set(collection?.memberEntryIds || []);
+    activeConstellationGalaxyIds = galaxyConstellations.galaxyIds(activeConstellationMembers, entries);
+    galaxy.classList.toggle('constellation-active', !!collection);
+    galaxy.classList.toggle('constellation-has-members', !!collection && activeConstellationMembers.size > 0);
+    nodes.forEach((node, id) => node.classList.toggle('constellation-member', activeConstellationMembers.has(id)));
+    renderGraph();
+    // Only membership changes regenerate topology; tick/zoom/drag updates use
+    // the existing n-1 edges and project each live endpoint.
+    const points = [...activeConstellationMembers].map(id => ({ id, ...camera.screenToWorld(nodes.get(id).renderX, nodes.get(id).renderY) }));
+    constellationOverlay.rebuild(points);
+    constellationWorkspace.renderSidebar();
+    updateConstellationIndicator();
+    if (collection && constellationOverview) constellationWorkspace.renderPanel();
+}
+
+function activateConstellation(id) {
+    if (activeNodeDrags || deletionBusy || !constellations.has(id)) return;
+    if (activeConstellationId === id) { exitConstellation(); return; }
+    closeContextMenu(); closeContentMenus(); autoFitPending = false; keyboardNavigation = false; camera.stopAnimation();
+    activeConstellationId = id;
+    constellationOverview = true;
+    contentInspector.hide(); refreshConstellation(); setInspectorOpen(true);
+    const members = [...activeConstellationMembers];
+    if (!members.length) return;
+    const bounds = { left: Infinity, right: -Infinity, top: Infinity, bottom: -Infinity };
+    members.forEach(id => {
+        const point = camera.screenToWorld(nodes.get(id).renderX, nodes.get(id).renderY), margin = getNodeRadius(entries.get(id)) + 24;
+        bounds.left = Math.min(bounds.left, point.x-margin); bounds.right = Math.max(bounds.right, point.x+margin);
+        bounds.top = Math.min(bounds.top, point.y-margin); bounds.bottom = Math.max(bounds.bottom, point.y+margin);
+    });
+    camera.setView(camera.boundsView(bounds, physics.bounds, { padding: 44, maxScale: members.length === 1 ? 1.7 : 1.1 }), true);
+}
+
+function exitConstellation({ restorePanel = true } = {}) {
+    if (!activeConstellationId) return;
+    const inspectingEntry = !constellationOverview && selectedNode && entries.has(selectedNode.dataset.entryId);
+    camera.stopAnimation(); activeConstellationId = null; refreshConstellation(); entityPanelMode();
+    if (!restorePanel) return;
+    // The indicator's × clears only the lens, preserving in-progress content
+    // editing in an already visible entity panel.
+    if (inspectingEntry) { updateGraphViewport(); return; }
+    if (selectedNode && entries.has(selectedNode.dataset.entryId)) selectEntry(entries.get(selectedNode.dataset.entryId), selectedNode, { openInspector: !panel.hidden, scroll: false });
+    else { panel.hidden = true; contentInspector.hide(); galaxy.classList.remove('inspector-open'); updateGraphViewport(); }
+}
+
 function reportStorageFailure(message) {
     storageStatus.textContent = message;
     storageStatus.hidden = false;
@@ -371,6 +494,7 @@ function getGalaxySnapshot() {
         entries: [...entries.values()].map(({ id, name, description, category, parentId, x, y, appearance, content }) =>
             ({ id, name, description, category, parentId, x, y, ...(appearance ? { appearance } : {}), ...(content ? { content } : {}) })),
         portals: [...portals.values()].map(portal => ({ ...portal })),
+        constellations: [...constellations.values()].map(collection => ({ ...collection, memberEntryIds: [...collection.memberEntryIds] })),
         layout: [...layout].map(([id, placement]) => ({ id, ...placement }))
     };
 }
@@ -430,11 +554,15 @@ function initializeGalaxy() {
     const savedPortals = saved?.portals || [], normalizedPortals = galaxyPortals.normalizeAll(savedPortals, entries);
     normalizedPortals.forEach(portal => portals.set(portal.id, portal));
     if (!sampleMode && JSON.stringify(savedPortals) !== JSON.stringify(normalizedPortals)) graphNeedsSave = true;
+    const savedConstellations = saved?.constellations || [], normalizedConstellations = galaxyConstellations.normalizeAll(savedConstellations, entries);
+    normalizedConstellations.forEach(collection => constellations.set(collection.id, collection));
+    if (!sampleMode && JSON.stringify(savedConstellations) !== JSON.stringify(normalizedConstellations)) graphNeedsSave = true;
     if (sampleMode) entries.forEach(entry => { entry.seedLayout = true; });
     layout = galaxyModel.normalizeLayout(saved?.layout || [], entries);
     if (!sampleMode && saved?.layout?.some(record => record?.pinned === true)) graphNeedsSave = true;
     [...entries.values()].forEach(createEntryNode);
     rebuildHierarchyPaths();
+    constellationWorkspace.renderSidebar();
 }
 
 loadSampleButton.addEventListener("click", () => {
@@ -451,6 +579,7 @@ removeSampleButton.addEventListener("click", () => {
 });
 
 function selectEntry(entry, node, { openInspector = true, reframe = false, scroll = true } = {}) {
+    entityPanelMode();
     closeContentMenus();
     const changingEntry = selectedNode?.dataset.entryId !== entry.id;
 
@@ -481,7 +610,7 @@ function selectEntry(entry, node, { openInspector = true, reframe = false, scrol
 }
 
 function setInspectorOpen(open, { reframe = false } = {}) {
-    if (activeNodeDrags || (open && !selectedNode)) return;
+    if (activeNodeDrags || (open && !selectedNode && !activeConstellationId)) return;
     if (!open) closeContentMenus();
     if (open && hierarchySidebar.narrow) {
         panelChangeActive = true;
@@ -490,7 +619,8 @@ function setInspectorOpen(open, { reframe = false } = {}) {
     const previous = { ...physics.bounds };
     const reopening = panel.hidden && open;
     panel.hidden = !open;
-    if (open) contentInspector.select(entries.get(selectedNode.dataset.entryId), true);
+    if (open && activeConstellationId && constellationOverview) constellationWorkspace.renderPanel();
+    else if (open) contentInspector.select(entries.get(selectedNode.dataset.entryId), true);
     else contentInspector.hide();
     galaxy.classList.toggle("inspector-open", open);
     if (reopening) panel.scrollTop = 0;
@@ -511,7 +641,10 @@ function closeInspector(restoreFocus = false) {
         target.focus({ preventScroll: true });
     }
 }
-document.getElementById("close-inspector-button").addEventListener("click", () => closeInspector(true));
+document.getElementById("close-inspector-button").addEventListener("click", () => {
+    if (constellationOverview) exitConstellation({ restorePanel: false });
+    closeInspector(true);
+});
 
 function updateHierarchyEmphasis() {
     const id = selectedNode?.dataset.entryId, selected = physics.particles.get(id);
@@ -547,6 +680,7 @@ function createEntryNode(entry) {
     node.setAttribute("aria-pressed", "false");
     node.addEventListener("click", event => {
         if (event.detail && didMove) return;
+        if (activeConstellationId) { focusEntry(entry.id); return; }
         if (entry.depth <= 1) focusEntry(entry.id);
         else selectEntry(entry, node);
     });
@@ -820,7 +954,23 @@ function renderNode(entry, node) {
     const revealed = focusRevealIds.has(entry.id) || node.classList.contains("dragging") ||
         (searchOpen && node.matches(".search-match,.search-ancestor"));
     node.classList.toggle("temporarily-revealed", revealed);
-    const hidden = entry.depth > 0 && !revealed && semanticDetail[entry.role] < .02;
+    const lens = activeConstellationMembers.size > 0;
+    const priority = selectedNode === node || node.classList.contains('dragging') || revealed;
+    const visibility = lens ? cosmosView.constellationVisibility(camera.view.scale, entry.role,
+        { member: activeConstellationMembers.has(entry.id), priority }, semanticDetail) : null;
+    const galaxyContext = lens && entry.depth === 0 && activeConstellationGalaxyIds.has(entry.id);
+    node.classList.toggle('constellation-galaxy-context', galaxyContext);
+    if (galaxyContext) {
+        visibility.body = priority || activeConstellationMembers.has(entry.id) ? 1 : .68;
+        visibility.label = 1;
+    }
+    node.classList.toggle('constellation-inspected', lens && priority);
+    node.classList.toggle('constellation-label-hidden', lens && visibility.label < .02);
+    if (visibility) {
+        node.style.setProperty('--constellation-body-opacity', visibility.body);
+        node.style.setProperty('--constellation-label-opacity', visibility.label);
+    }
+    const hidden = lens ? visibility.body < .02 : entry.depth > 0 && !revealed && semanticDetail[entry.role] < .02;
     if (node.dataset.semanticHidden !== String(hidden)) node.dataset.semanticHidden = String(hidden);
     if (node.inert !== hidden) node.inert = hidden;
     const margin = Math.max(100, getNodeRadius(entry) * camera.view.scale * 2 + 64);
@@ -840,6 +990,7 @@ function renderGraph() {
     entries.forEach((entry) => renderNode(entry, nodes.get(entry.id)));
     updateHierarchyPaths();
     updateOrbitGuides();
+    constellationOverlay.update();
 }
 
 function updateRegionFootprints(force = false) {
@@ -862,7 +1013,7 @@ function updateRegionFootprints(force = false) {
 function renderRegions() {
     regions.forEach((element, id) => {
         const footprint = element.footprint;
-        const opacity = cosmosView.cloudOpacity(camera.view.scale, physics.bounds, footprint);
+        const opacity = cosmosView.cloudOpacity(camera.view.scale, physics.bounds, footprint) * (activeConstellationMembers.size ? .58 : 1);
         if (element.renderOpacity !== opacity) { element.style.opacity = opacity; element.renderOpacity = opacity; }
         const hidden = opacity === 0;
         if (element.dataset.semanticHidden !== String(hidden)) element.dataset.semanticHidden = String(hidden);
@@ -1039,7 +1190,7 @@ function beginCrudOperation() {
 }
 
 function finishCrudOperation() {
-    if (dialog.open || deleteDialog.open || portalDialog.open) return;
+    if (dialog.open || deleteDialog.open || portalDialog.open || constellationWorkspace.isDialogOpen()) return;
     crudActive = false;
     if (!document.hidden) physics.resume();
 }
@@ -1073,6 +1224,7 @@ function commitCrudMutation(mutate, { selectionId, topologyChanged = true, revea
     if (entry) selectEntry(entry, nodes.get(entry.id), { reframe: false, openInspector: inspectorOpen, scroll: !preserveScroll });
     else clearSelection({ reframe: false });
     rebuildOrbitGuides(); refreshSearchResults(); renderGraph();
+    refreshConstellation();
     if (preserveScroll) {
         hierarchySidebar.tree.scrollTop = scroll.top; hierarchySidebar.tree.scrollLeft = scroll.left;
     }
@@ -1260,7 +1412,6 @@ form.addEventListener("submit", (event) => {
 });
 
 function clearSelection({ reframe = false } = {}) {
-
     focusRevealIds.clear();
     selectedNode = null;
     contentInspector.select(null, false);
@@ -1349,6 +1500,7 @@ document.getElementById("delete-entry-form").addEventListener("submit", async (e
                     if (!storageAvailable) throw new Error("Saved data cannot be updated in this browser.");
                     galaxyStorage.save({ ...snapshot, entries: snapshot.entries.filter(e => !plan.ids.has(e.id)),
                         portals: galaxyPortals.withoutEntries(snapshot.portals, plan.ids),
+                        constellations: galaxyConstellations.withoutEntries(snapshot.constellations, plan.ids),
                         layout: snapshot.layout.filter(value => !plan.ids.has(value.id)) });
                 }
                 metadataWritten = true;
@@ -1362,6 +1514,7 @@ document.getElementById("delete-entry-form").addEventListener("submit", async (e
     }
     commitCrudMutation(() => {
         portals.forEach((portal, id) => { if (plan.ids.has(portal.targetEntryId) || plan.ids.has(portal.parentEntryId)) portals.delete(id); });
+        galaxyConstellations.withoutEntries([...constellations.values()], plan.ids).forEach(collection => constellations.set(collection.id, collection));
         plan.ids.forEach(id => { entries.delete(id); layout.delete(id); focusRevealIds.delete(id); });
         if (plan.ids.has(hoveredSystemId)) hoveredSystemId = null;
     }, { selectionId: fallbackId, persisted: hasFiles });
@@ -1574,7 +1727,8 @@ searchField.addEventListener("keydown", (event) => {
     }
 });
 document.addEventListener("keydown", (event) => {
-    if (event.key === "Escape" && !event.defaultPrevented && !dialog.open && !deleteDialog.open && !portalDialog.open) {
+    if (event.key === "Escape" && !event.defaultPrevented && !dialog.open && !deleteDialog.open && !portalDialog.open && !constellationWorkspace.isDialogOpen()) {
+        if (activeConstellationId) { exitConstellation(); event.preventDefault(); return; }
         if (camera.travel) { camera.stopAnimation();  event.preventDefault(); return; }
         const dismissingSearch = searchOpen;
         dismissTemporaryReveal();
@@ -1627,7 +1781,7 @@ document.addEventListener("visibilitychange", () => {
         if (graphNeedsSave) {
             saveGalaxy();
         }
-    } else if (!dialog.open && !deleteDialog.open && !portalDialog.open) {
+    } else if (!dialog.open && !deleteDialog.open && !portalDialog.open && !constellationWorkspace.isDialogOpen()) {
         physics.resume();
     }
 });

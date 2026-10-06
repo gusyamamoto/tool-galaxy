@@ -130,6 +130,72 @@ readers; this is not application state. Existing exact raw migration backups are
 left untouched. Hierarchy, Portals, layout, notes, bookmarks and attachment metadata
 remain intact. IndexedDB storage is unchanged.
 
+## Constellations v1
+
+Hierarchy says where an entity lives. A Portal is another doorway to that same
+canonical entity. A Constellation is a named collection of entities that matter
+together, across any branches, depths or Galaxies. It owns no content and changes
+no parent, role or position. An entity can belong to several collections.
+
+The separate **Constellations** sidebar section shares the hierarchy's small
+hover/focus/touch `+` language: heading `+` creates an empty, Name-only collection;
+row `+` opens a canonical entry search with ancestor paths. The same picker is
+available in the collection panel. Right-click an entity → **Add to Constellation**
+to toggle checked memberships or create a new empty collection. Portal IDs never
+become memberships. Search results exclude Portal duplicates.
+The section always remains present, including when empty. Its separate chevron
+collapses only the list; the heading `+` stays available. First creation expands
+the list once, while later creation respects manual collapse. Section state and
+the first-creation marker share `galaxy:navigation-ui` with sidebar preferences,
+outside domain storage; Sample mode neither reads nor writes these preferences.
+Collapsing/expanding preserves the lens, active-row styling and camera.
+
+Click a collection to gently frame its entries using the generic panel-aware
+camera and activate a persistent visual lens with restrained outlines and
+temporary star-map lines. Inspection, hierarchy navigation, Portal travel, content
+editing, panning, zooming and dragging all retain the active lens. Physics and
+hierarchy stay intact. At far zoom only collection entries and the selected entry
+stand out; unrelated bodies follow normal semantic zoom with extra suppression
+(smoothly increasing context between scales .34 and .84, capped at .78 opacity).
+Collection bodies retain visibility priority, but labels follow their normal
+role readability thresholds; hover/focus/selection reveals a label on demand.
+Galaxy names represented by the active collection retain a restrained context
+label at far zoom, using existing Galaxy typography. Their IDs derive freshly
+from canonical ancestry on activation, switching, membership/parent changes and
+deletion. Deactivation clears the set. Unrelated Galaxies keep the existing zoom
+and lens behavior; hover/selection never determines which Galaxies are represented.
+Only the active collection has geometry: a minimum-spanning tree for up to 128
+members, or a bounded spatial candidate tree for larger collections. Both have
+exactly n−1 edges. Topology is generated on activation/membership change; endpoints
+follow live positions every render/zoom/drag. No edges or pairwise relationships
+are stored. Reduced motion uses immediate generic framing.
+
+The right panel has independent overview and entry-inspection modes. The overview
+shows the name, entry count, **In this Constellation**, **Add entry**, and entry
+overflow actions. An entry click opens its canonical Contents while the lens stays
+active. A compact “✦ name active” indicator with its own × remains above Contents;
+click its name to reopen the overview without reframing. More in the overview
+offers Rename/Delete Constellation. Escape, clicking the active row again, the
+overview × or indicator × deactivates the lens. Empty-canvas clicks and closing
+ordinary Contents may close the panel but keep the lens. Activating another
+collection replaces the overlay and frames that collection once. Membership, rename and delete
+operations never reframe or reheat physics; only activation intentionally frames.
+
+Persistence remains **version 5**, with an optional `constellations` array of
+`{id, name, memberEntryIds, createdAt}`. Old snapshots without it load as empty.
+Normalization drops duplicate/dangling/Portal member IDs, retains valid canonical
+members and keeps empty collections. Subtree deletion filters all deleted IDs
+from every collection in the same snapshot/attachment transaction. Deleting a
+collection never deletes entries, Portals or content. Attachments and Rich Content
+schemas/backends are unchanged. Active mode and generated lines are session-only.
+
+The isolated Sample includes **Weeknight Meals** (same Galaxy), **Trip & Prep**
+(cross-Galaxy) and **Recipe Experiments** (deep Astronauts). Run
+`python tests/browser-check.py --constellations-only --screenshots` for isolated
+browser checks. Before committing, inspect these three views at desktop/mobile
+sizes; create two collections with a shared entity; drag a highlighted body;
+remove a member; delete a collection/subtree; and refresh your own saved data.
+
 ## Portals v1
 
 A Portal is a sidebar reference to one canonical entry, stored separately in the
@@ -195,8 +261,14 @@ Every canonical entry, at every depth, can hold an optional `content` object:
 ```
 
 The contextual **Content panel** shows Files first, Notes second and Bookmarks
-third. Empty sections say No files / No notes / No bookmarks. Sidebar + initiates
-creation; Notes have a small edit icon, and files/bookmarks have overflow actions
+third. Empty sections say No files / No notes / No bookmarks. Sidebar + retains
+the universal contextual Add menu. Files and Bookmarks also have a quiet heading
+`+` shortcut; clicking **No notes** opens the single existing note editor. These
+reuse `chooseFiles()`, `editNotes()` and `editLink()`, targeting the selected
+canonical entry even after Portal navigation. Heading shortcuts appear on desktop
+section hover/focus and use small icons with padded 32px targets on touch/mobile.
+They preserve the active Constellation, camera, physics heat and memberships;
+storage remains unchanged. Existing Notes have a small edit icon, and files/bookmarks have overflow actions
 instead of permanent management buttons. These actions remain visible on touch
 layouts and keyboard accessible. Notes display saved plain text; requested editing
 opens a temporary textarea with Save and Cancel. Empty text and line breaks are
@@ -206,6 +278,10 @@ Their compact editor accepts ordinary domains such as `google.com`, normalizing
 them to HTTPS, and permits only valid HTTP/HTTPS destinations. Text and URLs
 are never interpreted as HTML. No remote metadata, thumbnails or favicons are
 fetched, and bookmarks remain ordinary entry content.
+
+`python tests/browser-check.py --content-shortcuts-only --screenshots` checks the
+direct shortcuts, native file-input upload/IndexedDB bytes, canonical ownership,
+the retained sidebar Add menu, active-lens/camera stability and touch controls.
 
 Entry/content metadata uses the existing version-5 localStorage snapshot. Older
 entries without `content` still load unchanged; no destructive migration or
@@ -633,4 +709,4 @@ travel/interruption, canonical content, subtree Portal/file cleanup, camera
 stability and Sample isolation. Before committing, open existing saved data with
 legacy records; follow a cross-Galaxy Portal, interrupt travel, edit content,
 delete a subtree, refresh, and check the mobile header and Astronaut tethers.
-Constellations are deferred to a separate feature branch.
+Constellations use temporary collection overlays independently of Portal travel.

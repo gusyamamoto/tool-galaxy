@@ -21,6 +21,7 @@
                 <svg id="hierarchy-paths" aria-hidden="true"></svg>
             </div>
             <div id="regions-layer" aria-hidden="true"></div>
+            <svg id="constellation-overlay" aria-hidden="true"></svg>
             <div id="nodes-layer"></div>
         </div>
 
@@ -40,7 +41,12 @@
             </div>
                 </div>
             </div>
+            <h2 class="sidebar-section-title">Hierarchy</h2>
             <div id="hierarchy-tree" role="tree" aria-label="Cosmos hierarchy"></div>
+            <section id="constellations-section" aria-labelledby="constellations-heading">
+                <header class="sidebar-section-header"><button id="constellations-toggle" class="tree-disclosure" type="button" aria-label="Collapse Constellations" aria-controls="constellation-list" aria-expanded="true"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m6 4 4 4-4 4"/></svg></button><h2 id="constellations-heading" class="sidebar-section-title">Constellations</h2><button id="new-constellation-button" type="button" class="collection-add" aria-label="Create Constellation" title="Create Constellation">+</button></header>
+                <ul id="constellation-list" aria-label="Constellations"></ul>
+            </section>
             <details id="sidebar-tools">
                 <summary>More tools</summary>
                 <button id="add-entry-button" type="button">Add Galaxy</button>
@@ -59,7 +65,8 @@
 
         <aside id="entry-panel" aria-labelledby="panel-name" hidden>
             <div class="content-panel-header">
-            <header class="inspector-header"><span class="panel-eyebrow">Contents</span><button id="close-inspector-button" type="button" aria-label="Close contents" title="Close contents">&times;</button></header>
+            <div id="active-constellation-indicator" hidden><button id="active-constellation-name" type="button"></button><button id="deactivate-constellation-button" type="button" aria-label="Deactivate Constellation" title="Deactivate Constellation">&times;</button></div>
+            <header class="inspector-header"><span id="panel-kind" class="panel-eyebrow">Contents</span><button id="close-inspector-button" type="button" aria-label="Close contents" title="Close contents">&times;</button></header>
             <div class="panel-content">
                 <h2 id="panel-name">Select an entry</h2>
             <div class="content-header-actions">
@@ -68,14 +75,17 @@
                     <button id="edit-entry-button" type="button" role="menuitem">Edit info</button>
                     <button id="move-entry-button" type="button" role="menuitem">Move / change parent</button>
                     <button id="delete-entry-button" type="button" role="menuitem">Delete</button>
+                    <button id="rename-constellation-button" type="button" role="menuitem" data-collection-action hidden>Rename</button>
+                    <button id="delete-constellation-button" type="button" role="menuitem" data-collection-action hidden>Delete Constellation</button>
                 </div>
             </div>
             </div>
             <nav id="panel-ancestry" aria-label="Entry ancestry" hidden></nav>
+            <p id="constellation-count" hidden></p>
             </div>
             <section id="panel-rich-content" aria-label="Contents">
                 <section aria-labelledby="files-heading">
-                    <header class="content-heading"><h3 id="files-heading">Files</h3></header>
+                    <header class="content-heading"><h3 id="files-heading">Files</h3><button id="content-add-files" class="quiet-icon content-section-add" type="button" aria-label="Add files" title="Add files">+</button></header>
                     <input id="content-files" type="file" multiple accept=".jpg,.jpeg,.png,.webp,.pdf,.txt,.md" hidden aria-label="Choose files">
                     <ul id="content-attachments"></ul>
                     <p id="content-files-empty" class="content-empty">No files</p>
@@ -83,7 +93,7 @@
                 </section>
                 <section aria-labelledby="notes-heading">
                     <header class="content-heading"><h3 id="notes-heading">Notes</h3><button id="content-edit-notes" class="quiet-icon" type="button" aria-label="Edit note" title="Edit note" hidden><svg viewBox="0 0 20 20" aria-hidden="true"><path d="m12 4 4 4M4 12l9-9a2 2 0 0 1 3 3l-9 9-4 1z"/></svg></button></header>
-                    <p id="content-notes-empty" class="content-empty">No notes</p>
+                    <button id="content-notes-empty" class="content-empty content-empty-action" type="button" aria-label="Add note" title="Add note">No notes</button>
                     <p id="content-notes-view" hidden></p>
                     <form id="content-notes-form" hidden>
                     <label class="visually-hidden" for="content-notes">Notes</label>
@@ -92,7 +102,7 @@
                     </form>
                 </section>
                 <section aria-labelledby="bookmarks-heading">
-                <header class="content-heading"><h3 id="bookmarks-heading">Bookmarks</h3></header>
+                <header class="content-heading"><h3 id="bookmarks-heading">Bookmarks</h3><button id="content-add-bookmark" class="quiet-icon content-section-add" type="button" aria-label="Add bookmark" title="Add bookmark">+</button></header>
                 <ul id="content-links"></ul>
                 <p id="content-bookmarks-empty" class="content-empty">No bookmarks</p>
                 <form id="content-link-form" hidden>
@@ -102,6 +112,11 @@
                 </form>
                 </section>
                 <p id="content-status" role="status" aria-live="polite" hidden></p>
+            </section>
+            <section id="constellation-content" hidden aria-label="Entries in this Constellation">
+                <h3>In this Constellation</h3><ul id="constellation-member-list"></ul>
+                <p id="constellation-members-empty" class="content-empty">No entries yet</p>
+                <button id="panel-add-member" type="button">+ Add entry</button>
             </section>
             <p id="entry-action-status" role="status" hidden></p>
         </aside>
@@ -117,10 +132,12 @@
             <span id="context-entry-name" class="context-entry-name" aria-hidden="true"></span>
             <button type="button" role="menuitem" data-action="create">Add child</button>
             <button type="button" role="menuitem" data-action="portal">Create Portal...</button>
+            <button type="button" role="menuitem" data-action="constellation">Add to Constellation</button>
             <button type="button" role="menuitem" data-action="edit">Edit</button>
             <button type="button" role="menuitem" data-action="delete">Delete</button>
             <button type="button" role="menuitem" data-action="open-portal" data-portal-action hidden>Open Portal</button>
             <button type="button" role="menuitem" data-action="remove-portal" data-portal-action hidden>Remove Portal</button>
+            <div id="constellation-memberships" hidden></div>
         </div>
     </main>
 
@@ -168,6 +185,26 @@
         </form>
     </dialog>
 
+    <dialog id="constellation-name-dialog" class="collection-dialog" aria-labelledby="constellation-name-title">
+        <form id="constellation-name-form"><h2 id="constellation-name-title">Create Constellation</h2>
+            <label for="constellation-name">Name</label><input id="constellation-name" type="text" required maxlength="60" autofocus>
+            <p id="constellation-name-error" role="status" hidden></p>
+            <div class="form-actions"><button id="cancel-constellation-name" type="button">Cancel</button><button id="save-constellation-name" type="submit">Create</button></div>
+        </form>
+    </dialog>
+    <dialog id="constellation-picker-dialog" class="collection-dialog" aria-labelledby="constellation-picker-title">
+        <form id="constellation-picker-form"><h2 id="constellation-picker-title">Add entry</h2>
+            <label class="visually-hidden" for="constellation-member-search">Search canonical entries</label><input id="constellation-member-search" type="search" placeholder="Search entries…" maxlength="60" autocomplete="off" aria-controls="constellation-picker-results" autofocus>
+            <ul id="constellation-picker-results" aria-label="Canonical entry choices"></ul><p id="constellation-picker-status" role="status" hidden></p>
+            <div class="form-actions"><button id="close-constellation-picker" type="button">Done</button></div>
+        </form>
+    </dialog>
+    <dialog id="delete-constellation-dialog" class="collection-dialog" aria-labelledby="delete-constellation-title">
+        <form id="delete-constellation-form"><h2 id="delete-constellation-title">Delete Constellation?</h2>
+            <p>This removes only the collection. Its entities, Portals and files stay intact.</p><p id="delete-constellation-error" role="status" hidden></p>
+            <div class="form-actions"><button id="cancel-delete-constellation" type="button" autofocus>Cancel</button><button type="submit">Delete Constellation</button></div>
+        </form>
+    </dialog>
     <dialog id="delete-entry-dialog" aria-labelledby="delete-entry-title" aria-describedby="delete-entry-message">
         <form id="delete-entry-form">
             <h2 id="delete-entry-title">Delete entry?</h2>
@@ -181,6 +218,8 @@
 
     <script src="model.js"></script>
     <script src="portals.js"></script>
+    <script src="constellations.js"></script>
+    <script src="constellations-ui.js"></script>
     <script src="attachment-store.js"></script>
     <script src="rich-content.js"></script>
     <script src="appearance.js"></script>

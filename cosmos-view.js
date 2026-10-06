@@ -16,6 +16,14 @@ const cosmosView = {
         result.clouds = this.cloudOpacity(scale);
         return result;
     },
+    // A temporary lens over normal role fades, never a replacement for them.
+    constellationVisibility(scale, role, { member = false, priority = false } = {}, detail = this.detail(scale)) {
+        const context = .78 * this.smooth(scale, .34, .84);
+        const body = role === 'galaxy' ? 1 : detail[role];
+        const label = role === 'galaxy' || role === 'sun' ? this.smooth(scale, .48, .68) : detail[`${role}Label`];
+        return { body: member || priority ? 1 : body * context,
+            label: priority ? 1 : member ? label : label * context };
+    },
     cloudOpacity(scale, viewport, footprint) {
         let [start, end] = this.fades.clouds;
         if (viewport) {

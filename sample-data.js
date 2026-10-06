@@ -68,7 +68,12 @@ const galaxySample = {
             { id: "sample-portal-codex", targetEntryId: "sample-moon-0-1-0", parentEntryId: "sample-galaxy-1" },
             { id: "sample-portal-deep", targetEntryId: "sample-deep-7", parentEntryId: "sample-galaxy-2" }
         ].map(portal => ({ ...portal, createdAt: "2026-01-01T00:00:00.000Z" }));
-        return { entries, layout: [], portals };
+        const constellations = [
+            { id: 'sample-constellation-meals', name: 'Weeknight Meals', memberEntryIds: [recipe.id, 'sample-satellite-2-0-0-1', 'sample-moon-3-2-0'] },
+            { id: 'sample-constellation-trip', name: 'Trip & Prep', memberEntryIds: ['sample-moon-4-2-1', 'sample-moon-5-1-0', recipe.id, 'sample-moon-1-1-1'] },
+            { id: 'sample-constellation-techniques', name: 'Recipe Experiments', memberEntryIds: [recipe.id, deep, 'sample-deep-7', 'sample-deep-8'] }
+        ].map(collection => ({ ...collection, createdAt: '2026-01-01T00:00:00.000Z' }));
+        return { entries, layout: [], portals, constellations };
     },
     fileText: "Parmigiana prep checklist\nBread the chicken and chill.\nPrepare sauce separately.\nRest briefly before serving.\n",
     files() { return [{ key: "sample-recipe-file", entryId: "sample-satellite-2-0-0-0", blob: new Blob([this.fileText], { type: "text/plain" }) }]; }

@@ -91,7 +91,10 @@ class HierarchySidebar {
         this.resize.setAttribute("aria-valuenow", String(Math.round(this.width)));
     }
     savePreference() {
-        try { if (this.persist) localStorage.setItem("galaxy:navigation-ui", JSON.stringify({ collapsed: this.collapsed, width: this.width })); } catch { /* Preference is optional. */ }
+        if (!this.persist) return;
+        let preference = {};
+        try { preference = JSON.parse(localStorage.getItem("galaxy:navigation-ui") || "{}") || {}; } catch { /* Recover an invalid optional preference. */ }
+        try { localStorage.setItem("galaxy:navigation-ui", JSON.stringify({ ...preference, collapsed: this.collapsed, width: this.width })); } catch { /* Preference is optional. */ }
     }
     setCollapsed(collapsed) {
         if (this.collapsed === collapsed) return;

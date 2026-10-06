@@ -24,6 +24,9 @@ class EntryContentInspector {
             catch (error) { this.error(error); }
         });
         document.getElementById("content-edit-notes").addEventListener("click", () => this.editNotes());
+        document.getElementById("content-add-files").addEventListener("click", () => this.chooseFiles());
+        document.getElementById("content-notes-empty").addEventListener("click", () => this.editNotes());
+        document.getElementById("content-add-bookmark").addEventListener("click", () => this.editLink());
         document.getElementById("content-cancel-notes").addEventListener("click", () => { this.notesForm.hidden = true; this.renderNotes(); this.onLayout(); });
         document.getElementById("content-cancel-link").addEventListener("click", () => { this.linkForm.hidden = true; this.renderBookmarkState(); this.onLayout(); });
         this.linkForm.addEventListener("submit", event => {
