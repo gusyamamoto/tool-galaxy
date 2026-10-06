@@ -102,6 +102,8 @@ let editingId = null;
 let contextualParentId = null;
 let deletingId = null;
 let deleteConfirmationIds = null, crudActive = false;
+let deletionBusy = false;
+const deletingContentIds = new Set();
 let contextEntryId = null, contextReturnFocus = null;
 let searchOpen = false;
 let connectionSourceId = null, hoveredEntryId = null;
@@ -418,6 +420,36 @@ const physics = new GalaxyPhysics({
     }
 });
 
+const attachmentStore = createGalaxyAttachmentStore({ temporary: sampleMode });
+if (sampleMode) galaxySample.files().forEach(record => attachmentStore.save(record));
+function persistContentSnapshot() {
+    if (!sampleMode) {
+        if (!storageAvailable) throw new Error("Saved content is unavailable. The original data is being preserved.");
+        galaxyStorage.save(getGalaxySnapshot());
+    }
+    graphNeedsSave = false;
+}
+function saveEntryContent(id, value) {
+    const entry = entries.get(id);
+    if (!entry || deletingContentIds.has(id)) throw new Error("This entry is being deleted or no longer exists.");
+    const content = galaxyModel.normalizeContent(value,id);
+    if (!content) throw new Error("Content is invalid or exceeds its text limits.");
+    const previous = entry.content;
+    entry.content = content;
+    try { persistContentSnapshot(); }
+    catch (error) { if (previous) entry.content = previous; else delete entry.content; throw error; }
+}
+function rollbackEntryContent(id, previous) {
+    const entry = entries.get(id);
+    if (!entry) return;
+    if (previous) entry.content = previous; else delete entry.content;
+    persistContentSnapshot();
+}
+const contentInspector = new EntryContentInspector({ store: attachmentStore, getEntry: id => entries.get(id),
+    save: saveEntryContent, rollback: rollbackEntryContent,
+    onAction() { autoFitPending = false; keyboardNavigation = false; camera.stopAnimation(); },
+    onLayout() { if (cameraViewReady) updateGraphViewport(); } });
+
 function reportStorageFailure(message) {
     storageStatus.textContent = message;
     storageStatus.hidden = false;
@@ -425,8 +457,8 @@ function reportStorageFailure(message) {
 
 function getGalaxySnapshot() {
     return {
-        entries: [...entries.values()].map(({ id, name, description, category, parentId, x, y, appearance }) =>
-            ({ id, name, description, category, parentId, x, y, ...(appearance ? { appearance } : {}) })),
+        entries: [...entries.values()].map(({ id, name, description, category, parentId, x, y, appearance, content }) =>
+            ({ id, name, description, category, parentId, x, y, ...(appearance ? { appearance } : {}), ...(content ? { content } : {}) })),
         // Only optional relationships are stored here; hierarchy edges come from parentId.
         connections: galaxyModel.normalizeConnections(relationships, entries),
         layout: [...layout].map(([id, placement]) => ({ id, ...placement }))
@@ -542,7 +574,7 @@ function selectEntry(entry, node, { openInspector = true, reframe = true, scroll
     updateHierarchyEmphasis();
     hierarchySidebar.select(entry.id, { scroll });
     if (openInspector && !activeNodeDrags) setInspectorOpen(true, { reframe });
-    else if (!activeNodeDrags) updateGraphViewport();
+    else { contentInspector.select(entry, !panel.hidden); if (!activeNodeDrags) updateGraphViewport(); }
 }
 
 function setInspectorOpen(open, { reframe = true } = {}) {
@@ -551,6 +583,8 @@ function setInspectorOpen(open, { reframe = true } = {}) {
     if (open && hierarchySidebar.narrow) hierarchySidebar.setCollapsed(true);
     const previous = { ...physics.bounds };
     panel.hidden = !open;
+    if (open) contentInspector.select(entries.get(selectedNode.dataset.entryId), true);
+    else contentInspector.hide();
     galaxy.classList.toggle("inspector-open", open);
     // Content height can change between selections or when More is expanded.
     // Measure final panel geometry before fitting, without rebuilding physics.
@@ -1282,7 +1316,7 @@ function finishCrudOperation() {
 // One synchronous mutation: model/derived particles -> save -> DOM/tree ->
 // selection/inspector. No navigation helpers or global Fit participate.
 function commitCrudMutation(mutate, { selectionId, topologyChanged = true, reveal = false,
-    preserveScroll = true, inspectorOpen = !panel.hidden } = {}) {
+    preserveScroll = true, inspectorOpen = !panel.hidden, persisted = false } = {}) {
     beginCrudOperation();
     const scroll = { top: hierarchySidebar.tree.scrollTop, left: hierarchySidebar.tree.scrollLeft };
     const previousSelection = selectedNode?.dataset.entryId;
@@ -1292,7 +1326,7 @@ function commitCrudMutation(mutate, { selectionId, topologyChanged = true, revea
     galaxyModel.normalizeHierarchy(entries);
     connections = galaxyModel.buildConnections(entries, relationships);
     if (topologyChanged) syncPhysicsGraph({ updateUI: false, reheat: .12 });
-    saveGalaxy();
+    if (!persisted) saveGalaxy(); else graphNeedsSave = false;
     nodes.forEach((node, id) => {
         if (entries.has(id)) return;
         node.remove(); nodes.delete(id); regions.get(id)?.remove(); regions.delete(id);
@@ -1332,6 +1366,7 @@ function restoreCrudFocus() {
 }
 
 function openEntryForm(entry = null, parentId = null, contextual = false) {
+    if (deletionBusy) return;
     beginCrudOperation();
     cancelConnectionMode();
     closeContextMenu();
@@ -1355,7 +1390,7 @@ function openEntryForm(entry = null, parentId = null, contextual = false) {
 
 function createChildEntry(parentId) {
     const context = cosmosHierarchy.childContext(entries, parentId);
-    if (!context || !parentId || activeNodeDrags) return;
+    if (!context || !parentId || activeNodeDrags || deletionBusy) return;
     beginCrudOperation();
     selectEntry(entries.get(parentId), nodes.get(parentId), { reframe: false });
     openEntryForm(null, context.parentId, true);
@@ -1427,6 +1462,7 @@ function clearSelection({ reframe = true } = {}) {
     dismissConnectionHint();
     focusRevealIds.clear();
     selectedNode = null;
+    contentInspector.select(null, false);
     setInspectorOpen(false, { reframe });
     hierarchySidebar.select(null);
     panelAncestry.replaceChildren();
@@ -1461,6 +1497,7 @@ function showDeleteConfirmation(entry, ids) {
 }
 
 function requestEntryDelete(id) {
+    if (deletionBusy) return;
     const entry = entries.get(id);
     if (!entry) return;
     beginCrudOperation();
@@ -1480,8 +1517,10 @@ deleteDialog.addEventListener("close", () => {
     deletingId = null; deleteConfirmationIds = null;
     finishCrudOperation();
 });
-document.getElementById("delete-entry-form").addEventListener("submit", (event) => {
+deleteDialog.addEventListener("cancel", event => { if (deletionBusy) event.preventDefault(); });
+document.getElementById("delete-entry-form").addEventListener("submit", async (event) => {
     event.preventDefault();
+    if (deletionBusy) return;
     const entry = entries.get(deletingId);
     const plan = galaxyModel.deletionPlan(entries, relationships, deletingId, { subtree: true, protectedIds: builtInIds });
     if (!entry || plan.error) {
@@ -1496,12 +1535,39 @@ document.getElementById("delete-entry-form").addEventListener("submit", (event) 
     const selectedId = selectedNode?.dataset.entryId;
     const fallbackId = plan.ids.has(selectedId) ?
         galaxyModel.ancestors(entries, selectedId).find(parent => !plan.ids.has(parent.id))?.id : selectedId;
+    const hasFiles = [...plan.ids].some(id => entries.get(id)?.content?.attachments.length) || contentInspector.hasJobs(plan.ids) || attachmentStore.hasEntries(plan.ids);
+    if (hasFiles) {
+        deletionBusy = true;
+        plan.ids.forEach(id => deletingContentIds.add(id));
+        const confirm = document.getElementById("confirm-delete-entry"), cancel = document.getElementById("cancel-delete-entry");
+        confirm.disabled = cancel.disabled = true;
+        let metadataWritten = false;
+        try {
+            await attachmentStore.deleteEntries(plan.ids, () => {
+                const current = galaxyModel.deletionPlan(entries, relationships, entry.id, { subtree: true, protectedIds: builtInIds });
+                if (current.error || current.ids.size !== plan.ids.size || [...current.ids].some(id => !plan.ids.has(id))) throw new Error("The branch changed. Cancel and review its new deletion count.");
+                const snapshot = getGalaxySnapshot();
+                if (!sampleMode) {
+                    if (!storageAvailable) throw new Error("Saved data cannot be updated in this browser.");
+                    galaxyStorage.save({ ...snapshot, entries: snapshot.entries.filter(e => !plan.ids.has(e.id)),
+                        connections: snapshot.connections.filter(link => !plan.ids.has(link.from) && !plan.ids.has(link.to)),
+                        layout: snapshot.layout.filter(value => !plan.ids.has(value.id)) });
+                }
+                metadataWritten = true;
+            }, () => { if (metadataWritten && !sampleMode) galaxyStorage.save(getGalaxySnapshot()); });
+        } catch (error) {
+            document.getElementById("delete-entry-message").textContent = `Could not delete the files. Your entries are unchanged. ${error.message || "Try again."}`;
+            return;
+        } finally {
+            deletionBusy = false; deletingContentIds.clear(); confirm.disabled = cancel.disabled = false;
+        }
+    }
     commitCrudMutation(() => {
         plan.ids.forEach(id => { entries.delete(id); layout.delete(id); focusRevealIds.delete(id); });
         relationships.splice(0, relationships.length, ...plan.relationships);
         if (plan.ids.has(hoveredEntryId)) hoveredEntryId = null;
         if (plan.ids.has(hoveredSystemId)) hoveredSystemId = null;
-    }, { selectionId: fallbackId });
+    }, { selectionId: fallbackId, persisted: hasFiles });
     deleteDialog.close();
     restoreCrudFocus(); finishCrudOperation();
 });

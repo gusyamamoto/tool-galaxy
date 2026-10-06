@@ -127,6 +127,85 @@ edits and parent changes preserve them. Deleting a leaf removes only its inciden
 relationships. These additive fields keep the version 5 storage container and
 existing migration/backups; `parentId` and layout records are unchanged.
 
+## Rich Content v1
+
+Every canonical entry, at every depth, can hold an optional `content` object:
+
+```json
+{
+  "version": 1,
+  "notes": { "format": "plain", "text": "First line\nSecond line" },
+  "links": [{ "id": "stable-link-id", "url": "https://example.com/", "title": "Optional title" }],
+  "attachments": [{
+    "id": "stable-file-id", "kind": "upload", "entryId": "entry-id",
+    "filename": "itinerary.pdf", "mimeType": "application/pdf", "size": 1234,
+    "storageKey": "opaque-file-key", "createdAt": "2026-01-01T00:00:00.000Z"
+  }]
+}
+```
+
+The existing inspector has a collapsible **Content** section below its current
+actions. Notes are plain multiline text with an explicit **Save notes** action;
+empty text and line breaks are preserved. Links have Add/Edit/Remove actions,
+stable IDs, optional titles, and safe new-tab HTTP/HTTPS opening. Text and URLs
+are never interpreted as HTML. No remote metadata, thumbnails or favicons are
+fetched, and content links never create semantic relationships.
+
+Entry/content metadata uses the existing version-5 localStorage snapshot. Older
+entries without `content` still load unchanged; no destructive migration or
+container-version change is required. The nested content version, note format,
+attachment kind and opaque storage key allow future note formats, external-file
+references and another storage provider. No Drive/OAuth/cloud integration is
+implemented. Renaming/reparenting preserves content because ownership uses entry
+ID, never hierarchy path or celestial role.
+
+`createGalaxyAttachmentStore` provides asynchronous `save`, `get`, `delete` and
+`deleteEntries` methods. The local adapter uses IndexedDB database
+`galaxy-attachments`, version 1, with a `files` store keyed by opaque file key and
+an `entryId` index. Original Blob bytes and small thumbnail Blobs live there,
+never in localStorage. The UI receives the adapter by dependency injection and
+does not call IndexedDB directly. A startup scan reads only owner/key metadata,
+not blobs/previews, so cleanup also finds unreferenced files belonging to an entry.
+
+Supported uploads: JPG/JPEG, PNG, WebP, PDF, TXT and MD. Central limits live in
+`galaxyModel.contentLimits`: **10 MiB per file**, **20 megapixels per image**,
+**240px thumbnail edge**, **2048-byte text previews**, and **100,000 note characters**.
+Image headers provide dimensions cheaply; JPEG orientation is respected.
+Only the currently inspected, expanded Content section requests previews.
+Images display bounded, aspect-preserving thumbnails; explicit Open uses original
+bytes. PDFs use the native browser viewer in a new tab. TXT/MD previews are bounded
+plain text, and MD opens as text rather than executable HTML or rendered Markdown.
+Preview object URLs are revoked on selection/close, and full-file URLs on tab close
+or page exit. The file picker is keyboard accessible; file drops apply only to
+the selected entry's Attachments area. Attachment Remove requires a second
+**Confirm remove** click.
+
+Upload/removal coordinates a synchronous metadata write with an abortable binary
+transaction. Failed validation, quota or metadata writes leave no broken reference
+or orphaned new blob. Subtree confirmation cleans every owner's binary records
+through the index, then publishes the existing CRUD mutation; metadata failures
+abort file deletion, and failed cleanup leaves entries unchanged. Pending uploads
+keep their original owner across selection changes and cannot attach to a deleted
+entry. All content actions preserve camera state and add no physics heat.
+
+The Sample has two small notes/link examples and one generated temporary TXT
+attachment. Its separate in-memory adapter never opens or changes the real
+attachment database. Refresh discards Sample file changes. Image/PDF previews are
+covered by real test uploads instead of bundled binary Sample assets.
+
+Browser storage is local to this browser/profile and origin; another port/origin
+has a separate store. Quota, private browsing, site-data clearing and browser
+eviction can affect availability. Current JSON/localStorage backups contain file
+references, **not file bytes**; there is no attachment backup/export or cloud sync
+yet. Keep original files for this prototype. Missing files produce a readable
+unavailable message rather than silently changing the entry's metadata.
+
+`python tests/browser-check.py --content-only --screenshots` checks notes/links,
+all file types, portrait/bounded previews, real native PDF opening, refresh,
+metadata/binary quota failure and rollback, rename/reparent, explicit removal,
+subtree/unreferenced cleanup, upload ownership/deletion races, scoped drops,
+camera stability, mobile layout, and real metadata/binary Sample isolation.
+
 ## Semantic connections
 
 Choose **Connect to...** from a body's or tree row's context menu, or **+ Connect**

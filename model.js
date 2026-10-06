@@ -9,12 +9,46 @@ const galaxyModel = {
         astronaut: { name: "Astronaut", label: "Astronaut · Entry", body: "astronaut", scale: 0.5 }
     },
     roleAtDepth(depth) { return ["galaxy", "sun", "planet", "moon", "satellite"][depth] || "astronaut"; },
+    contentLimits: { notes: 100000, fileBytes: 10 * 1024 * 1024, thumbnailEdge: 240, imagePixels: 20000000, textPreviewBytes: 2048 },
+    emptyContent() { return { version: 1, notes: { format: "plain", text: "" }, links: [], attachments: [] }; },
+    webUrl(value) {
+        if (typeof value !== "string" || value.length > 2048) return null;
+        try { const url = new URL(value.trim()); return ["http:", "https:"].includes(url.protocol) && url.hostname ? url.href : null; }
+        catch { return null; }
+    },
+    normalizeContent(value, entryId) {
+        if (!value || value.version !== 1 || value.notes?.format !== "plain" ||
+            typeof value.notes.text !== "string" || value.notes.text.length > this.contentLimits.notes ||
+            !Array.isArray(value.links) || !Array.isArray(value.attachments)) return null;
+        const links = [], attachments = [], ids = new Set();
+        const validId = id => typeof id === "string" && !!id.trim() && id.length <= 150;
+        for (const link of value.links) {
+            const url = this.webUrl(link?.url);
+            if (!link || !validId(link.id) || ids.has(link.id) || !url ||
+                (link.title != null && (typeof link.title !== "string" || link.title.length > 200))) return null;
+            ids.add(link.id); links.push({ id: link.id, url, ...(link.title ? { title: link.title } : {}) });
+        }
+        ids.clear();
+        for (const file of value.attachments) {
+            if (!file || file.kind !== "upload" || !validId(file.id) || ids.has(file.id) || file.entryId !== entryId ||
+                typeof file.storageKey !== "string" || !file.storageKey.trim() || file.storageKey.length > 1024 || typeof file.filename !== "string" || !file.filename || file.filename.length > 255 ||
+                !["image/jpeg","image/png","image/webp","application/pdf","text/plain","text/markdown"].includes(file.mimeType) ||
+                !Number.isSafeInteger(file.size) || file.size < 0 || typeof file.createdAt !== "string" || !Number.isFinite(Date.parse(file.createdAt))) return null;
+            ids.add(file.id);
+            attachments.push({ id: file.id, kind: "upload", entryId, filename: file.filename, mimeType: file.mimeType,
+                size: file.size, storageKey: file.storageKey, createdAt: file.createdAt,
+                ...(Number.isSafeInteger(file.width) && file.width > 0 && Number.isSafeInteger(file.height) && file.height > 0 ? { width: file.width, height: file.height } : {}) });
+        }
+        return { version: 1, notes: { format: "plain", text: value.notes.text }, links, attachments };
+    },
     normalizeEntry(record) {
+        const content = record?.content == null ? null : this.normalizeContent(record.content, record.id);
+        if (record?.content != null && !content) return null;
         if (!record || typeof record.id !== "string" || !record.id.trim() || record.id.length > 100 ||
             typeof record.name !== "string" || !record.name.trim() || record.name.length > 60 ||
             (record.description != null && (typeof record.description !== "string" || record.description.length > 1000))) return null;
         return {
-            id: record.id, name: record.name, description: record.description ?? "",
+            id: record.id, name: record.name, description: record.description ?? "", ...(content ? { content } : {}),
             category: typeof record.category === "string" ? record.category : "",
             parentId: typeof record.parentId === "string" && record.parentId ? record.parentId : null,
             x: Number.isFinite(record.x) ? record.x : 400,
