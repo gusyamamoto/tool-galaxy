@@ -9,7 +9,7 @@ open `http://localhost:8000`. Use the same browser, address and port for saved d
 - **Add:** each hierarchy row has a small **+**, shown on hover/focus and always
   available on touch layouts. It opens Add child, Add files, Add note and Add
   bookmark for that row without selecting or navigating first. Add Galaxy remains
-  under More tools; Search has no global contextual +.
+  under More; Search has no global contextual +.
 - **Add child:** use **+ → Add child** or the body's right-click menu. Both use
   the same parent context: Galaxy
   → Sun → Planet → Moon → Satellite → Astronaut, then **Add Astronaut** at any deeper level.
@@ -25,8 +25,8 @@ open `http://localhost:8000`. Use the same browser, address and port for saved d
 - **Sidebar:** Search sits above the compact tree. Consistent
   32px rows align SVG chevrons and celestial icons, with subtle hover/selection
   states and ellipsis for long names; deep paths still scroll horizontally.
-  The small Galaxy title stays in the sidebar; there is no visible Hierarchy
-  heading. **More tools** at the bottom holds Add Galaxy, Fit Galaxy, zoom/count information, navigation
+  The small Galaxy title stays in the sidebar above separate Hierarchy and
+  Constellations sections. **More** at the bottom holds Add Galaxy, Fit Galaxy, zoom/count information, navigation
   hints and temporary Sample controls. A small Sample label identifies that mode.
   Toggle navigation beside the title to reclaim canvas space; a small reopen
   control remains when it is closed. Drag its
@@ -41,15 +41,15 @@ open `http://localhost:8000`. Use the same browser, address and port for saved d
   A sticky header shows the name, **•••** beside the title, and a clickable
   ancestor-only breadcrumb below. Files, read-first Notes and Bookmarks follow in
   that order. Metadata is
-  available under **••• → Edit info**, **Move / change parent**, and **Delete**.
+  available under **••• → Edit info**, **Move / change parent**, and **Delete entry**.
   On mobile it becomes a bottom sheet; opening navigation closes it, and selecting
   from navigation switches back to Contents. Right-click updates selection and
   opens its menu without opening a closed drawer or shifting the camera. Opening
   Contents measures available space without changing the camera;
   it waits for drag release before opening if a pointer is held.
 - **Body actions:** right-click a body, Galaxy name, cloud or sidebar row for Add child,
-  Create Portal..., Edit and Delete. Existing deletion protections and confirmation
-  remain. The menu stays inside the viewport, closes on outside clicks/Escape,
+  Add files, Add to Constellation, Create Portal..., Edit info and Delete entry.
+  Subtree confirmation remains. The menu stays inside the viewport, closes on outside clicks/Escape,
   and does not start dragging or camera focus. Shift+F10 opens it from a focused
   body; arrows/Home/End navigate its actions.
 - **Edit / Move:** Edit info retains name, description and category/label. Move
@@ -59,13 +59,15 @@ open `http://localhost:8000`. Use the same browser, address and port for saved d
   Self/descendant parent choices are excluded, with model
   validation also rejecting cycles. Appearance overrides survive ordinary edits.
 - **Delete:** leaves use a simple confirmation. Parents offer an explicit
-  **Delete N entries** confirmation naming the entry and everything inside it.
+  **Delete N entries** confirmation naming the entry, child entries and content.
   Cancel makes no graph/storage changes. All descendants and affected Portal
   references are removed together; children are never promoted. All visible entries,
   including starters and migrated examples, are user-owned and deletable. Legacy
   ownership flags are discarded during normalization; storage stays at version 5.
 - **Search:** in the sidebar, names at every depth, case insensitive. Matching
   visible tree rows are highlighted; choosing a result opens its ancestor path.
+  Each result shows an ancestor path beneath its name to distinguish duplicates;
+  Portals and Constellations do not add extra results.
   While results are open,
   matches and their ancestry reveal even at Universe zoom. Choose a result to select it, open Contents and
   smoothly focus. Contents includes clickable ancestor names. Arrow Down reaches
@@ -207,7 +209,7 @@ version-5 snapshot's optional `portals` collection:
 
 Right-click a canonical body/tree row and choose **Create Portal...**. The compact
 picker asks where it should appear; search spans canonical entries at every depth,
-with ancestor paths for duplicate names and Show more places for additional results.
+with ancestor paths for duplicate names and Show more entries for additional results.
 Portals can point across Galaxies or back into their own branch. The placement
 must be a real entry; duplicate target/parent pairs are rejected. There are no
 Portal chains, custom names, Portal-owned content, or expandable target subtrees.
@@ -215,14 +217,14 @@ Global search remains canonical-only to avoid duplicate results.
 
 Portal rows use a small accretion-ring icon, the original's current name, and a
 tooltip with its real location. They have no celestial role, expand chevron or
-folder +. Click/Enter opens the original via the existing animated `focusEntry`
+entry +. Click/Enter opens the original via the existing animated `focusEntry`
 travel path, including cross-Galaxy context zoom and reduced-motion behavior.
 Selection, ancestor expansion, Content panel and breadcrumbs all resolve to the
 original. Rename/reparent updates labels and locations through stable entry IDs.
 No additional Cosmos node or physics particle is created.
 
-Right-click a Portal, or use its row action button on touch/keyboard, for **Open
-Portal** and **Remove Portal**. Removal changes only that reference. Creation and
+Right-click a Portal, or use its row action button on touch/keyboard, for **Go to
+original** and **Remove Portal**. Removal changes only that reference. Creation and
 removal save metadata before publishing the sidebar, preserve the camera, and do
 not rebuild/reheat physics. A canonical subtree deletion removes every reference
 whose target **or placement parent** is in the deleted set, in the existing
@@ -282,6 +284,14 @@ fetched, and bookmarks remain ordinary entry content.
 `python tests/browser-check.py --content-shortcuts-only --screenshots` checks the
 direct shortcuts, native file-input upload/IndexedDB bytes, canonical ownership,
 the retained sidebar Add menu, active-lens/camera stability and touch controls.
+Sidebar/context-menu content actions also switch from a Constellation overview
+to canonical Contents when that entry was already selected, without reframing or
+clearing the lens. Same-entry context menus preserve an unfinished note. File,
+bookmark and collection-entry overflow menus share keyboard focus/Escape behavior
+and adaptive placement above the trigger near a mobile sheet edge. Opening the
+mobile navigation drawer releases hidden Content previews.
+`python tests/browser-check.py --consolidation-only --screenshots` covers these
+state fixes, consistent copy/menus, duplicate-name Search paths and Sample isolation.
 
 Entry/content metadata uses the existing version-5 localStorage snapshot. Older
 entries without `content` still load unchanged; no destructive migration or
@@ -596,11 +606,11 @@ independent of subscription/features. No customization UI is added yet.
 
 ## Development sample and tests
 
-**Load Sample Galaxy** opens 187 temporary entries: four Galaxies (Work, Food,
+**Load Sample** opens 187 temporary entries: four Galaxies (Work, Food,
 Travel, Personal), eight Suns, 24 Planets, 48 Moons, 96 Satellites and seven
 Astronauts, including a depth-eight recipe branch with several Astronaut siblings
 and three useful Portal references. Normal interactions use the same model/renderer/
-physics. Sample mode neither reads nor writes real saved data. Remove Sample or
+physics. Sample mode neither reads nor writes real saved data. Leave Sample or
 refresh returns to it; the activation query is removed immediately.
 
 Run unit tests in PowerShell: `node --test (rg --files tests -g '*.test.js')`.

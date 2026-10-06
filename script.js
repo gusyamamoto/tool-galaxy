@@ -227,7 +227,8 @@ function openContextMenu(id, x, y) {
     contextMenu.removeAttribute("data-portal-id");
     document.getElementById('constellation-memberships').hidden = true;
     contextMenu.querySelectorAll(":scope > button").forEach(button => { button.hidden = button.hasAttribute("data-portal-action"); });
-    selectEntry(entry, nodes.get(id), { openInspector: false });
+    closeContentMenus();
+    if (selectedNode?.dataset.entryId !== id || constellationOverview) selectEntry(entry, nodes.get(id), { openInspector: false });
     contextMenu.setAttribute("aria-label", `Actions for ${entry.name}`);
     document.getElementById("context-entry-name").textContent = entry.name;
     contextMenu.querySelector('[data-action="create"]').textContent = cosmosHierarchy.childContext(entries, id).action;
@@ -244,7 +245,9 @@ function openPortalContextMenu(id, x, y) {
     const portal = portals.get(id), target = entries.get(portal?.targetEntryId);
     if (!target || activeNodeDrags || pan) return;
     closeContextMenu(); closeContentMenus();
-    contextPortalId = id; contextReturnFocus = hierarchySidebar.rows.get(id);
+    const row = hierarchySidebar.rows.get(id), button = row?.querySelector('.tree-portal-actions');
+    contextPortalId = id; contextReturnFocus = document.activeElement === button ? button : row;
+    button?.setAttribute('aria-expanded', 'true');
     contextMenu.removeAttribute("data-entry-id"); contextMenu.dataset.portalId = id;
     contextMenu.setAttribute("aria-label", `Portal actions for ${target.name}`);
     document.getElementById("context-entry-name").textContent = `Portal to ${target.name}`;
@@ -254,6 +257,7 @@ function openPortalContextMenu(id, x, y) {
 }
 function closeContextMenu(restoreFocus = false) {
     if (contextMenu.hidden) return;
+    if (contextPortalId) hierarchySidebar.rows.get(contextPortalId)?.querySelector('.tree-portal-actions')?.setAttribute('aria-expanded','false');
     contextMenu.hidden = true; contextEntryId = null; contextPortalId = null;
     if (restoreFocus && contextReturnFocus?.isConnected) {
         // Returning keyboard focus must not launch a new Cosmos focus transition.
@@ -274,6 +278,7 @@ contextMenu.addEventListener("click", event => {
     if (action === 'constellation') { showConstellationMemberships(id); return; }
     closeContextMenu(action === "delete");
     if (action === "create") createChildEntry(id);
+    else if (action === "files") openEntryContentAction(id, "files");
     else if (action === "portal") openPortalDialog(id);
     else if (action === "edit") openEntryForm(entries.get(id));
     else if (action === "delete") requestEntryDelete(id);
@@ -431,7 +436,7 @@ function updateConstellationIndicator() {
 }
 function showConstellationOverview() {
     if (!activeConstellationId || activeNodeDrags) return;
-    closeContentMenus(); constellationOverview = true; contentInspector.hide();
+    closeContextMenu(); closeContentMenus(); constellationOverview = true; contentInspector.hide();
     updateConstellationIndicator(); setInspectorOpen(true);
 }
 document.getElementById('active-constellation-name').addEventListener('click', showConstellationOverview);
@@ -596,7 +601,7 @@ function selectEntry(entry, node, { openInspector = true, reframe = false, scrol
     panelAncestry.replaceChildren();
     [...galaxyModel.ancestors(entries, entry.id)].reverse().forEach(ancestor => {
         const button = document.createElement("button");
-        button.type = "button"; button.textContent = ancestor.name;
+        button.type = "button"; button.textContent = ancestor.name; button.title = ancestor.name;
         button.addEventListener("click", () => focusEntry(ancestor.id));
         panelAncestry.appendChild(button);
     });
@@ -874,6 +879,7 @@ function navigationViewportChanged(animate = true, { keepSelectedVisible = false
     closeContextMenu(); dismissTemporaryReveal();
     if (hierarchySidebar.narrow && !hierarchySidebar.collapsed) {
         panel.hidden = true; galaxy.classList.remove("inspector-open");
+        closeContentMenus(); contentInspector.hide();
     }
     const before = { x: (previous.left + previous.right) / 2, y: (previous.top + previous.bottom) / 2 };
     updateGraphViewport();
@@ -1167,7 +1173,7 @@ function updateFormRole() {
 }
 function updateParentOptions(preferredId = parentField.value) {
     clearFormError(); parentField.required = false;
-    parentField.replaceChildren(new Option("Universe — new Galaxy", ""));
+    parentField.replaceChildren(new Option("Universe", ""));
     const descendants = new Set(editingId ? [editingId] : []);
     entries.forEach(entry => {
         if (editingId && galaxyModel.ancestors(entries, entry.id).some(ancestor => ancestor.id === editingId)) descendants.add(entry.id);
@@ -1320,14 +1326,20 @@ addMenu.addEventListener("click", event => {
     const action = event.target.closest("[data-add]")?.dataset.add;
     const id = addMenuTargetId;
     if (!action || !entries.has(id)) return;
+    openEntryContentAction(id, action);
+});
+function openEntryContentAction(id, action) {
+    if (!entries.has(id)) return;
     closeContentMenus();
     autoFitPending = false; keyboardNavigation = false; camera.stopAnimation();
-    if (selectedNode?.dataset.entryId !== id) selectEntry(entries.get(id), nodes.get(id), { reframe: false });
+    // The lens and selection coexist. Even the already-selected entry must
+    // leave the overview panel before its content editor can be shown.
+    if (selectedNode?.dataset.entryId !== id || constellationOverview) selectEntry(entries.get(id), nodes.get(id), { reframe: false });
     if (panel.hidden) setInspectorOpen(true);
     if (action === "files") contentInspector.chooseFiles();
     else if (action === "note") contentInspector.editNotes();
     else if (action === "bookmark") contentInspector.editLink();
-});
+}
 document.getElementById("move-entry-button").addEventListener("click", () => {
     const entry = entries.get(selectedNode?.dataset.entryId);
     if (entry) openEntryForm(entry, null, false, "move");
@@ -1438,10 +1450,10 @@ function reportAction(message, { reframe = true } = {}) {
 function showDeleteConfirmation(entry, ids) {
     deleteConfirmationIds = new Set(ids);
     document.getElementById("delete-entry-title").textContent = ids.size > 1 ?
-        `Delete “${entry.name}” and everything inside it?` : "Delete entry?";
+        `Delete “${entry.name}” and its child entries?` : "Delete entry?";
     document.getElementById("delete-entry-message").textContent = ids.size > 1 ?
-        `This will permanently delete ${ids.size} entries. This cannot be undone.` :
-        `Delete “${entry.name}”? This cannot be undone.`;
+        `This will permanently delete ${ids.size} entries and their content. This cannot be undone.` :
+        `Delete “${entry.name}” and its content? This cannot be undone.`;
     document.getElementById("confirm-delete-entry").textContent = ids.size > 1 ? `Delete ${ids.size} entries` : "Delete entry";
 }
 
@@ -1581,11 +1593,11 @@ function refreshPortalDestinations() {
         item.append(button); list.append(item);
     });
     if (!matches.length) {
-        const item = document.createElement("li"); item.className = "portal-no-results"; item.textContent = "No matching places."; list.append(item);
+        const item = document.createElement("li"); item.className = "portal-no-results"; item.textContent = "No matching entries."; list.append(item);
     }
     if (matches.length > portalResultsLimit) {
         const item = document.createElement("li"), more = document.createElement("button"); more.type = "button";
-        more.textContent = "Show more places";
+        more.textContent = "Show more entries";
         more.addEventListener("click", () => {
             const previousLimit = portalResultsLimit; portalResultsLimit += 8; refreshPortalDestinations();
             const next = list.querySelectorAll("button[data-entry-id]")[previousLimit];
@@ -1705,8 +1717,9 @@ function refreshSearchResults() {
         const item = document.createElement("li");
         const button = document.createElement("button");
         button.type = "button";
-        const parent = entries.get(entry.parentId);
-        button.textContent = `${entry.name} · ${entryRoles[entry.role].name}${parent ? ` · ${parent.name}` : ""}`;
+        const path = galaxyModel.ancestors(entries, entry.id).reverse().map(parent => parent.name).join(" › ") || "Universe";
+        const name = document.createElement('span'), location = document.createElement('small');
+        name.textContent = entry.name; location.textContent = path; button.append(name, location); button.title = `${entry.name}\n${path}`;
         button.addEventListener("click", () => focusEntry(entry.id));
         item.appendChild(button);
         searchResultList.appendChild(item);
@@ -1746,7 +1759,7 @@ initializeGalaxy();
 if (sampleMode) {
     document.getElementById("sample-indicator").hidden = false;
     sampleControls.classList.add("sample-active");
-    sampleModeLabel.textContent = "Sample galaxy";
+    sampleModeLabel.textContent = "Sample data";
     sampleModeCount.textContent = `(${entries.size} temporary entries)`;
 }
 loadSampleButton.disabled = sampleMode;

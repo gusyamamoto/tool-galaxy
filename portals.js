@@ -19,7 +19,7 @@ const galaxyPortals = {
     },
     placementError(entries, portals, targetEntryId, parentEntryId) {
         if (!entries.has(targetEntryId)) return "The original entry is no longer available.";
-        if (!entries.has(parentEntryId)) return "Choose a place in the canonical hierarchy.";
+        if (!entries.has(parentEntryId)) return "Choose an entry to place this Portal under.";
         if ([...portals.values()].some(portal => portal.targetEntryId === targetEntryId && portal.parentEntryId === parentEntryId))
             return "A Portal to this entry already exists here.";
         return "";

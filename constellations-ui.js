@@ -8,6 +8,7 @@ class ConstellationWorkspace {
         this.collapsed=typeof preference.constellationsCollapsed==='boolean'?preference.constellationsCollapsed:null;
         this.hasHadCollections=preference.constellationsSeen===true;this.initialized=false;
         this.sectionToggle.addEventListener('click',()=>{this.collapsed=!this.collapsed;this.applySectionState();this.saveSectionPreference();this.onLayout();});
+        document.addEventListener('pointerdown',event=>{document.querySelectorAll('#constellation-content .content-item-menu[open]').forEach(menu=>{if(!menu.contains(event.target))menu.open=false;});});
         this.picker=document.getElementById('constellation-picker-dialog');this.deleteDialog=document.getElementById('delete-constellation-dialog');
         document.getElementById('new-constellation-button').addEventListener('click',()=>this.openName());
         document.getElementById('panel-add-member').addEventListener('click',()=>this.openPicker(this.getActive()));
@@ -59,7 +60,9 @@ class ConstellationWorkspace {
             const star=document.createElement('span'),name=document.createElement('span');star.textContent='✦';star.className='constellation-star';star.ariaHidden='true';name.className='constellation-name';name.textContent=collection.name;open.append(star,name);open.title=collection.name;
             const add=this.button('+',event=>{event.stopPropagation();this.openPicker(collection.id);},`Add entry to ${collection.name}`);
             add.className='collection-add';add.dataset.collectionAction='add';add.title=add.ariaLabel;row.append(open,add);
-            row.addEventListener('contextmenu',event=>{event.preventDefault();if(this.getActive()!==collection.id)this.activate(collection.id);else this.overview();document.getElementById('entry-more-button').click();});
+            const actions=()=>{if(this.getActive()!==collection.id)this.activate(collection.id);else this.overview();document.getElementById('entry-more-button').click();};
+            row.addEventListener('contextmenu',event=>{event.preventDefault();actions();});
+            row.addEventListener('keydown',event=>{if(event.key==='ContextMenu'||(event.shiftKey&&event.key==='F10')){event.preventDefault();event.stopPropagation();actions();}});
             this.list.append(row);
         });
         this.list.scrollTop=scroll;
@@ -80,9 +83,9 @@ class ConstellationWorkspace {
         collection.memberEntryIds.forEach(id=>{const entry=this.entries.get(id);if(!entry)return;
             const row=document.createElement('li'),open=this.button(entry.name,()=>this.inspect(id));row.dataset.entryId=id;open.className='constellation-member-name';
             open.title=this.path(id);
-            const menu=document.createElement('details'),summary=document.createElement('summary');menu.className='constellation-member-menu';summary.textContent='•••';summary.ariaLabel=`Actions for ${entry.name}`;
-            menu.append(summary,this.button('Remove from Constellation',()=>{try{this.setMember(collection.id,id,false);}catch(error){this.error('entry-action-status',error);}}));
-            menu.addEventListener('keydown',event=>{if(event.key==='Escape'&&menu.open){event.preventDefault();event.stopPropagation();menu.open=false;summary.focus({preventScroll:true});}});
+            const actions=document.createElement('div');actions.className='content-row-actions';
+            actions.append(this.button('Remove from Constellation',()=>{try{this.setMember(collection.id,id,false);}catch(error){this.error('entry-action-status',error);}}));
+            const menu=createPanelItemMenu(actions,entry.name,document.getElementById('constellation-content'));menu.classList.add('constellation-member-menu');
             row.append(open,menu);list.append(row);
         });
         document.getElementById('constellation-members-empty').hidden=collection.memberEntryIds.length>0;
@@ -93,7 +96,7 @@ class ConstellationWorkspace {
     path(id){return [...galaxyModel.ancestors(this.entries,id)].reverse().map(entry=>entry.name).join(' › ')||'Universe';}
     setMember(collectionId,entryId,present){
         const id=galaxyConstellations.canonicalId(entryId,this.entries,this.portals),collection=this.collections.get(collectionId);
-        if(!collection||!id)throw new Error('Choose an existing canonical entity.');
+        if(!collection||!id)throw new Error('Choose an existing entry.');
         const ids=new Set(collection.memberEntryIds);present?ids.add(id):ids.delete(id);
         if(ids.size===collection.memberEntryIds.length&&ids.has(id)===collection.memberEntryIds.includes(id))return;
         const next=new Map(this.collections);next.set(collectionId,{...collection,memberEntryIds:[...ids]});this.commit(next);
