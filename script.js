@@ -49,9 +49,6 @@ const zoomLevel = document.getElementById("zoom-level");
 const connectionsLayer = document.getElementById("connections");
 const panel = document.getElementById("entry-panel");
 const panelName = document.getElementById("panel-name");
-const panelDescription = document.getElementById("panel-description");
-const panelCategory = document.getElementById("panel-category");
-const panelParent = document.getElementById("panel-parent");
 const entryActions = document.getElementById("entry-actions");
 const editEntryButton = document.getElementById("edit-entry-button");
 const deleteEntryButton = document.getElementById("delete-entry-button");
@@ -102,6 +99,7 @@ let editingId = null;
 let contextualParentId = null;
 let deletingId = null;
 let deleteConfirmationIds = null, crudActive = false;
+let panelChangeActive = false;
 let deletionBusy = false;
 const deletingContentIds = new Set();
 let contextEntryId = null, contextReturnFocus = null;
@@ -125,8 +123,8 @@ let lastRegionSample = -Infinity, lastRegionFrame = 0;
 let semanticDetail = cosmosView.detail(1);
 const focusRevealIds = new Set();
 const hierarchySidebar = new HierarchySidebar({ host: galaxy, persist: !sampleMode,
-    onNavigate: id => connectionSourceId ? connectEntries(id) : focusEntry(id), onCreate: id => createChildEntry(id),
-    onViewportChange: animate => crudActive ? updateGraphViewport() : navigationViewportChanged(animate) });
+    onNavigate: id => connectionSourceId ? connectEntries(id) : focusEntry(id), onCreate: (id, button) => toggleContentMenu(addMenu, button, id),
+    onViewportChange: animate => crudActive || panelChangeActive ? updateGraphViewport() : navigationViewportChanged(animate) });
 const smoothDetail = (scale, start, end) => cosmosView.smooth(scale, start, end);
 const renderBackground = createUniverseBackground(galaxy);
 const camera = new GraphCamera({
@@ -539,7 +537,9 @@ removeSampleButton.addEventListener("click", () => {
     if (sampleMode) window.location.reload();
 });
 
-function selectEntry(entry, node, { openInspector = true, reframe = true, scroll = true } = {}) {
+function selectEntry(entry, node, { openInspector = true, reframe = false, scroll = true } = {}) {
+    closeContentMenus();
+    const changingEntry = selectedNode?.dataset.entryId !== entry.id;
     dismissConnectionHint();
     if (connectionSourceId && connectionSourceId !== entry.id) cancelConnectionMode();
     if (selectedNode) {
@@ -551,12 +551,7 @@ function selectEntry(entry, node, { openInspector = true, reframe = true, scroll
     node.classList.add("selected");
     node.setAttribute("aria-pressed", "true");
     panelName.textContent = entry.name;
-    panelDescription.textContent = entry.description;
-    panelCategory.textContent = `Label: ${entry.category}`;
-    panelCategory.hidden = !entry.category;
-    document.getElementById("inspector-metadata").hidden = !entry.category;
     const parent = entries.get(entry.parentId);
-    panelParent.textContent = parent ? `In ${parent.name}` : "In the Universe";
     panelAncestry.replaceChildren();
     [...galaxyModel.ancestors(entries, entry.id)].reverse().forEach(ancestor => {
         const button = document.createElement("button");
@@ -565,9 +560,6 @@ function selectEntry(entry, node, { openInspector = true, reframe = true, scroll
         panelAncestry.appendChild(button);
     });
     panelAncestry.hidden = !parent;
-    addChildButton.textContent = `+ ${cosmosHierarchy.childContext(entries, entry.id).action}`;
-    panelParent.hidden = !!parent;
-    entryActions.hidden = false;
     deleteEntryButton.hidden = builtInIds.has(entry.id);
     actionStatus.hidden = true;
     refreshInspectorConnections();
@@ -575,19 +567,25 @@ function selectEntry(entry, node, { openInspector = true, reframe = true, scroll
     hierarchySidebar.select(entry.id, { scroll });
     if (openInspector && !activeNodeDrags) setInspectorOpen(true, { reframe });
     else { contentInspector.select(entry, !panel.hidden); if (!activeNodeDrags) updateGraphViewport(); }
+    if (changingEntry) panel.scrollTop = 0;
 }
 
-function setInspectorOpen(open, { reframe = true } = {}) {
+function setInspectorOpen(open, { reframe = false } = {}) {
     if (activeNodeDrags || (open && !selectedNode)) return;
-    if (!open) { dismissConnectionHint(); cancelConnectionMode(); }
-    if (open && hierarchySidebar.narrow) hierarchySidebar.setCollapsed(true);
+    if (!open) { dismissConnectionHint(); cancelConnectionMode(); closeContentMenus(); }
+    if (open && hierarchySidebar.narrow) {
+        panelChangeActive = true;
+        try { hierarchySidebar.setCollapsed(true); } finally { panelChangeActive = false; }
+    }
     const previous = { ...physics.bounds };
+    const reopening = panel.hidden && open;
     panel.hidden = !open;
     if (open) contentInspector.select(entries.get(selectedNode.dataset.entryId), true);
     else contentInspector.hide();
     galaxy.classList.toggle("inspector-open", open);
-    // Content height can change between selections or when More is expanded.
-    // Measure final panel geometry before fitting, without rebuilding physics.
+    if (reopening) panel.scrollTop = 0;
+    // Measure content geometry without rebuilding physics or navigating.
+    // Explicit sidebar/breadcrumb focus uses these updated viewport bounds.
     if (!reframe) { updateGraphViewport(); return; }
     navigationViewportChanged(true, { keepSelectedVisible: open, previous });
 }
@@ -604,9 +602,6 @@ function closeInspector(restoreFocus = false) {
     }
 }
 document.getElementById("close-inspector-button").addEventListener("click", () => closeInspector(true));
-document.getElementById("inspector-metadata").addEventListener("toggle", () => {
-    if (!panel.hidden) navigationViewportChanged(true, { keepSelectedVisible: true });
-});
 
 function refreshInspectorConnections() {
     const id = selectedNode?.dataset.entryId, list = document.getElementById("panel-connection-list");
@@ -631,6 +626,12 @@ function refreshInspectorConnections() {
         row.append(navigate, remove); list.appendChild(row);
     });
     list.hidden = !list.children.length;
+    const count = list.children.length, connect = document.getElementById("connect-entry-button");
+    document.getElementById("connection-action-label").textContent = count ? `Connections ${count}` : "Connect";
+    connect.ariaLabel = count ? `View ${count} connections` : "Connect to another entry";
+    connect.setAttribute("aria-controls", count ? "panel-connections" : "connection-picker");
+    if (count) connect.setAttribute("aria-haspopup", "dialog"); else connect.removeAttribute("aria-haspopup");
+    if (!count) { document.getElementById("panel-connections").hidden = true; connect.setAttribute("aria-expanded", "false"); }
 }
 
 function refreshConnectionViews() {
@@ -697,7 +698,12 @@ function refreshConnectionTargets() {
         !matches.length ? "No matching entries." : `${matches.length} ${matches.length === 1 ? "match" : "matches"}${matches.length > 8 ? " · showing the first 8" : ""}`;
     if (!panel.hidden) updateGraphViewport();
 }
-document.getElementById("connect-entry-button").addEventListener("click", () => startConnectionMode(selectedNode?.dataset.entryId));
+document.getElementById("connect-entry-button").addEventListener("click", () => {
+    const button = document.getElementById("connect-entry-button");
+    if (document.getElementById("panel-connection-list").children.length) toggleContentMenu(document.getElementById("panel-connections"), button);
+    else startConnectionMode(selectedNode?.dataset.entryId);
+});
+document.getElementById("new-connection-button").addEventListener("click", () => startConnectionMode(selectedNode?.dataset.entryId));
 document.getElementById("cancel-connection").addEventListener("click", () => cancelConnectionMode(true));
 connectionSearch.addEventListener("input", refreshConnectionTargets);
 connectionSearch.addEventListener("keydown", event => {
@@ -1279,7 +1285,7 @@ function updateFormRole() {
     document.getElementById("parent-help").textContent = parent ? `Child of ${parent.name}. Its descendants move with this branch.` : "A top-level Galaxy in the Universe.";
     if (!editingId) {
         document.getElementById("add-entry-title").textContent = context.action;
-        submitButton.textContent = context.action;
+        submitButton.textContent = `Create ${entryRoles[role].name}`;
     }
     creationContext.querySelector("span").textContent = parent ? `${entryRoles[role].name} under ${parent.name}` : "A new Galaxy in the Universe";
 }
@@ -1365,19 +1371,22 @@ function restoreCrudFocus() {
     target.focus({ preventScroll: true });
 }
 
-function openEntryForm(entry = null, parentId = null, contextual = false) {
+function openEntryForm(entry = null, parentId = null, contextual = false, mode = "info") {
     if (deletionBusy) return;
     beginCrudOperation();
     cancelConnectionMode();
     closeContextMenu();
+    closeContentMenus();
     editingId = entry?.id || null;
     contextualParentId = contextual ? parentId : null;
-    creationContext.hidden = !contextual;
-    document.getElementById("parent-field").hidden = contextual;
+    creationContext.hidden = true;
+    document.getElementById("parent-field").hidden = !entry || mode !== "move";
+    document.getElementById("entry-info-fields").hidden = !entry || mode === "move";
+    document.getElementById("entry-name-field").hidden = !!entry && mode === "move";
     form.reset();
     fields.forEach((field) => field.setCustomValidity(""));
     clearFormError();
-    document.getElementById("add-entry-title").textContent = entry ? "Edit Entry" : "Add Entry";
+    document.getElementById("add-entry-title").textContent = entry ? mode === "move" ? "Move / change parent" : "Edit info" : "Add Entry";
     submitButton.textContent = entry ? "Save changes" : "Add Entry";
     if (entry) {
         fields[0].value = entry.name;
@@ -1401,8 +1410,74 @@ document.getElementById("change-creation-parent").addEventListener("click", () =
     document.getElementById("parent-field").hidden = false; parentField.focus();
 });
 
+const addMenu = document.getElementById("add-menu"), moreButton = document.getElementById("entry-more-button");
+let addMenuTargetId = null, addMenuTrigger = null;
+function closeContentMenus() {
+    addMenu.hidden = entryActions.hidden = true;
+    document.getElementById("panel-connections").hidden = true;
+    document.getElementById("connect-entry-button").setAttribute("aria-expanded", "false");
+    addMenuTrigger?.setAttribute("aria-expanded", "false");
+    addMenuTargetId = null; addMenuTrigger = null;
+    moreButton.setAttribute("aria-expanded", "false");
+}
+function toggleContentMenu(menu, button, targetId = null) {
+    if (menu === addMenu && !entries.has(targetId)) return;
+    const opening = menu.hidden || (menu === addMenu && addMenuTrigger !== button);
+    closeContentMenus();
+    if (!opening) return;
+    menu.hidden = false; button.setAttribute("aria-expanded", "true");
+    if (menu === addMenu) {
+        addMenuTargetId = targetId; addMenuTrigger = button;
+        menu.setAttribute("aria-label", `Add to ${entries.get(targetId).name}`);
+        const rect = button.getBoundingClientRect();
+        menu.style.left = `${Math.max(8, Math.min(rect.left, innerWidth - 190))}px`;
+        menu.style.top = `${Math.max(8, Math.min(rect.bottom + 6, innerHeight - menu.offsetHeight - 8))}px`;
+    }
+    menu.querySelector("button:not([hidden]):not(:disabled)")?.focus({ preventScroll: true });
+}
 addEntryButton.addEventListener("click", () => openEntryForm());
-addChildButton.addEventListener("click", () => createChildEntry(selectedNode?.dataset.entryId));
+moreButton.addEventListener("click", () => toggleContentMenu(entryActions, moreButton));
+addChildButton.addEventListener("click", () => {
+    const id = addMenuTargetId;
+    closeContentMenus();
+    if (entries.has(id)) createChildEntry(id);
+});
+addMenu.addEventListener("click", event => {
+    const action = event.target.closest("[data-add]")?.dataset.add;
+    const id = addMenuTargetId;
+    if (!action || !entries.has(id)) return;
+    closeContentMenus();
+    autoFitPending = false; keyboardNavigation = false; camera.stopAnimation();
+    if (selectedNode?.dataset.entryId !== id) selectEntry(entries.get(id), nodes.get(id), { reframe: false });
+    if (panel.hidden) setInspectorOpen(true);
+    if (action === "files") contentInspector.chooseFiles();
+    else if (action === "note") contentInspector.editNotes();
+    else if (action === "bookmark") contentInspector.editLink();
+});
+document.getElementById("move-entry-button").addEventListener("click", () => {
+    const entry = entries.get(selectedNode?.dataset.entryId);
+    if (entry) openEntryForm(entry, null, false, "move");
+});
+entryActions.addEventListener("click", () => closeContentMenus());
+document.addEventListener("pointerdown", event => {
+    if (!event.target.closest("#add-menu,.tree-add,#entry-actions,#entry-more-button,#panel-connections,#connect-entry-button")) closeContentMenus();
+});
+document.addEventListener("keydown", event => {
+    const connectionsPanel = document.getElementById("panel-connections");
+    const menu = !addMenu.hidden ? addMenu : !entryActions.hidden ? entryActions : !connectionsPanel.hidden ? connectionsPanel : null;
+    if (!menu) return;
+    const button = menu === addMenu ? addMenuTrigger : menu === connectionsPanel ? document.getElementById("connect-entry-button") : moreButton;
+    if (event.key === "Escape" || event.key === "Tab") {
+        closeContentMenus();
+        if (event.key === "Escape") { event.preventDefault(); event.stopImmediatePropagation(); button.focus({ preventScroll: true }); }
+    } else if (["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) {
+        event.preventDefault(); event.stopImmediatePropagation();
+        const items = [...menu.querySelectorAll("button:not([hidden]):not(:disabled)")];
+        const index = items.indexOf(document.activeElement);
+        const next = event.key === "Home" ? 0 : event.key === "End" ? items.length - 1 : (index + (event.key === "ArrowDown" ? 1 : -1) + items.length) % items.length;
+        items[next]?.focus({ preventScroll: true });
+    }
+}, true);
 editEntryButton.addEventListener("click", () => {
     const entry = entries.get(selectedNode?.dataset.entryId);
     if (entry) openEntryForm(entry);
@@ -1416,7 +1491,12 @@ dialog.addEventListener("close", () => {
     finishCrudOperation();
 });
 
-document.getElementById("cancel-add-entry").addEventListener("click", () => dialog.close());
+function cancelEntryForm() {
+    dialog.close();
+    restoreCrudFocus();
+}
+dialog.addEventListener("cancel", event => { event.preventDefault(); cancelEntryForm(); });
+document.getElementById("cancel-add-entry").addEventListener("click", cancelEntryForm);
 
 fields.forEach((field) => {
     field.addEventListener("input", () => { field.setCustomValidity(""); clearFormError(); });
@@ -1458,7 +1538,7 @@ form.addEventListener("submit", (event) => {
     restoreCrudFocus(); finishCrudOperation();
 });
 
-function clearSelection({ reframe = true } = {}) {
+function clearSelection({ reframe = false } = {}) {
     dismissConnectionHint();
     focusRevealIds.clear();
     selectedNode = null;
@@ -1468,10 +1548,8 @@ function clearSelection({ reframe = true } = {}) {
     panelAncestry.replaceChildren();
     panelAncestry.hidden = true;
     panelName.textContent = "Select an entry";
-    panelDescription.textContent = "Click a node to see more information.";
-    panelParent.textContent = ""; panelCategory.textContent = "";
     refreshInspectorConnections();
-    [panelCategory, panelParent, entryActions, actionStatus].forEach((element) => { element.hidden = true; });
+    [entryActions, actionStatus].forEach((element) => { element.hidden = true; });
     nodes.forEach((node) => {
         node.classList.remove("related", "selected");
         node.setAttribute("aria-pressed", "false");

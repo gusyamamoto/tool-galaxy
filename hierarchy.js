@@ -117,10 +117,11 @@ class HierarchySidebar {
         row.className = "hierarchy-row"; row.dataset.entryId = id; row.setAttribute("role", "treeitem");
         const disclosure = document.createElement("button");
         disclosure.type = "button"; disclosure.className = "tree-disclosure"; disclosure.tabIndex = -1;
-        disclosure.textContent = "›";
+        disclosure.innerHTML = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="m6 4 4 4-4 4"/></svg>';
         const icon = document.createElement("span"); icon.className = "tree-role-icon"; icon.ariaHidden = "true";
         const name = document.createElement("span"); name.className = "tree-name";
         const add = document.createElement("button"); add.type = "button"; add.className = "tree-add"; add.textContent = "+";
+        add.setAttribute("aria-haspopup", "menu"); add.setAttribute("aria-controls", "add-menu"); add.setAttribute("aria-expanded", "false");
         row.append(disclosure, icon, name, add);
         row.addEventListener("click", event => {
             if (event.target.closest("button")) return;
@@ -130,7 +131,8 @@ class HierarchySidebar {
         });
         row.addEventListener("focus", () => { this.activeId = id; this.updateTabStops(); });
         disclosure.addEventListener("click", () => this.toggleBranch(id));
-        add.addEventListener("click", () => this.onCreate(id));
+        add.addEventListener("focus", () => { this.activeId = id; this.updateTabStops(); });
+        add.addEventListener("click", event => { event.stopPropagation(); this.onCreate(id, add); });
         this.rows.set(id, row); return row;
     }
     render() {
@@ -153,8 +155,7 @@ class HierarchySidebar {
             row.querySelector(".tree-name").textContent = entry.name;
             const disclosure = row.querySelector(".tree-disclosure");
             disclosure.disabled = !hasChildren; disclosure.ariaLabel = `${this.expanded.has(id) ? "Collapse" : "Expand"} ${entry.name}`;
-            const add = row.querySelector(".tree-add");
-            add.title = add.ariaLabel = `${cosmosHierarchy.childContext(this.entries, id).action} under ${entry.name}`;
+            const add = row.querySelector(".tree-add"); add.ariaLabel = add.title = `Add to ${entry.name}`;
             fragment.appendChild(row);
         });
         this.tree.replaceChildren(fragment); this.updateTabStops();
@@ -197,7 +198,7 @@ class HierarchySidebar {
         // name and action rather than aligning an oversized row's empty start.
         const name = row.querySelector(".tree-name").getBoundingClientRect();
         if (name.left < bounds.left + 38) this.tree.scrollLeft += name.left - bounds.left - 38;
-        else if (name.right > bounds.right - 30) this.tree.scrollLeft += name.right - bounds.right + 30;
+        else if (name.right > bounds.right - 38) this.tree.scrollLeft += name.right - bounds.right + 38;
     }
     markSearch(matches) {
         const ids = new Set(matches.map(entry => entry.id));

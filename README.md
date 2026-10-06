@@ -6,49 +6,56 @@ open `http://localhost:8000`. Use the same browser, address and port for saved d
 
 ## Creating and navigating
 
-- **Add Galaxy:** at the top of the sidebar, this action always starts a new
-  domain. Its normal form also allows choosing any valid parent manually.
-- **Add child:** use the small **+** on a tree row, the action in Entry Details,
-  or the body's right-click menu. All three use the same parent context: Galaxy
+- **Add:** each hierarchy row has a small **+**, shown on hover/focus and always
+  available on touch layouts. It opens Add child, Add files, Add note and Add
+  bookmark for that row without selecting or navigating first. Add Galaxy remains
+  under More tools; Search has no global contextual +.
+- **Add child:** use **+ → Add child** or the body's right-click menu. Both use
+  the same parent context: Galaxy
   → Sun → Planet → Moon → Satellite → Astronaut, then **Add Astronaut** at any deeper level.
-  The form shows the chosen parent and derived role; **Change parent** restores
-  manual selection. Content may end at any level.
+  The quick-create dialog asks only for **Name**, then **Create Planet** (or the
+  appropriate role). The parent is implicit. Enrich or move the item afterward.
 - **Hierarchy:** the left tree derives directly from `parentId`, with no depth
   limit. Galaxies start expanded and other branches closed. Disclosure arrows
   only change the tree. Selecting a body expands its ancestor path, highlights
   its row and scrolls it into view; selecting a row focuses the corresponding
-  Galaxy/system/body and updates Details. Arrow keys navigate/expand/collapse,
-  Home/End reach the first/last visible row, and Enter/Space activate it. Tab also
-  reaches the current row's child-creation action.
-- **Sidebar:** Add Galaxy, Fit Galaxy and search sit above the compact tree.
+  Galaxy/system/body and updates Contents. Arrow keys navigate/expand/collapse,
+  Home/End reach the first/last visible row, and Enter/Space activate it. Files,
+  notes and bookmarks live in the Content panel rather than cluttering the tree.
+- **Sidebar:** Search sits above the compact tree. Consistent
+  32px rows align SVG chevrons and celestial icons, with subtle hover/selection
+  states and ellipsis for long names; deep paths still scroll horizontally.
   The small Galaxy title stays in the sidebar; there is no visible Hierarchy
-  heading. **More tools** at the bottom holds zoom/count information, navigation
+  heading. **More tools** at the bottom holds Add Galaxy, Fit Galaxy, zoom/count information, navigation
   hints and temporary Sample controls. A small Sample label identifies that mode.
   Toggle navigation beside the title to reclaim canvas space; a small reopen
   control remains when it is closed. Drag its
   right edge to resize, or focus the separator and use Left/Right/Home/End.
   Width stays within 180–360px and 30% of a desktop viewport. On narrow screens
   it becomes a drawer that closes after navigation. Camera fitting and focus
-  use the space remaining beside the sidebar and any open Details drawer; resizing changes
+  use the space remaining beside the sidebar and any open Content panel; resizing changes
   screen bounds and camera translation without moving world coordinates.
-- **Details:** selecting a tree item, body or search result opens a narrow right
+- **Contents:** selecting a tree item, body or search result opens a narrow right
   drawer. It starts hidden and can be closed with its ×, Escape or an empty-canvas
   click. Closing preserves selection and tree state; selecting again reopens it.
-  Name, description, clickable ancestry, Add child, Edit and Delete come first.
-  **More** contains only the optional label and is hidden when the item has none.
-  A root shows its Universe location; other items use their ancestry breadcrumb.
+  A sticky header shows the name and clickable ancestor-only breadcrumb, followed
+  by **Connect** (or **Connections N**) and **•••**. Files, read-first Notes and
+  Bookmarks follow in that order. Connections N opens a compact header popover
+  with existing destinations and Connect to…; there is no separate permanent list. Metadata is
+  available under **••• → Edit info**, **Move / change parent**, and **Delete**.
   On mobile it becomes a bottom sheet; opening navigation closes it, and selecting
-  from navigation switches back to Details. Right-click updates selection and
+  from navigation switches back to Contents. Right-click updates selection and
   opens its menu without opening a closed drawer or shifting the camera. Opening
-  Details eases the camera at the same zoom and keeps an edge-selected body visible;
+  Contents measures available space without changing the camera;
   it waits for drag release before opening if a pointer is held.
 - **Body actions:** right-click a body, Galaxy name, cloud or sidebar row for Add child,
   Connect to..., Edit and Delete. Existing deletion protections and confirmation
   remain. The menu stays inside the viewport, closes on outside clicks/Escape,
   and does not start dragging or camera focus. Shift+F10 opens it from a focused
   body; arrows/Home/End navigate its actions.
-- **Add / Edit:** required name, optional description/category/label and one structural
-  parent. Relationship fields are absent. IDs and existing semantic links stay stable.
+- **Edit / Move:** Edit info retains name, description and category/label. Move
+  reuses the existing single-parent selector. Quick creation only shows Name.
+  Relationship fields are absent. IDs and existing semantic links stay stable.
   Moving a branch changes its descendants' computed depths/roles together.
   Self/descendant parent choices are excluded, with model
   validation also rejecting cycles. Appearance overrides survive ordinary edits.
@@ -60,8 +67,8 @@ open `http://localhost:8000`. Use the same browser, address and port for saved d
 - **Search:** in the sidebar, names at every depth, case insensitive. Matching
   visible tree rows are highlighted; choosing a result opens its ancestor path.
   While results are open,
-  matches and their ancestry reveal even at Universe zoom. Choose a result to select it, open Details and
-  smoothly focus. Details includes clickable ancestor names. Arrow Down reaches
+  matches and their ancestry reveal even at Universe zoom. Choose a result to select it, open Contents and
+  smoothly focus. Contents includes clickable ancestor names. Arrow Down reaches
   results, Enter selects the first match, Escape dismisses results.
 - **Explore:** wheel zoom toward the cursor, drag space to pan, Fit Galaxy to
   include all regions and content beside the panel. Galaxy/Sun search frames its
@@ -79,7 +86,7 @@ open `http://localhost:8000`. Use the same browser, address and port for saved d
 CRUD operations freeze pending camera animation and cancel deferred startup/Fit
 work. Inspector/tree updates during a mutation measure viewport space without
 reframing. Add selects its normal seeded placement, expands its ancestor path and
-opens Details without changing zoom. A completely offscreen new/reparented item
+opens Contents without changing zoom. A completely offscreen new/reparented item
 gets only the nearest practical same-scale pan; partially visible items keep the
 view exactly. Hidden new roles may temporarily reveal their ancestry using the
 existing reveal state. Metadata edits preserve physics and camera state without
@@ -93,7 +100,7 @@ stack. Both connection endpoints are checked against the deleted set. Confirmati
 is revalidated before mutation; a changed subtree displays its new impact and
 requires another explicit click. Unrelated links retain IDs/type/label metadata.
 Deleted selection falls back to the nearest surviving ancestor; an unrelated
-selection stays selected and a deleted root clears Details. Recovery never
+selection stays selected and a deleted root clears Contents. Recovery never
 focuses the camera. Surviving expansions and practical tree scroll are retained.
 Normal sidebar/search/connection navigation and explicit Fit keep their existing
 camera behavior. Storage remains version 5, with Sample edits isolated.
@@ -144,10 +151,16 @@ Every canonical entry, at every depth, can hold an optional `content` object:
 }
 ```
 
-The existing inspector has a collapsible **Content** section below its current
-actions. Notes are plain multiline text with an explicit **Save notes** action;
-empty text and line breaks are preserved. Links have Add/Edit/Remove actions,
-stable IDs, optional titles, and safe new-tab HTTP/HTTPS opening. Text and URLs
+The contextual **Content panel** shows Files first, Notes second and Bookmarks
+third. Empty sections say No files / No notes / No bookmarks. Sidebar + initiates
+creation; Notes have a small edit icon, and files/bookmarks have overflow actions
+instead of permanent management buttons. These actions remain visible on touch
+layouts and keyboard accessible. Notes display saved plain text; requested editing
+opens a temporary textarea with Save and Cancel. Empty text and line breaks are
+preserved. Bookmarks show an icon, title and concise destination, retaining the
+internal `links` model, stable IDs, optional titles and Add/Edit/Remove handlers.
+Their compact editor accepts ordinary domains such as `google.com`, normalizing
+them to HTTPS, and permits only valid HTTP/HTTPS destinations. Text and URLs
 are never interpreted as HTML. No remote metadata, thumbnails or favicons are
 fetched, and content links never create semantic relationships.
 
@@ -171,13 +184,14 @@ Supported uploads: JPG/JPEG, PNG, WebP, PDF, TXT and MD. Central limits live in
 `galaxyModel.contentLimits`: **10 MiB per file**, **20 megapixels per image**,
 **240px thumbnail edge**, **2048-byte text previews**, and **100,000 note characters**.
 Image headers provide dimensions cheaply; JPEG orientation is respected.
-Only the currently inspected, expanded Content section requests previews.
+Only the visible selected Content panel requests previews.
 Images display bounded, aspect-preserving thumbnails; explicit Open uses original
 bytes. PDFs use the native browser viewer in a new tab. TXT/MD previews are bounded
 plain text, and MD opens as text rather than executable HTML or rendered Markdown.
 Preview object URLs are revoked on selection/close, and full-file URLs on tab close
-or page exit. The file picker is keyboard accessible; file drops apply only to
-the selected entry's Attachments area. Attachment Remove requires a second
+or page exit. Choose files through sidebar + → Add files; supported-format/size
+information appears only during selection or validation. There are no file drop
+targets. File overflow → Remove requires a second
 **Confirm remove** click.
 
 Upload/removal coordinates a synchronous metadata write with an abortable binary
@@ -203,13 +217,22 @@ unavailable message rather than silently changing the entry's metadata.
 `python tests/browser-check.py --content-only --screenshots` checks notes/links,
 all file types, portrait/bounded previews, real native PDF opening, refresh,
 metadata/binary quota failure and rollback, rename/reparent, explicit removal,
-subtree/unreferenced cleanup, upload ownership/deletion races, scoped drops,
+subtree/unreferenced cleanup, upload ownership/deletion races, ignored file drops,
 camera stability, mobile layout, and real metadata/binary Sample isolation.
+`python tests/browser-check.py --organizer-only --screenshots` adds contextual +,
+name-only creation through deep Astronauts, breadcrumbs, header Connect/More,
+read-first Notes/Bookmarks, domain normalization and camera-stable content actions.
+`python tests/browser-check.py --workspace-only --screenshots` also checks the
+Search and row + actions, aligned deep tree, Name label spacing and keyboard submission,
+quiet content sections, file/bookmark overflow actions and responsive presentation.
+`python tests/browser-check.py --row-actions-only --screenshots` checks row-specific
+Add targeting without navigation, hover/focus/touch access, deep indentation and
+the Connections/More header alignment and existing management handlers.
 
 ## Semantic connections
 
-Choose **Connect to...** from a body's or tree row's context menu, or **+ Connect**
-in Details. The inspector prompts “Connect [name] to...” and highlights the source.
+Choose **Connect to...** from a body's or tree row's context menu, or **Connect**
+in the Content panel header. The target picker prompts “Connect [name] to...” and highlights the source.
 Click a visible body or Galaxy cloud/name to relate it; body dragging is suppressed
 until target selection ends. The source and already-connected targets are rejected.
 Escape, Cancel, the inspector's × or an empty-space click cancel. Space remains
@@ -219,8 +242,9 @@ duplicate names, with already-connected results disabled. Enter chooses the firs
 eligible match; Arrow Down reaches result buttons. Sidebar row activation can also
 choose a target. No type picker or constellation UI is included.
 
-Details lists connected names with navigation and a compact × removal action.
-An empty section contains only **+ Connect**. Editing connections updates the
+The header Connections N popover lists connected names with navigation and a
+compact × removal action, plus Connect to… for the existing target picker. With
+no connections, the header Connect action opens that picker directly. Editing connections updates the
 presentation and saves immediately without rebuilding/reheating physics. All
 semantic force strengths are zero, including links within a single solar system.
 
@@ -586,9 +610,9 @@ contextual creation paths through depth six, synchronized tree/body/search
 selection, branch/sidebar collapse, pointer/keyboard resizing, viewport Fit,
 right-click actions and keyboard dismissal, mobile navigation and Sample isolation.
 `python tests/browser-check.py --interface-only --screenshots` checks control placement,
-hidden/contextual Details, Escape and empty-click dismissal, edge-selection visibility,
+hidden/contextual Contents, Escape and empty-click dismissal, camera-stable edge selection,
 unchanged world coordinates through panel transitions, minimum sidebar width, all
-three creation paths, drag camera stability, label-only More, desktop/laptop/mobile
+contextual creation paths, drag camera stability, management More, desktop/laptop/mobile
 layouts and panel-aware Fit. Its screenshots include the clean and immersive canvas.
 The migration-only suite pauses fixtures before their first physics frame to
 verify exact initial coordinates, then exercises normal save, v4/v5 pin normalization,
@@ -631,12 +655,16 @@ trees have larger footprints, so Fit may zoom far out. Galaxy clouds are spatial
 cues rather than hard containers or an astronomical simulation. Large production
 datasets beyond this sample still need profiling. An appearance picker is deferred.
 Before committing the interface changes, also check long names and deep branches
-in your own hierarchy; create children through the tree, Details and right-click;
-collapse/reopen and resize the sidebar; close/reopen Details and expand More;
+in your own hierarchy; create children through the contextual + and right-click;
+collapse/reopen and resize the sidebar; close/reopen Contents and open More;
 click empty space and press Escape; Fit with both panels open or closed; use keyboard tree
 and menu navigation; and check the mobile drawer and refresh persistence. Load and
 remove the temporary sample, then confirm your saved hierarchy and sidebar preference
 are restored.
+For the Content panel, upload an image, PDF and text file; open each, edit and
+cancel a note, add `google.com` as a bookmark, then refresh. Check ancestor
+breadcrumbs, Connect, Edit info and Move, camera stability during content edits,
+and scrolling/closing the mobile sheet. Confirm file and subtree deletion cleanup.
 At extreme fitted zoom on narrow screens, temporarily revealed search labels can
 crowd together; focus and the ancestry breadcrumbs restore local reading.
 Before committing connections, try a visible target and a distant search target
