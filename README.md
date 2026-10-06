@@ -241,8 +241,22 @@ no parent, role or position. An entity can belong to several collections.
 
 The separate **Constellations** sidebar section shares the hierarchy's small
 hover/focus/touch `+` language: heading `+` creates an empty, Name-only collection;
-row `+` opens a canonical entry search with ancestor paths. The same picker is
-available in the collection panel. Right-click an entity → **Add to Constellation**
+row `+` opens a compact canonical hierarchy picker. The same picker is
+available in the collection panel. It reuses the sidebar's iterative hierarchy
+projection, initially showing Galaxies and their Suns with deeper branches collapsed.
+Search temporarily switches to matching entries with ancestor paths; clearing it
+restores the expanded hierarchy. Portal placements are excluded.
+
+Picker choices live in one temporary Set. Click, Space or Enter selects/deselects;
+expanding branches and searching retain choices. **Add entry / Add N entries**
+commits all selected canonical IDs through one existing reference transaction.
+Cancel/Escape discards choices. Existing entries are checked, marked **Added** and
+cannot be re-added through this picker. Arrow keys browse/expand/collapse; Add is
+disabled with no pending choices. Rows are cached, selection updates only the
+changed row/count, and Search reveals at most 100 matches per page. No temporary
+selection or tree state enters persistence.
+
+Right-click an entity → **Add to Constellation**
 to toggle checked memberships or create a new empty collection. Portal IDs never
 become memberships. Search results exclude Portal duplicates.
 The section always remains present, including when empty. Its separate chevron
@@ -251,6 +265,14 @@ the list once, while later creation respects manual collapse. Section state and
 the first-creation marker share `galaxy:navigation-ui` with sidebar preferences,
 outside domain storage; Sample mode neither reads nor writes these preferences.
 Collapsing/expanding preserves the lens, active-row styling and camera.
+
+Right-click a Constellation sidebar row (or use Shift+F10 / its quiet `•••` button)
+to open a local **Rename / Delete Constellation** menu. This never activates the
+collection or switches the right panel. Touch layouts keep the 44px overflow
+target visible. The shared context-menu renderer clamps to the visible viewport;
+Escape returns focus to the originating row control. Sidebar and right-panel
+management invoke the same `openName()` / `openDelete()` workflows and the same
+native confirmation dialog. Only deleting the active collection clears its lens.
 
 Click a collection to gently frame its entries using the generic panel-aware
 camera and activate a persistent visual lens with restrained outlines and
@@ -277,7 +299,11 @@ shows the name, entry count, **In this Constellation**, **Add entry**, and entry
 overflow actions. An entry click opens its canonical Contents while the lens stays
 active. A compact “✦ name active” indicator with its own × remains above Contents;
 click its name to reopen the overview without reframing. More in the overview
-offers Rename/Delete Constellation. Escape, clicking the active row again, the
+offers Rename/Delete Constellation. Delete opens a compact native confirmation
+dialog outside the Content panel, with Cancel initially focused and explicit
+wording that entries are not deleted. Cancel restores header More focus; confirmed
+deletion clears an active lens while leaving canonical content, Portals and camera
+position intact. Rename retains its existing workflow. Escape, clicking the active row again, the
 overview × or indicator × deactivates the lens. Empty-canvas clicks and closing
 ordinary Contents may close the panel but keep the lens. Activating another
 collection replaces the overlay and frames that collection once. Membership, rename and delete
@@ -294,7 +320,10 @@ schemas/backends are unchanged. Active mode and generated lines are session-only
 The isolated Sample includes **Weeknight Meals** (same Galaxy), **Trip & Prep**
 (cross-Galaxy) and **Recipe Experiments** (deep Astronauts). Run
 `python tests/browser-check.py --constellations-only --screenshots` for isolated
-browser checks. Before committing, inspect these three views at desktop/mobile
+browser checks. `python tests/browser-check.py --constellation-ux-only --screenshots`
+checks staged hierarchy/Search selection, touch/keyboard, failed-save recovery,
+compact confirmation and refresh persistence against the 187-entry Sample and real
+isolated test data. Before committing, inspect these three views at desktop/mobile
 sizes; create two collections with a shared entity; drag a highlighted body;
 remove a member; delete a collection/subtree; and refresh your own saved data.
 

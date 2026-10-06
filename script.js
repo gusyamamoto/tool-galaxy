@@ -106,6 +106,7 @@ let panelChangeActive = false;
 let deletionBusy = false;
 const deletingContentIds = new Set();
 let contextEntryId = null, contextReturnFocus = null;
+let contextCollectionId = null;
 let contextPortalId = null, portalTargetId = null, portalParentId = null, portalResultsLimit = 8;
 let searchOpen = false;
 let keyboardNavigation = false;
@@ -223,7 +224,7 @@ graphViewport.addEventListener("contextmenu", event => {
 
 function openContextMenu(id, x, y) {
     if (activeNodeDrags || pan || !entries.has(id)) return;
-
+    closeContextMenu();
 
     const entry = entries.get(id);
     contextReturnFocus = nodes.get(id);
@@ -231,7 +232,7 @@ function openContextMenu(id, x, y) {
     contextPortalId = null;
     contextMenu.removeAttribute("data-portal-id");
     document.getElementById('constellation-memberships').hidden = true;
-    contextMenu.querySelectorAll(":scope > button").forEach(button => { button.hidden = button.hasAttribute("data-portal-action"); });
+    contextMenu.querySelectorAll(":scope > button").forEach(button => { button.hidden = button.hasAttribute("data-portal-action")||button.hasAttribute('data-collection-context'); });
     closeContentMenus();
     if (selectedNode?.dataset.entryId !== id || constellationOverview) selectEntry(entry, nodes.get(id), { openInspector: false });
     contextMenu.setAttribute("aria-label", `Actions for ${entry.name}`);
@@ -261,7 +262,8 @@ function openPortalContextMenu(id, x, y) {
 function closeContextMenu(restoreFocus = false) {
     if (contextMenu.hidden) return;
     if (contextPortalId) hierarchySidebar.rows.get(contextPortalId)?.querySelector('.tree-portal-actions')?.setAttribute('aria-expanded','false');
-    contextMenu.hidden = true; contextEntryId = null; contextPortalId = null;
+    if(contextCollectionId&&contextReturnFocus?.hasAttribute('aria-haspopup'))contextReturnFocus.setAttribute('aria-expanded','false');
+    contextMenu.hidden = true; contextEntryId = null; contextPortalId = null; contextCollectionId=null;contextMenu.removeAttribute('data-constellation-id');
     if (restoreFocus && contextReturnFocus?.isConnected) {
         // Returning keyboard focus must not launch a new Cosmos focus transition.
         keyboardNavigation = false; contextReturnFocus.focus({ preventScroll: true });
@@ -270,6 +272,12 @@ function closeContextMenu(restoreFocus = false) {
 }
 contextMenu.addEventListener("click", event => {
     const action = event.target.closest("button")?.dataset.action, id = contextEntryId;
+    if(contextCollectionId){
+        const collectionId=contextCollectionId;closeContextMenu(true);
+        if(action==='collection-rename')constellationWorkspace.openName(collectionId);
+        else if(action==='collection-delete')constellationWorkspace.openDelete(collectionId);
+        return;
+    }
     if (contextPortalId) {
         const portalId = contextPortalId;
         closeContextMenu();
@@ -412,9 +420,22 @@ const constellationOverlay = new ConstellationOverlay(document.getElementById('c
 },{motion});
 const constellationWorkspace = new ConstellationWorkspace({ entries, portals, collections: constellations,
     getActive: () => activeConstellationId, activate: activateConstellation, inspect: id => focusEntry(id),
-    commit: commitConstellations, showMembershipMenu: showConstellationMemberships, overview: showConstellationOverview, persist: !sampleMode,
+    commit: commitConstellations, showMembershipMenu: showConstellationMemberships, overview: showConstellationOverview, onCollectionMenu:openCollectionContextMenu, persist: !sampleMode,
     onModal() { closeContextMenu(); closeContentMenus(); beginCrudOperation(); }, onModalClose: finishCrudOperation,
     onLayout() { if (cameraViewReady) updateGraphViewport(); } });
+
+function openCollectionContextMenu(id,x,y,trigger){
+    const collection=constellations.get(id);if(!collection||activeNodeDrags||pan||constellationWorkspace.isDialogOpen())return;
+    closeContextMenu();closeContentMenus();contextCollectionId=id;contextReturnFocus=trigger;
+    if(trigger?.hasAttribute('aria-haspopup'))trigger.setAttribute('aria-expanded','true');contextMenu.dataset.constellationId=id;
+    contextMenu.removeAttribute('data-entry-id');contextMenu.removeAttribute('data-portal-id');
+    contextMenu.setAttribute('aria-label',`Actions for Constellation ${collection.name}`);
+    document.getElementById('context-entry-name').textContent=collection.name;
+    document.getElementById('constellation-memberships').hidden=true;
+    contextMenu.querySelectorAll(':scope > button').forEach(button=>button.hidden=!button.hasAttribute('data-collection-context'));
+    positionContextMenu(x,y);
+}
+constellationWorkspace.list.addEventListener('scroll',()=>{if(contextCollectionId)closeContextMenu();},{passive:true});
 
 function showConstellationMemberships(id) {
     if (!entries.has(id)) return;
