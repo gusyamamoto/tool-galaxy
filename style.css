@@ -789,6 +789,23 @@ summary:focus-visible { outline: 1px solid #b9d0e9; outline-offset: 3px; }
 #panel-rich-content > section { padding: 15px 0; }
 #panel-rich-content .content-heading { min-height: 22px; margin-bottom: 9px; }
 #panel-rich-content .content-empty { margin: 0; color: #71839a; }
+#panel-rich-content .quick-bookmark { display: flex; align-items: center; gap: 6px; margin-top: 4px; }
+#panel-rich-content .quick-bookmark input { flex: 1; min-width: 0; min-height: 36px; padding: 8px; font: inherit; }
+#panel-rich-content .quick-bookmark button { flex-shrink: 0; margin: 0; white-space: nowrap; }
+#panel-rich-content .quick-bookmark input[aria-invalid='true'] { border-color: #bd9292; }
+#canvas-zoom-controls { position: absolute; left: calc(var(--sidebar-space) + 16px); bottom: 16px; display: flex; gap: 3px; z-index: 12; opacity: .6; }
+#canvas-zoom-controls:is(:hover,:focus-within) { opacity: 1; }
+#canvas-zoom-controls button { min-width: 32px; height: 32px; padding: 4px 8px; border: 1px solid #50627c33; border-radius: 4px; background: #0e1621bb; color: #9cb1ca; box-shadow: none; font-size: 16px; }
+#canvas-zoom-controls #canvas-fit { font-size: 11px; }
+#canvas-zoom-controls button:focus-visible { outline: 1px solid #91adc9; outline-offset: 2px; }
+@media (hover: none), (pointer: coarse), (max-width: 760px) {
+    .constellation-row { height: 44px; grid-template-columns: minmax(0,1fr) 44px !important; }
+    .constellation-row .collection-add { display: none; }
+    .constellation-row .collection-more { width: 44px; height: 44px; opacity: 1; pointer-events: auto; }
+    #canvas-zoom-controls button { min-width: 44px; height: 44px; }
+    #panel-rich-content .quick-bookmark input { min-height: 44px; }
+}
+@media (max-width: 760px), (pointer: coarse) and (max-width: 1024px) and (max-height: 500px) { #canvas-zoom-controls { display: none; } }
 #panel-rich-content .content-file { grid-template-columns: 36px minmax(0, 1fr) 26px; column-gap: 9px; align-items: center; border-bottom: 0; padding: 7px 0; }
 #panel-rich-content .content-file-icon { width: 36px; height: 38px; border: 1px solid #6f849f20; border-radius: 5px; box-shadow: none; background: #1f3043; font-size: 9px; }
 #panel-rich-content .content-file-name { font-size: 12px; line-height: 1.5; }
@@ -1017,9 +1034,11 @@ summary:focus-visible { outline: 1px solid #b9d0e9; outline-offset: 3px; }
     .hierarchy-row { min-width: 0; height: auto; min-height: 44px; grid-template-columns: 32px 14px minmax(0,1fr) 44px; gap: 3px; padding: 0 2px 0 calc(var(--mobile-tree-indent,0px) + 2px); }
     .hierarchy-row button { height: 44px; width: 44px; }
     .hierarchy-row .tree-disclosure { width: 32px !important; }
+    .hierarchy-row[aria-expanded='true'] .tree-disclosure { transform: none; }
+    .hierarchy-row[aria-expanded='true'] .tree-disclosure svg { transform: rotate(90deg); }
     .hierarchy-row .tree-add { opacity: 0; visibility: hidden; pointer-events: none; }
     .hierarchy-row:is(.is-selected,:focus-within) .tree-add { opacity: 1; visibility: visible; pointer-events: auto; }
-    .hierarchy-row.is-selected .tree-name { white-space: normal; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; padding: 4px 0; }
+    .hierarchy-row.is-selected .tree-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     #hierarchy-sidebar #entry-search { min-height: 40px; font-size: 16px; }
     #sidebar-tools summary, #sidebar-tools > button { min-height: 44px; }
     .sidebar-section-header { min-height: 44px; }
@@ -1045,17 +1064,30 @@ summary:focus-visible { outline: 1px solid #b9d0e9; outline-offset: 3px; }
     :is(#add-menu,#entry-context-menu,#entry-actions,.content-row-actions) { overscroll-behavior: contain; touch-action: pan-y; }
     #panel-rich-content :is(input:not([type='file']),textarea) { font-size: 16px; }
     #panel-rich-content textarea { max-height: min(160px,calc(var(--mobile-visible-height,100dvh)*.35)); }
+    /* Natural content height for quiet sheets; longer content scrolls below
+       the existing sticky header, leaving a quarter of the Cosmos visible. */
+    #entry-panel:has(#panel-rich-content:not([hidden])) { max-height: calc(var(--mobile-visible-height,100dvh) * .74); }
+    #entry-panel:has(#panel-rich-content:not([hidden])) .content-panel-header { padding-block: 4px 2px; margin-top: -4px; }
+    #panel-rich-content > section { padding-block: 2px; }
+    #panel-rich-content .content-heading { margin-bottom: 2px; }
+    #panel-rich-content ul:empty { display: none; }
+    #panel-rich-content > section:has(> #content-bookmarks-empty:not([hidden])) { padding-block: 0; }
+    #panel-rich-content > section:has(> #content-bookmarks-empty:not([hidden])) .content-heading { margin-bottom: 0; }
+    #panel-rich-content .quick-bookmark { min-height: 44px; margin-top: 0; }
+    #panel-rich-content .quick-bookmark input { height: 38px; min-height: 38px; padding: 6px 8px; }
+    #active-constellation-indicator { padding-bottom: 4px; margin-bottom: 4px; gap: 6px; }
     #panel-rich-content form button { min-height: 44px; }
     :is(#add-entry-dialog,#portal-dialog,.collection-dialog,#delete-entry-dialog) { max-height: calc(var(--mobile-visible-height,100dvh) - 24px); position: fixed; top: var(--mobile-viewport-top,0px); bottom: var(--mobile-keyboard-inset,0px); overflow-y: auto; }
     :is(#add-entry-dialog,#portal-dialog,.collection-dialog,#delete-entry-dialog) :is(input,textarea,select) { min-height: 44px; font-size: 16px; }
     :is(#add-entry-dialog,#portal-dialog,.collection-dialog,#delete-entry-dialog) .form-actions button { min-height: 44px; }
-    #galaxy.mobile-keyboard-open #entry-panel:has(#panel-rich-content:not([hidden]) form:not([hidden])) { max-height: calc(var(--mobile-visible-height,100dvh) - 16px); }
-    #galaxy.mobile-keyboard-open #entry-panel:has(#panel-rich-content:not([hidden]) form:not([hidden])) :is(.content-header-actions,#panel-ancestry) { display: none; }
+    #galaxy.mobile-keyboard-open #entry-panel:has(#panel-rich-content:not([hidden])) { max-height: calc(var(--mobile-visible-height,100dvh) - 16px); }
+    #galaxy.mobile-keyboard-open #entry-panel:has(#panel-rich-content:not([hidden])) :is(.content-header-actions,#panel-ancestry) { display: none; }
+    #galaxy.mobile-keyboard-open #panel-rich-content textarea { max-height: min(160px,calc(var(--mobile-visible-height,100dvh) - var(--sheet-header-height,140px) - 32px)); }
 }
 @media (pointer: coarse) and (max-width: 1024px) and (max-height: 500px) {
-    #entry-panel { max-height: min(72dvh,calc(var(--mobile-visible-height,100dvh) - 60px)); }
+    #entry-panel:not(:has(#panel-rich-content:not([hidden]))) { max-height: min(72dvh,calc(var(--mobile-visible-height,100dvh) - 60px)); }
     #sidebar-tools { margin-block: 4px; }
     #constellation-list { max-height: 20dvh; }
-    #entry-panel:has(#panel-rich-content:not([hidden]) form:not([hidden])) { max-height: calc(var(--mobile-visible-height,100dvh) - 16px); }
-    #entry-panel:has(#panel-rich-content:not([hidden]) form:not([hidden])) :is(.content-header-actions,#panel-ancestry) { display: none; }
+    #entry-panel:has(#panel-rich-content:not([hidden]) :is(#content-notes-form:not([hidden]),#content-link-form:not([hidden]))) { max-height: calc(var(--mobile-visible-height,100dvh) - 16px); }
+    #entry-panel:has(#panel-rich-content:not([hidden]) :is(#content-notes-form:not([hidden]),#content-link-form:not([hidden]))) :is(.content-header-actions,#panel-ancestry) { display: none; }
 }

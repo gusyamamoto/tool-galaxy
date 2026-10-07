@@ -27,6 +27,11 @@
         </div>
 
         <button id="sidebar-toggle" type="button" aria-controls="hierarchy-sidebar" aria-expanded="true" title="Hide navigation" aria-label="Hide navigation"><svg aria-hidden="true" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M10 4v16"/></svg></button>
+        <div id="canvas-zoom-controls" role="group" aria-label="Cosmos zoom controls">
+            <button id="canvas-zoom-in" type="button" aria-label="Zoom in" title="Zoom in">+</button>
+            <button id="canvas-zoom-out" type="button" aria-label="Zoom out" title="Zoom out">−</button>
+            <button id="canvas-fit" type="button" aria-label="Fit Galaxy" title="Fit Galaxy">Fit</button>
+        </div>
         <aside id="hierarchy-sidebar" aria-label="Navigation">
             <header class="sidebar-brand"><h1>Galaxy</h1><span id="sample-indicator" hidden>Sample</span></header>
             <div class="sidebar-controls">
@@ -42,8 +47,8 @@
             </div>
                 </div>
             </div>
-            <h2 class="sidebar-section-title">Hierarchy</h2>
-            <div id="hierarchy-tree" role="tree" aria-label="Cosmos hierarchy"></div>
+            <h2 class="sidebar-section-title">Universe</h2>
+            <div id="hierarchy-tree" role="tree" aria-label="Cosmos Universe navigation"></div>
             <section id="constellations-section" aria-labelledby="constellations-heading">
                 <header class="sidebar-section-header"><button id="constellations-toggle" class="tree-disclosure" type="button" aria-label="Collapse Constellations" aria-controls="constellation-list" aria-expanded="true"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m6 4 4 4-4 4"/></svg></button><h2 id="constellations-heading" class="sidebar-section-title">Constellations</h2><button id="new-constellation-button" type="button" class="collection-add" aria-label="Create Constellation" title="Create Constellation">+</button></header>
                 <ul id="constellation-list" aria-label="Constellations"></ul>
@@ -61,7 +66,7 @@
                 </aside>
             </details>
             <p id="storage-status" role="status" hidden></p>
-            <div id="sidebar-resize" role="separator" aria-label="Resize hierarchy" aria-orientation="vertical" tabindex="0"></div>
+            <div id="sidebar-resize" role="separator" aria-label="Resize navigation" aria-orientation="vertical" tabindex="0"></div>
         </aside>
 
         <aside id="entry-panel" aria-labelledby="panel-name" hidden>
@@ -105,7 +110,11 @@
                 <section aria-labelledby="bookmarks-heading">
                 <header class="content-heading"><h3 id="bookmarks-heading">Bookmarks</h3><button id="content-add-bookmark" class="quiet-icon content-section-add" type="button" aria-label="Add bookmark" title="Add bookmark">+</button></header>
                 <ul id="content-links"></ul>
-                <p id="content-bookmarks-empty" class="content-empty">No bookmarks</p>
+                <form id="content-bookmarks-empty" class="quick-bookmark">
+                    <label for="content-quick-bookmark-url" class="visually-hidden">Bookmark address</label>
+                    <input id="content-quick-bookmark-url" type="text" inputmode="url" required maxlength="2048" placeholder="Paste a link..." autocomplete="url" aria-label="Bookmark address">
+                    <button id="content-quick-bookmark-save" type="submit" hidden>Save bookmark</button>
+                </form>
                 <form id="content-link-form" hidden>
                     <label for="content-link-url">Address</label><input id="content-link-url" type="text" inputmode="url" required maxlength="2048" placeholder="example.com" autocomplete="url">
                     <label for="content-link-title">Title (optional)</label><input id="content-link-title" type="text" maxlength="200">
@@ -139,6 +148,7 @@
             <button type="button" role="menuitem" data-action="delete">Delete entry</button>
             <button type="button" role="menuitem" data-action="open-portal" data-portal-action hidden>Go to original</button>
             <button type="button" role="menuitem" data-action="remove-portal" data-portal-action hidden>Remove Portal</button>
+            <button type="button" role="menuitem" data-action="collection-add" data-collection-context hidden>Add entry</button>
             <button type="button" role="menuitem" data-action="collection-rename" data-collection-context hidden>Rename</button>
             <button type="button" role="menuitem" data-action="collection-delete" data-collection-context hidden>Delete Constellation</button>
             <div id="constellation-memberships" hidden></div>

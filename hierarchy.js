@@ -95,6 +95,7 @@ class HierarchySidebar {
         this.sidebar.hidden = this.collapsed;
         this.toggle.setAttribute("aria-expanded", String(!this.collapsed));
         this.toggle.title = this.toggle.ariaLabel = this.collapsed ? "Show navigation" : "Hide navigation";
+        this.sidebar.querySelector('.galaxy-hint').textContent=this.narrow?'Pinch to zoom · Drag space to pan':'Scroll to zoom · Drag space to pan';
         this.resize.setAttribute("aria-valuemin", String(Math.round(Math.min(min, max))));
         this.resize.setAttribute("aria-valuemax", String(Math.round(max)));
         this.resize.setAttribute("aria-valuenow", String(Math.round(this.width)));
