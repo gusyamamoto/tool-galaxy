@@ -53,6 +53,8 @@ class EntryContentInspector {
         this.notesForm = document.getElementById("content-notes-form");
         this.notesView = document.getElementById("content-notes-view");
         this.linkForm = document.getElementById("content-link-form");
+        this.quickBookmark=document.getElementById('content-bookmarks-empty');this.quickUrl=document.getElementById('content-quick-bookmark-url');
+        this.quickSave=document.getElementById('content-quick-bookmark-save');
         this.files = document.getElementById("content-files");
         this.status = document.getElementById("content-status");
         this.jobs = new Map(); this.urls = new Set(); this.generation = 0; this.entryId = null; this.previewLoads = 0;
@@ -78,13 +80,17 @@ class EntryContentInspector {
         this.linkForm.addEventListener("submit", event => {
             event.preventDefault();
             this.onAction();
-            const url = galaxyModel.webUrl(document.getElementById("content-link-url").value);
-            if (!url) { this.message("Enter a valid website address, such as google.com or an HTTPS URL.", true); return; }
-            const title = document.getElementById("content-link-title").value.trim();
-            const link = { id: this.editingLinkId || crypto.randomUUID(), url, ...(title ? { title } : {}) };
-            const content = this.content(), links = this.editingLinkId ? content.links.map(old => old.id === link.id ? link : old) : [...content.links, link];
-            try { this.save(this.entryId, { ...content, links }); this.linkForm.hidden = true; this.message("Bookmark saved."); this.renderLists(); }
-            catch (error) { this.error(error); }
+            if(this.saveBookmark(document.getElementById('content-link-url').value,document.getElementById('content-link-title').value.trim(),this.editingLinkId)){
+                this.linkForm.hidden=true;this.renderLists();
+            }
+        });
+        this.quickUrl.addEventListener('input',()=>{this.quickSave.hidden=!galaxyModel.webUrl(this.quickUrl.value);this.quickUrl.removeAttribute('aria-invalid');});
+        this.quickBookmark.addEventListener('focusin',()=>this.onLayout());
+        // The compact mobile field retains a padded tap area around its silhouette.
+        this.quickBookmark.addEventListener('click',event=>{if(event.target===this.quickBookmark)this.quickUrl.focus();});
+        this.quickBookmark.addEventListener('submit',event=>{event.preventDefault();
+            if(this.saveBookmark(this.quickUrl.value)){this.quickUrl.value='';this.quickSave.hidden=true;this.quickUrl.blur();this.renderLists();}
+            else this.quickUrl.setAttribute('aria-invalid','true');
         });
         this.files.addEventListener("change", () => {
             const files = [...this.files.files]; this.files.value = "";
@@ -110,6 +116,7 @@ class EntryContentInspector {
         clearTimeout(this.statusTimer);
         this.entryId = entry?.id || null; this.visible = visible;
         this.linkForm.hidden = this.notesForm.hidden = true; this.status.hidden = true;
+        this.quickUrl.value='';this.quickUrl.removeAttribute('aria-invalid');this.quickSave.hidden=true;
         document.getElementById("content-file-limit").hidden = true;
         this.notes.value = this.content().notes.text;
         this.renderNotes(); this.renderLists(); this.busy();
@@ -159,7 +166,15 @@ class EntryContentInspector {
         button.hidden = !text || !this.notesForm.hidden;
         document.getElementById("content-notes-empty").hidden = !!text || !this.notesForm.hidden;
     }
-    renderBookmarkState() { document.getElementById("content-bookmarks-empty").hidden = !!this.content().links.length || !this.linkForm.hidden; }
+    renderBookmarkState() { const empty=!this.content().links.length&&this.linkForm.hidden;this.quickBookmark.hidden=!empty;document.getElementById('content-add-bookmark').hidden=empty; }
+    saveBookmark(value,title='',editingId=null){
+        this.onAction();const url=galaxyModel.webUrl(value);
+        if(!url){this.message('Enter a valid website address, such as google.com or an HTTPS URL.',true);return false;}
+        const link={id:editingId||crypto.randomUUID(),url,...(title?{title}:{})},content=this.content();
+        const links=editingId?content.links.map(old=>old.id===link.id?link:old):[...content.links,link];
+        try{this.save(this.entryId,{...content,links});this.message('Bookmark saved.');return true;}
+        catch(error){this.error(error);return false;}
+    }
     button(text, action, label = text) {
         const button = document.createElement("button"); button.type = "button"; button.textContent = text; button.ariaLabel = label;
         button.addEventListener("click", action); return button;

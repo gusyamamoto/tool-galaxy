@@ -26,7 +26,8 @@ open `http://localhost:8000`. Use the same browser, address and port for saved d
   32px rows align SVG chevrons and celestial icons, with subtle hover/selection
   states and ellipsis for long names; deep desktop paths still scroll horizontally.
   Mobile rows use 44px height, compressed depth indentation and no horizontal
-  scrolling; the selected name can wrap to two lines.
+  scrolling and clean single-line truncation. Full names remain available through
+  accessible labels, row titles and the selected entry's Content header.
   The small Galaxy title stays in the sidebar above separate Hierarchy and
   Constellations sections. **More** at the bottom holds Add Galaxy, Fit Galaxy, zoom/count information, navigation
   hints and temporary Sample controls. A small Sample label identifies that mode.
@@ -87,14 +88,44 @@ open `http://localhost:8000`. Use the same browser, address and port for saved d
 
 ## Mobile interaction polish
 
+Navigation is labeled **Universe**; the canonical hierarchy is unchanged. On
+touch layouts each Constellation row has one overflow button for Add entry,
+Rename and Delete Constellation. The section-level creation + remains, and
+desktop retains its faster row +. Empty Bookmarks accepts a URL directly in
+“Paste a link…”: Enter saves, or use the small Save action shown for valid URLs.
+Titles are optional; untitled bookmarks display their domain. Existing bookmarks
+retain the read-first list and secondary edit/remove actions. Storage stays v5.
+On mobile the empty bookmark field has a 38px visual height with 16px text, inside
+a 44px padded tap area. Empty-section spacing is tighter, with no Save action
+space until a valid URL is entered. Desktop field sizing remains unchanged.
+
+Wheel zoom uses normalized pixel deltas with a 0.0024 response (previously
+0.0018), a 1.15 multiplier for Ctrl-wheel trackpad pinch, and a capped 0.42
+logarithmic step. Touch pinch uses a 1.18 distance-ratio exponent while preserving
+its midpoint anchor and camera limits. Double-click/double-tap focuses an entity
+at a readable scale through the existing interruptible camera helpers. Two touch
+taps must hit the same entity within 320ms and 24px; drag/pinch clears that intent.
+Single taps select immediately. Desktop landmark selection is immediate too,
+with its single-click camera focus waiting 320ms to distinguish double-clicks.
+Compact + / minus / Fit controls sit at the usable canvas's bottom-left on larger
+layouts and are hidden on phones. Fit shares the existing Fit Galaxy handler.
+Reduced motion makes focus navigation immediate.
+
 The existing drawer and Content/Constellation bottom sheets remain. Outside taps
 and Escape dismiss an open mobile drawer; the dismissal tap never starts a canvas
 gesture. Add is visible on selected/focused rows, with the normal desktop hover
 route unchanged. Primary icon controls use 44px touch targets; chevrons stay
 compact at 32px wide by 44px high. Portal and Constellation actions remain visible.
+Chevron glyphs rotate inside their hit areas so expanded branches do not overlap
+neighboring icons/text. Closing navigation clears all floating menus.
 
-Portrait sheets have a bounded 58dvh height; short touch landscape retains the
-same drawer/sheet model with up to 72dvh. Sheets scroll independently from the
+Content sheets use their natural content height with compact mobile spacing:
+empty/light entries occupy roughly 38–45% of the tested portrait viewports;
+moderate content grows naturally and long content caps at 74% of the available
+visual viewport. The sticky header and internal scrolling remain. The active
+Constellation strip has less surrounding spacing while retaining 44px touch
+targets. Constellation overviews retain their 58dvh portrait / 72dvh short
+landscape limits. Sheets scroll independently from the
 canvas. Menus clamp/flip inside the actual visual viewport and can scroll if
 needed. `visualViewport` resize/scroll events update presentation bounds without
 camera navigation or physics reheating. A reduced editing header and larger
@@ -104,9 +135,27 @@ behavior should still be checked on iOS/Android.
 
 Semantic-zoom thresholds and label collision/hysteresis remain unchanged. Mobile
 ordinary labels that are mostly outside usable bounds are suppressed; interaction
-labels get a bounded inward offset. No new gesture architecture, schema or storage
-fields were added. Run `python tests/browser-check.py --mobile-polish-only --screenshots`
-for 390×844, 430×932 and 844×390 workflows plus 1440px desktop restoration.
+labels get a bounded inward offset. Semantic thresholds, body sizes, data/schema
+and storage remain unchanged.
+
+Two canvas touches pinch around their midpoint using the existing camera API and
+zoom limits. Moves coalesce into at most one input-driven animation frame;
+there is no polling or permanent gesture loop. Pinch hands off existing touch
+captures, preserves a real drag already made, and suppresses trailing tap events.
+A fresh touch is immediately usable. Single-finger touch drag/pan use an 8px
+intent threshold (desktop remains 3px); taps select on release. Panels, menus and
+modals stay outside the canvas gesture scope. Escape cancels a pinch before
+deactivating a lens; blur, page hide, viewport changes and modal opening release
+touch state. Production ambient events treat pinching as busy; their cadence and
+visuals are unchanged. Reduced motion preserves functional pinch zoom.
+
+Run `python tests/browser-check.py --mobile-polish-only --screenshots` for 360×800,
+390×844, 430×932 and 844×390 workflows plus 1440px desktop restoration.
+`--navigation-refinement-only --screenshots` checks the touch collection overflow,
+direct URL bookmarks, double-tap/drag/pan handoff, desktop zoom controls and
+interruptible focus navigation at the same viewport sizes.
+`--sheet-sizing-only --screenshots` checks empty/light/moderate/long content,
+sticky-header scrolling, active-lens inspection and keyboard viewport reduction.
 
 ## Visual density and restrained motion
 

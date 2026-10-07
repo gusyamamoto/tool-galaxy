@@ -113,7 +113,7 @@ let keyboardNavigation = false;
 document.addEventListener("keydown", event => {
     if (event.key === "Tab") keyboardNavigation = true;
 });
-document.addEventListener("pointerdown", () => { keyboardNavigation = false; }, true);
+document.addEventListener("pointerdown", event => { keyboardNavigation = false;cancelPendingBodyFocus();if(event.pointerType!=='touch'||!event.target.closest('.entry-node'))lastBodyTap=null; }, true);
 let autoFitPending = true;
 let baseNodeRadius = 13;
 let cameraViewReady = false;
@@ -162,6 +162,74 @@ const camera = new GraphCamera({
 });
 let pan = null;
 let activeNodeDrags = 0;
+const canvasTouches=new Map();let pinch=null,pinchFrame=null,suppressTouchClick=false,lastCanvasPointerType='mouse';
+let pendingBodyFocusTimer=null,lastBodyTap=null;
+function cancelPendingBodyFocus(){if(pendingBodyFocusTimer!==null)clearTimeout(pendingBodyFocusTimer);pendingBodyFocusTimer=null;}
+document.addEventListener('keydown',()=>{cancelPendingBodyFocus();lastBodyTap=null;},true);
+function isCanvasTouchClick(event){return event.pointerType==='touch'||event.sourceCapabilities?.firesTouchEvents||(!event.pointerType&&lastCanvasPointerType==='touch');}
+
+function applyPinch(){
+    if(!pinch)return;const a=canvasTouches.get(pinch.ids[0]),b=canvasTouches.get(pinch.ids[1]);if(!a||!b)return;
+    const x=(a.x+b.x)/2-pinch.left,y=(a.y+b.y)/2-pinch.top;
+    const scale=Math.max(camera.minScale,Math.min(camera.maxScale,pinch.scale*Math.pow(Math.hypot(a.x-b.x,a.y-b.y)/pinch.distance,1.18)));
+    camera.setView({x:x-pinch.anchor.x*scale,y:y-pinch.anchor.y*scale,scale},false);
+}
+function cancelCanvasTouches(){
+    if(!canvasTouches.size)return;
+    lastBodyTap=null;
+    if(pinchFrame!==null){cancelAnimationFrame(pinchFrame);pinchFrame=null;}
+    nodes.forEach(node=>node.cancelTouchDrag?.());
+    if(pan&&canvasTouches.has(pan.id)){pan=null;graphViewport.classList.remove('is-panning');}
+    const ids=[...canvasTouches.keys()];canvasTouches.clear();pinch=null;suppressTouchClick=true;
+    ids.forEach(id=>{if(graphViewport.hasPointerCapture(id))graphViewport.releasePointerCapture(id);});
+}
+// Capture only canvas touches. Drawer, sheet, menu and modal events never enter this gesture.
+graphViewport.addEventListener('pointerdown',event=>{
+    lastCanvasPointerType=event.pointerType||'mouse';
+    if(event.pointerType!=='touch')return;
+    if(!canvasTouches.size&&!pinch)suppressTouchClick=false;
+    canvasTouches.set(event.pointerId,{x:event.clientX,y:event.clientY});
+    if(canvasTouches.size<2)return;
+    lastBodyTap=null;cancelPendingBodyFocus();
+    if(!pinch){
+        if(pan&&!canvasTouches.has(pan.id))return;
+        nodes.forEach(node=>node.cancelTouchDrag?.());if(activeNodeDrags)return;
+        pan=null;graphViewport.classList.remove('is-panning');closeContextMenu();closeContentMenus();dismissTemporaryReveal();autoFitPending=false;camera.stopAnimation();
+        const ids=[...canvasTouches.keys()].slice(0,2),a=canvasTouches.get(ids[0]),b=canvasTouches.get(ids[1]),rect=graphViewport.getBoundingClientRect();
+        pinch={ids,distance:Math.max(1,Math.hypot(a.x-b.x,a.y-b.y)),scale:camera.view.scale,left:rect.left,top:rect.top,
+            anchor:camera.screenToWorld((a.x+b.x)/2-rect.left,(a.y+b.y)/2-rect.top)};
+        ids.forEach(id=>graphViewport.setPointerCapture(id));
+    }
+    event.preventDefault();event.stopPropagation();
+},true);
+graphViewport.addEventListener('pointermove',event=>{
+    if(!canvasTouches.has(event.pointerId))return;
+    canvasTouches.set(event.pointerId,{x:event.clientX,y:event.clientY});if(!pinch)return;
+    event.preventDefault();event.stopPropagation();
+    if(pinchFrame===null)pinchFrame=requestAnimationFrame(()=>{pinchFrame=null;applyPinch();});
+},true);
+function finishCanvasTouch(event){
+    if(!canvasTouches.has(event.pointerId))return;
+    if(event.type==='pointercancel'){cancelCanvasTouches();return;}
+    if(pinch){
+        if(pinchFrame!==null){cancelAnimationFrame(pinchFrame);pinchFrame=null;applyPinch();}
+        canvasTouches.delete(event.pointerId);event.preventDefault();event.stopPropagation();
+        if(!canvasTouches.size){pinch=null;suppressTouchClick=true;}
+    }else canvasTouches.delete(event.pointerId);
+}
+graphViewport.addEventListener('pointerup',finishCanvasTouch,true);
+graphViewport.addEventListener('pointercancel',finishCanvasTouch,true);
+graphViewport.addEventListener('lostpointercapture',event=>{if(event.target===graphViewport&&canvasTouches.has(event.pointerId)){if(pinch)cancelCanvasTouches();else canvasTouches.delete(event.pointerId);}},true);
+graphViewport.addEventListener('click',event=>{
+    const touchClick=isCanvasTouchClick(event);
+    if(event.detail&&(pinch||suppressTouchClick&&touchClick)){event.preventDefault();event.stopPropagation();}
+},true);
+window.addEventListener('blur',cancelCanvasTouches);
+window.addEventListener('blur',cancelPendingBodyFocus);
+window.addEventListener('pagehide',cancelPendingBodyFocus);
+window.addEventListener('pagehide',cancelCanvasTouches);
+document.addEventListener('keydown',event=>{if(event.key==='Escape'&&pinch){cancelCanvasTouches();event.preventDefault();event.stopImmediatePropagation();}},true);
+document.addEventListener('visibilitychange',()=>{if(document.hidden)cancelCanvasTouches();});
 
 function pointerInWorld(event) {
     const rect = graphViewport.getBoundingClientRect();
@@ -170,32 +238,34 @@ function pointerInWorld(event) {
 
 graphViewport.addEventListener("wheel", (event) => {
     event.preventDefault();
-    if (activeNodeDrags || pan) return;
+    cancelPendingBodyFocus();lastBodyTap=null;
+    if (activeNodeDrags || pan || pinch) return;
 
     closeContextMenu();
     autoFitPending = false;
     dismissTemporaryReveal();
     const rect = graphViewport.getBoundingClientRect();
     const units = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? rect.height : 1;
-    const delta = Math.max(-240, Math.min(240, event.deltaY * units));
-    camera.zoomAt(event.clientX - rect.left, event.clientY - rect.top, Math.exp(-delta * 0.0018));
+    const response=event.deltaY*units*.0024*(event.ctrlKey?1.15:1);
+    const logStep=Math.max(-.42,Math.min(.42,response));
+    camera.zoomAt(event.clientX - rect.left, event.clientY - rect.top, Math.exp(-logStep));
 }, { passive: false });
 
 graphViewport.addEventListener("pointerdown", (event) => {
-    if (event.button !== 0 || pan || activeNodeDrags || event.target.closest(".entry-node")) return;
+    if (event.button !== 0 || pan || pinch || activeNodeDrags || event.target.closest(".entry-node")) return;
     autoFitPending = false;
     dismissTemporaryReveal();
     camera.stopAnimation();
     const point = { x: event.clientX - graphViewport.getBoundingClientRect().left, y: event.clientY - graphViewport.getBoundingClientRect().top };
     // Clouds stay in a non-intercepting paint layer. Hit-test their visible core
     // behind bodies so space remains pannable and a click can focus the region.
-    pan = { id: event.pointerId, x: event.clientX, y: event.clientY, view: { ...camera.view }, galaxyId: galaxyAtScreen(point), moved: false };
+    pan = { id: event.pointerId, type:event.pointerType, x: event.clientX, y: event.clientY, view: { ...camera.view }, galaxyId: galaxyAtScreen(point), moved: false };
     graphViewport.setPointerCapture(event.pointerId);
     graphViewport.classList.add("is-panning");
 });
 graphViewport.addEventListener("pointermove", (event) => {
     if (event.pointerId !== pan?.id) return;
-    if (Math.hypot(event.clientX - pan.x, event.clientY - pan.y) > 3) pan.moved = true;
+    if (Math.hypot(event.clientX - pan.x, event.clientY - pan.y) > (pan.type==='touch'?8:3)) {pan.moved = true;lastBodyTap=null;}
     if (!pan.moved) return;
     camera.panTo(pan.view.x + event.clientX - pan.x, pan.view.y + event.clientY - pan.y);
 });
@@ -223,7 +293,8 @@ graphViewport.addEventListener("contextmenu", event => {
 });
 
 function openContextMenu(id, x, y) {
-    if (activeNodeDrags || pan || !entries.has(id)) return;
+    cancelPendingBodyFocus();lastBodyTap=null;
+    if (activeNodeDrags || pan || pinch || !entries.has(id)) return;
     closeContextMenu();
 
     const entry = entries.get(id);
@@ -247,7 +318,7 @@ function positionContextMenu(x, y) {
 }
 function openPortalContextMenu(id, x, y) {
     const portal = portals.get(id), target = entries.get(portal?.targetEntryId);
-    if (!target || activeNodeDrags || pan) return;
+    if (!target || activeNodeDrags || pan || pinch) return;
     closeContextMenu(); closeContentMenus();
     const row = hierarchySidebar.rows.get(id), button = row?.querySelector('.tree-portal-actions');
     contextPortalId = id; contextReturnFocus = document.activeElement === button ? button : row;
@@ -274,7 +345,8 @@ contextMenu.addEventListener("click", event => {
     const action = event.target.closest("button")?.dataset.action, id = contextEntryId;
     if(contextCollectionId){
         const collectionId=contextCollectionId;closeContextMenu(true);
-        if(action==='collection-rename')constellationWorkspace.openName(collectionId);
+        if(action==='collection-add')constellationWorkspace.openPicker(collectionId);
+        else if(action==='collection-rename')constellationWorkspace.openName(collectionId);
         else if(action==='collection-delete')constellationWorkspace.openDelete(collectionId);
         return;
     }
@@ -325,10 +397,17 @@ hierarchySidebar.tree.addEventListener("keydown", event => {
     else openContextMenu(row.dataset.entryId, rect.left + 40, rect.top + rect.height / 2);
     contextReturnFocus = row;
 });
-document.getElementById("reset-view-button").addEventListener("click", () => {
+function fitCurrentView(){
+    cancelPendingBodyFocus();cancelCanvasTouches();lastBodyTap=null;
     if (hierarchySidebar.narrow) hierarchySidebar.setCollapsed(true);
     autoFitPending = !physics.settled;
     fitGalaxy();
+}
+document.getElementById('reset-view-button').addEventListener('click',fitCurrentView);
+document.getElementById('canvas-fit').addEventListener('click',fitCurrentView);
+for(const [id,factor] of [['canvas-zoom-in',1.35],['canvas-zoom-out',1/1.35]])document.getElementById(id).addEventListener('click',()=>{
+    cancelPendingBodyFocus();cancelCanvasTouches();lastBodyTap=null;autoFitPending=false;closeContextMenu();
+    const b=physics.bounds;camera.zoomAt((b.left+b.right)/2,(b.top+b.bottom)/2,factor);
 });
 
 const physics = new GalaxyPhysics({
@@ -384,7 +463,7 @@ function rollbackEntryContent(id, previous) {
 const motion = new CosmosMotion({wake:()=>renderRegions()});
 const contentInspector = new EntryContentInspector({ store: attachmentStore, motion, getEntry: id => entries.get(id),
     save: saveEntryContent, rollback: rollbackEntryContent,
-    onAction() { autoFitPending = false; keyboardNavigation = false; camera.stopAnimation(); },
+    onAction() { cancelPendingBodyFocus();autoFitPending = false; keyboardNavigation = false; camera.stopAnimation(); },
     onLayout() { if (cameraViewReady) updateGraphViewport(); } });
 const labelDensity = new LabelDensity();
 function requestLabelLayout(force=false) {
@@ -425,14 +504,16 @@ const constellationWorkspace = new ConstellationWorkspace({ entries, portals, co
     onLayout() { if (cameraViewReady) updateGraphViewport(); } });
 
 function openCollectionContextMenu(id,x,y,trigger){
-    const collection=constellations.get(id);if(!collection||activeNodeDrags||pan||constellationWorkspace.isDialogOpen())return;
+    cancelPendingBodyFocus();lastBodyTap=null;
+    const collection=constellations.get(id);if(!collection||activeNodeDrags||pan||pinch||constellationWorkspace.isDialogOpen())return;
     closeContextMenu();closeContentMenus();contextCollectionId=id;contextReturnFocus=trigger;
     if(trigger?.hasAttribute('aria-haspopup'))trigger.setAttribute('aria-expanded','true');contextMenu.dataset.constellationId=id;
     contextMenu.removeAttribute('data-entry-id');contextMenu.removeAttribute('data-portal-id');
     contextMenu.setAttribute('aria-label',`Actions for Constellation ${collection.name}`);
     document.getElementById('context-entry-name').textContent=collection.name;
     document.getElementById('constellation-memberships').hidden=true;
-    contextMenu.querySelectorAll(':scope > button').forEach(button=>button.hidden=!button.hasAttribute('data-collection-context'));
+    const touch=window.matchMedia('(hover: none), (pointer: coarse), (max-width: 760px)').matches;
+    contextMenu.querySelectorAll(':scope > button').forEach(button=>button.hidden=!button.hasAttribute('data-collection-context')||(button.dataset.action==='collection-add'&&!touch));
     positionContextMenu(x,y);
 }
 constellationWorkspace.list.addEventListener('scroll',()=>{if(contextCollectionId)closeContextMenu();},{passive:true});
@@ -514,6 +595,8 @@ function refreshConstellation({animate=false}={}) {
 }
 
 function activateConstellation(id) {
+    cancelPendingBodyFocus();lastBodyTap=null;
+    if(pinch)cancelCanvasTouches();
     if (activeNodeDrags || deletionBusy || !constellations.has(id)) return;
     if (activeConstellationId === id) { exitConstellation(); return; }
     closeContextMenu(); closeContentMenus(); autoFitPending = false; keyboardNavigation = false; camera.stopAnimation();
@@ -743,10 +826,20 @@ function createEntryNode(entry) {
     node.setAttribute("aria-pressed", "false");
     node.addEventListener("click", event => {
         if (event.detail && didMove) return;
+        if(event.detail&&isCanvasTouchClick(event)){
+            const now=performance.now(),double=lastBodyTap?.id===entry.id&&now-lastBodyTap.time<=320&&Math.hypot(event.clientX-lastBodyTap.x,event.clientY-lastBodyTap.y)<=24;
+            if(double){lastBodyTap=null;focusEntry(entry.id,{closeFocus:true});return;}
+            lastBodyTap={id:entry.id,time:now,x:event.clientX,y:event.clientY};selectEntry(entry,node);return;
+        }
+        if(event.detail>=2){cancelPendingBodyFocus();return;}
+        if(event.detail&&(activeConstellationId||entry.depth<=1)){
+            selectEntry(entry,node);pendingBodyFocusTimer=setTimeout(()=>{pendingBodyFocusTimer=null;if(selectedNode===node&&!crudActive&&!activeNodeDrags&&!pan&&!pinch)focusEntry(entry.id);},320);return;
+        }
         if (activeConstellationId) { focusEntry(entry.id); return; }
         if (entry.depth <= 1) focusEntry(entry.id);
         else selectEntry(entry, node);
     });
+    node.addEventListener('dblclick',event=>{if(isCanvasTouchClick(event)||didMove)return;event.preventDefault();cancelPendingBodyFocus();lastBodyTap=null;focusEntry(entry.id,{closeFocus:true});});
     node.addEventListener("contextmenu", event => {
         event.preventDefault(); event.stopPropagation();
         const rect = node.getBoundingClientRect();
@@ -778,10 +871,11 @@ function createEntryNode(entry) {
     let didMove = false;
     let offsetX = 0;
     let offsetY = 0;
+    let dragPointerType=null;
 
     node.addEventListener("pointerdown", (event) => {
 
-        if (event.button !== 0 || dragPointerId !== null || pan) return;
+        if (event.button !== 0 || dragPointerId !== null || pan || pinch) return;
         dismissTemporaryReveal();
         camera.stopAnimation();
         const point = pointerInWorld(event);
@@ -791,9 +885,10 @@ function createEntryNode(entry) {
         autoFitPending = false;
         activeNodeDrags++;
         dragPointerId = event.pointerId;
+        dragPointerType=event.pointerType;
         didMove = false;
         node.classList.add("dragging");
-        selectEntry(entry, node);
+        if(event.pointerType!=='touch')selectEntry(entry, node);
         node.setPointerCapture(event.pointerId);
     });
 
@@ -802,15 +897,18 @@ function createEntryNode(entry) {
         const point = pointerInWorld(event);
         const x = point.x - offsetX;
         const y = point.y - offsetY;
-        if (didMove || Math.hypot(x - entry.x, y - entry.y) * camera.view.scale > 3) {
+        if (didMove || Math.hypot(x - entry.x, y - entry.y) * camera.view.scale > (dragPointerType==='touch'?8:3)) {
+            lastBodyTap=null;
+            if(!didMove&&dragPointerType==='touch')selectEntry(entry,node);
             didMove = true;
             physics.moveDrag(entry.id, x, y);
         }
     });
 
-    function endDrag(event) {
+    function endDrag(event,{handoff=false}={}) {
         if (event.pointerId !== dragPointerId) return;
         dragPointerId = null;
+        dragPointerType=null;
         activeNodeDrags--;
         const placement = physics.endDrag(entry.id, didMove);
         node.classList.remove("dragging");
@@ -819,11 +917,16 @@ function createEntryNode(entry) {
         if (didMove) {
             if (placement) layout.set(entry.id, placement); else layout.delete(entry.id);
             saveGalaxy();
-            setInspectorOpen(true);
-            if(entry.role==='astronaut')motion.astronaut(node,true);
+            if(!handoff)setInspectorOpen(true);
+            if(!handoff&&entry.role==='astronaut')motion.astronaut(node,true);
         }
     }
     ["pointerup", "pointercancel", "lostpointercapture"].forEach((type) => node.addEventListener(type, endDrag));
+    node.cancelTouchDrag=()=>{
+        if(dragPointerId===null||dragPointerType!=='touch')return;
+        // Preserve a real drag already made; a stationary pinch origin changes no placement.
+        endDrag({pointerId:dragPointerId,type:'pointercancel'},{handoff:true});
+    };
     entries.set(entry.id, entry);
     nodes.set(entry.id, node);
     nodesLayer.appendChild(node);
@@ -940,8 +1043,11 @@ function updateGraphViewport() {
 }
 
 function navigationViewportChanged(animate = true, { keepSelectedVisible = false, previous = physics.bounds } = {}) {
+    cancelPendingBodyFocus();lastBodyTap=null;
     autoFitPending = false;
-    closeContextMenu(); dismissTemporaryReveal();
+    const menuHadFocus=!!document.activeElement?.closest('#add-menu,#entry-context-menu');
+    cancelCanvasTouches();closeContextMenu();closeContentMenus();closePanelItemMenus();dismissTemporaryReveal();
+    if(menuHadFocus&&hierarchySidebar.narrow&&hierarchySidebar.collapsed)hierarchySidebar.toggle.focus({preventScroll:true});
     if (hierarchySidebar.narrow && !hierarchySidebar.collapsed) {
         panel.hidden = true; galaxy.classList.remove("inspector-open");
         closeContentMenus(); contentInspector.hide();
@@ -1255,6 +1361,8 @@ function updateParentOptions(preferredId = parentField.value) {
 }
 
 function beginCrudOperation() {
+    cancelPendingBodyFocus();lastBodyTap=null;
+    cancelCanvasTouches();
     crudActive = true;
     keyboardNavigation = false;
     autoFitPending = false;
@@ -1371,6 +1479,7 @@ function closeContentMenus() {
     moreButton.setAttribute("aria-expanded", "false");
 }
 function toggleContentMenu(menu, button, targetId = null) {
+    cancelPendingBodyFocus();lastBodyTap=null;
     if (menu === addMenu && !entries.has(targetId)) return;
     const opening = menu.hidden || (menu === addMenu && addMenuTrigger !== button);
     closeContentMenus();
@@ -1736,8 +1845,10 @@ document.getElementById("portal-form").addEventListener("submit", event => {
     }
 });
 
-function focusEntry(id, { travel = false, sourceId = selectedNode?.dataset.entryId } = {}) {
+function focusEntry(id, { travel = false, closeFocus=false, sourceId = selectedNode?.dataset.entryId } = {}) {
+    cancelPendingBodyFocus();
     const entry = entries.get(id);
+    if(pinch)cancelCanvasTouches();
     if (!entry || activeNodeDrags || pan) return;
     if(!travel)pendingPortalArrival=null;
     if(entry.depth===0)motion.cloud(regions.get(id));
@@ -1762,7 +1873,7 @@ function focusEntry(id, { travel = false, sourceId = selectedNode?.dataset.entry
         crossGalaxy: !!source && source.galaxyId !== particle.galaxyId,
         differentSystem: !!source && source.systemId !== particle.systemId
     }) : camera.setView(view);
-    if (entry.depth <= 1) {
+    if (entry.depth === 0 || entry.depth===1&&!closeFocus) {
         const members = entry.depth === 0 ? physics.ordered.filter(node => node.galaxyId === id && node.depth > 0) : physics.systems.get(id).members;
         const positions = cosmosView.normalPositions(particle, members);
         const bounds = { left: entry.x - 48, right: entry.x + 48, top: entry.y - 48, bottom: entry.y + 48 };
@@ -1779,7 +1890,7 @@ function focusEntry(id, { travel = false, sourceId = selectedNode?.dataset.entry
         applyView(camera.boundsView(bounds, physics.bounds, { padding: 36, maxScale: entry.depth === 0 ? .58 : .82 }));
         return;
     }
-    const usefulScale = Math.max(entry.depth >= 4 ? 1.7 : entry.depth === 3 ? 1.2 : 1, Math.min(1.8, camera.view.scale));
+    const usefulScale = closeFocus?(entry.depth===1?1.1:entry.depth===2?1.3:entry.depth===3?1.45:1.8):Math.max(entry.depth >= 4 ? 1.7 : entry.depth === 3 ? 1.2 : 1, Math.min(1.8, camera.view.scale));
     // Center in the usable graph area, leaving the fixed panel and controls visible.
     applyView({ x: (left + right) / 2 - entry.x * usefulScale,
         y: (top + bottom) / 2 - entry.y * usefulScale, scale: usefulScale });
@@ -1862,7 +1973,7 @@ camera.setReducedMotion(motionPreference.matches);
 motion.setReducedMotion(motionPreference.matches);
 const ambient=new CosmosAmbient({root:document.querySelector('.universe-background'),reduced:motionPreference.matches,
     busy:()=>!!document.querySelector('dialog[open]')||(!panel.hidden&&!contentInspector.root.hidden&&(!contentInspector.notesForm.hidden||!contentInspector.linkForm.hidden))||
-        !!camera.frame||!!pan||activeNodeDrags>0||motion.constellationAnimating||motion.animations.size>0||contentInspector.jobs.size>0});
+        !!camera.frame||!!pan||!!pinch||activeNodeDrags>0||contentInspector.quickBookmark.contains(document.activeElement)||motion.constellationAnimating||motion.animations.size>0||contentInspector.jobs.size>0});
 // Deterministic console previews share rendering, with independent production timing/state.
 window.debugComet=()=>ambient.debug('comet');
 window.debugUfo=()=>ambient.debug('ufo');
@@ -1894,6 +2005,7 @@ function syncMobileViewport(){
 syncMobileViewport();
 function mobileViewportChanged(){
     if(!hierarchySidebar.narrow)return;
+    cancelCanvasTouches();
     syncMobileViewport();closeContextMenu();closeContentMenus();closePanelItemMenus();updateGraphViewport();requestLabelLayout(true);
     if(panel.contains(document.activeElement)&&document.activeElement.matches('input,textarea'))document.activeElement.scrollIntoView({block:'nearest',inline:'nearest'});
 }
