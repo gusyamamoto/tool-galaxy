@@ -611,9 +611,6 @@ button:disabled { opacity: 0.45; cursor: default; }
 #hierarchy-sidebar h1 { position: static; margin: 0; font-size: 16px; letter-spacing: -.3px; color: #c6d3e3; }
 .sidebar-controls { padding: 0 12px 10px; flex-shrink: 0; }
 .sidebar-actions { display: flex; flex-wrap: wrap; gap: 6px; }
-#hierarchy-sidebar #add-entry-button, #hierarchy-sidebar #reset-view-button { position: static; flex: 1 0 auto; padding: 7px 9px; font-size: 12px; border-radius: 5px; box-shadow: none; }
-#hierarchy-sidebar #add-entry-button { background: #304763; border-color: #7591b34d; }
-#hierarchy-sidebar #reset-view-button { background: transparent; border-color: #50627c44; color: #a9b9cc; }
 #hierarchy-count { color: #728299; font-size: 10px; font-weight: 400; }
 #hierarchy-sidebar .entry-search { position: relative; top: auto; left: auto; width: auto; margin: 0 12px 12px; flex-shrink: 0; }
 #hierarchy-sidebar #entry-search { padding: 9px 10px; font-size: 12px; background: #141e2c; border-color: #60759030; }
@@ -642,11 +639,7 @@ button:disabled { opacity: 0.45; cursor: default; }
 .hierarchy-row[data-role="moon"] .tree-role-icon { width: 8px; height: 8px; background: linear-gradient(120deg, #aab2ba 50%, #526071 55%); }
 .hierarchy-row[data-role="satellite"] .tree-role-icon { width: 13px; height: 10px; border-radius: 0; background: linear-gradient(#aeb9c7,#aeb9c7) center/3px 8px no-repeat, linear-gradient(#536f90,#536f90) center/13px 4px no-repeat; }
 .hierarchy-row[data-role="astronaut"] .tree-role-icon { width: 12px; height: 15px; border-radius: 0; background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 15'%3E%3Cpath d='M3 7L1 10M9 7l2 3M4.5 11l-1 3M7.5 11l1 3' stroke='%23bcc6ce' stroke-width='1.6' stroke-linecap='round'/%3E%3Crect x='3' y='6' width='6' height='6' rx='1.5' fill='%23bac5cd'/%3E%3Ccircle cx='6' cy='3.8' r='3' fill='%23d7dfe4'/%3E%3Crect x='4' y='2.4' width='4' height='2.4' rx='1' fill='%23213242'/%3E%3C/svg%3E") center/contain no-repeat; }
-#sidebar-tools { margin: 8px 14px 14px; flex-shrink: 0; max-height: 35dvh; overflow: auto; color: #8293a9; }
-#sidebar-tools summary { cursor: pointer; padding: 6px 0; font-size: 11px; color: #8698af; }
 summary:focus-visible { outline: 1px solid #b9d0e9; outline-offset: 3px; }
-#hierarchy-sidebar .view-controls { position: static; display: flex; justify-content: space-between; margin: 8px 0; gap: 8px; }
-#hierarchy-sidebar .galaxy-hint { position: static; display: block; font-size: 10px; margin: 8px 0; color: #73849b; letter-spacing: 0; }
 #hierarchy-sidebar #sample-controls { position: static; display: flex; flex-direction: column; align-items: stretch; transform: none; max-width: none; padding: 0; border: 0; border-radius: 0; background: none; box-shadow: none; white-space: normal; }
 #hierarchy-sidebar #sample-controls > span { display: block; font-size: 10px; margin: 8px 0 2px; }
 #hierarchy-sidebar #sample-controls strong { display: block; font-weight: 500; text-transform: none; letter-spacing: 0; }
@@ -704,9 +697,6 @@ summary:focus-visible { outline: 1px solid #b9d0e9; outline-offset: 3px; }
 #hierarchy-sidebar #entry-search { height: 34px; padding: 7px 8px 7px 29px; background: #ffffff04; border-color: #60759024; border-radius: 5px; }
 .search-icon { position: absolute; left: 9px; top: 9px; width: 16px; height: 16px; pointer-events: none; fill: none; stroke: #72859c; stroke-width: 1.4; }
 #hierarchy-sidebar #search-results { position: absolute; inset: calc(100% + 6px) 0 auto; margin: 0; z-index: 35; }
-#hierarchy-sidebar #add-entry-button { display: block; width: 100%; padding: 7px 0; text-align: left; border: 0; background: transparent; font-size: 12px; color: #96aac3; box-shadow: none; }
-#hierarchy-sidebar #add-entry-button:hover { color: #d5e4f2; }
-#hierarchy-sidebar #reset-view-button { display: block; width: 100%; text-align: left; padding: 7px 0; border: 0; color: #96aac3; background: transparent; }
 #hierarchy-tree { padding: 0 7px 12px; }
 .tree-role-icon { align-self: center; }
 #entry-panel .panel-content { flex-shrink: 0; min-height: 0; max-height: none; overflow: visible; }
@@ -872,11 +862,6 @@ summary:focus-visible { outline: 1px solid #b9d0e9; outline-offset: 3px; }
 .sidebar-section-title { margin: 0; padding: 3px 16px 8px; font-size: 10px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; color: #73869d; }
 .sidebar-section-header { display: flex; align-items: center; justify-content: space-between; padding: 0 12px 0 0; min-height: 32px; }
 .sidebar-section-header .sidebar-section-title { padding-bottom: 3px; }
-#constellations-section .sidebar-section-header { padding-left: 14px; gap: 3px; }
-#constellations-heading { flex: 1; min-width: 0; padding-left: 0; padding-right: 0; }
-#constellations-toggle { flex: 0 0 22px; width: 22px !important; height: 28px; padding: 0; border: 0; background: transparent; box-shadow: none; color: #8195ad; border-radius: 3px; }
-#constellations-toggle[aria-expanded="true"] svg { transform: rotate(90deg); }
-#constellations-toggle:is(:hover,:focus-visible) { color: #d5e4f2; background: #30435b55; }
 #constellations-section { flex: 0 0 auto; min-height: 32px; margin: 3px 0 5px; }
 #constellation-list { list-style: none; margin: 0; padding: 0 7px; max-height: 26dvh; overflow: auto; scrollbar-width: thin; scrollbar-color: #344359 transparent; }
 .constellation-row { display: grid; grid-template-columns: minmax(0, 1fr) 22px 22px; align-items: center; height: 32px; border-radius: 4px; padding-right: 5px; }
@@ -1032,9 +1017,7 @@ summary:focus-visible { outline: 1px solid #b9d0e9; outline-offset: 3px; }
     .hierarchy-row:is(.is-selected,:focus-within) .tree-add { opacity: 1; visibility: visible; pointer-events: auto; }
     .hierarchy-row.is-selected .tree-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     #hierarchy-sidebar #entry-search { min-height: 40px; font-size: 16px; }
-    #sidebar-tools summary, #sidebar-tools > button { min-height: 44px; }
     .sidebar-section-header { min-height: 44px; }
-    #constellations-toggle { width: 32px !important; height: 44px; }
     .constellation-row { height: 44px; grid-template-columns: minmax(0,1fr) 44px 44px; padding-right: 0; }
     .constellation-open { height: 44px; }
     .collection-add { width: 44px; height: 44px; opacity: 1; pointer-events: auto; }
@@ -1078,13 +1061,41 @@ summary:focus-visible { outline: 1px solid #b9d0e9; outline-offset: 3px; }
 }
 @media (pointer: coarse) and (max-width: 1024px) and (max-height: 500px) {
     #entry-panel:not(:has(#panel-rich-content:not([hidden]))) { max-height: min(72dvh,calc(var(--mobile-visible-height,100dvh) - 60px)); }
-    #sidebar-tools { margin-block: 4px; }
     #constellation-list { max-height: 20dvh; }
     #entry-panel:has(#panel-rich-content:not([hidden]) :is(#content-notes-form:not([hidden]),#content-link-form:not([hidden]))) { max-height: calc(var(--mobile-visible-height,100dvh) - 16px); }
     #entry-panel:has(#panel-rich-content:not([hidden]) :is(#content-notes-form:not([hidden]),#content-link-form:not([hidden]))) :is(.content-header-actions,#panel-ancestry) { display: none; }
 }
 
 /* Presentation over existing files and plain-text notes. */
+
+#archived-galaxy-count { color: #748aa5; }
+#archived-galaxy-list { list-style: none; margin: 6px 0; padding: 0; max-height: 180px; overflow: auto; }
+#archived-galaxy-list li { display: flex; align-items: center; gap: 8px; min-height: 36px; }
+#archived-galaxy-list li span { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: #a7b7cb; }
+#hierarchy-sidebar #archived-galaxy-list button { width: auto; margin: 0; padding: 6px 8px; min-height: 32px; font-size: 11px; color: #b6cbdc; }
+#archive-galaxy-dialog { width: min(390px,calc(100vw - 32px)); max-height: calc(var(--mobile-visible-height,100dvh) - 24px); padding: 20px; border-radius: 7px; background: #0e1621; border-color: #50627c55; box-shadow: 0 8px 28px #0007; }
+#archive-galaxy-dialog::backdrop { background: #02060bb3; backdrop-filter: none; }
+#archive-galaxy-title { font-size: 15px; line-height: 1.5; overflow-wrap: anywhere; }
+#archive-galaxy-error { color: #d4ad99; }
+#confirm-archive-galaxy { background: #283d51; border-color: #7993ab55; }
+#archive-feedback { position: absolute; bottom: 56px; left: 50%; transform: translateX(-50%); max-width: min(440px,calc(100vw - 32px)); padding: 9px 12px; border-radius: 5px; background: #101b2aee; color: #c3d2e1; font-size: 12px; pointer-events: none; z-index: 35; }
+.galaxy-archive-echo,.galaxy-archive-collapse { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+.galaxy-archive-echo { z-index: 9; }
+.galaxy-archive-collapse { will-change: transform,opacity; }
+.galaxy-archive-echo .entry-node::before { background-size: 100% 100%; mix-blend-mode: normal; transform: none; opacity: calc(var(--surface-detail,1)*var(--texture-opacity,.7)); }
+.galaxy-archive-echo .entry-node:is([data-body="satellite"],[data-body="astronaut"]) { background: transparent; border: 0; box-shadow: none; }
+.galaxy-archive-echo .entry-node:is([data-body="satellite"],[data-body="astronaut"])::before,.galaxy-archive-echo .entry-node:is([data-body="satellite"],[data-body="astronaut"])::after { content: none; }
+.galaxy-restore-band { position: absolute; inset: 0; pointer-events: none; will-change: transform,opacity; }
+.galaxy-archive-core,.galaxy-energy-core,.galaxy-energy-ring { position: absolute; pointer-events: none; }
+.galaxy-archive-core { width: 10px; height: 10px; border-radius: 50%; background: radial-gradient(circle,#010207 0 55%,hsl(var(--energy-hue,205) 28% 48% / .5) 64%,transparent 76%); }
+.galaxy-energy-core { width: 22px; height: 22px; border-radius: 50%; background: radial-gradient(circle,hsl(var(--energy-hue,205) 30% 82% / .8) 0%,hsl(var(--energy-hue,205) 35% 58% / .45) 30%,transparent 72%); }
+.galaxy-energy-ring { width: 120px; height: 82px; }
+.galaxy-energy-ring svg { width: 100%; height: 100%; fill: none; stroke: hsl(var(--energy-hue,205) 32% 74%); stroke-width: .85; }
+@media (max-width:760px), (pointer:coarse) {
+    #hierarchy-sidebar #archived-galaxy-list button { min-height: 44px; }
+    #archive-galaxy-dialog button { min-height: 44px; }
+    #galaxy:not(.sidebar-collapsed) #archive-feedback { clip-path: inset(50%); width: 1px; height: 1px; padding: 0; overflow: hidden; }
+}
 #panel-rich-content .note-checklist { display: flex; align-items: center; gap: 8px; min-height: 32px; margin: 0; font: inherit; color: inherit; white-space: pre-wrap; cursor: pointer; }
 #panel-rich-content .note-checklist input { width: 16px; height: 16px; min-height: 0; padding: 0; flex: 0 0 16px; accent-color: #91adc9; }
 #panel-rich-content .note-checklist span { min-width: 0; }
@@ -1102,4 +1113,27 @@ summary:focus-visible { outline: 1px solid #b9d0e9; outline-offset: 3px; }
 @media (max-width:760px), (pointer:coarse) {
     #galaxy-starter { min-height: 44px; font-size: 16px; }
     #panel-rich-content .note-checklist { min-height: 44px; }
+}
+
+
+/* Independent navigation sections share one quiet disclosure pattern. */
+#universe-section { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+#universe-section.section-collapsed { flex: 0 0 auto; }
+#universe-section,#constellations-section,#archived-galaxies { margin: 3px 0 5px; }
+#archived-galaxies { flex: 0 0 auto; min-height: 32px; }
+.sidebar-section-header { padding: 0 12px 0 14px; gap: 3px; }
+.sidebar-section-header .sidebar-section-title { flex: 1; min-width: 0; padding: 0; }
+.sidebar-section-toggle { display: flex; align-items: center; gap: 6px; width: 100%; min-height: 32px; padding: 0; text-align: left; border: 0; border-radius: 3px; background: transparent; box-shadow: none; color: #8195ad; font: inherit; letter-spacing: inherit; text-transform: inherit; }
+.sidebar-section-toggle > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sidebar-section-toggle svg { flex: 0 0 16px; width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.3; transition: transform 120ms ease; }
+.sidebar-section-toggle[aria-expanded="true"] svg { transform: rotate(90deg); }
+.sidebar-section-toggle:is(:hover,:focus-visible) { color: #c3d3e4; }
+.sidebar-section-toggle:focus-visible { outline: 1px solid #839ab5; outline-offset: 2px; }
+#archived-galaxy-list { margin: 0; padding: 0 12px 0 14px; max-height: 22dvh; }
+#sample-utility { flex: 0 0 auto; margin: auto 14px 12px; padding-top: 7px; border-top: 1px solid #50627c22; max-height: 22dvh; overflow: auto; color: #73849b; scrollbar-width: thin; scrollbar-color: #344359 transparent; }
+#sample-utility summary { padding: 4px 0; font-size: 10px; cursor: pointer; }
+@media (max-width:760px), (pointer:coarse) {
+    .sidebar-section-toggle { min-height: 44px; }
+    .sidebar-section-header .collection-add { width: 44px; height: 44px; opacity: 1; pointer-events: auto; }
+    #sample-utility summary,#hierarchy-sidebar #sample-controls button { min-height: 44px; }
 }

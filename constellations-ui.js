@@ -56,6 +56,7 @@ class ConstellationWorkspace {
     }
     applySectionState(){
         if(this.collapsed&&this.list.contains(document.activeElement))this.sectionToggle.focus({preventScroll:true});
+        document.getElementById('constellations-section').classList.toggle('section-collapsed',this.collapsed);
         this.list.hidden=this.collapsed;this.sectionToggle.setAttribute('aria-expanded',String(!this.collapsed));
         this.sectionToggle.ariaLabel=this.sectionToggle.title=`${this.collapsed?'Expand':'Collapse'} Constellations`;
     }
@@ -91,7 +92,8 @@ class ConstellationWorkspace {
         const closeButton=document.getElementById('close-inspector-button');closeButton.setAttribute('aria-label','Deactivate Constellation');closeButton.title='Deactivate Constellation';
         document.getElementById('panel-ancestry').hidden=true;document.getElementById('panel-rich-content').hidden=true;
         document.getElementById('constellation-content').hidden=false;document.getElementById('entry-action-status').hidden=true;
-        const count=document.getElementById('constellation-count');count.hidden=false;count.textContent=`${collection.memberEntryIds.length} ${collection.memberEntryIds.length===1?'item':'items'}`;
+        const visibleCount=collection.memberEntryIds.filter(id=>this.entries.has(id)).length, archivedCount=collection.memberEntryIds.length-visibleCount;
+        const count=document.getElementById('constellation-count');count.hidden=false;count.textContent=`${visibleCount} ${visibleCount===1?'item':'items'}${archivedCount?` ? ${archivedCount} archived`:''}`;
         document.querySelectorAll('#entry-actions button').forEach(button=>{button.hidden=!button.hasAttribute('data-collection-action');});
         const list=memberList;list.replaceChildren();
         collection.memberEntryIds.forEach(id=>{const entry=this.entries.get(id);if(!entry)return;
@@ -102,7 +104,8 @@ class ConstellationWorkspace {
             const menu=createPanelItemMenu(actions,entry.name,document.getElementById('constellation-content'));menu.classList.add('constellation-member-menu');
             row.append(open,menu);list.append(row);
         });
-        document.getElementById('constellation-members-empty').hidden=collection.memberEntryIds.length>0;
+        const empty=document.getElementById('constellation-members-empty');empty.hidden=visibleCount>0;
+        empty.textContent=archivedCount?'These items are in archived Galaxies. Restore them from Archived Galaxies in the sidebar.':'No items yet';
         if(focusId){const row=[...list.children].find(row=>row.dataset.entryId===focusId)||list.children[Math.min(focusIndex,list.children.length-1)];
             (row?.querySelector(focusMenu?'summary':'.constellation-member-name')||document.getElementById('panel-add-member')).focus({preventScroll:true});}
         this.onLayout();

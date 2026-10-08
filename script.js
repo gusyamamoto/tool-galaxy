@@ -77,6 +77,12 @@ const fields = ["entry-name", "entry-description", "entry-category"].map((id) =>
 
 // Plain entry data is kept separate from the rendered DOM.
 const entries = new Map();
+const archivedEntries = new Map(), archivedGalaxies = new Map();
+const archiveDialog = document.getElementById('archive-galaxy-dialog');
+const archivedSection=new NavigationSection({root:document.getElementById('archived-galaxies'),toggle:document.getElementById('archived-galaxies-toggle'),list:document.getElementById('archived-galaxy-list'),name:'Archived Galaxies',key:'archivedCollapsed',persist:!sampleMode,collapsed:true});
+const archiveMotion = new GalaxyArchiveMotion(graphViewport);
+let archivingGalaxyId = null, archiveConfirmationIds = null, archiveReturnFocus = null, archiveFeedbackTimer = null;
+function allCanonicalEntries() { return galaxyArchives.join(entries, archivedEntries); }
 const portals = new Map();
 const constellations = new Map();
 let activeConstellationId = null;
@@ -133,6 +139,7 @@ const camera = new GraphCamera({
         if (focusRevealIds.size) { focusRevealIds.clear(); renderGraph(); }
     },
     onChange({ x, y, scale }) {
+        archiveMotion.clear();
         graphWorld.style.transform = `translate(${x}px, ${y}px) scale(${scale})`;
         // SVG geometry stays in world space. Bodies are sized and projected in
         // screen space, so zoom paints gradients and text at native resolution
@@ -303,7 +310,7 @@ function openContextMenu(id, x, y, {surface='canvas'}={}) {
     contextPortalId = null;
     contextMenu.removeAttribute("data-portal-id");
     document.getElementById('constellation-memberships').hidden = true;
-    contextMenu.querySelectorAll(":scope > button").forEach(button => { button.hidden = button.hasAttribute("data-portal-action")||button.hasAttribute('data-collection-context')||(surface==='canvas'&&['files','portal'].includes(button.dataset.action)); });
+    contextMenu.querySelectorAll(":scope > button").forEach(button => { button.hidden = button.hasAttribute("data-portal-action")||button.hasAttribute('data-collection-context')||(button.hasAttribute('data-galaxy-only')&&entry.depth!==0)||(surface==='canvas'&&button.dataset.action==='files')||(button.hasAttribute('data-management-only')&&(surface!=='sidebar'||entry.depth===0)); });
     closeContentMenus();
     if (selectedNode?.dataset.entryId !== id || constellationOverview) selectEntry(entry, nodes.get(id), { openInspector: false });
     contextMenu.setAttribute("aria-label", `Actions for ${entry.name}`);
@@ -363,6 +370,7 @@ contextMenu.addEventListener("click", event => {
     if (action === "create") createChildEntry(id);
     else if (action === "files") openEntryContentAction(id, "files");
     else if (action === "portal") openPortalDialog(id);
+    else if (action === "archive") requestGalaxyArchive(id);
     else if (action === "edit") openEntryForm(entries.get(id));
     else if (action === "delete") requestEntryDelete(id);
 });
@@ -403,7 +411,7 @@ function fitCurrentView(){
     autoFitPending = !physics.settled;
     fitGalaxy();
 }
-document.getElementById('reset-view-button').addEventListener('click',fitCurrentView);
+
 document.getElementById('canvas-fit').addEventListener('click',fitCurrentView);
 for(const [id,factor] of [['canvas-zoom-in',1.35],['canvas-zoom-out',1/1.35]])document.getElementById(id).addEventListener('click',()=>{
     cancelPendingBodyFocus();cancelCanvasTouches();lastBodyTap=null;autoFitPending=false;closeContextMenu();
@@ -569,7 +577,7 @@ function showConstellationMemberships(id) {
 function commitConstellations(next) {
     if (deletionBusy) throw new Error('Wait for item deletion to finish.');
     autoFitPending = false; keyboardNavigation = false; camera.stopAnimation();
-    const records = galaxyConstellations.normalizeAll([...next.values()], entries);
+    const records = galaxyConstellations.normalizeAll([...next.values()], allCanonicalEntries());
     if (records.length !== next.size) throw new Error('Choose a valid Constellation name and items.');
     // Publish only after persistence succeeds. Collection edits never rebuild or
     // reheat the graph and never frame the camera.
@@ -591,7 +599,7 @@ function entityPanelMode() {
     document.getElementById('panel-rich-content').hidden = false;
     document.getElementById('constellation-content').hidden = true;
     document.getElementById('constellation-count').hidden = true;
-    entryActions.querySelectorAll('button').forEach(button => { button.hidden = button.hasAttribute('data-collection-action'); });
+    entryActions.querySelectorAll('button').forEach(button => { button.hidden = button.hasAttribute('data-collection-action')||(button.hasAttribute('data-galaxy-only')&&entries.get(selectedNode?.dataset.entryId)?.depth!==0); });
     updateConstellationIndicator();
 }
 
@@ -612,7 +620,7 @@ document.getElementById('deactivate-constellation-button').addEventListener('cli
 function refreshConstellation({animate=false}={}) {
     if(!animate)motion.cancelConstellationIntro();
     const collection = constellations.get(activeConstellationId);
-    activeConstellationMembers = new Set(collection?.memberEntryIds || []);
+    activeConstellationMembers = new Set((collection?.memberEntryIds || []).filter(id=>entries.has(id)));
     activeConstellationGalaxyIds = galaxyConstellations.galaxyIds(activeConstellationMembers, entries);
     galaxy.classList.toggle('constellation-active', !!collection);
     galaxy.classList.toggle('constellation-has-members', !!collection && activeConstellationMembers.size > 0);
@@ -668,11 +676,12 @@ function reportStorageFailure(message) {
 
 function getGalaxySnapshot() {
     return {
-        entries: [...entries.values()].map(({ id, name, description, category, parentId, x, y, appearance, content }) =>
+        entries: [...allCanonicalEntries().values()].map(({ id, name, description, category, parentId, x, y, appearance, content }) =>
             ({ id, name, description, category, parentId, x, y, ...(appearance ? { appearance } : {}), ...(content ? { content } : {}) })),
         portals: [...portals.values()].map(portal => ({ ...portal })),
         constellations: [...constellations.values()].map(collection => ({ ...collection, memberEntryIds: [...collection.memberEntryIds] })),
-        layout: [...layout].map(([id, placement]) => ({ id, ...placement }))
+        layout: [...layout].map(([id, placement]) => ({ id, ...placement })),
+        ...(archivedGalaxies.size ? { archivedGalaxies: [...archivedGalaxies.values()] } : {})
     };
 }
 
@@ -737,7 +746,15 @@ function initializeGalaxy() {
     if (sampleMode) entries.forEach(entry => { entry.seedLayout = true; });
     layout = galaxyModel.normalizeLayout(saved?.layout || [], entries);
     if (!sampleMode && saved?.layout?.some(record => record?.pinned === true)) graphNeedsSave = true;
+    try {
+        galaxyArchives.normalize(saved?.archivedGalaxies || [], entries).forEach((record,id)=>archivedGalaxies.set(id,record));
+        galaxyArchives.split(entries, archivedGalaxies).forEach((entry,id)=>archivedEntries.set(id,entry));
+    } catch {
+        storageAvailable=false;archivedGalaxies.clear();
+        reportStorageFailure('Archived Galaxy state could not be loaded. Your original saved data is preserved; saving is disabled for this session.');
+    }
     [...entries.values()].forEach(createEntryNode);
+    renderArchivedGalaxies();
     rebuildHierarchyPaths();
     constellationWorkspace.renderSidebar();
 }
@@ -766,6 +783,7 @@ function selectEntry(entry, node, { openInspector = true, reframe = false, scrol
     }
 
     selectedNode = node;
+    document.getElementById('archive-galaxy-button').hidden=entry.depth!==0;
     node.classList.add("selected");
     node.setAttribute("aria-pressed", "true");
     if(changingEntry&&!activeNodeDrags){motion.accent(node,'select');if(entry.role==='astronaut')motion.astronaut(node);}
@@ -1048,7 +1066,7 @@ function syncPhysicsGraph({ updateUI = true, reheat = .55 } = {}) {
     entries.forEach(entry => { entry.seedLayout = false; });
     // Reparenting invalidates only that entry's parent-relative influence.
     layout.forEach((placement, id) => {
-        if (placement.parentId !== entries.get(id)?.parentId) layout.delete(id);
+        if (!archivedEntries.has(id)&&placement.parentId !== entries.get(id)?.parentId) layout.delete(id);
     });
     if (!updateUI) return;
     updateRegionFootprints(true);
@@ -1364,8 +1382,11 @@ function rebuildHierarchyPaths() {
 }
 
 function getNewEntryId() {
-    if (typeof crypto.randomUUID === "function") return `entry-${crypto.randomUUID()}`;
-    while (entries.has(`custom-${nextEntryId}`)) {
+    if (typeof crypto.randomUUID === "function") {
+        const id=`entry-${crypto.randomUUID()}`;
+        if(!entries.has(id)&&!archivedEntries.has(id))return id;
+    }
+    while (entries.has(`custom-${nextEntryId}`)||archivedEntries.has(`custom-${nextEntryId}`)) {
         nextEntryId++;
     }
     return `custom-${nextEntryId++}`;
@@ -1415,7 +1436,7 @@ function beginCrudOperation() {
 }
 
 function finishCrudOperation() {
-    if (dialog.open || deleteDialog.open || portalDialog.open || constellationWorkspace.isDialogOpen()) return;
+    if (dialog.open || deleteDialog.open || archiveDialog.open || portalDialog.open || constellationWorkspace.isDialogOpen()) return;
     crudActive = false;
     if (!document.hidden) physics.resume();
 }
@@ -1423,7 +1444,7 @@ function finishCrudOperation() {
 // One synchronous mutation: model/derived particles -> save -> DOM/tree ->
 // selection/inspector. No navigation helpers or global Fit participate.
 function commitCrudMutation(mutate, { selectionId, topologyChanged = true, reveal = false,
-    preserveScroll = true, inspectorOpen = !panel.hidden, persisted = false } = {}) {
+    preserveScroll = true, inspectorOpen = !panel.hidden, persisted = false, animateCreation = true, preserveInspector = false } = {}) {
     beginCrudOperation();
     const scroll = { top: hierarchySidebar.tree.scrollTop, left: hierarchySidebar.tree.scrollLeft };
     const previousSelection = selectedNode?.dataset.entryId;
@@ -1447,7 +1468,10 @@ function commitCrudMutation(mutate, { selectionId, topologyChanged = true, revea
     if (topologyChanged) updateRegionFootprints(true);
     hierarchySidebar.setEntries(entries);
     const entry = entries.get(selectionId);
-    if (entry) selectEntry(entry, nodes.get(entry.id), { reframe: false, openInspector: inspectorOpen, scroll: !preserveScroll });
+    if (entry && preserveInspector && entry.id === previousSelection) {
+        hierarchySidebar.select(entry.id,{scroll:!preserveScroll});updateHierarchyEmphasis();updateGraphViewport();
+    }
+    else if (entry) selectEntry(entry, nodes.get(entry.id), { reframe: false, openInspector: inspectorOpen, scroll: !preserveScroll });
     else clearSelection({ reframe: false });
     rebuildOrbitGuides(); refreshSearchResults(); renderGraph();
     refreshConstellation();
@@ -1462,7 +1486,7 @@ function commitCrudMutation(mutate, { selectionId, topologyChanged = true, revea
             renderGraph();
         }
     }
-    materialized.forEach(node=>motion.materialize(node));
+    if(animateCreation)materialized.forEach(node=>motion.materialize(node));
 }
 
 function restoreCrudFocus() {
@@ -1784,6 +1808,103 @@ document.getElementById("delete-entry-form").addEventListener("submit", async (e
     restoreCrudFocus(); finishCrudOperation();
 });
 
+function renderArchivedGalaxies() {
+    const list=document.getElementById('archived-galaxy-list');list.replaceChildren();
+    document.getElementById('archived-galaxy-count').textContent=archivedGalaxies.size?`(${archivedGalaxies.size})`:'';
+    archivedSection.root.hidden=archivedGalaxies.size===0;archivedSection.apply();
+    archivedGalaxies.forEach((record,id)=>{
+        const row=document.createElement('li'),name=document.createElement('span'),restore=document.createElement('button');
+        row.dataset.archivedGalaxyId=id;name.textContent=archivedEntries.get(id).name;name.title=name.textContent;
+        restore.type='button';restore.textContent='Restore';restore.ariaLabel=`Restore Galaxy ${name.textContent}`;
+        restore.addEventListener('click',()=>restoreGalaxy(id));row.append(name,restore);list.append(row);
+    });
+}
+function archiveFeedback(message) {
+    const feedback=document.getElementById('archive-feedback');feedback.textContent=message;feedback.hidden=false;
+    clearTimeout(archiveFeedbackTimer);archiveFeedbackTimer=setTimeout(()=>{feedback.hidden=true;},4500);
+}
+function showArchiveError(message) {
+    const error=document.getElementById('archive-galaxy-error');error.textContent=message;error.hidden=false;
+}
+function requestGalaxyArchive(id) {
+    const entry=entries.get(id);
+    if (!entry||entry.depth!==0||entry.parentId||deletionBusy||activeNodeDrags||pan||pinch||document.querySelector('dialog[open]')) return;
+    archiveReturnFocus=document.activeElement;beginCrudOperation();closeContextMenu();closeContentMenus();
+    archivingGalaxyId=id;archiveConfirmationIds=galaxyModel.subtreeIds(entries,id);
+    document.getElementById('archive-galaxy-title').textContent=`Archive Galaxy “${entry.name}”?`;
+    document.getElementById('archive-galaxy-error').hidden=true;
+    archiveDialog.showModal();document.getElementById('cancel-archive-galaxy').focus({preventScroll:true});
+}
+function cancelGalaxyArchive() {
+    archiveDialog.close();keyboardNavigation=false;
+    if(archiveReturnFocus?.isConnected&&archiveReturnFocus.getClientRects().length)archiveReturnFocus.focus({preventScroll:true});
+    else restoreCrudFocus();
+}
+document.getElementById('archive-galaxy-button').addEventListener('click',()=>requestGalaxyArchive(selectedNode?.dataset.entryId));
+document.getElementById('cancel-archive-galaxy').addEventListener('click',cancelGalaxyArchive);
+archiveDialog.addEventListener('cancel',event=>{event.preventDefault();cancelGalaxyArchive();});
+archiveDialog.addEventListener('close',()=>{if(!archiveDialog.open){archivingGalaxyId=null;archiveConfirmationIds=null;finishCrudOperation();}});
+document.getElementById('archive-galaxy-form').addEventListener('submit',event=>{
+    event.preventDefault();const root=entries.get(archivingGalaxyId);
+    if(!root||root.depth!==0||root.parentId){showArchiveError('This Galaxy is no longer available.');return;}
+    const ids=galaxyModel.subtreeIds(entries,root.id);
+    if(ids.size!==archiveConfirmationIds?.size||[...ids].some(id=>!archiveConfirmationIds.has(id))){
+        archiveConfirmationIds=ids;showArchiveError('The Galaxy changed. Review it and choose Archive Galaxy again.');return;
+    }
+    if(contentInspector.hasJobs(ids)){showArchiveError('Wait for the current file action to finish before archiving.');return;}
+    if(ids.has(contentInspector.entryId)&&(!contentInspector.notesForm.hidden||!contentInspector.linkForm.hidden)){
+        showArchiveError('Save or cancel the open note or bookmark before archiving.');return;
+    }
+    const record={galaxyId:root.id,archivedAt:new Date().toISOString(),expandedIds:[...hierarchySidebar.expanded].filter(id=>ids.has(id))};
+    const snapshot=getGalaxySnapshot();
+    try {
+        if(!sampleMode){
+            if(!storageAvailable)throw new Error('Saved data is unavailable. Your original snapshot is preserved.');
+            galaxyStorage.save({...snapshot,archivedGalaxies:[...archivedGalaxies.values(),record]});
+        }
+    } catch(error){showArchiveError(`Could not archive this Galaxy. Its items are unchanged. ${error.message}`);return;}
+    let echo=null;
+    try {echo=archiveMotion.capture(regions.get(root.id),[...ids].map(id=>nodes.get(id)),camera.worldToScreen(root.x,root.y));} catch { /* Data is safe even if presentation fails. */ }
+    const selectedId=selectedNode?.dataset.entryId,overview=activeConstellationId&&constellationOverview&&!panel.hidden;
+    commitCrudMutation(()=>{
+        archivedGalaxies.set(root.id,record);
+        ids.forEach(id=>{archivedEntries.set(id,entries.get(id));entries.delete(id);focusRevealIds.delete(id);});
+        if(ids.has(hoveredEntryId))hoveredEntryId=null;if(ids.has(hoveredSystemId))hoveredSystemId=null;
+        if(ids.has(searchFocusId))searchFocusId=null;pendingPortalArrival=null;
+    },{selectionId:ids.has(selectedId)?null:selectedId,persisted:true,animateCreation:false,preserveInspector:true});
+    if(overview)showConstellationOverview();
+    renderArchivedGalaxies();archiveDialog.close();
+    if(!selectedNode&&!hierarchySidebar.collapsed)archivedSection.toggle.focus({preventScroll:true});
+    else restoreCrudFocus();
+    finishCrudOperation();
+    archiveMotion.implode(echo);archiveFeedback(`${root.name} archived. Restore it from Archived Galaxies in the sidebar.`);
+});
+function restoreGalaxy(id) {
+    const record=archivedGalaxies.get(id),root=archivedEntries.get(id);
+    if(!record||!root||deletionBusy||activeNodeDrags||pan||pinch||document.querySelector('dialog[open]'))return;
+    const ids=galaxyModel.subtreeIds(archivedEntries,id),snapshot=getGalaxySnapshot();
+    try {
+        if(!sampleMode){
+            if(!storageAvailable)throw new Error('Saved data is unavailable.');
+            galaxyStorage.save({...snapshot,archivedGalaxies:[...archivedGalaxies.values()].filter(record=>record.galaxyId!==id)});
+        }
+    } catch(error){archiveFeedback(`Could not restore ${root.name}. It remains archived. ${error.message}`);return;}
+    const overview=activeConstellationId&&constellationOverview&&!panel.hidden;
+    commitCrudMutation(()=>{
+        ids.forEach(id=>{entries.set(id,archivedEntries.get(id));archivedEntries.delete(id);});archivedGalaxies.delete(id);
+    },{selectionId:selectedNode?.dataset.entryId,persisted:true,animateCreation:false,preserveInspector:true});
+    ids.forEach(id=>hierarchySidebar.expanded.delete(id));
+    (record.expandedIds||[root.id]).forEach(id=>hierarchySidebar.expanded.add(id));hierarchySidebar.render();
+    if(overview)showConstellationOverview();renderArchivedGalaxies();
+    archiveMotion.restore([regions.get(id),...[...ids].map(id=>nodes.get(id))],camera.worldToScreen(root.x,root.y));
+    if(!hierarchySidebar.collapsed){
+        if(hierarchySidebar.universeSection.collapsed)hierarchySidebar.universeSection.toggle.focus({preventScroll:true});
+        else{hierarchySidebar.scrollRow(id);hierarchySidebar.rows.get(id)?.focus({preventScroll:true});}
+    }
+    else hierarchySidebar.toggle.focus({preventScroll:true});
+    finishCrudOperation();archiveFeedback(`${root.name} restored to the Universe.`);
+}
+
 function openPortal(id) {
     const portal = portals.get(id), targetId = portal?.targetEntryId;
     if (entries.has(targetId)) {
@@ -1973,7 +2094,7 @@ searchField.addEventListener("keydown", (event) => {
     }
 });
 document.addEventListener("keydown", (event) => {
-    if (event.key === "Escape" && !event.defaultPrevented && !dialog.open && !deleteDialog.open && !portalDialog.open && !constellationWorkspace.isDialogOpen()) {
+    if (event.key === "Escape" && !event.defaultPrevented && !dialog.open && !deleteDialog.open && !archiveDialog.open && !portalDialog.open && !constellationWorkspace.isDialogOpen()) {
         if (activeConstellationId) { exitConstellation(); event.preventDefault(); return; }
         if (camera.travel) { camera.stopAnimation();  event.preventDefault(); return; }
         const dismissingSearch = searchOpen;
@@ -1990,6 +2111,7 @@ document.addEventListener("pointerdown", (event) => {
 
 initializeGalaxy();
 if (sampleMode) {
+    document.getElementById("sample-utility").open=true;
     document.getElementById("sample-indicator").hidden = false;
     sampleControls.classList.add("sample-active");
     sampleModeLabel.textContent = "Sample data";
@@ -2006,19 +2128,21 @@ const motionPreference = window.matchMedia("(prefers-reduced-motion: reduce)");
 physics.setReducedMotion(motionPreference.matches);
 camera.setReducedMotion(motionPreference.matches);
 motion.setReducedMotion(motionPreference.matches);
+archiveMotion.setReducedMotion(motionPreference.matches);
 const ambient=new CosmosAmbient({root:document.querySelector('.universe-background'),reduced:motionPreference.matches,
     busy:()=>!!document.querySelector('dialog[open]')||(!panel.hidden&&!contentInspector.root.hidden&&(!contentInspector.notesForm.hidden||!contentInspector.linkForm.hidden))||
-        !!camera.frame||!!pan||!!pinch||activeNodeDrags>0||contentInspector.quickBookmark.contains(document.activeElement)||motion.constellationAnimating||motion.animations.size>0||contentInspector.jobs.size>0});
+        !!camera.frame||!!pan||!!pinch||activeNodeDrags>0||contentInspector.quickBookmark.contains(document.activeElement)||motion.constellationAnimating||motion.animations.size>0||contentInspector.jobs.size>0||archiveMotion.transitions.size>0});
 // Deterministic console previews share rendering, with independent production timing/state.
 window.debugComet=()=>ambient.debug('comet');
 window.debugUfo=()=>ambient.debug('ufo');
 motionPreference.addEventListener("change", (event) => {
     physics.setReducedMotion(event.matches);
     camera.setReducedMotion(event.matches);
-    motion.setReducedMotion(event.matches);ambient.setReducedMotion(event.matches);
+    motion.setReducedMotion(event.matches);archiveMotion.setReducedMotion(event.matches);ambient.setReducedMotion(event.matches);
 });
 
 window.addEventListener("resize", () => {
+    archiveMotion.clear();
     closeContextMenu(); closeContentMenus(); closePanelItemMenus(); hierarchySidebar.onWindowResize();syncMobileViewport();
     renderBackground();
     navigationViewportChanged(false);
@@ -2048,7 +2172,7 @@ window.visualViewport?.addEventListener('resize',mobileViewportChanged);
 window.visualViewport?.addEventListener('scroll',mobileViewportChanged);
 window.addEventListener("pagehide", () => {
     labelDensity.destroy();
-    motion.destroy();ambient.destroy();
+    motion.destroy();archiveMotion.clear();clearTimeout(archiveFeedbackTimer);ambient.destroy();
     if (graphNeedsSave) {
         saveGalaxy();
     }
@@ -2056,11 +2180,12 @@ window.addEventListener("pagehide", () => {
 document.addEventListener("visibilitychange", () => {
     ambient.refresh();
     if (document.hidden) {
+        archiveMotion.clear();
         physics.pause();
         if (graphNeedsSave) {
             saveGalaxy();
         }
-    } else if (!dialog.open && !deleteDialog.open && !portalDialog.open && !constellationWorkspace.isDialogOpen()) {
+    } else if (!dialog.open && !deleteDialog.open && !archiveDialog.open && !portalDialog.open && !constellationWorkspace.isDialogOpen()) {
         physics.resume();
     }
 });

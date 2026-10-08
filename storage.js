@@ -19,7 +19,8 @@ const galaxyStorage = {
             (data.version < 3 && !Array.isArray(data.builtInPositions)) ||
             (data.version >= 4 && !Array.isArray(data.layout)) ||
             (data.portals != null && !Array.isArray(data.portals)) ||
-            (data.constellations != null && !Array.isArray(data.constellations))) {
+            (data.constellations != null && !Array.isArray(data.constellations)) ||
+            (data.archivedGalaxies != null && !Array.isArray(data.archivedGalaxies))) {
             throw new Error("Unsupported or invalid saved galaxy.");
         }
         // Version 3 keeps all entries (including built-in edits/positions) together.
@@ -33,7 +34,8 @@ const galaxyStorage = {
             ...(data.connections != null && (!Array.isArray(data.connections) || data.connections.length) ? { needsCanonicalSave: true } : {}),
             layout: data.version >= 4 ? data.layout : [],
             ...(data.portals != null ? { portals: data.portals } : {}),
-            ...(data.constellations != null ? { constellations: data.constellations } : {})
+            ...(data.constellations != null ? { constellations: data.constellations } : {}),
+            ...(data.archivedGalaxies != null ? { archivedGalaxies: data.archivedGalaxies } : {})
         };
     },
 
@@ -57,7 +59,8 @@ const galaxyStorage = {
             // Empty legacy slot keeps older version-5 readers able to open the snapshot.
             version: 5, entries: snapshot.entries, connections: [], layout: snapshot.layout || [],
             ...(snapshot.portals != null ? { portals: snapshot.portals } : {}),
-            ...(snapshot.constellations != null ? { constellations: snapshot.constellations } : {})
+            ...(snapshot.constellations != null ? { constellations: snapshot.constellations } : {}),
+            ...(snapshot.archivedGalaxies != null ? { archivedGalaxies: snapshot.archivedGalaxies } : {})
         }));
     }
 };

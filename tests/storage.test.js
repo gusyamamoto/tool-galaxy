@@ -10,6 +10,16 @@ function make(records=[]){
     return {data,localStorage,adapter:vm.runInContext('galaxyStorage',context)};
 }
 test('empty storage has no snapshot',()=>assert.equal(make().adapter.load(),null));
+test('archived Galaxy metadata is additive at v5, preserves canonical data and rejects invalid containers',()=>{
+    const {adapter,data}=make(),snapshot={entries:[entry],layout:[],portals:[reference],constellations:[],
+        archivedGalaxies:[{galaxyId:entry.id,archivedAt:'2026-10-08T12:00:00Z',expandedIds:[entry.id]}]};
+    adapter.save(snapshot);assert.equal(JSON.parse(data.get(key)).version,5);
+    assert.deepEqual(plain(adapter.load().archivedGalaxies),snapshot.archivedGalaxies);
+    assert.deepEqual(plain(adapter.load().entries),snapshot.entries);assert.deepEqual(plain(adapter.load().portals),snapshot.portals);
+    adapter.save({...snapshot,archivedGalaxies:[]});assert.deepEqual(plain(adapter.load().archivedGalaxies),[]);
+    const raw=JSON.stringify({...snapshot,version:5,archivedGalaxies:{invalid:true}});data.set(key,raw);
+    assert.throws(()=>adapter.load());assert.equal(data.get(key),raw);
+});
 test('optional Constellations round-trip additively at version 5; old snapshots remain valid',()=>{
     const constellations=[{id:'collection',name:'Favorites',memberEntryIds:['entry'],createdAt:'2026-01-01T00:00:00Z'}];
     const {adapter,data}=make();adapter.save({entries:[entry],portals:[reference],layout:[],constellations});

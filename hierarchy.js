@@ -36,6 +36,31 @@ const cosmosHierarchy = {
     }
 };
 
+// Section disclosure is UI-only and merges with existing navigation preferences.
+class NavigationSection {
+    constructor({root,toggle,list,name,key,persist=true,collapsed=false}) {
+        Object.assign(this,{root,toggle,list,name,key,persist});this.scroll={top:0,left:0};
+        let preference={};try{if(persist)preference=JSON.parse(localStorage.getItem('galaxy:navigation-ui')||'{}')||{};}catch{}
+        this.collapsed=typeof preference[key]==='boolean'?preference[key]:collapsed;
+        toggle.addEventListener('click',()=>this.setCollapsed(!this.collapsed));this.apply();
+    }
+    apply() {
+        if(this.collapsed&&this.list.contains(document.activeElement))this.toggle.focus({preventScroll:true});
+        this.list.hidden=this.collapsed;this.toggle.setAttribute('aria-expanded',String(!this.collapsed));
+        this.toggle.ariaLabel=this.toggle.title=`${this.collapsed?'Expand':'Collapse'} ${this.name}`;
+        this.root.classList.toggle('section-collapsed',this.collapsed);
+    }
+    setCollapsed(value) {
+        if(this.collapsed===value)return;
+        if(value)this.scroll={top:this.list.scrollTop,left:this.list.scrollLeft};
+        this.collapsed=value;this.apply();
+        if(!value){this.list.scrollTop=this.scroll.top;this.list.scrollLeft=this.scroll.left;}
+        if(!this.persist)return;
+        let preference={};try{preference=JSON.parse(localStorage.getItem('galaxy:navigation-ui')||'{}')||{};}catch{}
+        try{localStorage.setItem('galaxy:navigation-ui',JSON.stringify({...preference,[this.key]:value}));}catch{}
+    }
+}
+
 class HierarchySidebar {
     constructor({ host, onNavigate, onCreate, onOpenPortal, onPortalMenu, portals = new Map(), onViewportChange, persist = true }) {
         Object.assign(this, { host, onNavigate, onCreate, onOpenPortal, onPortalMenu, portals, onViewportChange, persist });
@@ -43,6 +68,7 @@ class HierarchySidebar {
         this.tree = document.getElementById("hierarchy-tree");
         this.toggle = document.getElementById("sidebar-toggle");
         this.resize = document.getElementById("sidebar-resize");
+        this.universeSection=new NavigationSection({root:document.getElementById('universe-section'),toggle:document.getElementById('universe-toggle'),list:this.tree,name:'Universe',key:'universeCollapsed',persist});
         this.entries = new Map(); this.rows = new Map(); this.expanded = new Set();
         this.index = { children: new Map(), roots: [] }; this.selectedId = null; this.activeId = null; this.searchMatches = new Set();
         this.mobileQuery = window.matchMedia('(max-width: 760px), (pointer: coarse) and (max-width: 1024px) and (max-height: 500px)');
@@ -95,7 +121,6 @@ class HierarchySidebar {
         this.sidebar.hidden = this.collapsed;
         this.toggle.setAttribute("aria-expanded", String(!this.collapsed));
         this.toggle.title = this.toggle.ariaLabel = this.collapsed ? "Show navigation" : "Hide navigation";
-        this.sidebar.querySelector('.galaxy-hint').textContent=this.narrow?'Pinch to zoom · Drag space to pan':'Scroll to zoom · Drag space to pan';
         this.resize.setAttribute("aria-valuemin", String(Math.round(Math.min(min, max))));
         this.resize.setAttribute("aria-valuemax", String(Math.round(max)));
         this.resize.setAttribute("aria-valuenow", String(Math.round(this.width)));
@@ -250,7 +275,7 @@ class HierarchySidebar {
     }
     scrollRow(id) {
         const row = this.rows.get(id);
-        if (this.collapsed || !this.tree.contains(row)) return;
+        if (this.collapsed || this.universeSection.collapsed || !this.tree.contains(row)) return;
         const bounds = this.tree.getBoundingClientRect(), target = row.getBoundingClientRect();
         if (target.top < bounds.top) this.tree.scrollTop += target.top - bounds.top;
         else if (target.bottom > bounds.bottom) this.tree.scrollTop += target.bottom - bounds.bottom;
