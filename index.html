@@ -33,7 +33,7 @@
             <button id="canvas-fit" type="button" aria-label="Fit Galaxy" title="Fit Galaxy">Fit</button>
         </div>
         <aside id="hierarchy-sidebar" aria-label="Navigation">
-            <header class="sidebar-brand"><h1>Galaxy</h1><span id="sample-indicator" hidden>Sample</span></header>
+            <header class="sidebar-brand"><h1>Galaxy</h1><span id="sample-indicator" hidden>Sample</span><button id="help-button" type="button" aria-label="Help" title="Help" aria-haspopup="dialog" aria-controls="help-dialog">?</button></header>
             <div class="sidebar-controls">
                 <div class="sidebar-actions">
             <div class="entry-search">
@@ -248,6 +248,70 @@
         </form>
     </dialog>
 
+    <dialog id="help-dialog" aria-labelledby="help-title">
+        <header class="help-header"><h2 id="help-title">Quick help</h2><button id="close-help-button" type="button" aria-label="Close Help" title="Close Help" autofocus>&times;</button></header>
+        <div class="help-topics">
+            <p class="help-intro">A little help finding your way around Cosmifold.</p>
+            <details open>
+                <summary>Getting started</summary>
+                <div class="help-copy">
+                    <p>Think of a Galaxy as one big area of your life: a trip, a class, recipes, a home project. Add items inside it and Cosmifold handles the space-y part.</p>
+                    <p>Not sure where to start? Choose a Starter Galaxy: Blank, Trip, Home project, Class / course, Recipes, or Photos / inspiration. Change anything you want.</p>
+                    <p>Things look different as you go deeper. Bigger bodies are higher-level items; smaller ones are details inside them. You don't need to manage that yourself.</p>
+                </div>
+            </details>
+            <details>
+                <summary>Moving around</summary>
+                <div class="help-copy">
+                    <p>Drag empty space to move around. Scroll, use your trackpad, or pinch to zoom. The + and &minus; buttons zoom too.</p>
+                    <p>Double-click or double-tap an item to focus on it.</p>
+                    <p>Lost in space? Hit Fit to bring the Galaxy back into view.</p>
+                </div>
+            </details>
+            <details>
+                <summary>Adding your stuff</summary>
+                <div class="help-copy">
+                    <p>The + beside Universe creates a Galaxy. The + beside an item in the sidebar lets you add something inside it.</p>
+                    <p>Got a PDF, photo, or link? Drop it onto an item, on the canvas or in the sidebar. Files go into Files; links become Bookmarks. Files, Notes, and Bookmarks stay with that item.</p>
+                    <p>Dragging through the sidebar? Pause over a collapsed branch and it opens so you can reach the items inside.</p>
+                </div>
+            </details>
+            <details>
+                <summary>Constellations</summary>
+                <div class="help-copy">
+                    <p>Sometimes things belong together even though they live in different places. A Constellation pulls those items together without moving them.</p>
+                    <p>Try it for a trip, a project, or "stuff I need this week." Use the + beside Constellations to start one. An item can belong to more than one.</p>
+                </div>
+            </details>
+            <details>
+                <summary>Archiving old Galaxies</summary>
+                <div class="help-copy">
+                    <p>Done with a Galaxy for now? Choose Archive Galaxy from its menu instead of deleting it.</p>
+                    <p>It disappears from your active Universe, but everything stays safe. Restore it anytime from Archived Galaxies in the sidebar.</p>
+                </div>
+            </details>
+            <details>
+                <summary>A few useful tricks</summary>
+                <div class="help-copy">
+                    <p>Search finds items across your active Universe. Right-click an item or open its &bull;&bull;&bull; menu for extra actions.</p>
+                    <p>Make a checklist in Notes by typing:</p>
+                    <pre aria-label="Example checklist">- [ ] Pack passport
+- [x] Book hotel</pre>
+                    <p>When reading a Note, click or tap its boxes to check things off.</p>
+                </div>
+            </details>
+            <details class="help-secondary">
+                <summary>Using the same item in two places</summary>
+                <div class="help-copy">
+                    <p>Need the same thing somewhere else too? Open the destination item's + menu in the sidebar and choose Add existing item.</p>
+                    <p>It's still the same item. Changes you make show everywhere.</p>
+                    <p>Remove from here removes only that extra appearance. It doesn't delete the original. Go to original takes you back to where it lives.</p>
+                </div>
+            </details>
+        </div>
+    </dialog>
+
+    <script src="help.js"></script>
     <script src="model.js"></script>
     <script src="archives.js"></script>
     <script src="everyday.js"></script>

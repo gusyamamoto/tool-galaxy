@@ -2094,7 +2094,7 @@ searchField.addEventListener("keydown", (event) => {
     }
 });
 document.addEventListener("keydown", (event) => {
-    if (event.key === "Escape" && !event.defaultPrevented && !dialog.open && !deleteDialog.open && !archiveDialog.open && !portalDialog.open && !constellationWorkspace.isDialogOpen()) {
+    if (event.key === "Escape" && !event.defaultPrevented && !document.querySelector('dialog[open]')) {
         if (activeConstellationId) { exitConstellation(); event.preventDefault(); return; }
         if (camera.travel) { camera.stopAnimation();  event.preventDefault(); return; }
         const dismissingSearch = searchOpen;
