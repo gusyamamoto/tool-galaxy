@@ -1,13 +1,13 @@
 const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm'),path=require('node:path');
 const {test}=require('node:test');
-const source=fs.readFileSync(path.join(__dirname,'..','storage.js'),'utf8'),key='galaxy:user-data',oldKey='tool-galaxy:user-data';
+const source=fs.readFileSync(path.join(__dirname,'..','persistence/local-metadata-store.js'),'utf8'),key='galaxy:user-data',oldKey='tool-galaxy:user-data';
 const entry={id:'entry',name:'Name',description:'',parentId:null,x:250,y:300,appearance:{archetype:'ringed',future:'keep'}};
 const reference={id:'portal:a',targetEntryId:'entry',parentEntryId:'parent',createdAt:'2026-01-01T00:00:00Z'};
 const plain=v=>JSON.parse(JSON.stringify(v));
 function make(records=[]){
     const data=new Map(records),localStorage={getItem:key=>data.get(key)??null,setItem:(key,value)=>data.set(key,value)};
     const context=vm.createContext({localStorage});vm.runInContext(source,context);
-    return {data,localStorage,adapter:vm.runInContext('galaxyStorage',context)};
+    return {data,localStorage,adapter:vm.runInContext('createLocalMetadataStore()',context)};
 }
 test('empty storage has no snapshot',()=>assert.equal(make().adapter.load(),null));
 test('archived Galaxy metadata is additive at v5, preserves canonical data and rejects invalid containers',()=>{
@@ -62,7 +62,7 @@ test('current snapshots take priority over legacy keys and corrupt current snaps
 test('invalid/future containers remain protected against overwrite',()=>{
     for(const snapshot of [{version:99,entries:[],layout:[]},{version:5,entries:{},layout:[]},{version:5,entries:[],layout:{}},{version:5,entries:[],layout:[],portals:{}},{version:2,entries:[],builtInPositions:{}}]){
         const raw=JSON.stringify(snapshot),{adapter,data}=make([[key,raw]]);assert.throws(()=>adapter.load());assert.equal(data.get(key),raw);
-        if(snapshot.version===99)assert.throws(()=>adapter.save({entries:[],layout:[]}),/cannot be overwritten/);
+        assert.throws(()=>adapter.save({entries:[],layout:[]}));assert.equal(data.get(key),raw);
     }
 });
 test('v3/v4 upgrades preserve exact backups, hierarchy/appearance and layout',()=>{

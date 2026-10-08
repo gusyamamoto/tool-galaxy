@@ -594,7 +594,7 @@ references and another storage provider. No Drive/OAuth/cloud integration is
 implemented. Renaming/reparenting preserves content because ownership uses entry
 ID, never hierarchy path or celestial role.
 
-`createGalaxyAttachmentStore` provides asynchronous `save`, `get`, `delete` and
+`persistence.files` provides asynchronous `save`, `get`, `delete` and
 `deleteEntries` methods. The local adapter uses IndexedDB database
 `galaxy-attachments`, version 1, with a `files` store keyed by opaque file key and
 an `entryId` index. Original Blob bytes and small thumbnail Blobs live there,
@@ -667,7 +667,7 @@ string, persisted-record normalization accepts empty/missing/null descriptions
 (missing/null become empty strings), and the existing 1000-character limit and
 text validation remain. Only the name is required; storage stays at version 5.
 
-`galaxyStorage` loads versions 1–5 and the old `tool-galaxy:user-data` key.
+`createLocalMetadataStore` loads versions 1–5 and the old `tool-galaxy:user-data` key.
 For pre-v5 data, valid Sun→Planet→Moon parent links and all stable IDs/content are
 preserved. A collision-safe **My Galaxy** root contains former Suns and unassigned
 entries. Unassigned records become its direct children; no intermediate topics
@@ -695,6 +695,84 @@ The entry/storage schema remains version 5. Navigation adds only the optional
 `galaxy:navigation-ui` preference key containing sidebar width and collapse state.
 Branch expansion lasts for the open session and never changes the graph. Sample
 mode neither reads nor writes this preference, just as it isolates saved entries.
+
+## Persistence foundation
+
+Domain state remains plain entries keyed by stable IDs, linked placements,
+Constellations, archived-Galaxy records and saved layout. DOM, camera, transient
+physics state and navigation preferences are separate. Duplicate names and
+coordinates never identify an item. `getGalaxySnapshot()` delegates to the
+Universe repository to produce complete metadata, including archived content;
+binary bytes remain separate.
+
+`persistence/composition.js` is the single adapter-selection point, configured
+by `config.js`. The default is local metadata and preferences, IndexedDB files,
+no authentication and no sync. There is no provider, network dependency or new
+container migration. Opening `index.html` locally still works.
+
+| Boundary | Contract | Local implementation |
+| --- | --- | --- |
+| Metadata | synchronous `load`, `save(snapshot, intent)`, `clear` | `persistence/local-metadata-store.js`; existing `galaxy:user-data`, v5 |
+| Files | async `save`, `get`, `delete`, `deleteEntries`; `hasEntries` | `persistence/indexeddb-file-store.js`; existing `galaxy-attachments`, v1 |
+| UI preferences | `load`, merge `update`, `clear` | `persistence/local-preferences-store.js`; existing `galaxy:navigation-ui` |
+| Sample | the same contracts, disposable data | `persistence/memory-stores.js` |
+
+`script.js` composes these services once. Navigation receives the preferences
+interface; Content receives the file interface. Product writes go through
+`services/universe-repository.js`: content updates, collection changes, linked
+placements, Archive/Restore, and compound subtree deletion. File preparation
+stays in `attachment-store.js`, with no storage implementation. Normal product
+and UI code no longer calls localStorage or IndexedDB.
+
+Repository subscribers receive typed change intent and stable IDs only after
+metadata saves succeed; subscriber failure cannot break a local save. Layout
+saves have a separate intent, remain on settle/drag/lifecycle boundaries, and do
+not change domain timestamps or write every animation frame. New items receive
+`createdAt`/`updatedAt`; rename, reparent and content changes update `updatedAt`.
+Constellation edits also update it. Old records may omit these fields. Existing
+file/placement/Constellation creation dates and archive dates are retained.
+
+Content, linked placements, collections and Archive/Restore publish only after
+a successful metadata write. Subtree deletion stages bytes, canonical entries,
+linked placements, memberships and layout together before changing active UI.
+File writes/removals keep synchronous metadata commit and recovery callbacks:
+a metadata failure aborts the IndexedDB transaction, and a later file abort
+compensates metadata, including content timestamps. This is recovery across two
+browser stores, not a crash-proof cross-store database transaction. File-content
+subscribers can see a metadata commit followed by recovery on late abort; a
+future sync implementation must account for that compound operation. Ordinary
+failed layout/CRUD saves retain the existing unsaved-session banner and stay
+dirty for retry. Persistence errors preserve cause, quota classification, store,
+operation and scope in `persistence.diagnostics.lastError`.
+
+Sample composition forcibly selects memory stores, even if real adapters were
+passed. It never reads personal content, preferences or file bytes. Refresh or
+Leave Sample returns to the real adapters. No fake workspace or account UI is
+added. A future composition can supply metadata/files/preferences adapters and
+an authenticated `workspaceId`; local adapters already namespace non-null scopes
+while preserving all existing anonymous keys and database names by default.
+Namespacing is isolation, not authentication or access control.
+
+For cloud work, keep a synchronous local metadata cache/commit boundary and add
+an outbox/remote sync behind it, or evolve the service contract deliberately.
+Async-only metadata adapters are rejected explicitly because current file
+transactions depend on synchronous commit callbacks. File methods already return
+promises and can use an object-store adapter. Future adapters can implement
+compound repository intent transactionally; preferences need not sync. Opaque
+file keys and separate metadata allow later external-file references without
+duplicating binary content. No cloud, Drive, auth or sync is implemented here.
+
+Validation: `node --test (rg --files tests -g '*.test.js')`,
+`python tests/browser-check.py --persistence-only`, and the existing broader and
+feature browser checks. `--foundation-performance-only` measures the same
+187-item load/save/Sample workload before and after architectural changes. Use
+`--site-root` for an isolated baseline tree and `--file-protocol` to open
+`index.html` directly. In the direct-file headless comparison, initial load was
+191/155 ms before/after, Sample load 477/485 ms, metadata save median 0.5/0.4 ms,
+Sample render p95 1.4/1.4 ms and frame median 8.3/8.3 ms. These short runs are
+sanity checks, not a performance guarantee; local HTTP navigation varied more
+(Sample 356–386 ms before, 406–493 ms after). Check load on the eventual hosted
+build separately from steady-state physics/render responsiveness.
 
 ## Layout and forces
 
