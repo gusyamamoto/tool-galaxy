@@ -18,10 +18,10 @@ const galaxyPortals = {
         return result;
     },
     placementError(entries, portals, targetEntryId, parentEntryId) {
-        if (!entries.has(targetEntryId)) return "The original entry is no longer available.";
-        if (!entries.has(parentEntryId)) return "Choose an entry to place this Portal under.";
+        if (!entries.has(targetEntryId)) return "The original item is no longer available.";
+        if (!entries.has(parentEntryId)) return "Choose where to add this item.";
         if ([...portals.values()].some(portal => portal.targetEntryId === targetEntryId && portal.parentEntryId === parentEntryId))
-            return "A Portal to this entry already exists here.";
+            return "This item is already shown here.";
         return "";
     },
     withoutEntries(records, ids) {

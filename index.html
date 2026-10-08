@@ -37,9 +37,9 @@
             <div class="sidebar-controls">
                 <div class="sidebar-actions">
             <div class="entry-search">
-                <label class="visually-hidden" for="entry-search">Search entries by name</label>
+                <label class="visually-hidden" for="entry-search">Search items by name</label>
                 <svg class="search-icon" viewBox="0 0 20 20" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5"/><path d="m13 13 4 4"/></svg>
-                <input id="entry-search" type="search" placeholder="Search entries…" autocomplete="off" aria-controls="search-results">
+                <input id="entry-search" type="search" placeholder="Search items…" autocomplete="off" aria-controls="search-results">
                 <div id="search-results" hidden>
                     <ul id="search-result-list"></ul>
                     <p id="search-status" role="status"></p>
@@ -55,12 +55,12 @@
             </section>
             <details id="sidebar-tools">
                 <summary>More</summary>
-                <button id="add-entry-button" type="button">Add Galaxy</button>
+                <button id="add-entry-button" type="button">New Galaxy</button>
                 <button id="reset-view-button" type="button">Fit Galaxy</button>
                 <div class="view-controls"><span id="hierarchy-count"></span><output id="zoom-level" aria-label="Zoom level">100%</output></div>
                 <p class="galaxy-hint">Scroll to zoom · Drag space to pan</p>
                 <aside id="sample-controls" aria-label="Sample controls">
-                    <span><strong id="sample-mode-label">Sample data</strong> <span id="sample-mode-count">Example entries</span></span>
+                    <span><strong id="sample-mode-label">Sample data</strong> <span id="sample-mode-count">Example items</span></span>
                     <button id="load-sample-button" type="button">Load Sample</button>
                     <button id="remove-sample-button" type="button">Leave Sample</button>
                 </aside>
@@ -74,19 +74,19 @@
             <div id="active-constellation-indicator" hidden><button id="active-constellation-name" type="button"></button><button id="deactivate-constellation-button" type="button" aria-label="Deactivate Constellation" title="Deactivate Constellation">&times;</button></div>
             <header class="inspector-header"><span id="panel-kind" class="panel-eyebrow">Contents</span><button id="close-inspector-button" type="button" aria-label="Close contents" title="Close contents">&times;</button></header>
             <div class="panel-content">
-                <h2 id="panel-name">Select an entry</h2>
+                <h2 id="panel-name">Select an item</h2>
             <div class="content-header-actions">
                 <button id="entry-more-button" type="button" aria-label="More actions" title="More actions" aria-haspopup="menu" aria-controls="entry-actions" aria-expanded="false">•••</button>
                 <div id="entry-actions" role="menu" aria-label="Item actions" hidden>
-                    <button id="edit-entry-button" type="button" role="menuitem">Edit info</button>
+                    <button id="edit-entry-button" type="button" role="menuitem">Rename</button>
                     <button id="move-entry-button" type="button" role="menuitem">Move / change parent</button>
-                    <button id="delete-entry-button" type="button" role="menuitem">Delete entry</button>
+                    <button id="delete-entry-button" type="button" role="menuitem">Delete item</button>
                     <button id="rename-constellation-button" type="button" role="menuitem" data-collection-action hidden>Rename</button>
                     <button id="delete-constellation-button" type="button" role="menuitem" data-collection-action hidden>Delete Constellation</button>
                 </div>
             </div>
             </div>
-            <nav id="panel-ancestry" aria-label="Entry ancestry" hidden></nav>
+            <nav id="panel-ancestry" aria-label="Item location" hidden></nav>
             <p id="constellation-count" hidden></p>
             </div>
             <section id="panel-rich-content" aria-label="Contents">
@@ -123,32 +123,33 @@
                 </section>
                 <p id="content-status" role="status" aria-live="polite" hidden></p>
             </section>
-            <section id="constellation-content" hidden aria-label="Entries in this Constellation">
+            <section id="constellation-content" hidden aria-label="Items in this Constellation">
                 <h3>In this Constellation</h3><ul id="constellation-member-list"></ul>
-                <p id="constellation-members-empty" class="content-empty">No entries yet</p>
-                <button id="panel-add-member" type="button">+ Add entry</button>
+                <p id="constellation-members-empty" class="content-empty">No items yet</p>
+                <button id="panel-add-member" type="button">+ Add item</button>
             </section>
             <p id="entry-action-status" role="status" hidden></p>
         </aside>
 
         <div id="add-menu" role="menu" aria-label="Add" hidden>
-            <button id="add-child-button" type="button" role="menuitem">Add child</button>
+            <button id="add-child-button" type="button" role="menuitem">Add item</button>
+            <button type="button" role="menuitem" data-add="existing">Add existing item</button>
             <button type="button" role="menuitem" data-add="files">Add files</button>
             <button type="button" role="menuitem" data-add="note">Add note</button>
             <button type="button" role="menuitem" data-add="bookmark">Add bookmark</button>
         </div>
 
-        <div id="entry-context-menu" role="menu" aria-label="Entry actions" hidden>
+        <div id="entry-context-menu" role="menu" aria-label="Item actions" hidden>
             <span id="context-entry-name" class="context-entry-name" aria-hidden="true"></span>
-            <button type="button" role="menuitem" data-action="create">Add child</button>
+            <button type="button" role="menuitem" data-action="create">Add item</button>
             <button type="button" role="menuitem" data-action="files">Add files</button>
             <button type="button" role="menuitem" data-action="constellation">Add to Constellation</button>
-            <button type="button" role="menuitem" data-action="portal">Create Portal...</button>
-            <button type="button" role="menuitem" data-action="edit">Edit info</button>
-            <button type="button" role="menuitem" data-action="delete">Delete entry</button>
+            <button type="button" role="menuitem" data-action="portal">Add existing item</button>
+            <button type="button" role="menuitem" data-action="edit">Rename</button>
+            <button type="button" role="menuitem" data-action="delete">Delete item</button>
             <button type="button" role="menuitem" data-action="open-portal" data-portal-action hidden>Go to original</button>
-            <button type="button" role="menuitem" data-action="remove-portal" data-portal-action hidden>Remove Portal</button>
-            <button type="button" role="menuitem" data-action="collection-add" data-collection-context hidden>Add entry</button>
+            <button type="button" role="menuitem" data-action="remove-portal" data-portal-action hidden>Remove from here</button>
+            <button type="button" role="menuitem" data-action="collection-add" data-collection-context hidden>Add item</button>
             <button type="button" role="menuitem" data-action="collection-rename" data-collection-context hidden>Rename</button>
             <button type="button" role="menuitem" data-action="collection-delete" data-collection-context hidden>Delete Constellation</button>
             <div id="constellation-memberships" hidden></div>
@@ -157,11 +158,12 @@
 
     <dialog id="add-entry-dialog" aria-labelledby="add-entry-title">
         <form id="add-entry-form">
-            <h2 id="add-entry-title">Add Entry</h2>
+            <h2 id="add-entry-title">Add item</h2>
 
             <div id="entry-name-field"><label for="entry-name">Name</label>
             <input id="entry-name" name="name" type="text" maxlength="60" required autofocus>
             </div>
+            <div id="galaxy-starter-field" hidden><label for="galaxy-starter">Start with</label><select id="galaxy-starter" name="starter"></select></div>
             <div id="entry-info-fields" hidden>
             <label for="entry-description">Description (optional)</label>
             <textarea id="entry-description" name="description" rows="4" maxlength="1000"></textarea>
@@ -181,21 +183,21 @@
 
             <div class="form-actions">
                 <button id="cancel-add-entry" type="button">Cancel</button>
-                <button id="entry-submit" type="submit">Add Entry</button>
+                <button id="entry-submit" type="submit">Add item</button>
             </div>
         </form>
     </dialog>
 
-    <dialog id="portal-dialog" aria-labelledby="portal-dialog-title">
+    <dialog id="portal-dialog" class="collection-dialog" aria-labelledby="portal-dialog-title">
         <form id="portal-form">
-            <h2 id="portal-dialog-title">Create Portal</h2>
-            <p class="portal-target-label">Portal to <strong id="portal-target-name"></strong></p>
-            <label for="portal-parent-search">Place under</label>
-            <input id="portal-parent-search" type="search" placeholder="Search hierarchy…" autocomplete="off" maxlength="60" aria-controls="portal-parent-results" autofocus>
-            <ul id="portal-parent-results" aria-label="Portal placement choices"></ul>
+            <h2 id="portal-dialog-title">Add existing item</h2>
+            <p class="picker-subtitle">Add to <strong id="portal-target-name"></strong></p>
+            <label for="portal-parent-search" class="visually-hidden">Search items</label>
+            <input id="portal-parent-search" type="search" placeholder="Search items…" autocomplete="off" maxlength="60" aria-controls="portal-parent-results" autofocus>
+            <ul id="portal-parent-results" aria-label="Existing item choices"></ul>
             <p id="portal-placement" hidden></p>
             <p id="portal-form-error" role="status" aria-live="polite" hidden></p>
-            <div class="form-actions"><button id="cancel-portal" type="button">Cancel</button><button id="create-portal" type="submit" disabled>Create Portal</button></div>
+            <div class="form-actions"><button id="cancel-portal" type="button">Cancel</button><button id="create-portal" type="submit" disabled>Add item</button></div>
         </form>
     </dialog>
 
@@ -207,33 +209,35 @@
         </form>
     </dialog>
     <dialog id="constellation-picker-dialog" class="collection-dialog" aria-labelledby="constellation-picker-title" aria-describedby="constellation-picker-name">
-        <form id="constellation-picker-form"><h2 id="constellation-picker-title">Add entries to Constellation</h2>
+        <form id="constellation-picker-form"><h2 id="constellation-picker-title">Add items to Constellation</h2>
             <p id="constellation-picker-name" class="picker-subtitle"></p>
-            <label class="visually-hidden" for="constellation-member-search">Search entries</label><input id="constellation-member-search" type="search" placeholder="Search entries…" maxlength="60" autocomplete="off" aria-controls="constellation-picker-results" autofocus>
-            <ul id="constellation-picker-results" aria-label="Entry choices"></ul><p id="constellation-picker-status" role="status" hidden></p>
-            <div class="form-actions"><button id="close-constellation-picker" type="button">Cancel</button><button id="confirm-constellation-entries" type="submit" disabled aria-live="polite">Add entry</button></div>
+            <label class="visually-hidden" for="constellation-member-search">Search items</label><input id="constellation-member-search" type="search" placeholder="Search items…" maxlength="60" autocomplete="off" aria-controls="constellation-picker-results" autofocus>
+            <ul id="constellation-picker-results" aria-label="Item choices"></ul><p id="constellation-picker-status" role="status" hidden></p>
+            <div class="form-actions"><button id="close-constellation-picker" type="button">Cancel</button><button id="confirm-constellation-entries" type="submit" disabled aria-live="polite">Add item</button></div>
         </form>
     </dialog>
     <dialog id="delete-constellation-dialog" class="collection-dialog" aria-labelledby="delete-constellation-title" aria-describedby="delete-constellation-question delete-constellation-help">
         <form id="delete-constellation-form"><h2 id="delete-constellation-title">Delete Constellation</h2>
-            <p id="delete-constellation-question"></p><p id="delete-constellation-help">The entries themselves won’t be deleted.</p><p id="delete-constellation-error" role="status" hidden></p>
+            <p id="delete-constellation-question"></p><p id="delete-constellation-help">The items themselves won’t be deleted.</p><p id="delete-constellation-error" role="status" hidden></p>
             <div class="form-actions"><button id="cancel-delete-constellation" type="button" autofocus>Cancel</button><button id="confirm-delete-constellation" type="submit">Delete</button></div>
         </form>
     </dialog>
     <dialog id="delete-entry-dialog" aria-labelledby="delete-entry-title" aria-describedby="delete-entry-message">
         <form id="delete-entry-form">
-            <h2 id="delete-entry-title">Delete entry?</h2>
+            <h2 id="delete-entry-title">Delete item?</h2>
             <p id="delete-entry-message"></p>
             <div class="form-actions">
                 <button id="cancel-delete-entry" type="button" autofocus>Cancel</button>
-                <button id="confirm-delete-entry" type="submit">Delete entry</button>
+                <button id="confirm-delete-entry" type="submit">Delete item</button>
             </div>
         </form>
     </dialog>
 
     <script src="model.js"></script>
+    <script src="everyday.js"></script>
     <script src="portals.js"></script>
     <script src="constellations.js"></script>
+    <script src="item-picker.js"></script>
     <script src="constellations-ui.js"></script>
     <script src="attachment-store.js"></script>
     <script src="rich-content.js"></script>

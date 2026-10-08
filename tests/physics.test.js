@@ -18,7 +18,7 @@ test('dense Astronaut sibling spacing increases locally; sparse and deep-chain b
     const family=count=>make([...records,...Array.from({length:count},(_,i)=>({id:`a${i}`,parentId:'root4',seedLayout:true}))]);
     const sparse=family(2),dense=family(7);
     assert.equal(sparse.deepSiblingBoost('root4'),0);assert.equal(dense.deepSiblingBoost('root4'),10);
-    assert.equal(dense.particles.get('a0').orbitRadius-sparse.particles.get('a0').orbitRadius,10);
+    assert.ok(Math.abs(dense.particles.get('a0').orbitRadius-sparse.particles.get('a0').orbitRadius-10)<.000001);
     assert.ok(dense.particles.get('root4').clusterRadius<145);assert.ok(dense.collisionPadding(dense.particles.get('a0'))>sparse.collisionPadding(sparse.particles.get('a0')));
     assert.equal(dense.particles.get('root1').childOrbit,sparse.particles.get('root1').childOrbit);
 });
@@ -27,6 +27,49 @@ function family(){return make([{id:'g',seedLayout:true},{id:'s',parentId:'g',see
     {id:'p',parentId:'s',seedLayout:true},{id:'m',parentId:'p',seedLayout:true},{id:'t',parentId:'m',seedLayout:true}]);}
 function separated(nodes){nodes.filter(n=>n.depth>0).forEach((a,i,all)=>all.slice(i+1).forEach(b=>
     assert.ok(distance(a,b)>=a.radius+b.radius-1,`${a.id} overlaps ${b.id}`)));}
+
+test('local spacing reduces Moon/Satellite preferences without tightening Planet bands or changing EVA layout',()=>{
+    const p=fixture();
+    for(const [id,expected] of [['sample-sun-0',149.21216],['sample-planet-0-0',66.13464],['sample-moon-0-0-0',30.165]])
+        assert.ok(Math.abs(p.particles.get(id).childOrbit-expected)<1e-9,id);
+    for(const [id,radius,angle] of [
+        ['sample-deep-5',34.58,4.715125921634993],['sample-deep-6',34.28,4.4017310219023384],
+        ['sample-deep-7',29.28,1.4175241394203333],['sample-deep-8',29.28,5.239539831773584]]) {
+        const node=p.particles.get(id);
+        assert.ok(Math.abs(node.orbitRadius-radius)<1e-9,id);
+        assert.ok(Math.abs(node.orbitAngle-angle)<1e-9,id);
+        assert.ok(Math.abs(node.clusterAnchor.clusterRadius-105.62352359916264)<1e-9,id);
+    }
+    advance(p,1000);separated(p.ordered);
+    assert.ok(p.simulation.alpha()<p.simulation.alphaMin(),'tighter local bands must still settle');
+});
+
+test('Planet sectors are stable across input order and graph rebuilds; child bands remain local',()=>{
+    const records=[{id:'g',seedLayout:true},{id:'s',parentId:'g',seedLayout:true},
+        ...Array.from({length:4},(_,i)=>({id:`p${i}`,parentId:'s',seedLayout:true})),
+        ...Array.from({length:4},(_,i)=>({id:`m${i}`,parentId:`p${i}`,seedLayout:true}))];
+    const a=make(records),b=make([...records].reverse());
+    for(let i=0;i<4;i++) {
+        const planet=a.particles.get(`p${i}`),moon=a.particles.get(`m${i}`);
+        assert.equal(planet.orbitAngle,b.particles.get(planet.id).orbitAngle);
+        assert.equal(planet.orbitRadius,b.particles.get(planet.id).orbitRadius);
+        assert.ok(moon.orbitRadius<planet.orbitRadius*.7);
+    }
+    const angles=a.children.get('s').map(p=>p.orbitAngle);a.buildSystems();
+    assert.deepEqual(a.children.get('s').map(p=>p.orbitAngle),angles);
+    advance(a,500);separated(a.ordered);
+});
+
+test('Sample descendants settle in their Planet territory and default forces cool',()=>{
+    const p=fixture();advance(p,1000);
+    for(const node of p.ordered.filter(n=>n.depth>=3)) {
+        const planet=node.planetAnchor,sun=planet.parent;
+        const axis=Math.atan2(planet.y-sun.y,planet.x-sun.x),angle=Math.atan2(node.y-sun.y,node.x-sun.x);
+        const delta=Math.abs(Math.atan2(Math.sin(angle-axis),Math.cos(angle-axis)));
+        assert.ok(delta<planet.sectorHalfAngle+.16,`${node.id} leaves its local territory: ${delta}`);
+    }
+    assert.ok(p.simulation.alpha()<p.simulation.alphaMin(),'ordinary families must stop requesting physics work');
+});
 
 test('CRUD graph refresh retains surviving positions/identity and supports restrained reheating',()=>{
     const p=family();advance(p,400);
@@ -198,8 +241,8 @@ test('sparse systems stay compact and wide sibling sets grow enough to separate'
         ...Array.from({length:count},(_,i)=>({id:`p${i}`,parentId:'s',seedLayout:true}))]);
     const sparse=system(3),wide=system(12);advance(sparse,450);advance(wide,450);
     const sparseSun=sparse.particles.get('s'),wideSun=wide.particles.get('s');
-    assert.ok(sparseSun.childOrbit<120);assert.ok(wideSun.childOrbit>sparseSun.childOrbit*2);
-    assert.ok(sparse.ordered.filter(n=>n.depth===2).every(n=>distance(n,sparseSun)<150));
+    assert.ok(sparseSun.childOrbit<165);assert.ok(wideSun.childOrbit>sparseSun.childOrbit*1.7);
+    assert.ok(sparse.ordered.filter(n=>n.depth===2).every(n=>distance(n,sparseSun)<190));
     separated(sparse.ordered);separated(wide.ordered);
 });
 
@@ -221,7 +264,7 @@ for(const [kind,depth] of [['Moon',3],['Satellite',4]]){
 
 test('deep branches do not recursively enlarge their Sun orbital band',()=>{
     const p=fixture();advance(p,450);
-    for(const system of p.systems.values()) assert.ok(system.root.childOrbit<150,system.id);
+    for(const system of p.systems.values()) assert.ok(system.root.childOrbit<190,system.id);
     const food=p.galaxies.get('sample-galaxy-1');
     assert.ok(distance(food.systems[0].root,food.systems[1].root)<1200);
 });

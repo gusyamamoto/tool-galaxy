@@ -67,7 +67,7 @@ test("repeated wheel input accumulates and respects both zoom limits", () => {
     near(camera.view.scale, 1.44);
     camera.zoomAt(300, 200, 100);
     settle();
-    assert.equal(camera.view.scale, 2.4);
+    assert.equal(camera.view.scale, camera.maxScale);
     camera.zoomAt(300, 200, 0.001);
     settle();
     assert.equal(camera.view.scale, 0.08);

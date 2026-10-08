@@ -71,7 +71,7 @@ class ConstellationWorkspace {
             const open=this.button('',()=>this.activate(collection.id),`${collection.id===this.getActive()?'Deactivate':'Activate'} Constellation ${collection.name}`);
             open.className='constellation-open';open.dataset.collectionAction='open';open.setAttribute('aria-pressed',String(collection.id===this.getActive()));
             const star=document.createElement('span'),name=document.createElement('span');star.textContent='✦';star.className='constellation-star';star.ariaHidden='true';name.className='constellation-name';name.textContent=collection.name;open.append(star,name);open.title=collection.name;
-            const add=this.button('+',event=>{event.stopPropagation();this.openPicker(collection.id);},`Add entry to ${collection.name}`);
+            const add=this.button('+',event=>{event.stopPropagation();this.openPicker(collection.id);},`Add item to ${collection.name}`);
             add.className='collection-add';add.dataset.collectionAction='add';add.title=add.ariaLabel;
             const more=this.button('•••',event=>{event.stopPropagation();const r=more.getBoundingClientRect();this.onCollectionMenu(collection.id,r.right,r.bottom,more);},`More actions for ${collection.name}`);
             more.className='collection-more';more.dataset.collectionAction='more';more.title=more.ariaLabel;more.setAttribute('aria-haspopup','menu');more.setAttribute('aria-controls','entry-context-menu');more.setAttribute('aria-expanded','false');row.append(open,add,more);
@@ -91,7 +91,7 @@ class ConstellationWorkspace {
         const closeButton=document.getElementById('close-inspector-button');closeButton.setAttribute('aria-label','Deactivate Constellation');closeButton.title='Deactivate Constellation';
         document.getElementById('panel-ancestry').hidden=true;document.getElementById('panel-rich-content').hidden=true;
         document.getElementById('constellation-content').hidden=false;document.getElementById('entry-action-status').hidden=true;
-        const count=document.getElementById('constellation-count');count.hidden=false;count.textContent=`${collection.memberEntryIds.length} ${collection.memberEntryIds.length===1?'entry':'entries'}`;
+        const count=document.getElementById('constellation-count');count.hidden=false;count.textContent=`${collection.memberEntryIds.length} ${collection.memberEntryIds.length===1?'item':'items'}`;
         document.querySelectorAll('#entry-actions button').forEach(button=>{button.hidden=!button.hasAttribute('data-collection-action');});
         const list=memberList;list.replaceChildren();
         collection.memberEntryIds.forEach(id=>{const entry=this.entries.get(id);if(!entry)return;
@@ -110,7 +110,7 @@ class ConstellationWorkspace {
     path(id){return [...galaxyModel.ancestors(this.entries,id)].reverse().map(entry=>entry.name).join(' › ')||'Universe';}
     setMember(collectionId,entryId,present){
         const id=galaxyConstellations.canonicalId(entryId,this.entries,this.portals),collection=this.collections.get(collectionId);
-        if(!collection||!id)throw new Error('Choose an existing entry.');
+        if(!collection||!id)throw new Error('Choose an existing item.');
         const ids=new Set(collection.memberEntryIds);present?ids.add(id):ids.delete(id);
         if(ids.size===collection.memberEntryIds.length&&ids.has(id)===collection.memberEntryIds.includes(id))return;
         const next=new Map(this.collections);next.set(collectionId,{...collection,memberEntryIds:[...ids]});this.commit(next);
@@ -137,7 +137,7 @@ class ConstellationWorkspace {
         if(this.isDialogOpen()||!this.collections.has(id))return;this.pickerId=id;this.limit=100;
         this.pickerSelection=new Set();this.pickerRows=new Map();this.pickerFocusId=null;
         this.pickerIndex=cosmosHierarchy.index(this.entries);this.pickerExpanded=new Set(this.pickerIndex.roots);
-        document.getElementById('constellation-picker-title').textContent='Add entries to Constellation';
+        document.getElementById('constellation-picker-title').textContent='Add items to Constellation';
         document.getElementById('constellation-picker-name').textContent=this.collections.get(id).name;
         document.getElementById('constellation-member-search').value='';document.getElementById('constellation-picker-status').hidden=true;
         this.renderPicker();if(this.modal(this.picker))document.getElementById('constellation-member-search').focus({preventScroll:true});
@@ -164,20 +164,12 @@ class ConstellationWorkspace {
             row.path.hidden=!searching;row.choice.tabIndex=id===this.pickerFocusId?0:-1;
             this.updatePickerRow(id,existing);fragment.append(row.item);
         });
-        if(searching&&matches.length>this.limit){const item=document.createElement('li'),more=document.createElement('button');more.type='button';more.dataset.pickerMore='true';more.textContent='Show more entries';item.append(more);fragment.append(item);}
-        if(!rows.length){const item=document.createElement('li');item.className='picker-empty';item.textContent=searching?'No matching entries.':'No entries yet.';fragment.append(item);}
+        if(searching&&matches.length>this.limit){const item=document.createElement('li'),more=document.createElement('button');more.type='button';more.dataset.pickerMore='true';more.textContent='Show more items';item.append(more);fragment.append(item);}
+        if(!rows.length){const item=document.createElement('li');item.className='picker-empty';item.textContent=searching?'No matching items.':'No items yet.';fragment.append(item);}
         this.pickerList.replaceChildren(fragment);this.pickerList.scrollTop=scroll;this.updatePickerCount();
     }
     createPickerRow(entry){
-        const item=document.createElement('li'),expand=document.createElement('button'),choice=document.createElement('button');
-        item.className='picker-entry-row';item.setAttribute('role','none');expand.type=choice.type='button';expand.className='picker-expand';expand.dataset.expandId=entry.id;expand.tabIndex=-1;
-        const arrow=document.createElement('span');arrow.textContent='›';arrow.ariaHidden='true';expand.append(arrow);
-        choice.className='picker-choice';choice.dataset.entryId=entry.id;
-        const check=document.createElement('span'),info=document.createElement('span'),name=document.createElement('span'),path=document.createElement('small'),added=document.createElement('span');
-        check.className='picker-check';check.ariaHidden='true';info.className='picker-entry-info';name.className='picker-entry-name';name.textContent=entry.name;
-        path.textContent=this.path(entry.id);added.className='picker-added';added.textContent='Added';info.append(name,path);choice.append(check,info,added);
-        choice.title=`${entry.name}\n${path.textContent}`;item.append(expand,choice);
-        const row={item,expand,choice,check,path,added};this.pickerRows.set(entry.id,row);return row;
+        const row=createCanonicalPickerRow(entry,this.path(entry.id));this.pickerRows.set(entry.id,row);return row;
     }
     updatePickerRow(id,existing=new Set(this.collections.get(this.pickerId)?.memberEntryIds)){
         const row=this.pickerRows.get(id);if(!row)return;
@@ -191,7 +183,7 @@ class ConstellationWorkspace {
         this.pickerSelection.has(id)?this.pickerSelection.delete(id):this.pickerSelection.add(id);
         this.updatePickerRow(id);this.updatePickerCount();
     }
-    updatePickerCount(){const count=this.pickerSelection.size;this.pickerAdd.disabled=!count;this.pickerAdd.textContent=count>1?`Add ${count} entries`:'Add entry';}
+    updatePickerCount(){const count=this.pickerSelection.size;this.pickerAdd.disabled=!count;this.pickerAdd.textContent=count>1?`Add ${count} items`:'Add item';}
     togglePickerBranch(id){
         this.pickerExpanded.has(id)?this.pickerExpanded.delete(id):this.pickerExpanded.add(id);this.pickerFocusId=id;this.renderPicker();this.pickerRows.get(id)?.choice.focus({preventScroll:true});
     }

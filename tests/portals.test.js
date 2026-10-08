@@ -16,7 +16,7 @@ test('normalization rejects chains, noncanonical containers, ID collisions and b
     const valid=reference();
     for(const record of [reference('g'),reference('portal:b','missing'),reference('portal:b','portal:a'),reference('portal:b','n7','portal:a'),{...valid,createdAt:'invalid'}])assert.equal(portals.normalize(record,entries),null);
     assert.deepEqual(plain(portals.normalizeAll([valid,reference('portal:b'),reference('portal:c','n7','g')],entries)),[valid,reference('portal:c','n7','g')]);
-    assert.match(portals.placementError(entries,new Map([[valid.id,valid]]),'n7','h'),/already exists/);
+    assert.match(portals.placementError(entries,new Map([[valid.id,valid]]),'n7','h'),/already shown/);
 });
 test('sidebar projection treats ancestor/self/deep references as leaves with their placement level and no recursive expansion',()=>{
     const records=[reference(),reference('portal:self','g','g'),reference('portal:back','g','n7')],refs=new Map(records.map(p=>[p.id,p]));

@@ -10,7 +10,7 @@ test('identities remain identical after reload, rename and metadata edits',()=>{
         if(role==='galaxy') assert.equal(a.cloud(a.resolve(entry)),b.cloud(b.resolve(entry)));
     }
 });
-test('automatic variants cover all four Galaxy and six Planet archetypes, with occasional rings',()=>{
+test('automatic variants cover all six Galaxy and six Planet archetypes, with occasional rings',()=>{
     const a=load();
     for(const role of ['galaxy','planet','satellite','astronaut']) {
         const variants=Array.from({length:100},(_,i)=>a.resolve({id:`node-${i}`,role}));
@@ -55,7 +55,7 @@ test('Astronaut poses are stable, compact native SVG silhouettes and accept futu
     assert.deepEqual(plain(a.resolve({...entry,appearance:{archetype:'bad'}})),plain(a.resolve(entry)));
 });
 
-test('Galaxy archetypes use deterministic filled clouds with transparent edges and no line-art spirals or live filters',()=>{
+test('Galaxy archetypes use deterministic designed morphologies with transparent edges and no live filters',()=>{
     const appearance=load(), images=[];
     for(const archetype of appearance.archetypes.galaxy) {
         const style=appearance.resolve({id:'cloud-test',role:'galaxy',appearance:{archetype}});
@@ -64,5 +64,16 @@ test('Galaxy archetypes use deterministic filled clouds with transparent edges a
         assert.doesNotMatch(svg, /<path|<filter|stroke=/);
         assert.equal(svg,load().cloud(style));
     }
-    assert.equal(new Set(images).size,4);
+    assert.equal(new Set(images).size,6);
+});
+
+test('old Galaxy appearance overrides map to nebula territories without changing stored metadata',()=>{
+    const a=load(), aliases={spiral:'wispy','barred-spiral':'double-lobed',elliptical:'bloom',irregular:'cluster'};
+    for(const [legacy, current] of Object.entries(aliases)) {
+        const entry={id:'legacy-cloud',role:'galaxy',appearance:{archetype:legacy,palette:'teal'}};
+        const before=JSON.stringify(entry),style=a.resolve(entry);
+        assert.equal(style.archetype,current);assert.equal(style.hue,178);
+        assert.equal(JSON.stringify(entry),before);
+        assert.doesNotMatch(a.cloud(style),/<path|<filter|stroke=/);
+    }
 });

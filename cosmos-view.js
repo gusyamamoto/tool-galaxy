@@ -1,5 +1,9 @@
 // Presentation only. These values never modify particles, ancestry or saved data.
 const cosmosView = {
+    bodyCaps: { sun: 76, planet: 44, moon: 25, satellite: 18, astronaut: 14 },
+    renderedDiameter(role, diameter, scale, detail = 1) {
+        return Math.min(this.bodyCaps[role] || Infinity, diameter * scale * (.72 + detail * .28));
+    },
     tiers: { galaxy: .45, system: .58, close: .78 },
     fades: {
         sun: [.43, .58], planet: [.58, .68], moon: [.68, .76], satellite: [.70, .79], astronaut: [.74, .86],

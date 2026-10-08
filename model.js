@@ -2,11 +2,11 @@
 const galaxyModel = {
     roles: {
         galaxy: { name: "Galaxy", label: "Galaxy · Domain", body: "galaxy", scale: 1 },
-        sun: { name: "Sun", label: "Sun · Topic", body: "sun", scale: 1.75 },
-        planet: { name: "Planet", label: "Planet · Category", body: "planet", scale: 1 },
-        moon: { name: "Moon", label: "Moon · Subcategory", body: "moon", scale: 0.65 },
-        satellite: { name: "Satellite", label: "Satellite · Entry", body: "satellite", scale: 0.58 },
-        astronaut: { name: "Astronaut", label: "Astronaut · Entry", body: "astronaut", scale: 0.5 }
+        sun: { name: "Sun", label: "Sun · Topic", body: "sun", scale: 2 },
+        planet: { name: "Planet", label: "Planet · Category", body: "planet", scale: 1.1 },
+        moon: { name: "Moon", label: "Moon · Subcategory", body: "moon", scale: 0.52 },
+        satellite: { name: "Satellite", label: "Satellite · Entry", body: "satellite", scale: 0.38 },
+        astronaut: { name: "Astronaut", label: "Astronaut · Entry", body: "astronaut", scale: 0.28 }
     },
     roleAtDepth(depth) { return ["galaxy", "sun", "planet", "moon", "satellite"][depth] || "astronaut"; },
     contentLimits: { notes: 100000, fileBytes: 10 * 1024 * 1024, thumbnailEdge: 240, imagePixels: 20000000, textPreviewBytes: 2048 },
@@ -88,8 +88,8 @@ const galaxyModel = {
     },
     deletionPlan(entries, id, { subtree = false } = {}) {
         const ids = this.subtreeIds(entries, id);
-        if (!ids.size) return { ids, error: "This entry no longer exists." };
-        if (ids.size > 1 && !subtree) return { ids, error: "Confirm deletion of this entry and everything inside it." };
+        if (!ids.size) return { ids, error: "This item no longer exists." };
+        if (ids.size > 1 && !subtree) return { ids, error: "Confirm deletion of this item and everything inside it." };
         return { ids, error: "" };
     },
     ancestors(entries, id) {
@@ -177,7 +177,7 @@ const galaxyModel = {
         const visited = new Set([entry.id]);
         let ancestor = entries.get(entry.parentId);
         while (ancestor) {
-            if (visited.has(ancestor.id)) return "An entry cannot be its own ancestor.";
+            if (visited.has(ancestor.id)) return "An item cannot be its own ancestor.";
             visited.add(ancestor.id); ancestor = entries.get(ancestor.parentId);
         }
         return "";

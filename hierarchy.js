@@ -32,7 +32,7 @@ const cosmosHierarchy = {
         if (parentId && !parent) return null;
         const depth = parent ? parent.depth + 1 : 0, role = galaxyModel.roleAtDepth(depth);
         return { parentId: parent?.id || null, depth, role,
-            action: `Add ${galaxyModel.roles[role].name}` };
+            action: parent ? 'Add item' : 'New Galaxy' };
     }
 };
 
@@ -126,7 +126,7 @@ class HierarchySidebar {
         this.index.roots.forEach(id => { if (!previousRoots.has(id)) this.expanded.add(id); });
         this.expanded.forEach(id => { if (!entries.has(id)) this.expanded.delete(id); });
         this.rows.forEach((row, id) => { if (!entries.has(id) && !this.portals.has(id)) { row.remove(); this.rows.delete(id); } });
-        document.getElementById("hierarchy-count").textContent = `${entries.size} entries`;
+        document.getElementById("hierarchy-count").textContent = `${entries.size} items`;
         this.render();
         this.tree.scrollTop = scroll.top; this.tree.scrollLeft = scroll.left;
     }
@@ -161,7 +161,7 @@ class HierarchySidebar {
         icon.innerHTML = '<svg viewBox="0 0 20 20"><ellipse cx="10" cy="10" rx="8" ry="4" transform="rotate(-30 10 10)"/><ellipse cx="10" cy="10" rx="6" ry="3" transform="rotate(-30 10 10)"/><circle cx="10" cy="10" r="2.5"/></svg>';
         const name = document.createElement("span"); name.className = "tree-name";
         const actions = document.createElement("button"); actions.type = "button"; actions.className = "tree-portal-actions";
-        actions.textContent = "•••"; actions.ariaLabel = "Portal actions"; actions.title = "Portal actions"; actions.setAttribute("aria-haspopup", "menu");actions.setAttribute("aria-controls","entry-context-menu");actions.setAttribute('aria-expanded','false');
+        actions.textContent = "•••"; actions.ariaLabel = "Linked item actions"; actions.title = "Linked item actions"; actions.setAttribute("aria-haspopup", "menu");actions.setAttribute("aria-controls","entry-context-menu");actions.setAttribute('aria-expanded','false');
         row.append(slot, icon, name, actions);
         row.addEventListener("click", event => { if (!event.target.closest("button")) this.activatePortal(id); });
         row.addEventListener("focus", () => { this.activeId = id; this.updateTabStops(); });
@@ -195,15 +195,15 @@ class HierarchySidebar {
             row.style.setProperty('--mobile-tree-indent',`${mobileIndent}px`);
             row.setAttribute("aria-level", level); row.setAttribute("aria-posinset", position); row.setAttribute("aria-setsize", size);
             const location = portal ? galaxyModel.ancestors(this.entries, entry.id).reverse().map(parent => parent.name).join(" › ") || "Universe" : "";
-            row.setAttribute("aria-label", portal ? `Portal to ${entry.name}, ${location}` : `${entry.name}, ${galaxyModel.roles[entry.role].name}`);
+            row.setAttribute("aria-label", portal ? `Linked item ${entry.name}, ${location}` : `${entry.name}, ${entry.depth===0?'Galaxy':'item'}`);
             if (hasChildren) row.setAttribute("aria-expanded", String(this.expanded.has(id))); else row.removeAttribute("aria-expanded");
             row.classList.toggle("is-selected", id === this.selectedId);
             row.classList.toggle("is-search-match", this.searchMatches.has(id));
             row.setAttribute("aria-selected", String(id === this.selectedId));
             if (!portal) row.dataset.role = entry.role;
-            row.title = portal ? `Portal to ${entry.name}\n${location}` : `${entry.name} · ${galaxyModel.roles[entry.role].name}`;
+            row.title = portal ? `Linked item ${entry.name}\n${location}` : entry.name;
             row.querySelector(".tree-name").textContent = entry.name;
-            if (portal) { const actions=row.querySelector(".tree-portal-actions"); actions.ariaLabel=actions.title=`Portal actions for ${entry.name}`; }
+            if (portal) { const actions=row.querySelector(".tree-portal-actions"); actions.ariaLabel=actions.title=`Linked item actions for ${entry.name}`; }
             if (!portal) {
                 const disclosure = row.querySelector(".tree-disclosure");
                 disclosure.disabled = !hasChildren; disclosure.ariaLabel = `${this.expanded.has(id) ? "Collapse" : "Expand"} ${entry.name}`;
@@ -228,6 +228,10 @@ class HierarchySidebar {
         if (!this.index.children.get(id)?.length) return;
         if (this.expanded.has(id)) this.expanded.delete(id); else this.expanded.add(id);
         this.activeId = id; this.render(); this.rows.get(id).focus({ preventScroll: true });
+    }
+    expandForContentDrag(id) {
+        if(!this.entries.has(id)||!this.index.children.get(id)?.length||this.expanded.has(id))return false;
+        this.expanded.add(id);this.render();return true;
     }
     select(id, { scroll = true } = {}) {
         this.selectedId = id || null;
