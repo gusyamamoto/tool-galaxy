@@ -33,7 +33,7 @@
             <button id="canvas-fit" type="button" aria-label="Fit Galaxy" title="Fit Galaxy">Fit</button>
         </div>
         <aside id="hierarchy-sidebar" aria-label="Navigation">
-            <header class="sidebar-brand"><h1>Galaxy</h1><span id="sample-indicator" hidden>Sample</span><button id="help-button" type="button" aria-label="Help" title="Help" aria-haspopup="dialog" aria-controls="help-dialog">?</button></header>
+            <header class="sidebar-brand"><h1>Galaxy</h1><span id="sample-indicator" hidden>Sample</span></header>
             <div class="sidebar-controls">
                 <div class="sidebar-actions">
             <div class="entry-search">
@@ -59,6 +59,8 @@
                 <header class="sidebar-section-header"><h2 id="archived-galaxies-heading" class="sidebar-section-title"><button id="archived-galaxies-toggle" class="sidebar-section-toggle" type="button" aria-label="Expand Archived Galaxies" aria-controls="archived-galaxy-list" aria-expanded="false"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m6 4 4 4-4 4"/></svg><span>Archived Galaxies <span id="archived-galaxy-count"></span></span></button></h2></header>
                 <ul id="archived-galaxy-list" aria-label="Archived Galaxies" hidden></ul>
             </section>
+            <div id="sidebar-utilities">
+            <button id="help-button" type="button" aria-label="Help" title="Help" aria-haspopup="dialog" aria-controls="help-dialog"><span aria-hidden="true">?</span> Help</button>
             <details id="sample-utility">
                 <summary>Sample data</summary>
                 <aside id="sample-controls" aria-label="Sample controls">
@@ -67,6 +69,7 @@
                     <button id="remove-sample-button" type="button">Leave Sample</button>
                 </aside>
             </details>
+            </div>
             <p id="storage-status" role="status" hidden></p>
             <div id="sidebar-resize" role="separator" aria-label="Resize navigation" aria-orientation="vertical" tabindex="0"></div>
         </aside>
@@ -311,6 +314,14 @@
         </div>
     </dialog>
 
+    <dialog id="image-viewer" aria-label="Photo viewer">
+        <header class="image-viewer-header"><h2 id="image-viewer-name" hidden>Image</h2><div class="attachment-viewer-actions"><button id="image-viewer-info-button" type="button" aria-label="Image information" title="Image information" aria-expanded="false" aria-controls="image-viewer-info">ⓘ</button><button id="image-viewer-close" type="button" aria-label="Close attachment viewer" title="Close attachment viewer" autofocus>&times;</button></div></header>
+        <aside id="image-viewer-info" aria-label="Image information" hidden></aside>
+        <div class="image-viewer-stage"><img id="image-viewer-image" alt="" hidden><embed id="attachment-viewer-pdf" title="PDF document" hidden><p id="image-viewer-status" role="status">Loading image...</p></div>
+        <footer id="attachment-viewer-pdf-tools" hidden><span id="attachment-viewer-pdf-hint">PDF not displaying?</span> <a id="attachment-viewer-external" target="_blank" rel="noopener noreferrer">Open externally</a></footer>
+        <nav id="image-viewer-navigation" aria-label="Browse attached images" hidden><button id="image-viewer-previous" type="button" aria-label="Previous image" title="Previous image">&larr;</button><span id="image-viewer-position" aria-live="polite"></span><button id="image-viewer-next" type="button" aria-label="Next image" title="Next image">&rarr;</button></nav>
+    </dialog>
+    <script src="image-viewer.js"></script>
     <script src="help.js"></script>
     <script src="model.js"></script>
     <script src="archives.js"></script>

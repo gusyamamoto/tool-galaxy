@@ -129,6 +129,7 @@ let lastRegionSample = -Infinity, lastRegionFrame = 0;
 let semanticDetail = cosmosView.detail(1);
 const focusRevealIds = new Set();
 const hierarchySidebar = new HierarchySidebar({ host: galaxy, preferences: persistence.preferences,
+    onRename:renameEntry, onRenameStart() { cancelPendingBodyFocus(); camera.stopAnimation(); closeContextMenu(); closeContentMenus(); },
     onNavigate: id => focusEntry(id), onCreate: (id, button) => toggleContentMenu(addMenu, button, id),
     portals, onOpenPortal: id => openPortal(id), onPortalMenu: (id, x, y) => openPortalContextMenu(id, x, y),
     onViewportChange: animate => crudActive || panelChangeActive ? updateGraphViewport() : navigationViewportChanged(animate) });
@@ -463,7 +464,9 @@ function rollbackEntryContent(id, previous) {
     graphNeedsSave = false;
 }
 const motion = new CosmosMotion({wake:()=>renderRegions()});
+const imageViewer = new CosmifoldImageViewer({store:attachmentStore,getEntry:id=>entries.get(id)});
 const contentInspector = new EntryContentInspector({ store: attachmentStore, motion, getEntry: id => entries.get(id),
+    imageViewer,
     save: saveEntryContent, rollback: rollbackEntryContent,
     onAction() { cancelPendingBodyFocus();autoFitPending = false; keyboardNavigation = false; camera.stopAnimation(); },
     onLayout() { if (cameraViewReady) updateGraphViewport(); } });
@@ -1654,6 +1657,11 @@ form.addEventListener("submit", (event) => {
         return;
     }
     if (!form.reportValidity()) return;
+    if (editingId && document.getElementById('entry-name-field').hidden === false) {
+        try { renameEntry(editingId,data.name); }
+        catch (error) { formError.textContent=error.message;formError.hidden=false;return; }
+        dialog.close();restoreCrudFocus();finishCrudOperation();return;
+    }
     const creating = !editingId;
     const entry = editingId ? entries.get(editingId) : {
         ...getNewEntryPosition(data.parentId ? [data.parentId] : [], roleField.dataset.role), seedLayout: true
@@ -1682,6 +1690,23 @@ form.addEventListener("submit", (event) => {
     dialog.close();
     restoreCrudFocus(); finishCrudOperation();
 });
+
+// Menu and inline Rename share validation, staged persistence and UI publication.
+function renameEntry(id, value) {
+    const entry = entries.get(id);
+    if (!entry || deletionBusy) throw new Error('This item is unavailable.');
+    const name = value.trim();
+    const error = galaxyModel.validateChange({...entry,name,description:'',category:''}, entries);
+    if (error) throw new Error(error);
+    if (name === entry.name) return;
+    const updatedAt = new Date().toISOString(), snapshot = getGalaxySnapshot();
+    try { universeRepository.save({...snapshot,entries:snapshot.entries.map(record=>record.id===id?{...record,name,updatedAt}:record)}, {type:'items.renamed',ids:[id]}); }
+    catch (error) { throw new Error('The name could not be saved. Please try again.', {cause:error}); }
+    commitCrudMutation(()=>Object.assign(entry,{name,updatedAt}), {selectionId:id,
+        topologyChanged:false,persisted:true,preserveInspector:true,animateCreation:false});
+    if (selectedNode?.dataset.entryId === id && !constellationOverview) panelName.textContent = name;
+    finishCrudOperation();
+}
 
 function clearSelection({ reframe = false } = {}) {
     focusRevealIds.clear();
