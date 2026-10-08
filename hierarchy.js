@@ -60,8 +60,8 @@ class NavigationSection {
 }
 
 class HierarchySidebar {
-    constructor({ host, onNavigate, onCreate, onOpenPortal, onPortalMenu, portals = new Map(), onViewportChange, preferences }) {
-        Object.assign(this, { host, onNavigate, onCreate, onOpenPortal, onPortalMenu, portals, onViewportChange, preferences });
+    constructor({ host, onNavigate, onCreate, onRename, onRenameStart, onOpenPortal, onPortalMenu, portals = new Map(), onViewportChange, preferences }) {
+        Object.assign(this, { host, onNavigate, onCreate, onRename, onRenameStart, onOpenPortal, onPortalMenu, portals, onViewportChange, preferences });
         this.sidebar = document.getElementById("hierarchy-sidebar");
         this.tree = document.getElementById("hierarchy-tree");
         this.toggle = document.getElementById("sidebar-toggle");
@@ -161,16 +161,57 @@ class HierarchySidebar {
         add.setAttribute("aria-haspopup", "menu"); add.setAttribute("aria-controls", "add-menu"); add.setAttribute("aria-expanded", "false");
         row.append(disclosure, icon, name, add);
         row.addEventListener("click", event => {
-            if (event.target.closest("button")) return;
+            if (event.target.closest("button,input") || this.rename?.id === id || event.detail > 1) return;
             this.activeId = id; row.focus({ preventScroll: true });
             if (this.narrow) this.setCollapsed(true);
             this.onNavigate(id);
         });
+        name.addEventListener('dblclick', event => { event.preventDefault(); event.stopPropagation(); this.beginRename(id); });
         row.addEventListener("focus", () => { this.activeId = id; this.updateTabStops(); });
         disclosure.addEventListener("click", () => this.toggleBranch(id));
         add.addEventListener("focus", () => { this.activeId = id; this.updateTabStops(); });
         add.addEventListener("click", event => { event.stopPropagation(); this.onCreate(id, add); });
         this.rows.set(id, row); return row;
+    }
+    beginRename(id) {
+        if (this.narrow || matchMedia('(pointer: coarse)').matches || !this.entries.has(id) || document.querySelector('dialog[open]')) return;
+        this.endRename(false);
+        const row = this.rows.get(id), name = row?.querySelector('.tree-name');
+        if (!name) return;
+        this.onRenameStart?.();
+        const input = document.createElement('input'); input.type = 'text'; input.className = 'tree-rename';
+        input.value = this.entries.get(id).name; input.maxLength = 60; input.ariaLabel = `Rename ${input.value}`;
+        input.autocomplete = 'off'; input.spellcheck = false;
+        this.rename = {id,input,row,name}; row.classList.add('is-renaming'); name.replaceChildren(input);
+        input.addEventListener('keydown', event => {
+            event.stopPropagation();
+            if (event.isComposing) return;
+            if (event.key === 'Enter') { event.preventDefault(); this.endRename(true); }
+            else if (event.key === 'Escape') { event.preventDefault(); this.endRename(false); row.focus({preventScroll:true}); }
+        });
+        input.addEventListener('input', () => { input.setCustomValidity(''); input.removeAttribute('aria-invalid'); });
+        input.addEventListener('blur', () => { if (!this.rendering) this.endRename(false); });
+        input.addEventListener('click', event => event.stopPropagation());
+        input.addEventListener('dblclick', event => event.stopPropagation());
+        input.addEventListener('contextmenu', event => event.stopPropagation());
+        input.focus({preventScroll:true}); input.select();
+    }
+    endRename(save) {
+        const edit = this.rename; if (!edit) return;
+        if (save) {
+            const value = edit.input.value.trim();
+            try {
+                if (!value) throw new Error('Please enter a name.');
+                // Keep the editor intact on validation/storage errors.
+                this.rendering = true; this.onRename(edit.id,value);
+            } catch (error) {
+                edit.input.setCustomValidity(error.message); edit.input.setAttribute('aria-invalid','true');
+                edit.input.reportValidity(); edit.input.focus(); return;
+            } finally { this.rendering = false; }
+        }
+        this.rename = null; edit.row.classList.remove('is-renaming');
+        edit.name.textContent = this.entries.get(edit.id)?.name || '';
+        if (save) edit.row.focus({preventScroll:true});
     }
     createPortalRow(id) {
         const row = document.createElement("div");
@@ -198,6 +239,7 @@ class HierarchySidebar {
         this.onOpenPortal(id);
     }
     render() {
+        this.rendering = true;
         const scroll = { top: this.tree.scrollTop, left: this.tree.scrollLeft };
         const focusedRow = document.activeElement?.closest(".hierarchy-row");
         const focused = focusedRow?.dataset.entryId || focusedRow?.dataset.portalId;
@@ -221,7 +263,7 @@ class HierarchySidebar {
             row.setAttribute("aria-selected", String(id === this.selectedId));
             if (!portal) row.dataset.role = entry.role;
             row.title = portal ? `Linked item ${entry.name}\n${location}` : entry.name;
-            row.querySelector(".tree-name").textContent = entry.name;
+            if (this.rename?.id !== id) row.querySelector(".tree-name").textContent = entry.name;
             if (portal) { const actions=row.querySelector(".tree-portal-actions"); actions.ariaLabel=actions.title=`Linked item actions for ${entry.name}`; }
             if (!portal) {
                 const disclosure = row.querySelector(".tree-disclosure");
@@ -233,9 +275,11 @@ class HierarchySidebar {
         this.tree.replaceChildren(fragment); this.updateTabStops();
         if (focused && this.tree.contains(this.rows.get(focused))) {
             const row=this.rows.get(focused),action=focusedAction?row.querySelector(`.${focusedAction}`):null;
-            (action&&!action.disabled?action:row).focus({ preventScroll: true });
+            (this.rename?.id === focused ? this.rename.input : action&&!action.disabled?action:row).focus({ preventScroll: true });
         }
         this.tree.scrollTop = scroll.top; this.tree.scrollLeft = scroll.left;
+        this.rendering = false;
+        if (this.rename && !this.tree.contains(this.rename.row)) this.endRename(false);
     }
     updateTabStops() {
         this.visibleRows?.forEach(({ id }) => {
@@ -286,12 +330,13 @@ class HierarchySidebar {
         this.rows.forEach((row, id) => row.classList.toggle("is-search-match", ids.has(id)));
     }
     onKey(event) {
-        if (event.target.closest("button")) return;
+        if (event.target.closest("button,input")) return;
         const source = event.target.closest(".hierarchy-row"), id = source?.dataset.entryId || source?.dataset.portalId;
         if (!id) return;
         const portal = this.portals.get(id);
         const index = this.visibleRows.findIndex(row => row.id === id), children = this.index.children.get(id) || [];
         let target;
+        if (event.key === 'F2' && !portal) { event.preventDefault(); this.beginRename(id); return; }
         if (event.key === "ArrowDown") target = this.visibleRows[Math.min(index + 1, this.visibleRows.length - 1)]?.id;
         else if (event.key === "ArrowUp") target = this.visibleRows[Math.max(0, index - 1)]?.id;
         else if (event.key === "Home") target = this.visibleRows[0]?.id;

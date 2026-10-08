@@ -46,8 +46,8 @@ function createPanelItemMenu(actions, label, root) {
 
 // Content presentation over canonical entry content and a replaceable file store.
 class EntryContentInspector {
-    constructor({ store, getEntry, save, rollback, onAction, onLayout, motion=null }) {
-        Object.assign(this, { store, getEntry, save, rollback, onAction, onLayout, motion });
+    constructor({ store, getEntry, save, rollback, onAction, onLayout, motion=null, imageViewer }) {
+        Object.assign(this, { store, getEntry, save, rollback, onAction, onLayout, motion, imageViewer });
         this.root = document.getElementById("panel-rich-content");
         this.notes = document.getElementById("content-notes");
         this.notesForm = document.getElementById("content-notes-form");
@@ -232,12 +232,12 @@ class EntryContentInspector {
         const gallery=this.content().attachments.filter(file=>file.mimeType.startsWith('image/')).length>1;
         files.classList.toggle('has-image-gallery',gallery);
         this.content().attachments.forEach(metadata => {
-            const item = document.createElement("li"), name = this.button(metadata.filename, () => this.openFile(metadata), `Open attachment ${metadata.filename}`), size = document.createElement("small"), preview = document.createElement("div"), actions = document.createElement("div"), info = document.createElement("div");
+            const item = document.createElement("li"), name = this.button(metadata.filename, event => this.openFile(metadata,event.currentTarget), `Open attachment ${metadata.filename}`), size = document.createElement("small"), preview = document.createElement("div"), actions = document.createElement("div"), info = document.createElement("div");
             item.className = "content-file"; item.dataset.attachmentId = metadata.id;
             if(metadata.mimeType.startsWith('image/'))item.classList.add('content-image');
             name.className = "content-file-name";
             preview.className = "content-file-preview";
-            const badge = this.button(metadata.mimeType.startsWith("image/") ? "IMG" : metadata.mimeType === "application/pdf" ? "PDF" : metadata.filename.toLowerCase().endsWith(".md") ? "MD" : "TXT", () => this.openFile(metadata), `View ${metadata.filename}`);
+            const badge = this.button(metadata.mimeType.startsWith("image/") ? "IMG" : metadata.mimeType === "application/pdf" ? "PDF" : metadata.filename.toLowerCase().endsWith(".md") ? "MD" : "TXT", event => this.openFile(metadata,event.currentTarget), `View ${metadata.filename}`);
             badge.className = "content-file-icon"; preview.append(badge);
             size.textContent = `${metadata.size >= 1024*1024 ? (metadata.size/1024/1024).toFixed(1)+" MiB" : metadata.size >= 1024 ? (metadata.size/1024).toFixed(1)+" KiB" : metadata.size+" B"}`;
             actions.className = "content-row-actions";
@@ -293,8 +293,9 @@ class EntryContentInspector {
             }
         });
     }
-    async openFile(metadata) {
+    async openFile(metadata, trigger = document.activeElement) {
         this.onAction();
+        if (metadata.mimeType.startsWith('image/') || metadata.mimeType === 'application/pdf') { this.imageViewer.open(metadata, trigger); return; }
         const tab = window.open("about:blank", "_blank");
         if (!tab) { this.message("Allow this file to open in a new browser tab.", true); return; }
         tab.opener = null;

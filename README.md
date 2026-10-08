@@ -608,7 +608,7 @@ Supported uploads: JPG/JPEG, PNG, WebP, PDF, TXT and MD. Central limits live in
 Image headers provide dimensions cheaply; JPEG orientation is respected.
 Only the visible selected Content panel requests previews.
 Images display bounded, aspect-preserving thumbnails; explicit Open uses original
-bytes. PDFs use the native browser viewer in a new tab. TXT/MD previews are bounded
+bytes. PDFs use the browser-native reader inside the attachment viewer. TXT/MD previews are bounded
 plain text, and MD opens as text rather than executable HTML or rendered Markdown.
 Preview object URLs are revoked on selection/close, and full-file URLs on tab close
 or page exit. Choose files through sidebar + → Add files; supported-format/size
@@ -1113,7 +1113,7 @@ mobile targets, preference reloads and the isolated Sample utility.
 
 ### Quick help
 
-The quiet **?** in the sidebar header opens local Quick help. Seven short,
+The quiet **? Help** beside Sample data at the bottom of the sidebar opens local Quick help. Seven short,
 collapsible topics cover getting started, moving around, adding content,
 Constellations, archiving, useful tricks, and using the same item in two places.
 The last topic stays secondary and closed initially. There is no startup tour,
@@ -1130,3 +1130,60 @@ keyboard/focus, terminology, desktop and narrow/landscape mobile bounds, touch
 targets, internal scrolling, reduced motion, and unchanged workspace/data.
 Before committing, skim the copy, try Help with an unfinished Note and active
 Constellation, and check long scrolling topics on a phone.
+
+
+### Focused usability polish
+
+Help lives in the bottom utility area, separate from the three navigation groups.
+Its existing topics, dialog, keyboard behavior and focus restoration are unchanged.
+
+On desktop, double-click a canonical sidebar name or press F2 on its focused row
+to rename inline. The current name is selected. Enter trims and saves with the
+same Rename validation, repository write and UI publication as menu Rename.
+Escape or focus-away cancels. Empty/oversized names and failed saves leave the
+editor open with validation feedback; no IDs, placements or memberships change.
+Icons, chevrons and linked-placement labels do not start inline rename. Touch
+users retain the existing menu action.
+
+Click an image thumbnail or filename to open its original stored bytes in the
+internal dark viewer. Close, Escape or empty overlay space dismisses it and
+returns focus to the launching attachment. Multiple images follow attachment
+order, using Previous/Next or Left/Right; navigation stops at the ends and hides
+for a single image. Controls remain 44px on phones and images preserve aspect
+ratio within the viewport. URLs are revoked on switching/closing; stale reads
+cannot reopen a dismissed viewer. No new animation, gestures or storage changes.
+PDFs now use the internal native reader; text keeps its existing browser-opening behavior.
+
+`python tests/browser-check.py --usability-only --screenshots` checks these flows,
+including shared rename failure/reload, relationships, viewer focus, keyboard,
+missing/late files, no extra tabs, mobile bounds and reduced motion. Before
+committing, try fast double-clicks, long names, a draft Note, mixed image sizes,
+image browsing and phone controls. Storage remains v5.
+
+
+### Image-first photos and internal PDFs
+
+Photos have no visible filename heading. A quiet Info button reveals the existing
+filename, MIME type, size and dimensions on demand; filenames remain unchanged
+in metadata and Files. Close and ordered image browsing stay in the same viewer.
+
+PDFs open in that modal with a subtle filename and a viewport-sized native PDF
+embed. The browser owns page rendering, scrolling and reader controls. A quiet
+Open externally link is always available for PDF readers that do not display
+reliably; browsers reporting no native PDF support show an explanation instead
+of an empty reader. External viewing requires an explicit click. There is no
+PDF library, editing/search feature, file-store change or schema migration.
+
+Viewer controls trap focus, Close restores the attachment, and Escape dismisses
+from Cosmifold's controls. Native PDF reader frames own their keyboard events:
+in the tested Chromium reader, Escape after clicking inside the PDF does not
+reach the app. Close remains visible and works from that state; returning focus
+to the viewer controls also restores Escape. This browser limitation is retained
+rather than taking keyboard focus away from the native document reader.
+
+`python tests/browser-check.py --attachment-viewer-only --screenshots` verifies
+photo Info/metadata, native two-page PDF rendering and scrolling, no default
+new tab, explicit unsupported-reader fallback, Close/focus/URL cleanup, Escape
+from viewer controls, phone/landscape bounds and unchanged text-file opening.
+Before committing, test representative PDFs in your desktop and phone browsers,
+including native reader focus/keyboard behavior and Open externally.

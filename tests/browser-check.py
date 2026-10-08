@@ -136,6 +136,8 @@ def main():
     args.add_argument("--persistence-only", action="store_true", help="Check adapter composition, scoped real IndexedDB operations, metadata recovery and Sample isolation")
     args.add_argument("--foundation-performance-only", action="store_true", help="Compare load, metadata save and Sample responsiveness across persistence refactors")
     args.add_argument("--help-only", action="store_true", help="Check local Help, keyboard/focus, desktop/mobile layout and preserved workspace state")
+    args.add_argument("--usability-only", action="store_true", help="Check utility Help, shared inline rename and the internal image attachment viewer")
+    args.add_argument("--attachment-viewer-only", action="store_true", help="Check image-first viewing, optional Info and internal/native PDF with fallback")
     args.add_argument("--sidebar-sections-only", action="store_true", help="Check independent navigation sections, heading creation, Archive restore and Sample utility")
     args.add_argument("--archive-only", action="store_true", help="Check Galaxy archive/restore, references, file preservation, persistence and motion")
     args.add_argument("--body-hierarchy-only", action="store_true", help="Inspect restrained bodies, screen caps, nebula territories, radial branches, deep focus and mobile")
@@ -203,7 +205,7 @@ def main():
                 localStorage.setItem('galaxy:user-data',{json.dumps(old_raw)});
                 sessionStorage.setItem('seeded','yes');
             }}
-            document.addEventListener('DOMContentLoaded',()=>physics.setReducedMotion(false));
+            document.addEventListener('DOMContentLoaded',()=>{{if(window===window.top&&typeof physics!=='undefined')physics.setReducedMotion(false)}});
             window.openSelectedRowAdd=()=>hierarchySidebar.rows.get(selectedNode.dataset.entryId).querySelector('.tree-add').click();
         """)
 
@@ -321,6 +323,159 @@ def main():
         check(evaluate("localStorage.getItem('galaxy:user-data:pre-cosmic-tree')") == old_raw, "exact original snapshot retained before migration")
         check(evaluate("JSON.parse(localStorage.getItem('galaxy:user-data')).version===5 && JSON.parse(localStorage.getItem('galaxy:user-data')).entries.every(e=>!('role' in e) && !('depth' in e))"), "version 5 persists generic ancestry without hardcoded roles or depth")
         check(evaluate("!document.querySelector('#pin-position-button,[data-action=pin],#panel-placement,#panel-role,#connection-options') && !panel.textContent.includes('Moves naturally') && !dialog.textContent.includes('Other connections') && roleField.tagName==='OUTPUT' && [...entries.values()].every(e=>e.depth>=0)"), "normal UI derives roles without pin, physics status or relationship controls")
+
+        if options.attachment_viewer_only:
+            def key(value,code,modifiers=0):
+                vk={'Escape':27,'Tab':9,'ArrowLeft':37,'ArrowRight':39}.get(value,0)
+                cdp.call('Input.dispatchKeyEvent',type='keyDown',key=value,code=code,modifiers=modifiers,windowsVirtualKeyCode=vk);cdp.call('Input.dispatchKeyEvent',type='keyUp',key=value,code=code,modifiers=modifiers,windowsVirtualKeyCode=vk)
+            def shot(name):
+                if screenshot_dir:
+                    result=cdp.call('Page.captureScreenshot',format='png',captureBeyondViewport=False);(screenshot_dir/(name+'.png')).write_bytes(base64.b64decode(result['data']))
+            g=add('Viewer');owner=add('Documents and photos',g);wait_for('physics.settled');wait_camera();evaluate('physics.pause()')
+            evaluate("(async()=>{const c=document.createElement('canvas');c.width=800;c.height=400;c.getContext('2d').fillRect(0,0,800,400);for(const name of ['IMG_4827.JPG','DSC_0193.JPG']){const b=await new Promise(r=>c.toBlob(r,'image/jpeg'));await contentInspector.upload([new File([b],name,{type:'image/jpeg'})]);}})()")
+            # Small genuine PDF with a page tree/content stream; the native reader handles pages.
+            evaluate("""(()=>{const objects=['<< /Type /Catalog /Pages 2 0 R >>','<< /Type /Pages /Kids [3 0 R 3 0 R] /Count 2 >>','<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>','<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>'];const stream='BT /F1 24 Tf 60 700 Td (Cosmifold document) Tj ET';objects.push('<< /Length '+stream.length+' >>\\nstream\\n'+stream+'\\nendstream');let pdf='%PDF-1.4\\n',offsets=[0];objects.forEach((o,i)=>{offsets.push(pdf.length);pdf+=(i+1)+' 0 obj\\n'+o+'\\nendobj\\n'});const xref=pdf.length;pdf+='xref\\n0 '+offsets.length+'\\n0000000000 65535 f \\n';offsets.slice(1).forEach(n=>pdf+=String(n).padStart(10,'0')+' 00000 n \\n');pdf+='trailer\\n<< /Size '+offsets.length+' /Root 1 0 R >>\\nstartxref\\n'+xref+'\\n%%EOF';return contentInspector.upload([new File([pdf],'Trip document.pdf',{type:'application/pdf'}),new File(['Plain text remains external'],'readme.txt',{type:'text/plain'})]);})()""")
+            wait_for('contentInspector.jobs.size===0');wait_for("document.querySelector('#content-attachments img')?.naturalWidth>0")
+            image=evaluate('contentInspector.content().attachments[0]');pdf=evaluate("contentInspector.content().attachments.find(f=>f.mimeType==='application/pdf')")
+            image_trigger=f'[data-attachment-id="{image["id"]}"] .content-file-icon';pdf_trigger=f'[data-attachment-id="{pdf["id"]}"] .content-file-icon'
+            targets={t['targetId'] for t in cdp.call('Target.getTargets')['targetInfos'] if t['type']=='page'}
+            click_selector(image_trigger);wait_for('imageViewer.dialog.open&&!imageViewer.image.hidden')
+            check(evaluate("imageViewer.name.hidden&&imageViewer.info.hidden&&imageViewer.dialog.getAttribute('aria-label')==='Photo viewer'"),'photo viewer has no permanent filename title and starts image-first')
+            check(evaluate(f"contentInspector.content().attachments[0].filename==='IMG_4827.JPG'&&document.querySelector('[data-attachment-id=\"{image['id']}\"] .content-file-name').textContent==='IMG_4827.JPG'"),'original photo filename remains unchanged in metadata and Files UI')
+            click_selector('#image-viewer-info-button');check(evaluate("!imageViewer.info.hidden&&imageViewer.info.textContent.includes('IMG_4827.JPG')&&imageViewer.info.textContent.includes('800 × 400')&&imageViewer.infoButton.getAttribute('aria-expanded')==='true'"),'optional Info reveals only existing filename, type, size and dimensions')
+            click_selector('#image-viewer-info-button');click_selector('#image-viewer-next');wait_for('imageViewer.index===1&&!imageViewer.image.hidden');key('ArrowLeft','ArrowLeft');wait_for('imageViewer.index===0&&!imageViewer.image.hidden')
+            check(evaluate('imageViewer.name.hidden&&imageViewer.info.hidden'),'image buttons/arrows still browse without displaying filenames');shot('image-first')
+            key('Escape','Escape');wait_for('!imageViewer.dialog.open');check(evaluate(f"document.activeElement===document.querySelector({json.dumps(image_trigger)})"),'image Escape restores the launching attachment focus')
+            click_selector(pdf_trigger);wait_for('imageViewer.dialog.open&&!imageViewer.pdf.hidden&&!!imageViewer.url')
+            check(evaluate("imageViewer.isPdf&&!imageViewer.name.hidden&&imageViewer.name.textContent==='Trip document.pdf'&&imageViewer.navigation.hidden&&imageViewer.infoButton.hidden&&imageViewer.pdf.src.startsWith('blob:')"),'PDF opens in the same modal using a native embedded reader and subtle document filename')
+            check({t['targetId'] for t in cdp.call('Target.getTargets')['targetInfos'] if t['type']=='page'}==targets,'PDF and images open no new browser tab by default')
+            check(evaluate("(()=>{const r=imageViewer.pdf.getBoundingClientRect();return r.width>600&&r.height>500&&r.left>=0&&r.right<=innerWidth&&r.bottom<=innerHeight&&document.documentElement.scrollWidth<=innerWidth&&imageViewer.external.href===imageViewer.url})()"),'PDF reading area fills available space without page overflow and has an explicit external fallback')
+            time.sleep(1)
+            shot('pdf-desktop')
+            point=evaluate("(()=>{const r=imageViewer.pdf.getBoundingClientRect();return {x:r.x+r.width*.6,y:r.y+180}})()")
+            before_pdf=cdp.call('Page.captureScreenshot',format='png')['data']
+            mouse('mouseWheel',**point,deltaX=0,deltaY=650);time.sleep(.3)
+            check(cdp.call('Page.captureScreenshot',format='png')['data']!=before_pdf,'native PDF pages render and scroll inside the fixed reading area')
+            mouse('mousePressed',**point,button='left',clickCount=1);mouse('mouseReleased',**point,button='left',clickCount=1)
+            # Native cross-origin readers own keyboard input while focused.
+            # Test Close from reader focus, then Escape from Cosmifold controls.
+            click_selector('#image-viewer-close');wait_for('!imageViewer.dialog.open')
+            wait_for(f"document.activeElement===document.querySelector({json.dumps(pdf_trigger)})&&imageViewer.url===null")
+            check(evaluate(f"document.activeElement===document.querySelector({json.dumps(pdf_trigger)})&&imageViewer.url===null"),'PDF Close restores attachment focus and releases original bytes after reading')
+            click_selector(pdf_trigger);wait_for('!imageViewer.pdf.hidden');key('Escape','Escape');wait_for('!imageViewer.dialog.open')
+            check(evaluate(f"document.activeElement===document.querySelector({json.dumps(pdf_trigger)})"),'PDF Escape from viewer controls dismisses the document and restores attachment focus')
+            evaluate('window.nativePdfSupport=imageViewer.supportsPdf;imageViewer.supportsPdf=()=>false')
+            click_selector(pdf_trigger);wait_for('!!imageViewer.url&&!imageViewer.status.hidden')
+            check(evaluate("imageViewer.pdf.hidden&&!imageViewer.pdfTools.hidden&&imageViewer.status.textContent.includes('cannot display PDFs')&&imageViewer.external.getAttribute('target')==='_blank'&&imageViewer.external.rel.includes('noopener')"),'unsupported native PDF viewing provides a visible explanation and opt-in Open externally')
+            click_selector('#attachment-viewer-external')
+            wait_for("true");new_targets=[t for t in cdp.call('Target.getTargets')['targetInfos'] if t['targetId'] not in targets and t['type']=='page']
+            check(bool(new_targets),'fallback opens externally only after the explicit link is clicked')
+            for target in new_targets:cdp.call('Target.closeTarget',targetId=target['targetId'])
+            cdp.call('Page.bringToFront');key('Escape','Escape');evaluate('imageViewer.supportsPdf=nativePdfSupport')
+            for width,height in [(390,844),(320,568),(740,360)]:
+                cdp.call('Emulation.setDeviceMetricsOverride',width=width,height=height,deviceScaleFactor=1,mobile=True);cdp.call('Emulation.setTouchEmulationEnabled',enabled=True)
+                evaluate('hierarchySidebar.setCollapsed(true)');select(owner);wait_camera();evaluate('physics.pause()')
+                for metadata,trigger,kind in [(image,image_trigger,'image'),(pdf,pdf_trigger,'PDF')]:
+                    evaluate(f"contentInspector.openFile({json.dumps(metadata)},document.querySelector({json.dumps(trigger)}))")
+                    wait_for('imageViewer.dialog.open&&'+('!imageViewer.pdf.hidden' if kind=='PDF' else '!imageViewer.image.hidden'))
+                    check(evaluate("(()=>{const e=imageViewer.isPdf?imageViewer.pdf:imageViewer.image,r=e.getBoundingClientRect(),b=document.getElementById('image-viewer-close').getBoundingClientRect();return r.left>=0&&r.right<=innerWidth&&r.top>=0&&r.bottom<=innerHeight&&r.height>0&&b.height>=44&&document.documentElement.scrollWidth<=innerWidth})()"),f'{kind} viewer fits {width}x{height} with reachable touch controls')
+                    if kind=='PDF' and width==320:shot('pdf-mobile')
+                    key('Escape','Escape')
+            cdp.call('Emulation.setEmulatedMedia',features=[dict(name='prefers-reduced-motion',value='reduce')])
+            evaluate(f"contentInspector.openFile({json.dumps(pdf)},document.querySelector({json.dumps(pdf_trigger)}))");wait_for('imageViewer.dialog.open&&!imageViewer.pdf.hidden');key('Escape','Escape')
+            check(evaluate('!imageViewer.dialog.open'),'PDF reduced-motion closing remains immediate')
+            evaluate("window.textOpen=window.open;window.textOpened=false;window.open=()=>({location:{replace:url=>textOpened=url.startsWith('blob:')},closed:true,close(){}});contentInspector.openFile(contentInspector.content().attachments.find(f=>f.mimeType==='text/plain'));void 0")
+            wait_for('textOpened===true');evaluate('window.open=textOpen')
+            check(evaluate('!imageViewer.dialog.open'),'text files retain their existing external opening path')
+            check(not cdp.errors,f'no attachment-viewer exceptions: {cdp.errors}');print(f'{count} attachment-viewer checks passed',flush=True);return
+
+        if options.usability_only:
+            def key(value,code,text=None,modifiers=0):
+                params=dict(key=value,code=code,modifiers=modifiers)
+                if text is not None:params['text']=text
+                cdp.call('Input.dispatchKeyEvent',type='keyDown',**params);cdp.call('Input.dispatchKeyEvent',type='keyUp',key=value,code=code,modifiers=modifiers)
+            def shot(name):
+                if screenshot_dir:
+                    result=cdp.call('Page.captureScreenshot',format='png',captureBeyondViewport=False);(screenshot_dir/(name+'.png')).write_bytes(base64.b64decode(result['data']))
+            g=add('Photo trip');item=add('Photos',g);other=add('Keep',g)
+            wait_for('physics.settled');wait_camera();evaluate('physics.pause()')
+            check(evaluate("!!document.getElementById('help-button').closest('#sidebar-utilities')&&!document.querySelector('.sidebar-brand #help-button')&&!!document.getElementById('sample-utility').closest('#sidebar-utilities')"),'Help is discoverable beside the separate bottom Sample utility')
+            shot('usability-sidebar')
+            click_selector('#help-button');check(evaluate("document.getElementById('help-dialog').open"),'bottom Help opens its existing modal');key('Escape','Escape');wait_for("!document.getElementById('help-dialog').open")
+            check(evaluate("document.activeElement.id==='help-button'"),'Help returns focus to its new bottom trigger')
+            evaluate(f"portals.set('portal:usability',{{id:'portal:usability',targetEntryId:{json.dumps(item)},parentEntryId:{json.dumps(other)},createdAt:new Date().toISOString()}});commitConstellations(new Map([['constellation:usability',{{id:'constellation:usability',name:'Trip',memberEntryIds:[{json.dumps(item)}],createdAt:new Date().toISOString()}}]]));hierarchySidebar.expanded.add({json.dumps(other)});hierarchySidebar.setEntries(entries)")
+            row=f'.hierarchy-row[data-entry-id="{item}"]';label=row+' .tree-name'
+            evaluate('window.renameNavigations=0;window.originalNavigate=hierarchySidebar.onNavigate;hierarchySidebar.onNavigate=id=>{renameNavigations++;originalNavigate(id)}')
+            click_selector(label);wait_camera()
+            check(evaluate(f"selectedNode.dataset.entryId==={json.dumps(item)}&&renameNavigations===1&&!hierarchySidebar.rename"),'single sidebar click keeps normal navigation')
+            point=evaluate(f"(()=>{{const r=document.querySelector({json.dumps(label)}).getBoundingClientRect();return {{x:r.x+5,y:r.y+r.height/2}}}})()")
+            mouse('mousePressed',**point,button='left',clickCount=2);mouse('mouseReleased',**point,button='left',clickCount=2)
+            check(evaluate(f"hierarchySidebar.rename?.id==={json.dumps(item)}&&document.activeElement.className==='tree-rename'&&document.activeElement.selectionEnd===document.activeElement.value.length&&renameNavigations===1"),'name double-click enters a selected inline editor without a second navigation')
+            shot('usability-inline-rename')
+            evaluate("hierarchySidebar.rename.input.value='   Holiday photos   '");key('Enter','Enter','\r')
+            check(evaluate(f"entries.get({json.dumps(item)}).name==='Holiday photos'&&!hierarchySidebar.rename&&portals.get('portal:usability').targetEntryId==={json.dumps(item)}&&constellations.get('constellation:usability').memberEntryIds[0]==={json.dumps(item)}"),'Enter trims and saves through shared Rename without changing IDs, links or memberships')
+            check(evaluate("panelName.textContent==='Holiday photos'"),'inline rename updates the open Content title')
+            for selector in [row+' .tree-role-icon',f'.hierarchy-row[data-entry-id="{g}"] .tree-disclosure']:
+                evaluate(f"document.querySelector({json.dumps(selector)}).dispatchEvent(new MouseEvent('dblclick',{{bubbles:true}}))")
+                check(evaluate('!hierarchySidebar.rename'),'double-clicking an icon or chevron cannot rename')
+            evaluate("document.querySelector('[data-portal-id=\"portal:usability\"] .tree-name').dispatchEvent(new MouseEvent('dblclick',{bubbles:true}))")
+            check(evaluate('!hierarchySidebar.rename'),'linked-placement labels do not create a second rename pathway')
+            evaluate(f"hierarchySidebar.rows.get({json.dumps(item)}).focus()");key('F2','F2');evaluate("hierarchySidebar.rename.input.value='Cancel me'");key('Escape','Escape')
+            check(evaluate(f"!hierarchySidebar.rename&&entries.get({json.dumps(item)}).name==='Holiday photos'"),'F2 provides keyboard access and Escape cancels only the rename')
+            evaluate(f"hierarchySidebar.beginRename({json.dumps(item)});hierarchySidebar.rename.input.value='   '");key('Enter','Enter','\r')
+            check(evaluate("!!hierarchySidebar.rename&&hierarchySidebar.rename.input.getAttribute('aria-invalid')==='true'"),'empty trimmed names are blocked in the editor')
+            key('Escape','Escape');evaluate(f"hierarchySidebar.beginRename({json.dumps(item)});hierarchySidebar.rename.input.value='Blur me';document.getElementById('help-button').focus()")
+            check(evaluate(f"!hierarchySidebar.rename&&entries.get({json.dumps(item)}).name==='Holiday photos'"),'focus-away cancels unsubmitted text cleanly')
+            evaluate(f"contentInspector.editNotes();contentInspector.notes.value='Keep my unfinished note';window.inlineView=JSON.stringify(camera.view);window.inlineBranches=JSON.stringify([...hierarchySidebar.expanded]);hierarchySidebar.beginRename({json.dumps(item)});hierarchySidebar.rename.input.value='Holiday photos!'");key('Enter','Enter','\r')
+            check(evaluate("contentInspector.notes.value==='Keep my unfinished note'&&!contentInspector.notesForm.hidden&&JSON.stringify(camera.view)===inlineView&&JSON.stringify([...hierarchySidebar.expanded])===inlineBranches"),'inline Rename preserves the open Note draft, camera and branch expansion')
+            evaluate(f"hierarchySidebar.beginRename({json.dumps(item)});hierarchySidebar.rename.input.value='Holiday photos'");key('Enter','Enter','\r');evaluate("document.getElementById('content-cancel-notes').click()")
+            evaluate(f"hierarchySidebar.beginRename({json.dumps(item)});hierarchySidebar.rename.input.value='x'.repeat(61)");key('Enter','Enter','\r')
+            check(evaluate("!!hierarchySidebar.rename&&hierarchySidebar.rename.input.getAttribute('aria-invalid')==='true'"),'existing maximum-name validation blocks oversized names');key('Escape','Escape')
+            evaluate(f"hierarchySidebar.beginRename({json.dumps(item)});hierarchySidebar.rename.input.value='Failed save';window.renameSave=persistence.metadata.save;persistence.metadata.save=()=>{{throw new Error('quota fixture')}}")
+            key('Enter','Enter','\r');check(evaluate(f"!!hierarchySidebar.rename&&entries.get({json.dumps(item)}).name==='Holiday photos'"),'failed persistence leaves the original name intact and the editor retryable');evaluate('persistence.metadata.save=renameSave');key('Escape','Escape')
+            cdp.call('Page.reload');load();wait_camera();evaluate('physics.pause()')
+            check(evaluate(f"entries.get({json.dumps(item)}).name==='Holiday photos'&&portals.has('portal:usability')&&constellations.has('constellation:usability')"),'inline rename and canonical relationships survive refresh')
+            select(item);wait_camera();evaluate('physics.pause()')
+            evaluate("(async()=>{const canvas=document.createElement('canvas');canvas.width=800;canvas.height=400;const c=canvas.getContext('2d');c.fillStyle='#456b83';c.fillRect(0,0,800,400);for(const [name,type] of [['first.png','image/png'],['second.webp','image/webp'],['third.jpg','image/jpeg']]){const blob=await new Promise(resolve=>canvas.toBlob(resolve,type));await contentInspector.upload([new File([blob],name,{type})]);}})()")
+            wait_for('contentInspector.jobs.size===0');wait_for("document.querySelector('#content-attachments img')?.naturalWidth>0")
+            attachment=evaluate('contentInspector.content().attachments[0]');trigger=f'[data-attachment-id="{attachment["id"]}"] .content-file-icon'
+            targets={t['targetId'] for t in cdp.call('Target.getTargets')['targetInfos'] if t['type']=='page'};view=evaluate('JSON.stringify(camera.view)')
+            click_selector(trigger);wait_for("imageViewer.dialog.open&&!imageViewer.image.hidden")
+            check({t['targetId'] for t in cdp.call('Target.getTargets')['targetInfos'] if t['type']=='page'}==targets,'image thumbnail opens internally without another browser tab')
+            check(evaluate("imageViewer.image.naturalWidth===800&&imageViewer.name.textContent==='first.png'&&imageViewer.index===0&&!imageViewer.navigation.hidden&&imageViewer.previous.disabled"),'viewer uses original image bytes and preserves attachment order with bounded navigation')
+            click_selector('#image-viewer-next');wait_for("imageViewer.name.textContent==='second.webp'&&!imageViewer.image.hidden")
+            key('ArrowRight','ArrowRight');wait_for("imageViewer.name.textContent==='third.jpg'&&!imageViewer.image.hidden")
+            check(evaluate('imageViewer.next.disabled'),'Next and Right browse in place and stop at the final image')
+            key('ArrowLeft','ArrowLeft');wait_for("imageViewer.name.textContent==='second.webp'&&!imageViewer.image.hidden")
+            click_selector('#image-viewer-previous');wait_for("imageViewer.name.textContent==='first.png'&&!imageViewer.image.hidden")
+            check(evaluate('imageViewer.previous.disabled'),'Previous and Left return in attachment order without wrapping')
+            evaluate("imageViewer.infoButton.focus()");key('Tab','Tab',modifiers=8)
+            check(evaluate("document.activeElement.id==='image-viewer-next'"),'viewer traps backward keyboard focus among available controls')
+            shot('viewer-desktop');key('Escape','Escape');wait_for('!imageViewer.dialog.open')
+            check(evaluate(f"document.activeElement===document.querySelector({json.dumps(trigger)})&&imageViewer.url===null&&JSON.stringify(camera.view)==={json.dumps(view)}"),'Escape revokes the image URL and restores attachment focus without changing the camera')
+            click_selector(trigger);wait_for('!imageViewer.image.hidden');click_selector('#image-viewer-close');check(evaluate('!imageViewer.dialog.open'),'Close dismisses the viewer')
+            click_selector(trigger);wait_for('!imageViewer.image.hidden');mouse('mousePressed',x=20,y=150,button='left',clickCount=1);mouse('mouseReleased',x=20,y=150,button='left',clickCount=1)
+            check(evaluate('!imageViewer.dialog.open'),'empty overlay space closes the viewer')
+            evaluate("window.viewerGet=attachmentStore.get;attachmentStore.get=async()=>null")
+            click_selector(trigger);wait_for("imageViewer.status.textContent.includes('could not')")
+            check(evaluate('imageViewer.dialog.open&&imageViewer.image.hidden'),'missing bytes show a recoverable in-viewer message');evaluate('attachmentStore.get=viewerGet');key('Escape','Escape')
+            evaluate("window.viewerImageList=contentInspector.content().attachments;imageViewer.open(viewerImageList[0]);imageViewer.images=[viewerImageList[0]];imageViewer.show(0)");wait_for('!imageViewer.image.hidden')
+            check(evaluate('imageViewer.navigation.hidden'),'single-image viewing hides unnecessary navigation controls');key('Escape','Escape')
+            evaluate("window.viewerDelayedGet=attachmentStore.get;window.viewerResolve=null;attachmentStore.get=()=>new Promise(resolve=>viewerResolve=resolve);imageViewer.open(contentInspector.content().attachments[0]);imageViewer.dialog.close();viewerResolve({entryId:contentInspector.entryId,blob:new Blob(['late'])});void 0")
+            check(evaluate('!imageViewer.dialog.open&&imageViewer.url===null'),'closing during loading prevents late images or leaked object URLs');evaluate('attachmentStore.get=viewerDelayedGet')
+            for width,height in [(390,844),(320,568),(740,360)]:
+                cdp.call('Emulation.setDeviceMetricsOverride',width=width,height=height,deviceScaleFactor=1,mobile=True);cdp.call('Emulation.setTouchEmulationEnabled',enabled=True)
+                evaluate('hierarchySidebar.setCollapsed(true)');select(item);wait_camera();evaluate('physics.pause()')
+                evaluate(f"contentInspector.openFile(contentInspector.content().attachments[0],document.querySelector({json.dumps(trigger)}))");wait_for('!imageViewer.image.hidden&&imageViewer.dialog.open')
+                check(evaluate("(()=>{const r=imageViewer.image.getBoundingClientRect(),b=document.getElementById('image-viewer-close').getBoundingClientRect();return r.left>=0&&r.right<=innerWidth&&r.top>=0&&r.bottom<=innerHeight&&Math.abs(r.width/r.height-2)<.01&&b.height>=44&&document.documentElement.scrollWidth<=innerWidth&&imageViewer.next.getBoundingClientRect().height>=44})()"),f'image viewer fits {width}x{height} with correct aspect ratio and comfortable controls')
+                if width==320:shot('viewer-mobile')
+                click_selector('#image-viewer-next');wait_for("imageViewer.name.textContent==='second.webp'&&!imageViewer.image.hidden");click_selector('#image-viewer-close')
+                evaluate(f"hierarchySidebar.setCollapsed(false);hierarchySidebar.beginRename({json.dumps(item)})")
+                check(evaluate('!hierarchySidebar.rename'),'touch navigation retains menu Rename instead of double-tap editing')
+            cdp.call('Emulation.setEmulatedMedia',features=[dict(name='prefers-reduced-motion',value='reduce')])
+            evaluate(f"contentInspector.openFile(contentInspector.content().attachments[0],document.querySelector({json.dumps(trigger)}))");wait_for('imageViewer.dialog.open&&!imageViewer.image.hidden');key('Escape','Escape')
+            check(evaluate('!imageViewer.dialog.open'),'reduced-motion viewer stays usable with no animation')
+            check(not cdp.errors,f'no usability browser exceptions: {cdp.errors}');print(f'{count} usability checks passed',flush=True);return
 
         if options.persistence_only:
             evaluate("physics.pause();window.fixtureScope='foundation-test';window.fixturePersistence=createPersistence({config:{workspaceId:fixtureScope}});window.fixtureRepository=createUniverseRepository({persistence:fixturePersistence});window.fixtureSnapshot={entries:[{id:'g',name:'Same name',parentId:null},{id:'a',name:'Same name',parentId:'g'},{id:'keep',name:'Same name',parentId:null}],portals:[{id:'p',targetEntryId:'a',parentEntryId:'keep',createdAt:'2026-01-01T00:00:00Z'}],constellations:[{id:'c',name:'Week',memberEntryIds:['a','keep'],createdAt:'2026-01-01T00:00:00Z'}],layout:[{id:'a',parentId:'g',radius:50}]};fixtureRepository.save(fixtureSnapshot)")
@@ -985,7 +1140,8 @@ def main():
             mouse('mousePressed',**point,button='left',clickCount=1);mouse('mouseMoved',x=point['x']+30,y=point['y']-18,button='left',buttons=1);mouse('mouseReleased',x=point['x']+30,y=point['y']-18,button='left',clickCount=1);evaluate('physics.pause()')
             check(evaluate(f"Math.hypot(entries.get({json.dumps(other)}).x-({old['x']}),entries.get({json.dumps(other)}).y-({old['y']}))>5&&activeNodeDrags===0&&!document.querySelector('.content-drop-target')") and evaluate('JSON.stringify(camera.view)')==view,'ordinary body dragging remains separate from external drops')
             evaluate(f"selectEntry(entries.get({json.dumps(owner)}),nodes.get({json.dumps(owner)}),{{reframe:false}})")
-            check(evaluate("(async()=>{const open=window.open;window.open=()=>({location:{replace:url=>window.imageOpened=url},closed:true,close(){}});try{await contentInspector.openFile(contentInspector.content().attachments[0]);return imageOpened.startsWith('blob:')}finally{window.open=open}})()"),'gallery image opening still uses the stored-binary preview handler')
+            evaluate("contentInspector.openFile(contentInspector.content().attachments[0])");wait_for('imageViewer.dialog.open&&!imageViewer.image.hidden')
+            check(evaluate("imageViewer.image.src.startsWith('blob:')"),'gallery image opens the existing stored bytes inside Cosmifold');evaluate('imageViewer.dialog.close()')
             removed=evaluate("contentInspector.content().attachments[1].storageKey")
             evaluate("const imageRow=document.querySelectorAll('#content-attachments .content-image')[1];imageRow.querySelector('summary').click();const remove=imageRow.querySelector('.content-row-actions button');remove.click();remove.click()")
             wait_for('contentInspector.jobs.size===0&&contentInspector.content().attachments.length===4')
@@ -2620,19 +2776,13 @@ def main():
             pick(['plan.pdf'])
             check(evaluate("(async()=>contentInspector.content().attachments.length===7 && await attachmentStore.get(failedKey)===null)()"),'metadata failure aborts the real IndexedDB upload without leaving an orphan blob')
             evaluate('persistence.metadata.save=originalMetadataSave;attachmentStore.save=originalBinarySave')
-            # Actual new-tab file opening, then return to the original page.
+            # PDF Open stays inside the same app tab and reads the original bytes.
             evaluate(f"document.querySelector('[data-attachment-id=\"{pdf_meta['id']}\"] button').scrollIntoView({{block:'center'}})")
-            old_targets={t['targetId'] for t in cdp.call('Target.getTargets')['targetInfos']}
+            old_targets={t['targetId'] for t in cdp.call('Target.getTargets')['targetInfos'] if t['type']=='page'}
             click_selector(f'[data-attachment-id="{pdf_meta["id"]}"] button')
-            wait_for("!contentInspector.status.textContent.includes('unavailable')")
-            targets=[]
-            for _ in range(30):
-                targets=[t for t in cdp.call('Target.getTargets')['targetInfos'] if t['targetId'] not in old_targets and t['url'].startswith('blob:')]
-                if targets:break
-                time.sleep(.1)
-            check(bool(targets),'PDF Open launches a native browser blob preview in a new tab')
-            for target in targets:cdp.call('Target.closeTarget',targetId=target['targetId'])
-            cdp.call('Page.bringToFront');evaluate('physics.pause()');stable(before,'opening a file does not pan or zoom the Cosmos')
+            wait_for('imageViewer.dialog.open&&!imageViewer.pdf.hidden')
+            check({t['targetId'] for t in cdp.call('Target.getTargets')['targetInfos'] if t['type']=='page'}==old_targets,'PDF Open uses the native embedded viewer without opening another tab')
+            evaluate('imageViewer.dialog.close();physics.pause()');stable(before,'opening a file does not pan or zoom the Cosmos')
             cdp.call('Page.reload');load();wait_camera();inspect(owner)
             evaluate('window.originalMetadataSave=persistence.metadata.save;window.originalBinarySave=attachmentStore.save')
             check(evaluate(f"contentInspector.content().notes.text==={json.dumps(note)} && contentInspector.content().links[0].id==={json.dumps(link_id)} && contentInspector.content().attachments.length===7"),'notes, edited links and attachment references survive refresh')
@@ -2740,7 +2890,8 @@ def main():
             return
 
         if options.crud_only:
-            ids=[add('CRUD Galaxy')]
+            evaluate("openEntryForm();fields[0].value='CRUD Galaxy';fields[1].value='';fields[2].value='';form.requestSubmit()")
+            ids=[evaluate('selectedNode.dataset.entryId')]
             for depth in range(1,7):
                 parent=ids[-1]
                 evaluate(f"createChildEntry({json.dumps(parent)});fields[0].value={json.dumps('CRUD depth '+str(depth))};fields[1].value='';fields[2].value='';form.requestSubmit()")
@@ -2766,8 +2917,11 @@ def main():
                         edited=evaluate(f"(()=>{{const alpha=physics.simulation.alpha(),positions=[...physics.particles].map(([id,n])=>[id,n.x,n.y]);openEntryForm(entries.get({json.dumps(child)}));fields[0].value='Renamed child';fields[1].value='Description to remove';fields[2].value='Label';form.requestSubmit();physics.pause();return {{view:{{...camera.view}},quiet:physics.simulation.alpha()===alpha,inspector:!panel.hidden,preserved:positions.every(([id,x,y])=>physics.particles.get(id).x===x&&physics.particles.get(id).y===y)}};}})()")
                         check(equal_view(before,edited['view']) and edited['quiet'] and edited['preserved'] and edited['inspector']==inspector,'Edit preserves view/positions/inspector and adds no physics heat: '+label)
                         evaluate(f"openEntryForm(entries.get({json.dumps(child)}));fields[1].value='';form.requestSubmit();physics.pause()")
-                        check(evaluate(f"entries.get({json.dumps(child)}).description===''") ,'Edit clears Description: '+label)
-                        deleted=evaluate(f"(()=>{{requestEntryDelete({json.dumps(child)});document.getElementById('delete-entry-form').requestSubmit();physics.pause();return {{view:{{...camera.view}},parent:selectedNode?.dataset.entryId,inspector:!panel.hidden,focusVisible:document.activeElement.getBoundingClientRect().width>0,valid:!entries.has({json.dumps(child)})&&!nodes.has({json.dumps(child)})&&!physics.particles.has({json.dumps(child)})}};}})()")
+                        check(evaluate(f"entries.get({json.dumps(child)}).description===''") ,'Rename preserves empty Description: '+label)
+                        evaluate(f"requestEntryDelete({json.dumps(child)});document.getElementById('delete-entry-form').requestSubmit()")
+                        wait_for('!deletionBusy&&!deleteDialog.open');evaluate('physics.pause()')
+                        wait_for('!deletionBusy&&!deleteDialog.open');evaluate('physics.pause()')
+                        deleted=evaluate(f"({{view:{{...camera.view}},parent:selectedNode?.dataset.entryId,inspector:!panel.hidden,focusVisible:document.activeElement.getBoundingClientRect().width>0,valid:!entries.has({json.dumps(child)})&&!nodes.has({json.dumps(child)})&&!physics.particles.has({json.dumps(child)})}})")
                         check(equal_view(before,deleted['view']) and deleted['parent']==parent and deleted['valid'] and deleted['inspector']==inspector and deleted['focusVisible'],'Delete preserves view/inspector and selects surviving parent with usable focus: '+label)
                         evaluate('physics.onSettle()')
                         check(equal_view(before,evaluate('({...camera.view})')),'settling after CRUD cannot trigger deferred Fit: '+label)
@@ -2776,18 +2930,20 @@ def main():
             offscreen=evaluate('selectedNode.dataset.entryId')
             check(evaluate("camera.view.scale===.55 && camera.frame===null && (()=>{const r=selectedNode.getBoundingClientRect();return r.right>=physics.bounds.left&&r.left<=physics.bounds.right&&r.bottom>=physics.bounds.top&&r.top<=physics.bounds.bottom;})()"),'offscreen Add uses a same-scale minimal pan into usable space')
             evaluate(f"requestEntryDelete({json.dumps(offscreen)});document.getElementById('delete-entry-form').requestSubmit();physics.pause()")
+            wait_for('!deletionBusy&&!deleteDialog.open');evaluate('physics.pause()')
             # Storage must see the complete mutation before the new row appears.
             evaluate(f"window.saveOriginal=persistence.metadata.save;window.saveOrdering=[];persistence.metadata.save=function(snapshot){{saveOrdering.push({{model:snapshot.entries.some(e=>e.name==='Ordered child'),tree:[...hierarchySidebar.rows.values()].some(r=>r.querySelector('.tree-name').textContent==='Ordered child')}});return saveOriginal.call(this,snapshot);}};createChildEntry({json.dumps(parent)});fields[0].value='Ordered child';form.requestSubmit();physics.pause();persistence.metadata.save=saveOriginal")
             ordered=evaluate('selectedNode.dataset.entryId')
             check(evaluate('saveOrdering.some(s=>s.model&&!s.tree)') and evaluate(f"hierarchySidebar.rows.has({json.dumps(ordered)}) && entries.has({json.dumps(ordered)})"),'mutation saves complete model before publishing the new sidebar row')
             evaluate(f"requestEntryDelete({json.dumps(ordered)});document.getElementById('delete-entry-form').requestSubmit();physics.pause()")
+            wait_for('!deletionBusy&&!deleteDialog.open');evaluate('physics.pause()')
 
             outside=add('Outside system',ids[0]);remote=add('Outside Galaxy')
             for i in range(2):add('Branch sibling '+str(i),ids[2])
             wait_for('physics.settled');evaluate('physics.pause()')
             branch=ids[2];deep=ids[6]
-            evaluate(f"openEntryForm(entries.get({json.dumps(deep)}));parentField.value={json.dumps(ids[4])};form.requestSubmit();physics.pause()")
-            evaluate(f"openEntryForm(entries.get({json.dumps(deep)}));parentField.value={json.dumps(ids[5])};form.requestSubmit();physics.pause()")
+            evaluate(f"openEntryForm(entries.get({json.dumps(deep)}),null,false,'move');parentField.value={json.dumps(ids[4])};form.requestSubmit();physics.pause()")
+            evaluate(f"openEntryForm(entries.get({json.dumps(deep)}),null,false,'move');parentField.value={json.dumps(ids[5])};form.requestSubmit();physics.pause()")
             evaluate(f"focusEntry({json.dumps(deep)})");wait_camera();wait_for('physics.settled');evaluate('physics.pause();saveGalaxy()')
             evaluate("hierarchySidebar.setCollapsed(false);hierarchySidebar.tree.style.maxHeight='180px';hierarchySidebar.tree.scrollTop=120")
             subtree_count=evaluate(f"galaxyModel.subtreeIds(entries,{json.dumps(branch)}).size")
@@ -2801,7 +2957,7 @@ def main():
             check(evaluate('JSON.stringify(getGalaxySnapshot())')==model_before and evaluate("localStorage.getItem('galaxy:user-data')")==raw and equal_view(before,evaluate('({...camera.view})')),'Cancel leaves model, storage and camera untouched')
             check(evaluate('[...hierarchySidebar.expanded]')==expanded and evaluate('hierarchySidebar.tree.scrollTop')==scroll,'Cancel preserves sidebar expansion and scroll')
             deleted_ids=evaluate(f"[...galaxyModel.subtreeIds(entries,{json.dumps(branch)})]")
-            result=evaluate(f"(()=>{{const positions=[...physics.particles].filter(([id])=>!{json.dumps(deleted_ids)}.includes(id)).map(([id,n])=>[id,n.x,n.y]);requestEntryDelete({json.dumps(branch)});document.getElementById('delete-entry-form').requestSubmit();physics.pause();return {{view:{{...camera.view}},positions:positions.every(([id,x,y])=>physics.particles.get(id).x===x&&physics.particles.get(id).y===y)}};}})()")
+            result=evaluate(f"(async()=>{{const resume=physics.resume;physics.resume=()=>{{}};try{{const positions=[...physics.particles].filter(([id])=>!{json.dumps(deleted_ids)}.includes(id)).map(([id,n])=>[id,n.x,n.y]);requestEntryDelete({json.dumps(branch)});document.getElementById('delete-entry-form').requestSubmit();while(deletionBusy||deleteDialog.open)await new Promise(resolve=>setTimeout(resolve,10));physics.pause();return {{view:{{...camera.view}},positions:positions.every(([id,x,y])=>physics.particles.get(id).x===x&&physics.particles.get(id).y===y)}};}}finally{{physics.resume=resume}}}})()")
             check(equal_view(before,result['view']) and result['positions'],'subtree deletion preserves camera and surviving world coordinates')
             check(evaluate(f"{json.dumps(deleted_ids)}.every(id=>!entries.has(id)&&!nodes.has(id)&&!layout.has(id)&&!physics.particles.has(id)&&!hierarchySidebar.rows.has(id))"),'one confirmation removes the entire deep branch from every derived index')
             check(evaluate(f"selectedNode.dataset.entryId==={json.dumps(parent)} && hierarchySidebar.selectedId==={json.dumps(parent)} && panelName.textContent===entries.get({json.dumps(parent)}).name && !panelAncestry.textContent.includes('CRUD depth 6')"),'deleted selection recovers to its surviving ancestor without stale inspector data')
@@ -2820,9 +2976,11 @@ def main():
             evaluate('deleteDialog.close()')
             evaluate(f"focusEntry({json.dumps(remote)})");wait_camera();before=evaluate('({...camera.view})')
             evaluate(f"requestEntryDelete({json.dumps(remote)});document.getElementById('delete-entry-form').requestSubmit();physics.pause()")
+            wait_for('!deletionBusy&&!deleteDialog.open');evaluate('physics.pause()')
             check(equal_view(before,evaluate('({...camera.view})')) and evaluate("selectedNode===null && panel.hidden && panelAncestry.children.length===0"),'root deletion clears selection/inspector safely without reframing')
             evaluate(f"focusEntry({json.dumps(parent)})");wait_camera();selected=evaluate('selectedNode.dataset.entryId')
             evaluate(f"requestEntryDelete({json.dumps(outside)});document.getElementById('delete-entry-form').requestSubmit();physics.pause()")
+            wait_for('!deletionBusy&&!deleteDialog.open');evaluate('physics.pause()')
             check(evaluate('selectedNode.dataset.entryId')==selected,'deleting an unselected item retains the current selection')
             evaluate('resetViewButton = document.getElementById("canvas-fit");resetViewButton.click()');wait_camera()
             check(evaluate('camera.view.scale>0 && camera.frame===null'),'explicit Fit remains available after CRUD')
@@ -2830,6 +2988,7 @@ def main():
             raw=evaluate("localStorage.getItem('galaxy:user-data')")
             evaluate('loadSampleButton.click()');wait_for("document.readyState==='complete' && typeof sampleMode!=='undefined' && sampleMode");load();wait_camera()
             evaluate("requestEntryDelete('sample-planet-0-0');document.getElementById('delete-entry-form').requestSubmit()")
+            wait_for('!deletionBusy&&!deleteDialog.open');evaluate('physics.pause()')
             check(evaluate("sampleMode && !entries.has('sample-planet-0-0')") and evaluate("localStorage.getItem('galaxy:user-data')")==raw,'temporary Sample subtree deletion never changes real saved data')
             check(not cdp.errors,f'no CRUD browser exceptions: {cdp.errors}')
             print(f'{count} CRUD browser checks passed',flush=True)
