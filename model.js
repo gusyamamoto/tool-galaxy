@@ -66,6 +66,7 @@ const galaxyModel = {
             parentId: typeof record.parentId === "string" && record.parentId ? record.parentId : null,
             x: Number.isFinite(record.x) ? record.x : 400,
             y: Number.isFinite(record.y) ? record.y : 350,
+            ...Object.fromEntries(['createdAt','updatedAt'].filter(key => typeof record[key] === 'string' && Number.isFinite(Date.parse(record[key]))).map(key => [key,record[key]])),
             ...(record.appearance && typeof record.appearance === "object" && !Array.isArray(record.appearance) ?
                 { appearance: { ...record.appearance } } : {})
         };

@@ -38,9 +38,9 @@ const cosmosHierarchy = {
 
 // Section disclosure is UI-only and merges with existing navigation preferences.
 class NavigationSection {
-    constructor({root,toggle,list,name,key,persist=true,collapsed=false}) {
-        Object.assign(this,{root,toggle,list,name,key,persist});this.scroll={top:0,left:0};
-        let preference={};try{if(persist)preference=JSON.parse(localStorage.getItem('galaxy:navigation-ui')||'{}')||{};}catch{}
+    constructor({root,toggle,list,name,key,preferences,collapsed=false}) {
+        Object.assign(this,{root,toggle,list,name,key,preferences});this.scroll={top:0,left:0};
+        const preference=preferences.load();
         this.collapsed=typeof preference[key]==='boolean'?preference[key]:collapsed;
         toggle.addEventListener('click',()=>this.setCollapsed(!this.collapsed));this.apply();
     }
@@ -55,26 +55,23 @@ class NavigationSection {
         if(value)this.scroll={top:this.list.scrollTop,left:this.list.scrollLeft};
         this.collapsed=value;this.apply();
         if(!value){this.list.scrollTop=this.scroll.top;this.list.scrollLeft=this.scroll.left;}
-        if(!this.persist)return;
-        let preference={};try{preference=JSON.parse(localStorage.getItem('galaxy:navigation-ui')||'{}')||{};}catch{}
-        try{localStorage.setItem('galaxy:navigation-ui',JSON.stringify({...preference,[this.key]:value}));}catch{}
+        this.preferences.update({[this.key]:value});
     }
 }
 
 class HierarchySidebar {
-    constructor({ host, onNavigate, onCreate, onOpenPortal, onPortalMenu, portals = new Map(), onViewportChange, persist = true }) {
-        Object.assign(this, { host, onNavigate, onCreate, onOpenPortal, onPortalMenu, portals, onViewportChange, persist });
+    constructor({ host, onNavigate, onCreate, onOpenPortal, onPortalMenu, portals = new Map(), onViewportChange, preferences }) {
+        Object.assign(this, { host, onNavigate, onCreate, onOpenPortal, onPortalMenu, portals, onViewportChange, preferences });
         this.sidebar = document.getElementById("hierarchy-sidebar");
         this.tree = document.getElementById("hierarchy-tree");
         this.toggle = document.getElementById("sidebar-toggle");
         this.resize = document.getElementById("sidebar-resize");
-        this.universeSection=new NavigationSection({root:document.getElementById('universe-section'),toggle:document.getElementById('universe-toggle'),list:this.tree,name:'Universe',key:'universeCollapsed',persist});
+        this.universeSection=new NavigationSection({root:document.getElementById('universe-section'),toggle:document.getElementById('universe-toggle'),list:this.tree,name:'Universe',key:'universeCollapsed',preferences});
         this.entries = new Map(); this.rows = new Map(); this.expanded = new Set();
         this.index = { children: new Map(), roots: [] }; this.selectedId = null; this.activeId = null; this.searchMatches = new Set();
         this.mobileQuery = window.matchMedia('(max-width: 760px), (pointer: coarse) and (max-width: 1024px) and (max-height: 500px)');
         this.narrow = this.mobileQuery.matches;
-        let preference = {};
-        try { if (persist) preference = JSON.parse(localStorage.getItem("galaxy:navigation-ui") || "{}") || {}; } catch { /* UI remains usable without storage. */ }
+        const preference = preferences.load();
         this.collapsed = this.narrow || preference.collapsed === true;
         this.width = Number.isFinite(preference.width) ? preference.width : 260;
         this.applyLayout();
@@ -126,10 +123,7 @@ class HierarchySidebar {
         this.resize.setAttribute("aria-valuenow", String(Math.round(this.width)));
     }
     savePreference() {
-        if (!this.persist) return;
-        let preference = {};
-        try { preference = JSON.parse(localStorage.getItem("galaxy:navigation-ui") || "{}") || {}; } catch { /* Recover an invalid optional preference. */ }
-        try { localStorage.setItem("galaxy:navigation-ui", JSON.stringify({ ...preference, collapsed: this.collapsed, width: this.width })); } catch { /* Preference is optional. */ }
+        this.preferences.update({collapsed: this.collapsed, width: this.width});
     }
     setCollapsed(collapsed) {
         if (this.collapsed === collapsed) return;

@@ -246,7 +246,7 @@ class EntryContentInspector {
                 if (button.dataset.confirm !== "true") { button.dataset.confirm = "true"; button.textContent = "Confirm remove"; button.ariaLabel = `Confirm remove attachment ${metadata.filename}`; return; }
                 const id = metadata.entryId;
                 this.job(id, async () => {
-                    const previous = this.getEntry(id)?.content;
+                    const previous = {content:this.getEntry(id)?.content, updatedAt:this.getEntry(id)?.updatedAt};
                     await this.store.delete(metadata.storageKey,
                         () => this.save(id, { ...this.content(id), attachments: this.content(id).attachments.filter(file => file.id !== metadata.id) }),
                         () => this.rollback(id, previous));
@@ -287,7 +287,7 @@ class EntryContentInspector {
                 const { metadata, record } = await galaxyAttachmentFiles.prepare(file,id);
                 let previous;
                 await this.store.save(record, () => {
-                    previous = this.getEntry(id)?.content;
+                    previous = {content:this.getEntry(id)?.content, updatedAt:this.getEntry(id)?.updatedAt};
                     this.save(id, { ...this.content(id), attachments: [...this.content(id).attachments, metadata] });
                 }, () => this.rollback(id, previous));
             }

@@ -1,10 +1,10 @@
 // Presentation/workflows over collection references; persistence/navigation are injected.
 class ConstellationWorkspace {
-    constructor({entries,portals,collections,getActive,activate,inspect,commit,onModal,onModalClose,onLayout,showMembershipMenu,overview,onCollectionMenu,persist=true}) {
-        Object.assign(this,{entries,portals,collections,getActive,activate,inspect,commit,onModal,onModalClose,onLayout,showMembershipMenu,overview,onCollectionMenu,persist});
+    constructor({entries,portals,collections,getActive,activate,inspect,commit,onModal,onModalClose,onLayout,showMembershipMenu,overview,onCollectionMenu,preferences}) {
+        Object.assign(this,{entries,portals,collections,getActive,activate,inspect,commit,onModal,onModalClose,onLayout,showMembershipMenu,overview,onCollectionMenu,preferences});
         this.list=document.getElementById('constellation-list');this.nameDialog=document.getElementById('constellation-name-dialog');
         this.sectionToggle=document.getElementById('constellations-toggle');
-        let preference={};try{if(persist)preference=JSON.parse(localStorage.getItem('galaxy:navigation-ui')||'{}')||{};}catch{/* Optional UI preferences. */}
+        const preference=preferences.load();
         this.collapsed=typeof preference.constellationsCollapsed==='boolean'?preference.constellationsCollapsed:null;
         this.hasHadCollections=preference.constellationsSeen===true;this.initialized=false;
         this.sectionToggle.addEventListener('click',()=>{this.collapsed=!this.collapsed;this.applySectionState();this.saveSectionPreference();this.onLayout();});
@@ -51,8 +51,7 @@ class ConstellationWorkspace {
         if(!element.getBoundingClientRect().width)element=document.getElementById('sidebar-toggle');element.focus({preventScroll:true});}
     button(text,action,label=text){const button=document.createElement('button');button.type='button';button.textContent=text;button.ariaLabel=label;button.addEventListener('click',action);return button;}
     saveSectionPreference(){
-        if(!this.persist)return;let preference={};try{preference=JSON.parse(localStorage.getItem('galaxy:navigation-ui')||'{}')||{};}catch{/* Recover optional UI state. */}
-        try{localStorage.setItem('galaxy:navigation-ui',JSON.stringify({...preference,constellationsCollapsed:this.collapsed,constellationsSeen:this.hasHadCollections}));}catch{/* Section remains usable without storage. */}
+        this.preferences.update({constellationsCollapsed:this.collapsed,constellationsSeen:this.hasHadCollections});
     }
     applySectionState(){
         if(this.collapsed&&this.list.contains(document.activeElement))this.sectionToggle.focus({preventScroll:true});

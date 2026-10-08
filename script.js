@@ -27,6 +27,8 @@ const initialEntries = [
 
 const entryRoles = galaxyModel.roles;
 const sampleMode = galaxySample.isRequested(window.location.search);
+const persistence = createPersistence({sample: sampleMode, sampleSnapshot: sampleMode ? galaxySample.build() : null});
+const universeRepository = createUniverseRepository({persistence, canWrite: () => sampleMode || storageAvailable});
 if (sampleMode) {
     // The query activates this page load only. Keeping it out of the address bar
     // means a normal refresh always returns to the user's persisted Galaxy.
@@ -79,7 +81,7 @@ const fields = ["entry-name", "entry-description", "entry-category"].map((id) =>
 const entries = new Map();
 const archivedEntries = new Map(), archivedGalaxies = new Map();
 const archiveDialog = document.getElementById('archive-galaxy-dialog');
-const archivedSection=new NavigationSection({root:document.getElementById('archived-galaxies'),toggle:document.getElementById('archived-galaxies-toggle'),list:document.getElementById('archived-galaxy-list'),name:'Archived Galaxies',key:'archivedCollapsed',persist:!sampleMode,collapsed:true});
+const archivedSection=new NavigationSection({root:document.getElementById('archived-galaxies'),toggle:document.getElementById('archived-galaxies-toggle'),list:document.getElementById('archived-galaxy-list'),name:'Archived Galaxies',key:'archivedCollapsed',preferences:persistence.preferences,collapsed:true});
 const archiveMotion = new GalaxyArchiveMotion(graphViewport);
 let archivingGalaxyId = null, archiveConfirmationIds = null, archiveReturnFocus = null, archiveFeedbackTimer = null;
 function allCanonicalEntries() { return galaxyArchives.join(entries, archivedEntries); }
@@ -126,7 +128,7 @@ let cameraViewReady = false;
 let lastRegionSample = -Infinity, lastRegionFrame = 0;
 let semanticDetail = cosmosView.detail(1);
 const focusRevealIds = new Set();
-const hierarchySidebar = new HierarchySidebar({ host: galaxy, persist: !sampleMode,
+const hierarchySidebar = new HierarchySidebar({ host: galaxy, preferences: persistence.preferences,
     onNavigate: id => focusEntry(id), onCreate: (id, button) => toggleContentMenu(addMenu, button, id),
     portals, onOpenPortal: id => openPortal(id), onPortalMenu: (id, x, y) => openPortalContextMenu(id, x, y),
     onViewportChange: animate => crudActive || panelChangeActive ? updateGraphViewport() : navigationViewportChanged(animate) });
@@ -443,30 +445,22 @@ const physics = new GalaxyPhysics({
     }
 });
 
-const attachmentStore = createGalaxyAttachmentStore({ temporary: sampleMode });
+const attachmentStore = persistence.files;
 if (sampleMode) galaxySample.files().forEach(record => attachmentStore.save(record));
-function persistContentSnapshot() {
-    if (!sampleMode) {
-        if (!storageAvailable) throw new Error("Saved content is unavailable. The original data is being preserved.");
-        galaxyStorage.save(getGalaxySnapshot());
-    }
-    graphNeedsSave = false;
-}
 function saveEntryContent(id, value) {
     const entry = entries.get(id);
     if (!entry || deletingContentIds.has(id)) throw new Error("This item is being deleted or no longer exists.");
-    const content = galaxyModel.normalizeContent(value,id);
-    if (!content) throw new Error("Content is invalid or exceeds its text limits.");
-    const previous = entry.content;
-    entry.content = content;
-    try { persistContentSnapshot(); }
-    catch (error) { if (previous) entry.content = previous; else delete entry.content; throw error; }
+    const updated = universeRepository.updateContent(getGalaxySnapshot(), id, value);
+    entry.content = updated.content; entry.updatedAt = updated.updatedAt;
+    graphNeedsSave = false;
 }
 function rollbackEntryContent(id, previous) {
     const entry = entries.get(id);
     if (!entry) return;
-    if (previous) entry.content = previous; else delete entry.content;
-    persistContentSnapshot();
+    const updated = universeRepository.updateContent(getGalaxySnapshot(), id, previous.content, previous);
+    if (updated.content) entry.content = updated.content; else delete entry.content;
+    if (updated.updatedAt) entry.updatedAt = updated.updatedAt; else delete entry.updatedAt;
+    graphNeedsSave = false;
 }
 const motion = new CosmosMotion({wake:()=>renderRegions()});
 const contentInspector = new EntryContentInspector({ store: attachmentStore, motion, getEntry: id => entries.get(id),
@@ -541,7 +535,7 @@ const constellationOverlay = new ConstellationOverlay(document.getElementById('c
 },{motion});
 const constellationWorkspace = new ConstellationWorkspace({ entries, portals, collections: constellations,
     getActive: () => activeConstellationId, activate: activateConstellation, inspect: id => focusEntry(id),
-    commit: commitConstellations, showMembershipMenu: showConstellationMemberships, overview: showConstellationOverview, onCollectionMenu:openCollectionContextMenu, persist: !sampleMode,
+    commit: commitConstellations, showMembershipMenu: showConstellationMemberships, overview: showConstellationOverview, onCollectionMenu:openCollectionContextMenu, preferences: persistence.preferences,
     onModal() { closeContextMenu(); closeContentMenus(); beginCrudOperation(); }, onModalClose: finishCrudOperation,
     onLayout() { if (cameraViewReady) updateGraphViewport(); } });
 
@@ -577,14 +571,11 @@ function showConstellationMemberships(id) {
 function commitConstellations(next) {
     if (deletionBusy) throw new Error('Wait for item deletion to finish.');
     autoFitPending = false; keyboardNavigation = false; camera.stopAnimation();
-    const records = galaxyConstellations.normalizeAll([...next.values()], allCanonicalEntries());
+    let records = galaxyConstellations.normalizeAll([...next.values()], allCanonicalEntries());
     if (records.length !== next.size) throw new Error('Choose a valid Constellation name and items.');
     // Publish only after persistence succeeds. Collection edits never rebuild or
     // reheat the graph and never frame the camera.
-    if (!sampleMode) {
-        if (!storageAvailable) throw new Error('Saved data is unavailable. The original data is being preserved.');
-        galaxyStorage.save({ ...getGalaxySnapshot(), constellations: records });
-    }
+    records = universeRepository.replaceConstellations(getGalaxySnapshot(), records);
     constellations.clear(); records.forEach(record => constellations.set(record.id, record));
     graphNeedsSave = false;
     if (activeConstellationId && !constellations.has(activeConstellationId)) exitConstellation();
@@ -675,17 +666,10 @@ function reportStorageFailure(message) {
 }
 
 function getGalaxySnapshot() {
-    return {
-        entries: [...allCanonicalEntries().values()].map(({ id, name, description, category, parentId, x, y, appearance, content }) =>
-            ({ id, name, description, category, parentId, x, y, ...(appearance ? { appearance } : {}), ...(content ? { content } : {}) })),
-        portals: [...portals.values()].map(portal => ({ ...portal })),
-        constellations: [...constellations.values()].map(collection => ({ ...collection, memberEntryIds: [...collection.memberEntryIds] })),
-        layout: [...layout].map(([id, placement]) => ({ id, ...placement })),
-        ...(archivedGalaxies.size ? { archivedGalaxies: [...archivedGalaxies.values()] } : {})
-    };
+    return universeRepository.snapshot({entries: allCanonicalEntries(), portals, constellations, layout, archivedGalaxies});
 }
 
-function saveGalaxy() {
+function saveGalaxy(intent = {type:'layout.saved'}) {
     if (sampleMode) {
         graphNeedsSave = false;
         return;
@@ -694,10 +678,11 @@ function saveGalaxy() {
         return;
     }
     try {
-        galaxyStorage.save(getGalaxySnapshot());
+        universeRepository.save(getGalaxySnapshot(), intent);
         graphNeedsSave = false;
         storageStatus.hidden = true;
     } catch (error) {
+        graphNeedsSave = true;
         reportStorageFailure("Changes could not be saved in this browser. They may be lost on refresh.");
     }
 }
@@ -705,10 +690,10 @@ function saveGalaxy() {
 function initializeGalaxy() {
     let saved = null;
     if (sampleMode) {
-        saved = galaxySample.build();
+        saved = universeRepository.load();
     } else {
         try {
-            saved = galaxyStorage.load();
+            saved = universeRepository.load();
         } catch (error) {
             // Preserve unreadable/unsupported data instead of overwriting it.
             storageAvailable = false;
@@ -739,10 +724,9 @@ function initializeGalaxy() {
     } else galaxyModel.normalizeHierarchy(entries);
     const savedPortals = saved?.portals || [], normalizedPortals = galaxyPortals.normalizeAll(savedPortals, entries);
     normalizedPortals.forEach(portal => portals.set(portal.id, portal));
-    if (!sampleMode && JSON.stringify(savedPortals) !== JSON.stringify(normalizedPortals)) graphNeedsSave = true;
     const savedConstellations = saved?.constellations || [], normalizedConstellations = galaxyConstellations.normalizeAll(savedConstellations, entries);
     normalizedConstellations.forEach(collection => constellations.set(collection.id, collection));
-    if (!sampleMode && JSON.stringify(savedConstellations) !== JSON.stringify(normalizedConstellations)) graphNeedsSave = true;
+    if (!sampleMode && universeRepository.needsCanonicalSave(saved, {portals:normalizedPortals,constellations:normalizedConstellations})) graphNeedsSave = true;
     if (sampleMode) entries.forEach(entry => { entry.seedLayout = true; });
     layout = galaxyModel.normalizeLayout(saved?.layout || [], entries);
     if (!sampleMode && saved?.layout?.some(record => record?.pinned === true)) graphNeedsSave = true;
@@ -1444,7 +1428,7 @@ function finishCrudOperation() {
 // One synchronous mutation: model/derived particles -> save -> DOM/tree ->
 // selection/inspector. No navigation helpers or global Fit participate.
 function commitCrudMutation(mutate, { selectionId, topologyChanged = true, reveal = false,
-    preserveScroll = true, inspectorOpen = !panel.hidden, persisted = false, animateCreation = true, preserveInspector = false } = {}) {
+    preserveScroll = true, inspectorOpen = !panel.hidden, persisted = false, animateCreation = true, preserveInspector = false, changeIntent } = {}) {
     beginCrudOperation();
     const scroll = { top: hierarchySidebar.tree.scrollTop, left: hierarchySidebar.tree.scrollLeft };
     const previousSelection = selectedNode?.dataset.entryId;
@@ -1454,7 +1438,7 @@ function commitCrudMutation(mutate, { selectionId, topologyChanged = true, revea
     if (!entries.has(selectedNode?.dataset.entryId)) selectedNode = null;
     galaxyModel.normalizeHierarchy(entries);
     if (topologyChanged) syncPhysicsGraph({ updateUI: false, reheat: .12 });
-    if (!persisted) saveGalaxy(); else graphNeedsSave = false;
+    if (!persisted) saveGalaxy(changeIntent || {type:'items.changed', ids:selectionId ? [selectionId] : []}); else graphNeedsSave = false;
     nodes.forEach((node, id) => {
         if (entries.has(id)) return;
         node.remove(); nodes.delete(id); regions.get(id)?.remove(); regions.delete(id);
@@ -1675,22 +1659,26 @@ form.addEventListener("submit", (event) => {
         ...getNewEntryPosition(data.parentId ? [data.parentId] : [], roleField.dataset.role), seedLayout: true
     };
     const oldParentId = entry.parentId;
+    const changedIds = [data.id];
     commitCrudMutation(() => {
-        Object.assign(entry, data);
+        const now = new Date().toISOString();
+        Object.assign(entry, data, {updatedAt:now}, creating ? {createdAt:now} : {});
         entries.set(entry.id, entry);
         if (oldParentId !== data.parentId) layout.delete(entry.id);
         if(creating&&!data.parentId){
             const starter=cosmosEveryday.starters.find(item=>item.id===galaxyStarter.value);
             galaxyModel.normalizeHierarchy(entries);
             for(const name of starter?.children||[]){
-                const child={id:getNewEntryId(),name,description:'',category:'',parentId:data.id,role:galaxyModel.roleAtDepth(1),depth:1,
+                const child={id:getNewEntryId(),name,description:'',category:'',createdAt:now,updatedAt:now,parentId:data.id,role:galaxyModel.roleAtDepth(1),depth:1,
                     ...getNewEntryPosition([data.id],galaxyModel.roleAtDepth(1)),seedLayout:true};
                 entries.set(child.id,child);
+                changedIds.push(child.id);
             }
         }
     }, { selectionId: data.id, topologyChanged: creating || oldParentId !== data.parentId,
         reveal: creating || oldParentId !== data.parentId, preserveScroll: !creating,
-        inspectorOpen: creating || !panel.hidden });
+        inspectorOpen: creating || !panel.hidden,
+        changeIntent:{type:creating ? 'items.created' : oldParentId !== data.parentId ? 'items.moved' : 'items.renamed',ids:changedIds} });
     dialog.close();
     restoreCrudFocus(); finishCrudOperation();
 });
@@ -1769,40 +1757,30 @@ document.getElementById("delete-entry-form").addEventListener("submit", async (e
     const fallbackId = plan.ids.has(selectedId) ?
         galaxyModel.ancestors(entries, selectedId).find(parent => !plan.ids.has(parent.id))?.id : selectedId;
     const hasFiles = [...plan.ids].some(id => entries.get(id)?.content?.attachments.length) || contentInspector.hasJobs(plan.ids) || attachmentStore.hasEntries(plan.ids);
-    if (hasFiles) {
-        deletionBusy = true;
-        plan.ids.forEach(id => deletingContentIds.add(id));
-        const confirm = document.getElementById("confirm-delete-entry"), cancel = document.getElementById("cancel-delete-entry");
-        confirm.disabled = cancel.disabled = true;
-        let metadataWritten = false;
-        try {
-            await attachmentStore.deleteEntries(plan.ids, () => {
-                const current = galaxyModel.deletionPlan(entries, entry.id, { subtree: true });
-                if (current.error || current.ids.size !== plan.ids.size || [...current.ids].some(id => !plan.ids.has(id))) throw new Error("The branch changed. Cancel and review its new deletion count.");
-                const snapshot = getGalaxySnapshot();
-                if (!sampleMode) {
-                    if (!storageAvailable) throw new Error("Saved data cannot be updated in this browser.");
-                    galaxyStorage.save({ ...snapshot, entries: snapshot.entries.filter(e => !plan.ids.has(e.id)),
-                        portals: galaxyPortals.withoutEntries(snapshot.portals, plan.ids),
-                        constellations: galaxyConstellations.withoutEntries(snapshot.constellations, plan.ids),
-                        layout: snapshot.layout.filter(value => !plan.ids.has(value.id)) });
-                }
-                metadataWritten = true;
-            }, () => { if (metadataWritten && !sampleMode) galaxyStorage.save(getGalaxySnapshot()); });
-        } catch (error) {
-            document.getElementById("delete-entry-message").textContent = `Could not delete the files. Your items are unchanged. ${error.message || "Try again."}`;
-            return;
-        } finally {
-            deletionBusy = false; deletingContentIds.clear(); confirm.disabled = cancel.disabled = false;
-        }
+    deletionBusy = true;
+    plan.ids.forEach(id => deletingContentIds.add(id));
+    const confirm = document.getElementById("confirm-delete-entry"), cancel = document.getElementById("cancel-delete-entry");
+    confirm.disabled = cancel.disabled = true;
+    let deletionSnapshot;
+    try {
+        deletionSnapshot = await universeRepository.deleteSubtree(getGalaxySnapshot(), plan.ids, {deleteFiles:hasFiles, readSnapshot:getGalaxySnapshot, validate() {
+            const current = galaxyModel.deletionPlan(entries, entry.id, {subtree:true});
+            if (current.error || current.ids.size !== plan.ids.size || [...current.ids].some(id => !plan.ids.has(id)))
+                throw new Error("The branch changed. Cancel and review its new deletion count.");
+        }});
+    } catch (error) {
+        document.getElementById("delete-entry-message").textContent = `Could not delete this item. Your items are unchanged. ${error.message || "Try again."}`;
+        return;
+    } finally {
+        deletionBusy = false; deletingContentIds.clear(); confirm.disabled = cancel.disabled = false;
     }
     const deletionGhost=motion.captureDeletion(nodes.get(entry.id));
     commitCrudMutation(() => {
         portals.forEach((portal, id) => { if (plan.ids.has(portal.targetEntryId) || plan.ids.has(portal.parentEntryId)) portals.delete(id); });
-        galaxyConstellations.withoutEntries([...constellations.values()], plan.ids).forEach(collection => constellations.set(collection.id, collection));
+        deletionSnapshot.constellations.forEach(collection => constellations.set(collection.id, collection));
         plan.ids.forEach(id => { entries.delete(id); layout.delete(id); focusRevealIds.delete(id); });
         if (plan.ids.has(hoveredSystemId)) hoveredSystemId = null;
-    }, { selectionId: fallbackId, persisted: hasFiles });
+    }, { selectionId: fallbackId, persisted: true });
     motion.implode(deletionGhost);
     deleteDialog.close();
     restoreCrudFocus(); finishCrudOperation();
@@ -1858,10 +1836,7 @@ document.getElementById('archive-galaxy-form').addEventListener('submit',event=>
     const record={galaxyId:root.id,archivedAt:new Date().toISOString(),expandedIds:[...hierarchySidebar.expanded].filter(id=>ids.has(id))};
     const snapshot=getGalaxySnapshot();
     try {
-        if(!sampleMode){
-            if(!storageAvailable)throw new Error('Saved data is unavailable. Your original snapshot is preserved.');
-            galaxyStorage.save({...snapshot,archivedGalaxies:[...archivedGalaxies.values(),record]});
-        }
+        universeRepository.archive(snapshot,record);
     } catch(error){showArchiveError(`Could not archive this Galaxy. Its items are unchanged. ${error.message}`);return;}
     let echo=null;
     try {echo=archiveMotion.capture(regions.get(root.id),[...ids].map(id=>nodes.get(id)),camera.worldToScreen(root.x,root.y));} catch { /* Data is safe even if presentation fails. */ }
@@ -1884,10 +1859,7 @@ function restoreGalaxy(id) {
     if(!record||!root||deletionBusy||activeNodeDrags||pan||pinch||document.querySelector('dialog[open]'))return;
     const ids=galaxyModel.subtreeIds(archivedEntries,id),snapshot=getGalaxySnapshot();
     try {
-        if(!sampleMode){
-            if(!storageAvailable)throw new Error('Saved data is unavailable.');
-            galaxyStorage.save({...snapshot,archivedGalaxies:[...archivedGalaxies.values()].filter(record=>record.galaxyId!==id)});
-        }
+        universeRepository.restore(snapshot,id);
     } catch(error){archiveFeedback(`Could not restore ${root.name}. It remains archived. ${error.message}`);return;}
     const overview=activeConstellationId&&constellationOverview&&!panel.hidden;
     commitCrudMutation(()=>{
@@ -1919,11 +1891,8 @@ function openPortal(id) {
 // They never rebuild/reheat physics or invoke camera navigation.
 function commitPortalReferences(next) {
     autoFitPending = false; keyboardNavigation = false; camera.stopAnimation();
-    if (!sampleMode) {
-        if (!storageAvailable) throw new Error("Saved data is unavailable. The original snapshot is being preserved.");
-        galaxyStorage.save({ ...getGalaxySnapshot(), portals: [...next.values()] });
-        storageStatus.hidden = true;
-    }
+    universeRepository.replacePlacements(getGalaxySnapshot(), [...next.values()]);
+    storageStatus.hidden = true;
     portals.clear(); next.forEach((portal, id) => portals.set(id, portal));
     graphNeedsSave = false;
     hierarchySidebar.setEntries(entries);

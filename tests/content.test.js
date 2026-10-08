@@ -1,8 +1,8 @@
 const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm'),path=require('node:path');
 const {test}=require('node:test');
 const context=vm.createContext({URL,Blob});
-for(const file of ['model.js','attachment-store.js'])vm.runInContext(fs.readFileSync(path.join(__dirname,'..',file),'utf8'),context);
-const model=vm.runInContext('galaxyModel',context),create=vm.runInContext('createGalaxyAttachmentStore',context);
+for(const file of ['model.js','attachment-store.js','persistence/memory-stores.js'])vm.runInContext(fs.readFileSync(path.join(__dirname,'..',file),'utf8'),context);
+const model=vm.runInContext('galaxyModel',context),create=vm.runInContext('createMemoryFileStore',context);
 const plain=value=>JSON.parse(JSON.stringify(value));
 const file={id:'file-1',kind:'upload',entryId:'entry',filename:'plan.pdf',mimeType:'application/pdf',size:12,storageKey:'object/path/file-1',createdAt:'2026-01-01T00:00:00Z'};
 test('content is independent of depth and older entries need no content migration',()=>{

@@ -19,7 +19,8 @@ const galaxyConstellations = {
                 typeof record.name !== "string" || !record.name.trim() || record.name.trim().length > 60 || !Array.isArray(record.memberEntryIds) ||
                 typeof record.createdAt !== "string" || !Number.isFinite(Date.parse(record.createdAt))) continue;
             seen.add(record.id);
-            result.push({ id: record.id, name: record.name.trim(), memberEntryIds: [...new Set(record.memberEntryIds.filter(id => entries.has(id)))], createdAt: record.createdAt });
+            result.push({ id: record.id, name: record.name.trim(), memberEntryIds: [...new Set(record.memberEntryIds.filter(id => entries.has(id)))], createdAt: record.createdAt,
+                ...(typeof record.updatedAt === 'string' && Number.isFinite(Date.parse(record.updatedAt)) ? {updatedAt:record.updatedAt} : {}) });
         }
         return result;
     },
