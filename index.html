@@ -47,18 +47,20 @@
             </div>
                 </div>
             </div>
-            <h2 class="sidebar-section-title">Universe</h2>
-            <div id="hierarchy-tree" role="tree" aria-label="Cosmos Universe navigation"></div>
+            <section id="universe-section" aria-labelledby="universe-heading">
+                <header class="sidebar-section-header"><h2 id="universe-heading" class="sidebar-section-title"><button id="universe-toggle" class="sidebar-section-toggle" type="button" aria-controls="hierarchy-tree" aria-expanded="true" aria-label="Collapse Universe"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m6 4 4 4-4 4"/></svg><span>Universe</span></button></h2><button id="add-entry-button" type="button" class="collection-add" aria-label="New Galaxy" title="New Galaxy">+</button></header>
+                <div id="hierarchy-tree" role="tree" aria-label="Cosmos Universe navigation"></div>
+            </section>
             <section id="constellations-section" aria-labelledby="constellations-heading">
-                <header class="sidebar-section-header"><button id="constellations-toggle" class="tree-disclosure" type="button" aria-label="Collapse Constellations" aria-controls="constellation-list" aria-expanded="true"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m6 4 4 4-4 4"/></svg></button><h2 id="constellations-heading" class="sidebar-section-title">Constellations</h2><button id="new-constellation-button" type="button" class="collection-add" aria-label="Create Constellation" title="Create Constellation">+</button></header>
+                <header class="sidebar-section-header"><h2 id="constellations-heading" class="sidebar-section-title"><button id="constellations-toggle" class="sidebar-section-toggle" type="button" aria-label="Collapse Constellations" aria-controls="constellation-list" aria-expanded="true"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m6 4 4 4-4 4"/></svg><span>Constellations</span></button></h2><button id="new-constellation-button" type="button" class="collection-add" aria-label="Create Constellation" title="Create Constellation">+</button></header>
                 <ul id="constellation-list" aria-label="Constellations"></ul>
             </section>
-            <details id="sidebar-tools">
-                <summary>More</summary>
-                <button id="add-entry-button" type="button">New Galaxy</button>
-                <button id="reset-view-button" type="button">Fit Galaxy</button>
-                <div class="view-controls"><span id="hierarchy-count"></span><output id="zoom-level" aria-label="Zoom level">100%</output></div>
-                <p class="galaxy-hint">Scroll to zoom · Drag space to pan</p>
+            <section id="archived-galaxies" aria-labelledby="archived-galaxies-heading" hidden>
+                <header class="sidebar-section-header"><h2 id="archived-galaxies-heading" class="sidebar-section-title"><button id="archived-galaxies-toggle" class="sidebar-section-toggle" type="button" aria-label="Expand Archived Galaxies" aria-controls="archived-galaxy-list" aria-expanded="false"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m6 4 4 4-4 4"/></svg><span>Archived Galaxies <span id="archived-galaxy-count"></span></span></button></h2></header>
+                <ul id="archived-galaxy-list" aria-label="Archived Galaxies" hidden></ul>
+            </section>
+            <details id="sample-utility">
+                <summary>Sample data</summary>
                 <aside id="sample-controls" aria-label="Sample controls">
                     <span><strong id="sample-mode-label">Sample data</strong> <span id="sample-mode-count">Example items</span></span>
                     <button id="load-sample-button" type="button">Load Sample</button>
@@ -80,6 +82,7 @@
                 <div id="entry-actions" role="menu" aria-label="Item actions" hidden>
                     <button id="edit-entry-button" type="button" role="menuitem">Rename</button>
                     <button id="move-entry-button" type="button" role="menuitem">Move / change parent</button>
+                    <button id="archive-galaxy-button" type="button" role="menuitem" data-galaxy-only hidden>Archive Galaxy</button>
                     <button id="delete-entry-button" type="button" role="menuitem">Delete item</button>
                     <button id="rename-constellation-button" type="button" role="menuitem" data-collection-action hidden>Rename</button>
                     <button id="delete-constellation-button" type="button" role="menuitem" data-collection-action hidden>Delete Constellation</button>
@@ -144,8 +147,9 @@
             <button type="button" role="menuitem" data-action="create">Add item</button>
             <button type="button" role="menuitem" data-action="files">Add files</button>
             <button type="button" role="menuitem" data-action="constellation">Add to Constellation</button>
-            <button type="button" role="menuitem" data-action="portal">Add existing item</button>
+            <button type="button" role="menuitem" data-action="portal" data-management-only>Add existing item</button>
             <button type="button" role="menuitem" data-action="edit">Rename</button>
+            <button type="button" role="menuitem" data-action="archive" data-galaxy-only hidden>Archive Galaxy</button>
             <button type="button" role="menuitem" data-action="delete">Delete item</button>
             <button type="button" role="menuitem" data-action="open-portal" data-portal-action hidden>Go to original</button>
             <button type="button" role="menuitem" data-action="remove-portal" data-portal-action hidden>Remove from here</button>
@@ -154,6 +158,8 @@
             <button type="button" role="menuitem" data-action="collection-delete" data-collection-context hidden>Delete Constellation</button>
             <div id="constellation-memberships" hidden></div>
         </div>
+        <div id="navigation-diagnostics" hidden><span id="hierarchy-count"></span><output id="zoom-level" aria-label="Zoom level">100%</output></div>
+        <p id="archive-feedback" role="status" aria-live="polite" hidden></p>
     </main>
 
     <dialog id="add-entry-dialog" aria-labelledby="add-entry-title">
@@ -233,7 +239,17 @@
         </form>
     </dialog>
 
+    <dialog id="archive-galaxy-dialog" class="collection-dialog" aria-labelledby="archive-galaxy-title" aria-describedby="archive-galaxy-message">
+        <form id="archive-galaxy-form">
+            <h2 id="archive-galaxy-title">Archive Galaxy?</h2>
+            <p id="archive-galaxy-message">Its items will be removed from the active Universe, but you can restore it later from Archived Galaxies in the sidebar.</p>
+            <p id="archive-galaxy-error" role="alert" hidden></p>
+            <div class="form-actions"><button id="cancel-archive-galaxy" type="button" autofocus>Cancel</button><button id="confirm-archive-galaxy" type="submit">Archive Galaxy</button></div>
+        </form>
+    </dialog>
+
     <script src="model.js"></script>
+    <script src="archives.js"></script>
     <script src="everyday.js"></script>
     <script src="portals.js"></script>
     <script src="constellations.js"></script>

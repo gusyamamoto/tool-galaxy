@@ -49,7 +49,7 @@ CRUD/persistence, canonical drops, gallery rendering and touch checklists.
 - **Add:** each hierarchy row has a small **+**, shown on hover/focus on desktop
   and on the selected/focused row in the mobile drawer. It opens Add item, Add existing item, Add files, Add note and Add
   bookmark for that row without selecting or navigating first. New Galaxy remains
-  under More; Search has no global contextual +.
+  under the Universe heading +; Search has no global contextual +.
 - **Add item:** use **+ → Add item** or the body's right-click menu. The parent
   is implicit and creation asks only for **Name**. Depth derives the internal
   Galaxy → Sun → Planet → Moon → Satellite → Astronaut visual role automatically;
@@ -67,9 +67,21 @@ CRUD/persistence, canonical drops, gallery rendering and touch checklists.
   Mobile rows use 44px height, compressed depth indentation and no horizontal
   scrolling and clean single-line truncation. Full names remain available through
   accessible labels, row titles and the selected entry's Content header.
-  The small Galaxy title stays in the sidebar above separate Universe and
-  Constellations sections. **More** at the bottom holds New Galaxy, Fit Galaxy, zoom/count information, navigation
-  hints and temporary Sample controls. A small Sample label identifies that mode.
+  The small Galaxy title stays above Search and three independently collapsible
+  sections: Universe, Constellations and Archived Galaxies. Each heading and its
+  chevron toggle only that section. Universe + opens the existing New Galaxy /
+  Starter flow; Constellations + creates a collection. Both reveal on hover/focus
+  on desktop and remain visible with 44px targets on touch. Archive has no + and
+  its section disappears when empty. The existing navigation preference object
+  stores `universeCollapsed`, `constellationsCollapsed` and `archivedCollapsed`
+  separately from overall sidebar collapse/width. Section collapse preserves
+  selection, content/drafts, camera, lens, physics and internal branch expansion.
+  The generic More container, sidebar Fit, permanent count/zoom diagnostics and
+  pan/zoom instructions are removed. Canvas Fit uses the same existing handler;
+  internal count/zoom elements remain hidden for debug/test access. A separate,
+  quiet Sample data disclosure at the bottom exposes Load Sample when requested
+  and opens automatically in Sample mode with Leave Sample. Sample changes never
+  write real data or navigation preferences.
   Toggle navigation beside the title to reclaim canvas space; a small reopen
   control remains when it is closed. Drag its
   right edge to resize, or focus the separator and use Left/Right/Home/End.
@@ -90,8 +102,10 @@ CRUD/persistence, canonical drops, gallery rendering and touch checklists.
   Contents measures available space without changing the camera;
   it waits for drag release before opening if a pointer is held.
 - **Body actions:** right-click a body, Galaxy name or cloud for Add item,
-  Add to Constellation, Rename and Delete item. The sidebar Add menu keeps the
-  complete organization/content shortcuts, including Add existing item.
+  Add to Constellation, Rename and Delete item. The sidebar row **+** keeps the
+  complete organization/content shortcuts, including Add existing item. Item-level
+  sidebar context menus also expose it; all canvas and Galaxy-level context menus
+  omit this advanced placement action.
   Subtree confirmation remains. The menu stays inside the viewport, closes on outside clicks/Escape,
   and does not start dragging or camera focus. Shift+F10 opens it from a focused
   body; arrows/Home/End navigate its actions.
@@ -126,6 +140,53 @@ CRUD/persistence, canonical drops, gallery rendering and touch checklists.
   parent-relative angle and gently bounded orbital region. An extreme drop
   returns gradually toward its parent; release preserves inertia. There are no
   fixed-position controls or physics-status messages.
+
+## Archive and restore Galaxies
+
+Whole Galaxies offer **Archive Galaxy** in their canvas/sidebar context menu and
+Contents **More** menu, before Delete. A Cancel-first confirmation explains that
+items leave the active Universe and can return later. Normal item deletion is
+unchanged. **Archived Galaxies** below Constellations is initially collapsed; each row shows its
+name and a keyboard/touch-accessible Restore button. Permanent deletion from this
+section is deferred; restore a Galaxy to use its existing Delete action.
+
+The version-5 snapshot keeps every canonical item, file descriptor, note, bookmark,
+Portal and Constellation reference in the original fields. An optional
+`archivedGalaxies` array stores `{galaxyId, archivedAt, expandedIds}`. There is no
+migration, duplicate content, file-store change or deletion of IndexedDB bytes.
+Older snapshots default to an empty archive. Active graph/sidebar/search/pickers
+exclude archived subtrees and linked placements whose endpoints are archived.
+References remain stored and return with their original IDs on restore.
+Constellations retain archived memberships, show their archived count, and use
+only active members for framing and overlays. Normal reference edits validate
+against the combined canonical data, so they cannot silently prune archived IDs.
+
+Archive and restore save metadata before publishing the active-view change. A
+storage failure leaves the Galaxy in its previous state. In-flight owned file
+actions and open owned note/bookmark editors must finish before archive. Unrelated
+open drafts, active collection lenses and camera state are preserved. Positions,
+relative layout preferences, appearance and branch expansion state are retained;
+restored bodies start at saved positions, then use normal soft settling.
+
+Archive takes a lightweight presentation snapshot of the visible cloud and bodies.
+A 780ms gravitational collapse contracts and gently curves the cloud/body group
+inward, with two thin curved energy arcs. Brightness concentrates into a 22px
+luminous core, then compresses into a 10px dark point which disappears. Labels
+and hit areas are excluded; there are no particles, flashes, shake or live blur
+filters. Other Galaxies and saved coordinates do not participate. Restore takes
+560ms: a point and expanding arcs precede an outward cloud materialization, then
+Sun/Planet/Moon/Satellite/Astronaut groups emerge progressively into their saved
+positions and crossfade to the normally settling live bodies. Reduced motion uses
+a 110ms archive fade/scale-down and a 140ms restore fade/scale-up without energy
+effects. Visual work never gates persistence. Ghosts/animations clean up on
+completion, camera changes, resize, page hiding and motion-preference changes.
+
+Run `node --test tests/archives.test.js tests/storage.test.js` and
+`python tests/browser-check.py --archive-only --screenshots` for deep trees,
+confirmation/Cancel, storage failures, files/notes/bookmarks, links, collections,
+refresh/restore, empty-Universe/multiple archives, positions, mobile, reduced motion,
+corrupt-data protection and Sample isolation. Inspect the disappearance on a native
+display and with a large real Galaxy before committing.
 
 ## Mobile interaction polish
 
@@ -901,7 +962,7 @@ right-click actions and keyboard dismissal, mobile navigation and Sample isolati
 `python tests/browser-check.py --interface-only --screenshots` checks control placement,
 hidden/contextual Contents, Escape and empty-click dismissal, camera-stable edge selection,
 unchanged world coordinates through panel transitions, minimum sidebar width, all
-contextual creation paths, drag camera stability, management More, desktop/laptop/mobile
+contextual creation paths, drag camera stability, independent sections, desktop/laptop/mobile
 layouts and panel-aware Fit. Its screenshots include the clean and immersive canvas.
 The migration-only suite pauses fixtures before their first physics frame to
 verify exact initial coordinates, then exercises normal save, v4/v5 pin normalization,
@@ -945,7 +1006,7 @@ cues rather than hard containers or an astronomical simulation. Large production
 datasets beyond this sample still need profiling. An appearance picker is deferred.
 Before committing the interface changes, also check long names and deep branches
 in your own hierarchy; create children through the contextual + and right-click;
-collapse/reopen and resize the sidebar; close/reopen Contents and open More;
+collapse/reopen and resize the sidebar; toggle each section and close/reopen Contents;
 click empty space and press Escape; Fit with both panels open or closed; use keyboard tree
 and menu navigation; and check the mobile drawer and refresh persistence. Load and
 remove the temporary sample, then confirm your saved hierarchy and sidebar preference
@@ -964,3 +1025,10 @@ stability and Sample isolation. Before committing, open existing saved data with
 legacy records; follow a cross-Galaxy Portal, interrupt travel, edit content,
 delete a subtree, refresh, and check the mobile header and Astronaut tethers.
 Constellations use temporary collection overlays independently of Portal travel.
+
+
+`python tests/browser-check.py --sidebar-sections-only --screenshots` checks
+independent section state, native Enter/Space activation, preserved child branches,
+content drafts/camera/lenses/physics, Universe + and Starter creation, Archive
+appearance/restore/last-row removal, hidden diagnostics, existing canvas Fit,
+mobile targets, preference reloads and the isolated Sample utility.
