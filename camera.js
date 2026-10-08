@@ -7,7 +7,7 @@ class GraphCamera {
         this.requestFrame = requestFrame;
         this.cancelFrame = cancelFrame;
         this.minScale = 0.08;
-        this.maxScale = 2.4;
+        this.maxScale = 3;
         this.view = { x: 0, y: 0, scale: 1 };
         this.target = { ...this.view };
         this.frame = null;

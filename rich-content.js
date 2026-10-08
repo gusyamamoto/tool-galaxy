@@ -71,6 +71,16 @@ class EntryContentInspector {
             }
             catch (error) { this.error(error); }
         });
+        this.notesView.addEventListener('change',event=>{
+            const checkbox=event.target.closest('input[data-note-line]');
+            if(!checkbox||this.jobs.get(this.entryId))return;
+            this.onAction();
+            try{
+                const text=cosmosEveryday.toggleChecklist(this.content().notes.text,Number(checkbox.dataset.noteLine),checkbox.checked);
+                this.save(this.entryId,{...this.content(),notes:{format:'plain',text}});
+                this.notes.value=text;this.onLayout();
+            }catch(error){checkbox.checked=!checkbox.checked;this.error(error);}
+        });
         document.getElementById("content-edit-notes").addEventListener("click", () => this.editNotes());
         document.getElementById("content-add-files").addEventListener("click", () => this.chooseFiles());
         document.getElementById("content-notes-empty").addEventListener("click", () => this.editNotes());
@@ -160,7 +170,15 @@ class EntryContentInspector {
     }
     renderNotes() {
         const text = this.content().notes.text;
-        this.notesView.textContent = text;
+        this.notesView.replaceChildren();
+        if(!/^\s*-\s+\[[ xX]\]\s+/m.test(text))this.notesView.textContent=text;
+        else text.split('\n').forEach((line,index,lines)=>{
+            const checklist=cosmosEveryday.checklistLine(line);
+            if(!checklist){this.notesView.append(document.createTextNode(line+(index<lines.length-1?'\n':'')));return;}
+            const label=document.createElement('label'),checkbox=document.createElement('input'),description=document.createElement('span');
+            label.className='note-checklist';checkbox.type='checkbox';checkbox.checked=checklist.checked;checkbox.dataset.noteLine=index;
+            checkbox.ariaLabel=checklist.label||'Checklist item';description.textContent=checklist.label;label.append(checkbox,description);this.notesView.append(label);
+        });
         this.notesView.hidden = !text || !this.notesForm.hidden;
         const button = document.getElementById("content-edit-notes");
         button.hidden = !text || !this.notesForm.hidden;
@@ -211,9 +229,12 @@ class EntryContentInspector {
             item.append(icon, info, this.itemMenu(actions, link.title || link.url)); links.append(item);
         });
         const generation = this.generation;
+        const gallery=this.content().attachments.filter(file=>file.mimeType.startsWith('image/')).length>1;
+        files.classList.toggle('has-image-gallery',gallery);
         this.content().attachments.forEach(metadata => {
             const item = document.createElement("li"), name = this.button(metadata.filename, () => this.openFile(metadata), `Open attachment ${metadata.filename}`), size = document.createElement("small"), preview = document.createElement("div"), actions = document.createElement("div"), info = document.createElement("div");
             item.className = "content-file"; item.dataset.attachmentId = metadata.id;
+            if(metadata.mimeType.startsWith('image/'))item.classList.add('content-image');
             name.className = "content-file-name";
             preview.className = "content-file-preview";
             const badge = this.button(metadata.mimeType.startsWith("image/") ? "IMG" : metadata.mimeType === "application/pdf" ? "PDF" : metadata.filename.toLowerCase().endsWith(".md") ? "MD" : "TXT", () => this.openFile(metadata), `View ${metadata.filename}`);

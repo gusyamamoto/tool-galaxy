@@ -13,6 +13,7 @@ class GalaxyPhysics {
             .force("follow", () => this.followParents())
             .force("regions", alpha => this.arrangeRegions(alpha))
             .force("orbits", alpha => this.attractToOrbits(alpha))
+            .force("territories", alpha => this.containBranches(alpha))
             .force("local", alpha => this.systems.forEach(system => system.repulsion(alpha)))
             .force("siblings", alpha => this.separateSiblings(alpha))
             .force("collision", this.collisionForce)
@@ -45,8 +46,9 @@ class GalaxyPhysics {
                         if (Math.hypot(node.parent.x-anchor.x,node.parent.y-anchor.y)>anchor.clusterRadius*.55)
                             node.orbitAngle = Math.atan2(anchor.y-node.parent.y,anchor.x-node.parent.x);
                     }
-                    node.x = node.parent.x + Math.cos(node.orbitAngle) * node.orbitRadius;
-                    node.y = node.parent.y + Math.sin(node.orbitAngle) * node.orbitRadius; }
+                    const angle = this.preferredAngle(node);
+                    node.x = node.parent.x + Math.cos(angle) * node.orbitRadius;
+                    node.y = node.parent.y + Math.sin(angle) * node.orbitRadius; }
             }
             node.lastX = node.x; node.lastY = node.y;
         });
@@ -69,6 +71,8 @@ class GalaxyPhysics {
             visited.add(node.id); this.ordered.push(node);
             node.galaxyId = node.parent ? node.parent.galaxyId : node.id;
             node.systemId = node.depth === 1 ? node.id : node.parent?.systemId || null;
+            node.planetAnchor = node.depth === 2 ? node : node.parent?.planetAnchor || null;
+            node.localAngleOffset = null;
             if (!node.parent) this.galaxies.set(node.id, { ...previousGalaxies.get(node.id), id: node.id, root: node, systems: [] });
             if (node.depth === 1) {
                 const system = { id: node.id, root: node, members: [] };
@@ -106,11 +110,16 @@ class GalaxyPhysics {
             // for their branches. A deep chain must not recursively inflate it.
             const local = Math.max(0, ...children.map(child => child.radius +
                 Math.min(parent.depth === 1 ? 28 : 14, Math.max(0, child.envelope - child.radius) * .18)));
-            const clearance = parent.depth === 1 ? 66 : parent.depth === 2 ? 56 : 38;
+            const clearance = parent.depth === 1 ? 82 : parent.depth === 2 ? 48 : 26;
             const minimum = parent.radius + local + clearance;
-            const spacing = children.length > 1 ? (local + 26) * (parent.depth === 1 ? 1.35 : 1.15) / Math.sin(Math.PI / children.length) : 0;
-            parent.childOrbit = children.length ? Math.max(minimum, spacing) : 0;
-            parent.envelope = children.length ? parent.childOrbit + largest + 12 : parent.radius + 14;
+            const spacing = children.length > 1 ? (local + 26) * this.siblingClearanceFactor(parent.depth+1) / Math.sin(Math.PI / children.length) : 0;
+            const band = children.length ? Math.max(minimum, spacing) : 0;
+            // Tighten only direct Moon/Satellite preferences. Keep the original
+            // packing envelope so upstream Planet/Sun spacing stays unchanged;
+            // collision clearance and user drag preferences remain independent.
+            const localFactor = parent.depth === 2 ? .82 : parent.depth === 3 ? .75 : 1;
+            parent.childOrbit = band * localFactor;
+            parent.envelope = children.length ? band + largest + 12 : parent.radius + 14;
             const phase = this.angleFor(parent.id);
             children.forEach((child, index) => {
                 child.orbitRadius = parent.childOrbit; child.orbitAngle = phase + index * Math.PI * 2 / children.length;
@@ -124,6 +133,29 @@ class GalaxyPhysics {
                 parent.childOrbit = 0;
                 parent.envelope = Math.max(120, ...children.map(child => child.orbitRadius + child.envelope + 40));
             }
+        });
+        // Stable ID order allocates broad Planet sectors. Slight deterministic
+        // variation avoids perfect circles; descendants use their parent's local
+        // outward direction instead of unrelated global angles.
+        this.ordered.forEach(parent => {
+            const children = this.children.get(parent.id);
+            if (!children.length || parent.depth === 0 || parent.depth >= 4) return;
+            const siblings = [...children].sort((a, b) => a.id.localeCompare(b.id));
+            const phase = this.floatAngleFor(parent.id), step = Math.PI * 2 / siblings.length;
+            siblings.forEach((child, index) => {
+                const variation = this.floatAngleFor(child.id) / (Math.PI * 2) - .5;
+                if (parent.depth === 1) {
+                    child.orbitAngle = phase + index * step + variation * step * .16;
+                    child.sectorHalfAngle = Math.min(Math.PI * .85, step * .44);
+                    child.orbitRadius = parent.childOrbit * (1 + variation * .10);
+                } else {
+                    const span = Math.min(4.2, Math.max(2.3, (siblings.length - 1) * 1.35));
+                    child.localAngleOffset = siblings.length === 1 ? variation * .7 :
+                        -span / 2 + span * index / (siblings.length - 1) + variation * .12;
+                    child.orbitAngle = parent.orbitAngle + child.localAngleOffset;
+                    child.orbitRadius = parent.childOrbit * (1 + variation * .08);
+                }
+            });
         });
         const regions = [...this.galaxies.values()];
         const largest = Math.max(120, ...regions.map(region => region.root.envelope));
@@ -156,6 +188,11 @@ class GalaxyPhysics {
         for(const char of id) hash=Math.imul(hash^char.charCodeAt(0),16777619)>>>0;
         hash=Math.imul(hash^(hash>>>16),2246822507)>>>0;
         return hash/4294967296*Math.PI*2;
+    }
+    preferredAngle(node) {
+        if (node.localAngleOffset == null || !node.parent?.parent) return node.orbitAngle;
+        const parent = node.parent, dx = parent.x - parent.parent.x, dy = parent.y - parent.parent.y;
+        return (Math.hypot(dx, dy) > 1 ? Math.atan2(dy, dx) : parent.orbitAngle) + node.localAngleOffset;
     }
     setViewport(bounds, nodeRadius) {
         this.bounds = bounds; this.baseNodeRadius = nodeRadius;
@@ -205,7 +242,7 @@ class GalaxyPhysics {
             const slack = astronaut ? Math.max(8, targetRadius * .18) : Math.max(12, targetRadius * .12);
             const error = distance - targetRadius;
             const outside = Math.sign(error) * Math.max(0, Math.abs(error) - slack);
-            const strength = astronaut ? .045 : child.depth === 1 ? .025 : child.depth === 2 ? .1 : .14;
+            const strength = astronaut ? .045 : child.depth === 1 ? .04 : child.depth === 2 ? .1 : .14;
             const pull = Math.max(-5, Math.min(5, outside * strength)) * alpha;
             child.vx -= dx / distance * pull; child.vy -= dy / distance * pull;
             // Distant drops need time to return after the ordinary cooling period.
@@ -217,7 +254,7 @@ class GalaxyPhysics {
                 const containment = Math.min(4, excess * .008);
                 child.vx -= dx / distance * containment; child.vy -= dy / distance * containment;
             }
-            const targetAngle = influence?.angle ?? child.orbitAngle;
+            const targetAngle = influence?.angle ?? this.preferredAngle(child);
             const delta = Math.atan2(Math.sin(targetAngle - Math.atan2(dy, dx)), Math.cos(targetAngle - Math.atan2(dy, dx)));
             const angular = astronaut ? .012 : child.depth === 1 ? .012 : child.depth === 2 ? .025 : .04;
             const tangent = delta * Math.min(targetRadius, 80) * angular * alpha;
@@ -237,6 +274,28 @@ class GalaxyPhysics {
         });
         if (returning) this.simulation.alpha(Math.max(this.simulation.alpha(), .06));
     }
+    containBranches(alpha) {
+        this.ordered.forEach(node => {
+            const planet = node.planetAnchor, sun = planet?.parent;
+            if (node.depth < 3 || !sun || this.children.get(sun.id).length < 2 || node.fx != null || planet.fx != null) return;
+            const dx = node.x - sun.x, dy = node.y - sun.y, radius = Math.hypot(dx, dy) || 1;
+            const axis = Math.atan2(planet.y - sun.y, planet.x - sun.x);
+            const delta = Math.atan2(Math.sin(Math.atan2(dy, dx) - axis), Math.cos(Math.atan2(dy, dx) - axis));
+            const outside = Math.max(0, Math.abs(delta) - planet.sectorHalfAngle);
+            const excess = outside * radius;
+            // Soft, parent-local wedge edges. No hard boundary or coordinate
+            // snapping; a held drag bypasses the force and keeps its inertia.
+            const tangent = Math.sign(delta) * Math.min(2, excess * .06) * alpha;
+            node.vx += dy / radius * tangent; node.vy -= dx / radius * tangent;
+            const inner = Math.hypot(planet.x - sun.x, planet.y - sun.y) * .34;
+            const inward = Math.max(0, inner - radius);
+            const push = Math.min(1.5, inward * .06) * alpha;
+            node.vx += dx / radius * push; node.vy += dy / radius * push;
+        });
+        // Territory preferences cool with ordinary motion. They must not keep
+        // a crowded/deep tree running indefinitely against local collisions.
+        // Extreme radial drops already use the existing bounded return force.
+    }
     orbitalRange(node) {
         // Suns retain the existing Galaxy packing allowance. Local families use
         // their sibling-sized band, with a body-collision-safe inner boundary.
@@ -253,6 +312,7 @@ class GalaxyPhysics {
     preferredLimit(node) { return this.orbitalRange(node).max; }
     deepSiblingBoost(parentId) { return Math.min(14,Math.sqrt(Math.max(0,(this.children.get(parentId)?.length||0)-3))*5); }
     collisionPadding(node) { return node.role==='astronaut'?10+this.deepSiblingBoost(node.parentId)*.4:12; }
+    siblingClearanceFactor(depth){return depth===2?1.45:depth===3?1.1:.95;}
     separateSiblings(alpha) {
         this.children.forEach((siblings, parentId) => {
             if (siblings.length < 2 || this.particles.get(parentId).depth === 0) return;
@@ -274,7 +334,7 @@ class GalaxyPhysics {
                         continue;
                     }
                     const ar = Math.hypot(ax, ay), br = Math.hypot(bx, by);
-                    const clearance = (a.radius + b.radius + 24) * (a.depth === 2 ? 1.35 : 1.15), radialGap = Math.abs(ar - br);
+                    const clearance = (a.radius + b.radius + 24) * this.siblingClearanceFactor(a.depth), radialGap = Math.abs(ar - br);
                     if (radialGap >= clearance) continue;
                     const aa = Math.atan2(ay, ax), ba = Math.atan2(by, bx), delta = Math.atan2(Math.sin(ba - aa), Math.cos(ba - aa));
                     const deficit = Math.sqrt(clearance ** 2 - radialGap ** 2) - 2 * Math.min(ar, br) * Math.sin(Math.abs(delta) / 2);

@@ -27,12 +27,12 @@ test('collapsing any ancestor hides its entire subtree while preserving other br
 
 test('one creation context derives each parent and child role, including deeper children and missing parents', () => {
     const data = entries(Array.from({length:8}, (_,i)=>({id:`n${i}`,parentId:i?`n${i-1}`:null})));
-    assert.deepEqual(plain(hierarchy.childContext(data)), {parentId:null,depth:0,role:'galaxy',action:'Add Galaxy'});
+    assert.deepEqual(plain(hierarchy.childContext(data)), {parentId:null,depth:0,role:'galaxy',action:'New Galaxy'});
     for (let i=0; i<8; i++) {
         const child=hierarchy.childContext(data,`n${i}`);
         assert.equal(child.parentId,`n${i}`);assert.equal(child.depth,i+1);
         assert.equal(child.role,model.roleAtDepth(i+1));
-        assert.equal(child.action,`Add ${model.roles[child.role].name}`);
+        assert.equal(child.action,'Add item');
     }
     assert.equal(hierarchy.childContext(data,'missing'),null);
 });

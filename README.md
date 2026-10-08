@@ -1,20 +1,59 @@
 # Galaxy
 
-A 2.5D universe for organizing ideas, resources, places and other entries. No
+A 2.5D universe for organizing trips, recipes, photos, projects and other items. No
 install/build step: serve this directory with `python -m http.server 8000` and
 open `http://localhost:8000`. Use the same browser, address and port for saved data.
 
 ## Creating and navigating
 
+**New Galaxy** offers Blank (default) and five small starters. The name stays
+editable; changing the starter preserves a name you have already typed. A starter
+creates ordinary canonical items in one existing CRUD operation, with no saved
+template flag, protected content or new storage structure:
+
+| Starter | Initial child items |
+| --- | --- |
+| Trip | Places, Accommodation, Transportation, Food, Packing, Documents |
+| Home project | Ideas, Tasks, Materials, Budget, Photos |
+| Class / course | Notes, Assignments, Resources, Exams |
+| Recipes | Favorites, To Try, Weeknight, Baking |
+| Photos / inspiration | Favorites, Ideas, Collections |
+
+On desktop, supported files or web addresses can be dropped onto a body, Galaxy
+cloud or canonical sidebar row. A quiet outline marks the target. Files reuse
+the existing validation, IndexedDB/attachment-store transaction and cleanup;
+addresses reuse bookmark normalization. Drops select/show the destination
+without camera framing, changing physics, or altering an active Constellation.
+The Files and Bookmarks actions remain the keyboard/mobile alternatives.
+During an external file/link drag, holding over a collapsed canonical sidebar
+row for 600ms spring-opens it without selecting it or moving the camera. Repeat
+to browse deeper; branches remain open in the ordinary sidebar expansion state.
+Leaving, dropping or cancelling clears the pending timer and highlight. Ordinary
+hover, body dragging and internal UI drags cannot trigger expansion. The tree
+also scrolls in 12px steps near its 28px edge zones, throttled to one step per
+50ms drag-over event; there is no background scroll loop. Native wheel scrolling
+remains available. `--spring-drop-only` checks deep navigation and cleanup.
+
+Images show stored thumbnails: one image uses a larger compact preview, while
+two or more share a two-column thumbnail layout. Documents retain normal rows.
+Open and secondary Remove actions use the existing handlers; full images are
+not decoded for thumbnails. Notes recognize `- [ ]` and `- [x]` lines in read
+mode as clickable checkboxes. A toggle changes only that line's marker in the
+same plain text. The regular editor, IDs, storage version 5, Portals and
+Constellation references remain unchanged. No remote bookmark fetching is used.
+
+Run `node --test tests/everyday.test.js` and
+`python tests/browser-check.py --everyday-only --screenshots` to check starter
+CRUD/persistence, canonical drops, gallery rendering and touch checklists.
+
 - **Add:** each hierarchy row has a small **+**, shown on hover/focus on desktop
-  and on the selected/focused row in the mobile drawer. It opens Add child, Add files, Add note and Add
-  bookmark for that row without selecting or navigating first. Add Galaxy remains
+  and on the selected/focused row in the mobile drawer. It opens Add item, Add existing item, Add files, Add note and Add
+  bookmark for that row without selecting or navigating first. New Galaxy remains
   under More; Search has no global contextual +.
-- **Add child:** use **+ → Add child** or the body's right-click menu. Both use
-  the same parent context: Galaxy
-  → Sun → Planet → Moon → Satellite → Astronaut, then **Add Astronaut** at any deeper level.
-  The quick-create dialog asks only for **Name**, then **Create Planet** (or the
-  appropriate role). The parent is implicit. Enrich or move the item afterward.
+- **Add item:** use **+ → Add item** or the body's right-click menu. The parent
+  is implicit and creation asks only for **Name**. Depth derives the internal
+  Galaxy → Sun → Planet → Moon → Satellite → Astronaut visual role automatically;
+  users never choose those roles. Enrich or move the item afterward.
 - **Hierarchy:** the left tree derives directly from `parentId`, with no depth
   limit. Galaxies start expanded and other branches closed. Disclosure arrows
   only change the tree. Selecting a body expands its ancestor path, highlights
@@ -28,8 +67,8 @@ open `http://localhost:8000`. Use the same browser, address and port for saved d
   Mobile rows use 44px height, compressed depth indentation and no horizontal
   scrolling and clean single-line truncation. Full names remain available through
   accessible labels, row titles and the selected entry's Content header.
-  The small Galaxy title stays in the sidebar above separate Hierarchy and
-  Constellations sections. **More** at the bottom holds Add Galaxy, Fit Galaxy, zoom/count information, navigation
+  The small Galaxy title stays in the sidebar above separate Universe and
+  Constellations sections. **More** at the bottom holds New Galaxy, Fit Galaxy, zoom/count information, navigation
   hints and temporary Sample controls. A small Sample label identifies that mode.
   Toggle navigation beside the title to reclaim canvas space; a small reopen
   control remains when it is closed. Drag its
@@ -43,21 +82,23 @@ open `http://localhost:8000`. Use the same browser, address and port for saved d
   click. Closing preserves selection and tree state; selecting again reopens it.
   A sticky header shows the name, **•••** beside the title, and a clickable
   ancestor-only breadcrumb below. Files, read-first Notes and Bookmarks follow in
-  that order. Metadata is
-  available under **••• → Edit info**, **Move / change parent**, and **Delete entry**.
+  that order. Item management is
+  available under **••• → Rename**, **Move / change parent**, and **Delete item**.
   On mobile it becomes a bottom sheet; opening navigation closes it, and selecting
   from navigation switches back to Contents. Right-click updates selection and
   opens its menu without opening a closed drawer or shifting the camera. Opening
   Contents measures available space without changing the camera;
   it waits for drag release before opening if a pointer is held.
-- **Body actions:** right-click a body, Galaxy name, cloud or sidebar row for Add child,
-  Add files, Add to Constellation, Create Portal..., Edit info and Delete entry.
+- **Body actions:** right-click a body, Galaxy name or cloud for Add item,
+  Add to Constellation, Rename and Delete item. The sidebar Add menu keeps the
+  complete organization/content shortcuts, including Add existing item.
   Subtree confirmation remains. The menu stays inside the viewport, closes on outside clicks/Escape,
   and does not start dragging or camera focus. Shift+F10 opens it from a focused
   body; arrows/Home/End navigate its actions.
-- **Edit / Move:** Edit info retains name, description and category/label. Move
-  reuses the existing single-parent selector. Quick creation only shows Name.
-  IDs and existing Portal references stay stable.
+- **Rename / Move:** Rename is a compact Name-only dialog. Stored legacy
+  description/category values remain intact and hidden; descriptive content can
+  be written in Notes. Move reuses the existing single-parent selector. Quick
+  creation only shows Name. IDs and linked placements stay stable.
   Moving a branch changes its descendants' computed depths/roles together.
   Self/descendant parent choices are excluded, with model
   validation also rejecting cycles. Appearance overrides survive ordinary edits.
@@ -110,6 +151,14 @@ with its single-click camera focus waiting 320ms to distinguish double-clicks.
 Compact + / minus / Fit controls sit at the usable canvas's bottom-left on larger
 layouts and are hidden on phones. Fit shares the existing Fit Galaxy handler.
 Reduced motion makes focus navigation immediate.
+The visual hierarchy refinement adds closer inspection targets: Moon 180%,
+Satellite 220%, Astronaut/deeper 240%. The upper zoom limit is now 300% (previously
+240%), leaving headroom after deep focus. Wheel/trackpad gain, pinch midpoint
+anchoring, interruption and Fit remain unchanged. Galaxy cloud/label fading,
+label collision suppression and Constellation visibility keep their existing rules.
+`python tests/browser-check.py --body-hierarchy-only --screenshots` checks native
+sizes and fixed-scale overview/system/deep desktop and phone views;
+`--body-hierarchy-baseline` captures matching views before tuning.
 
 The existing drawer and Content/Constellation bottom sheets remain. Outside taps
 and Escape dismiss an open mobile drawer; the dismissal tap never starts a canvas
@@ -159,9 +208,12 @@ sticky-header scrolling, active-lens inspection and keyboard viewport reduction.
 
 ## Visual density and restrained motion
 
-Body sizes stay unchanged at 100% zoom: Sun 45.5px, Planet 26px, Moon 16.9px,
-Satellite 15.1px and Astronaut 13px visual boxes. Deep bodies have transparent
-24px pointer areas (30px on coarse pointers), independent of their visual size.
+At 100% desktop zoom the body boxes are Sun 52px, Planet 28.6px, Moon 13.52px,
+Satellite 9.88px and Astronaut 7.28px. Planet diameter is over twice Moon diameter.
+Planets have richer color, surface contrast and a restrained glow; Moons have
+muted stony lighting and faint craters. Mechanical Satellites and human Astronaut
+silhouettes stay distinct. Planet/deeper bodies have transparent pointer areas
+of at least 24px (44px on coarse pointers), independent of their visual size.
 Body fades retain their existing hierarchy thresholds. Label fades are separate:
 Sun .44–.58, Planet .66–.82, Moon .90–1.12, Satellite 1.02–1.30 and Astronaut
 1.20–1.52. Selected, hovered, keyboard-focused, current Search and navigation
@@ -172,11 +224,16 @@ labels still respect readability. Represented Galaxy names remain context labels
 A spatial grid and stable ID/role priorities suppress substantial overlap, with
 overlap tolerance and a 240ms clear window before restoring a label. Interaction
 targets and represented Galaxy labels are protected. Generic repeated names use
-the same rules; there are no word exceptions. Measurements and writes are batched,
-and the pass uses existing camera/physics ticks plus one-shot interaction requests,
-not a permanent label animation loop. A dense Astronaut family receives a sibling
+the same rules; there are no word exceptions. Measurements and writes are batched. Label dimensions are cached by name, role,
+font, Constellation membership and viewport mode; moving labels project those
+dimensions from native body centers instead of forcing layout every pass.
+The pass uses existing camera/physics ticks plus one-shot interaction requests,
+not a permanent label animation loop. A single deferred pass measures the final
+camera view if it lands inside the throttle window after motion stops. Compact EVA
+labels reserve an extra 2px of collision clearance; priorities, overlap tolerance
+and restoration hysteresis remain intact. A dense Astronaut family receives a sibling
 boost of `min(14, 5*sqrt(max(0, count-3)))` world pixels, adaptive collision padding
-and a bounded cluster allowance. Sparse groups/deep chains retain their old bands;
+and a bounded cluster allowance. Sparse groups/deep chains retain their comfortable local spacing;
 drag preferences still take the released radius/angle directly within soft bounds.
 
 `CosmosMotion` is presentation-only: a 240ms Portal ring cue starts alongside
@@ -262,11 +319,11 @@ Version 5 stores entries with `id`, `parentId`, `name`, `description`, `category
 | Computed depth | Visual role | Body scale |
 | --- | --- | --- |
 | 0 | Galaxy region | Spatial envelope, not a sphere |
-| 1 | Sun | 1.75 |
-| 2 | Planet | 1 |
-| 3 | Moon | 0.65 |
-| 4 | Satellite | 0.58 |
-| 5+ | Astronaut | 0.50 |
+| 1 | Sun | 2 |
+| 2 | Planet | 1.1 |
+| 3 | Moon | 0.52 |
+| 4 | Satellite | 0.38 |
+| 5+ | Astronaut | 0.28 |
 
 The tree can continue beyond these visual levels. Iterative normalization,
 ancestry traversal and layout traversal avoid a fixed maximum depth. Missing
@@ -376,52 +433,49 @@ isolated test data. Before committing, inspect these three views at desktop/mobi
 sizes; create two collections with a shared entity; drag a highlighted body;
 remove a member; delete a collection/subtree; and refresh your own saved data.
 
-## Portals v1
+## Add existing item
 
-A Portal is a sidebar reference to one canonical entry, stored separately in the
+Use a sidebar row's **+ ? Add existing item** to make an item you already have
+available there too. The destination is known from the row; the compact picker
+browses the canonical hierarchy and searches by name with ancestry context.
+Select one item, then Add item. Selection can be reversed before confirmation
+and survives searching/expanding. Existing linked placements and ordinary items
+already under the destination are marked **Already here** and cannot be duplicated.
+Only canonical items appear as choices. Keyboard arrows, Space/Enter, Escape and
+comfortable touch targets follow the same pattern as the Constellation picker.
+
+Linked rows retain the distinct accretion-ring icon and the original's current
+name. Click/Enter navigates to the original Content panel through the existing
+camera travel, including cross-Galaxy and reduced-motion behavior. The active
+Constellation stays active. Row tooltips/accessibility labels say **Linked item**.
+The row menu offers **Go to original** and **Remove from here**. Removal affects
+only the extra appearance; original Files, Notes, Bookmarks and memberships stay.
+Rename updates every appearance through the original stable ID. Move changes the
+canonical item's structural location; Add existing item keeps it in place.
+Sidebar item-dragging behavior remains unchanged; the explicit picker is the
+linking route. External file/URL drop and spring-loaded expansion are preserved.
+
+Internally these placements retain the existing Portal reference model in the
 version-5 snapshot's optional `portals` collection:
 
 ```json
 { "id": "portal:uuid", "targetEntryId": "original-id", "parentEntryId": "place-id", "createdAt": "2026-01-01T00:00:00.000Z" }
 ```
 
-Right-click a canonical body/tree row and choose **Create Portal...**. The compact
-picker asks where it should appear; search spans canonical entries at every depth,
-with ancestor paths for duplicate names and Show more entries for additional results.
-Portals can point across Galaxies or back into their own branch. The placement
-must be a real entry; duplicate target/parent pairs are rejected. There are no
-Portal chains, custom names, Portal-owned content, or expandable target subtrees.
-Global search remains canonical-only to avoid duplicate results.
+No additional Cosmos body, structural parent or content owner is created.
+Creation/removal publishes only after persistence succeeds and preserves camera
+and physics state. Canonical subtree deletion cleans references whose target or
+placement parent is deleted, along with memberships and attachment bytes; failed
+transactions roll back. Existing saved references still load without migration.
+Storage remains version 5 and IndexedDB is unchanged.
 
-Portal rows use a small accretion-ring icon, the original's current name, and a
-tooltip with its real location. They have no celestial role, expand chevron or
-entry +. Click/Enter opens the original via the existing animated `focusEntry`
-travel path, including cross-Galaxy context zoom and reduced-motion behavior.
-Selection, ancestor expansion, Content panel and breadcrumbs all resolve to the
-original. Rename/reparent updates labels and locations through stable entry IDs.
-No additional Cosmos node or physics particle is created.
-
-Right-click a Portal, or use its row action button on touch/keyboard, for **Go to
-original** and **Remove Portal**. Removal changes only that reference. Creation and
-removal save metadata before publishing the sidebar, preserve the camera, and do
-not rebuild/reheat physics. A canonical subtree deletion removes every reference
-whose target **or placement parent** is in the deleted set, in the existing
-attachment/metadata transaction; rollback keeps references with the original data.
-Dangling, colliding or duplicate references in imported snapshots normalize away
-without changing valid canonical content. Old snapshots without Portals still
-load; the schema container stays at version 5 and IndexedDB is unchanged.
-
-The temporary Sample includes Chicken Parmigiana and Codex Portals under Food,
-and a deep Slow simmer notes Portal under Travel. Sample references never write
-real saved entries, references or file bytes. Before committing, create same- and
-cross-Galaxy references, follow them, rename/move the original, refresh, remove one
-reference, and delete a target/placement branch. Check touch menus and keyboard
-navigation, and confirm unrelated content/references remain.
-
-`python tests/browser-check.py --portals-only --screenshots` checks the picker,
-leaf/reference rendering, canonical travel/content, rename/reparent, duplicate
-handling, persistence and write/deletion rollback, subtree cleanup, keyboard/
-reduced-motion/touch navigation and Sample isolation.
+Run `python tests/browser-check.py --linked-items-only --screenshots` for plain
+language, hierarchy/search picking, keyboard/touch confirmation, duplicate
+prevention, exact legacy metadata preservation and refresh/removal checks.
+`--portals-only` checks the retained underlying navigation, storage/rollback and
+subtree-cleanup behavior. Before committing, add a cross-Galaxy item from the
+sidebar, follow it, rename the original, remove its extra appearance, and check
+mobile search and keyboard/focus behavior with your saved data.
 
 ## Rich Content v1
 
@@ -592,7 +646,7 @@ One cooling D3 simulation maintains three local levels:
 - Each Galaxy packs Sun/system footprints locally: collision strength **0.7**,
   24px clearance, three iterations. Suns prefer a filled region around their
   Galaxy, rather than a rigid orbital rail. Sun radial/angular strengths are
-  **0.025 / 0.012**. Galaxy regions don't body-collide with their own contents.
+  **0.04 / 0.012**. Galaxy regions don't body-collide with their own contents.
 - Planets, Moons and Satellites use their parent's preferred orbital band.
   Bottom-up branch envelopes account for descendants. Planet radial/angular
   strengths are **0.10 / 0.025**; Moon/Satellite strengths **0.14 / 0.04**. Radial
@@ -600,26 +654,36 @@ One cooling D3 simulation maintains three local levels:
   **5 × alpha** per tick. Angular force is tangential and caps its radius factor
   at 80px. This reduces sharp restorative acceleration without extra damping.
 
-A local orbital band uses direct child radii and sibling count, with a bounded
+A local band uses direct child radii and sibling count, with a bounded
 allowance for child branches (28px inside a Sun, 14px deeper). Descendant
-envelopes still inform system collision, but do not recursively inflate every
-parent's orbital radius. Sibling spacing uses the same 1.35/1.15 clearance
-factors as sibling separation; wide families expand while sparse ones stay small.
-The base diameter is 26px desktop / 24px mobile. At 100% zoom the desktop body
-diameters are Sun 45.5px, Planet 26px, Moon 16.9px and Satellite 15.08px (previously
-51.3 / 38 / 25.08 / 16.34px). Planet and Moon diameters are over 30% smaller.
-CSS uses base diameter × role scale × native render scale; there is no body-size
-floor at 100%. Labels retain their fonts and width budgets. Planet rings and
-Satellite SVGs use proportional dimensions. Selection outline offset is 2px,
-previously 5px, so a selected small body does not acquire a disproportionate halo.
-Collision body radii are half the new diameters, plus the existing 12px clearance.
-Normal local clearance is 66px for Planet families, 56px for Moon families and
-38px deeper; the sibling-count term uses `(local + 26px) × clearanceFactor /
-sin(π / siblingCount)`. The larger of minimum and count-based bands wins.
-The sample Sun→Planet band increases from 118.65px to 129.75px, Planet→Moon from
-83.54px to 91.45px; Food's nominal region radius grows only about 2.2%.
-A leaf-only two-Planet band is 104.27px; eight Planets use 146.47px.
-Descendant allowances remain capped at 28px/14px, preventing recursive inflation.
+envelopes still inform system collision without recursively inflating every band.
+Clearance is 82px for Sun-to-Planet placement, 48px for Planet-to-Moon and 26px
+for Moon-to-Satellite; count-based clearance factors are 1.45 / 1.1 / .95.
+The preferred Moon band is reduced by 18% and Satellite band by 25% after this
+calculation. Original packing envelopes preserve Planet-to-Sun spacing, while
+unchanged collision clearance prevents cramped families. The Sample reference
+bands are 149.212px (Planet), 66.135px (Moon), and 30.165px (Satellite).
+Astronaut bands, angles, sibling clearance and cluster layout remain unchanged.
+
+Planets are sorted by stable IDs into preferred angular sectors around their Sun.
+Seeded offsets vary angles by at most 8% of a sector and radii by at most 5%.
+Moon and Satellite default angles follow the current outward parent direction,
+with a broad local fan and slight radius variation. Saved drag preferences still
+supply their chosen angle and radius directly. Soft sector-edge forces keep
+Planet descendants on their own side and discourage crossing the Sun's center;
+held drags bypass these forces. No snapping, walls or orbital animation is added.
+Territory preferences cool with ordinary motion; the existing extreme radial
+return force remains the only local reason to prolong settling.
+
+The base diameter is 26px desktop / 24px mobile. At 100% desktop zoom the body
+boxes are Sun 52px, Planet 28.6px, Moon 13.52px, Satellite 9.88px and Astronaut
+7.28px, using role scales 2 / 1.1 / .52 / .38 / .28. CSS caps rendered diameters
+at 76 / 44 / 25 / 18 / 14px respectively, including selected, hovered, focused,
+Search-revealed and Constellation bodies. Centers keep projecting at the actual
+camera scale: zoom expands local structure after a body reaches its cap. Texture
+tiers use the capped diameter too. Collision radii remain in world coordinates;
+body hit areas are independent (24px desktop, 44px touch). Proportional rings
+and the close 2px selection outline preserve the role hierarchy.
 
 A drag chooses a relative angle **and radius**: `clamp(releasedRadius, min, max)`.
 The former 65% default / 35% released blend is removed. The same clamped preference
@@ -628,8 +692,7 @@ the maximum is 2.4 × their adaptive default band; Satellites use 1.9 × their b
 The minimum is parent body radius + child body radius + 24px collision clearance;
 the maximum is at least minimum + 24px. Suns retain their existing Galaxy packing
 range, maximum default band + max(60px, 25% of system envelope), minimum zero.
-For the sample family, Planet range is 59.75–311.4px, Moon 45.45–219.48px,
-Satellite 39.99–107.369px. These are soft preferred limits, with a free-floating
+These are soft preferred limits, with a free-floating
 dead zone of max(12px, 12% of preferred radius), not rigid coordinate constraints.
 Saved oversized preferences are bounded by the force; new preferences are bounded
 before saving. A reasonable outward drag remains in its new region; only extreme
@@ -643,7 +706,7 @@ resumes. Active drags skip attraction. Release preserves inertia and
 does not directly add heat. These are local forces; global repulsion is unchanged.
 
 Sibling separation remains parent-local and tangential: radius sums +24px,
-multiplier 1.35 for Planets or 1.15 for deeper bodies, strength 0.06 capped at
+multipliers 1.45 for Planets, 1.1 for Moons and .95 for Satellites, strength 0.06 capped at
 `2 × alpha` per pair. All released siblings are movable; held drags have zero mobility.
 Local system repulsion remains `-radius × 1.1`. Body collision remains strength 1,
 12px clearance, four iterations. Semantic links have zero force strength everywhere;
@@ -658,12 +721,15 @@ decay 0.12 and velocity decay 0.6. Settled/hidden/dialog states stop or pause wo
 ## Native rendering, semantic zoom and appearance
 
 Bodies and names are projected into unscaled screen layers. Dimensions and fonts
-are repainted at native resolution during zoom. Only SVG hierarchy paths/orbit guides
+are repainted at native resolution during zoom. Body centers project in quarter-
+pixel steps to avoid repainting imperceptible settling movement; world/camera
+coordinates stay exact and SVG endpoints remain within 0.18px of body centers. Only SVG hierarchy paths/orbit guides
 use the scaled world transform. Existing defined spherical shading/seeded texture
 and restrained Sun glow remain. Procedural Galaxy SVG regions are built once per
 identity; their names stay in the native text layer.
-Galaxy clouds use filled radial-gradient concentrations with soft dust, luminous
-cores and organic silhouettes. There are no outlined spiral/S strokes. Each
+Galaxy clouds use soft, overlapping gradient concentrations in six deterministic
+territory silhouettes: wispy, bloom, cluster, double-lobed, crescent and diffuse.
+There are no spiral arms, central starbursts, hard containers or bright dust dots. Each
 deterministic visual is smoothed once into a cached 512px canvas and reused;
 cloud opacity uses a squared smooth fade, normally from 0.38 to 0.72 (previously
 0.58–0.95). Universe opacity stays 0.92; by system view clouds are very faint and
@@ -735,11 +801,10 @@ branches and dragging may show very subtle context lines.
 
 `appearance.js` hashes stable IDs (FNV-1a) and resolves optional overrides:
 
-- Galaxy: **spiral, barred spiral, elliptical, irregular**, with stable
-  orientation, flattening, density and muted blue/violet/teal/rose palettes.
-  These are spiral-like cloud, elongated/barred cloud, elliptical cloud and
-  irregular nebula distributions; variation is filled silhouette/core/dust,
-  never line-art arms.
+- Galaxy: **wispy, bloom, cluster, double-lobed, crescent, diffuse**, with stable
+  orientation and muted blue/violet/teal/rose palettes. Legacy spiral/barred/
+  elliptical/irregular appearance values resolve to nebula aliases for rendering;
+  saved metadata remains untouched, with no schema change.
 - Planet: **rocky, gas giant, icy, oceanic, ringed, desert**. Only the ringed
   default archetype has rings; approximately one in six automatic Planets.
 - Sun: warm/golden. Moon: rocky/icy/earthy.
@@ -751,11 +816,12 @@ branches and dragging may show very subtle context lines.
 - Astronaut (depth 5 and deeper): **floating, angled, extended-arm, compact-eva**.
   Neutral white/grey EVA figures have a dark visor, small backpack and restrained
   limbs. Stable ID hashing chooses the pose and tilt; compatible appearance
-  overrides remain supported. A 24px SVG viewBox scales into a 13px body at 100%
-  zoom, smaller than Satellite (15.08px) and Moon (16.9px). No raster/filter work.
+  overrides remain supported. A 24px SVG viewBox scales into a 7.28px body at
+  100% desktop zoom, smaller than Satellite (9.88px) and Moon (13.52px). No
+  raster/filter work. Deep focus uses 240% so the small silhouette remains usable.
 
 Astronaut branches use compact local placement rather than additional orbital
-bands. Default parent clearance is about 35px under another Astronaut and 40px
+bands. Default parent clearance is about 29px under another Astronaut and 35px
 under a Satellite, with small golden-angle sibling offsets. Local radial/angular
 strengths are 0.045/0.012, with a wider resting slack, subdued drift and weaker
 repulsion. Cartesian sibling separation and small collision margins prevent
@@ -886,7 +952,7 @@ remove the temporary sample, then confirm your saved hierarchy and sidebar prefe
 are restored.
 For the Content panel, upload an image, PDF and text file; open each, edit and
 cancel a note, add `google.com` as a bookmark, then refresh. Check ancestor
-breadcrumbs, Edit info and Move, camera stability during content edits,
+breadcrumbs, Rename and Move, camera stability during content edits,
 and scrolling/closing the mobile sheet. Confirm file and subtree deletion cleanup.
 At extreme fitted zoom on narrow screens, temporarily revealed search labels can
 crowd together; focus and the ancestry breadcrumbs restore local reading.

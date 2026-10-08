@@ -1,7 +1,7 @@
 // Automatic identity and optional overrides are independent of hierarchy/storage/UI.
 const galaxyAppearance = {
     archetypes: {
-        galaxy: ["spiral", "barred-spiral", "elliptical", "irregular"],
+        galaxy: ["wispy", "bloom", "cluster", "double-lobed", "crescent", "diffuse"],
         sun: ["warm", "golden"],
         planet: ["rocky", "gas-giant", "icy", "oceanic", "ringed", "desert"],
         moon: ["rocky", "icy", "earthy"],
@@ -20,8 +20,8 @@ const galaxyAppearance = {
         value = Math.imul(value ^ (value >>> 13), 1274126177) >>> 0;
         return (value ^ (value >>> 16)) >>> 0;
     },
-    bakeField(seed, size) {
-        const key = `${seed}:${size}`;
+    bakeField(seed, size, material = 'rocky') {
+        const key = `${seed}:${material}:${size}`;
         if (!this.textureCache.has(key)) {
             this.textureCache.set(key, new Promise(resolve => {
                 const generate = () => {
@@ -29,10 +29,12 @@ const galaxyAppearance = {
                         const canvas = document.createElement("canvas");
                         canvas.width = canvas.height = size;
                         const context = canvas.getContext("2d"), pixels = context.createImageData(size, size);
-                        const angle = seed % 360 * Math.PI / 180, cos = Math.cos(angle), sin = Math.sin(angle);
+                        const angle = (material === 'gas-giant' || material === 'ringed' ? seed % 16 - 8 : seed % 360) * Math.PI / 180;
+                        const cos = Math.cos(angle), sin = Math.sin(angle);
+                        const frequency = { oceanic: [5, 7], icy: [7, 10], desert: [8, 13], 'gas-giant': [3, 28], ringed: [4, 22] }[material] || [14, 20];
                         const layers = [];
                         for (let octave = 0; octave < 3; octave++) {
-                            const nx = 14 * 2 ** octave, ny = 20 * 2 ** octave, stride = nx * 2 + 1, grid = new Float32Array(stride * (ny * 2 + 1));
+                            const nx = frequency[0] * 2 ** octave, ny = frequency[1] * 2 ** octave, stride = nx * 2 + 1, grid = new Float32Array(stride * (ny * 2 + 1));
                             for (let y = 0; y <= ny * 2; y++) for (let x = 0; x <= nx * 2; x++) grid[y * stride + x] = this.noise(seed + octave * 997, x, y) / 4294967296;
                             layers.push({ nx, ny, stride, grid, weight: 1 / 2 ** octave });
                         }
@@ -73,16 +75,18 @@ const galaxyAppearance = {
         return this.textureCache.get(key);
     },
     prepareTextures(node, diameter) {
-        // Match natural-body display pixels in reusable tiers; a close high-DPI
-        // Sun needs more detail. Artificial Satellites never request this field.
+        // Match the capped screen diameter, never the uncapped world size.
+        // Artificial Satellites and Astronauts never request a surface field.
         const physicalSize = diameter * (window.devicePixelRatio || 1);
         const size = Math.min(1024, Math.max(64, 2 ** Math.ceil(Math.log2(physicalSize))));
-        if (node.textureSize === size) return;
+        const material = node.dataset.archetype, key = `${material}:${size}`;
+        if (node.textureKey === key) return;
+        node.textureKey = key;
         node.textureSize = size;
         node.dataset.textureReady = "pending";
         const seed = this.hash(node.dataset.entryId);
-        this.bakeField(seed, size).then(map => {
-            if (!node.isConnected || node.textureSize !== size) return;
+        this.bakeField(seed, size, material).then(map => {
+            if (!node.isConnected || node.textureKey !== key) return;
             if (map) {
                 node.style.setProperty("--surface-map", map);
                 node.style.setProperty("--surface-grain", "none");
@@ -99,7 +103,10 @@ const galaxyAppearance = {
     resolve(entry) {
         const seed = this.hash(entry.id), choices = this.archetypes[entry.role];
         const override = entry.appearance?.mode === "auto" ? {} : entry.appearance || {};
-        const archetype = choices.includes(override.archetype) ? override.archetype : choices[seed % choices.length];
+        // Honor legacy appearance metadata through a presentation alias only.
+        const legacyCloud = { spiral: 'wispy', 'barred-spiral': 'double-lobed', elliptical: 'bloom', irregular: 'cluster' };
+        const requested = entry.role === 'galaxy' ? legacyCloud[override.archetype] || override.archetype : override.archetype;
+        const archetype = choices.includes(requested) ? requested : choices[seed % choices.length];
         const hues = { rocky: 218, "gas-giant": 29, icy: 196, oceanic: 205, ringed: 35, desert: 24, warm: 38, golden: 46, earthy: 27,
             "twin-panel": 214, dish: 208, probe: 220, station: 202,
             floating: 210, angled: 210, "extended-arm": 210, "compact-eva": 210 };
@@ -132,6 +139,7 @@ const galaxyAppearance = {
         return `<svg class="astronaut-figure" aria-hidden="true" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><g transform="rotate(${tilt} 12 12)" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="8" width="10" height="8" rx="2" fill="#87939d"/><path d="${arms}M10 16h4${legs}" stroke="#cbd2d7" stroke-width="2.4" fill="none"/><path d="M9 9h6l1 7-4 2-4-2z" fill="#d6dce0"/><ellipse cx="12" cy="6" rx="4.5" ry="4.2" fill="#e0e4e7"/><rect x="8.8" y="4.1" width="6.4" height="3.6" rx="1.6" fill="#172634"/><path d="M10 4.7h2" stroke="#82939f" stroke-width=".65"/></g></svg>`;
     },
     prepareCloud(element, style) {
+        element.dataset.morphology=style.archetype;
         const key = JSON.stringify(style);
         if (element.cloudKey === key) return;
         element.cloudKey = key;
@@ -165,28 +173,46 @@ const galaxyAppearance = {
             }
         });
     },
-    // Filled gradient concentrations, no spiral outlines, blur filters or hard edges.
-    // Rasterize once at 512px; only this intentionally diffuse cloud is magnified.
+    // Soft territory silhouettes. A handful of gradient puffs, baked once;
+    // no spiral arms, bright star fields, hard edges or live blur filters.
     cloud(style) {
         let state = style.seed;
         const random = () => { state = (Math.imul(state, 1664525) + 1013904223) >>> 0; return state / 4294967296; };
-        const puffs = [], dust = [];
-        const coreX = style.archetype === "irregular" ? 110 + random() * 22 : 123 + random() * 10;
-        const coreY = style.archetype === "irregular" ? 110 + random() * 28 : 123 + random() * 10;
-        for (let i = 0; i < style.density; i++) {
-            const t = random(), radius = 12 + Math.sqrt(t) * 76;
-            let angle = random() * Math.PI * 2, x, y, rx = 19 + random() * 23, ry = 14 + random() * 22;
-            if (style.archetype === "spiral") angle = t * Math.PI * 3 + i % 3 * Math.PI * 2 / 3 + (random() - .5) * 1.2;
-            x = 128 + Math.cos(angle) * radius; y = 128 + Math.sin(angle) * radius * style.flatten;
-            if (style.archetype === "barred-spiral") { x = 52 + random() * 152; y = 128 + (random() - .5) * 42; rx *= 1.25; ry *= .7; }
-            if (style.archetype === "elliptical") { x = 128 + Math.cos(angle) * radius * .8; y = 128 + Math.sin(angle) * radius * .6; rx *= 1.2; ry *= 1.2; }
-            if (style.archetype === "irregular") { x = 66 + random() * 124; y = 60 + random() * 136; rx *= .9; }
-            puffs.push(`<ellipse cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" rx="${rx.toFixed(1)}" ry="${ry.toFixed(1)}" fill="url(#dust)" opacity="${(.20 + random() * .28).toFixed(2)}"/>`);
-            // Soft dust concentrations, not bright circles competing with bodies.
-            dust.push(`<ellipse cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" rx="${(1.3 + random() * 1.5).toFixed(1)}" ry="${(1 + random() * 1.1).toFixed(1)}" fill="url(#star)" opacity="${(.12 + random() * .24).toFixed(2)}"/>`);
+        const gradient = (id, hue, light, alpha) => `<radialGradient id="${id}"><stop stop-color="hsl(${hue} 34% ${light}%)" stop-opacity="${alpha}"/><stop offset=".32" stop-color="hsl(${hue} 32% ${light - 8}%)" stop-opacity="${alpha * .7}"/><stop offset=".68" stop-color="hsl(${hue} 28% ${light - 16}%)" stop-opacity="${alpha * .25}"/><stop offset="1" stop-opacity="0"/></radialGradient>`;
+        const puffs = [];
+        const puff = (x, y, rx, ry, angle, alpha) => `<ellipse cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" rx="${rx.toFixed(1)}" ry="${ry.toFixed(1)}" transform="rotate(${angle.toFixed(1)} ${x.toFixed(1)} ${y.toFixed(1)})" fill="url(#mist)" opacity="${alpha.toFixed(2)}"/>`;
+        for (let i = 0; i < 24; i++) {
+            const t = random(), jitter = random() - .5;
+            let x, y, rx = 22 + random() * 20, ry = 18 + random() * 16, angle = jitter * 35;
+            if (style.archetype === 'wispy') {
+                x = 46 + t * 164; y = 128 + Math.sin(t * 5 - 1) * 22 + jitter * 20;
+                rx *= 1.4; ry *= .65; angle = -12;
+            } else if (style.archetype === 'bloom') {
+                const phase = random() * Math.PI * 2, r = Math.sqrt(t) * 54;
+                x = 128 + Math.cos(phase) * r; y = 128 + Math.sin(phase) * r;
+                rx *= 1.15; ry *= 1.15;
+            } else if (style.archetype === 'cluster') {
+                const centers = [[82, 98], [161, 80], [147, 162]];
+                const [cx, cy] = centers[i % 3]; x = cx + jitter * 32; y = cy + (t - .5) * 34;
+            } else if (style.archetype === 'double-lobed') {
+                x = (i % 2 ? 168 : 87) + jitter * 32; y = 128 + (t - .5) * 46;
+                rx *= 1.1; ry *= 1.15;
+            } else if (style.archetype === 'crescent') {
+                const phase = -.95 + t * 2.65;
+                x = 105 + Math.cos(phase) * 62; y = 126 + Math.sin(phase) * 69;
+                rx *= .85; ry *= .85; angle = phase * 180 / Math.PI;
+            } else {
+                const phase = random() * Math.PI * 2, r = i < 16 ? Math.sqrt(t) * 36 : 58 + t * 42;
+                x = 128 + Math.cos(phase) * r; y = 128 + Math.sin(phase) * r * .82;
+                if (i >= 16) { rx *= .7; ry *= .65; }
+            }
+            puffs.push(puff(x, y, rx, ry, angle, .28 + random() * .20));
         }
-        const gradient = (id, hue, light, opacity) => `<radialGradient id="${id}"><stop stop-color="hsl(${hue} 32% ${light}%)" stop-opacity="${opacity}"/><stop offset=".38" stop-color="hsl(${hue} 30% ${light - 10}%)" stop-opacity="${opacity * .55}"/><stop offset=".72" stop-color="hsl(${hue} 26% ${light - 16}%)" stop-opacity="${opacity * .18}"/><stop offset="1" stop-opacity="0"/></radialGradient>`;
-        const core = style.archetype === "barred-spiral" ? [56, 24] : style.archetype === "elliptical" ? [48, 36] : [35, 30];
-        return `<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 256 256"><defs>${gradient("halo", style.hue, 40, .36)}${gradient("dust", style.hue + 7, 58, .50)}${gradient("core", style.hue - 6, 78, .45)}${gradient("star", style.hue, 86, .75)}</defs><ellipse cx="128" cy="128" rx="122" ry="118" fill="url(#halo)"/><g transform="rotate(${style.angle} 128 128)">${puffs.join("")}<ellipse cx="${coreX.toFixed(1)}" cy="${coreY.toFixed(1)}" rx="${core[0]}" ry="${core[1]}" fill="url(#core)"/>${dust.join("")}</g></svg>`;
+        // The broad haze follows the morphology too; it never fills every
+        // Galaxy with the same circular background or a luminous central ball.
+        const haze = style.archetype === 'wispy' ? [128, 128, 119, 55] :
+            style.archetype === 'crescent' ? [154, 128, 68, 103] :
+            style.archetype === 'double-lobed' ? [128, 128, 115, 76] : [128, 128, 106, 98];
+        return `<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 256 256" data-morphology="${style.archetype}"><defs>${gradient('mist', style.hue + 6, 67, .55)}${gradient('haze', style.hue, 44, .14)}</defs><g transform="rotate(${style.angle} 128 128)"><ellipse cx="${haze[0]}" cy="${haze[1]}" rx="${haze[2]}" ry="${haze[3]}" fill="url(#haze)"/>${puffs.join('')}</g></svg>`;
     }
 };

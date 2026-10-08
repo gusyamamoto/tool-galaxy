@@ -2,7 +2,7 @@
 class LabelDensity {
     constructor({ interval = 120, restoreDelay = 240 } = {}) {
         this.interval = interval; this.restoreDelay = restoreDelay; this.states = new Map();
-        this.frame = null; this.timer = null; this.lastRun = -Infinity; this.hiddenIds = new Set(); this.cost = 0;
+        this.frame = null; this.timer = null; this.trailingTimer = null; this.lastRun = -Infinity; this.hiddenIds = new Set(); this.cost = 0;
     }
     resolve(candidates, now) {
         const accepted = new Map(), grid = new Map(), hidden = new Set(), size = 96;
@@ -37,7 +37,16 @@ class LabelDensity {
     }
     request(read, force=false) {
         this.read=read;
-        if(this.frame!==null||document.hidden||(!force&&performance.now()-this.lastRun<this.interval))return;
+        if(this.frame!==null||document.hidden)return;
+        const remaining=this.interval-(performance.now()-this.lastRun);
+        if(!force&&remaining>0){
+            // A final camera update can land inside the throttle window after
+            // physics has stopped. Measure that latest view once, so labels do
+            // not retain collision decisions from the preceding zoom scale.
+            if(this.trailingTimer===null)this.trailingTimer=setTimeout(()=>{this.trailingTimer=null;this.request(this.read,true);},remaining);
+            return;
+        }
+        clearTimeout(this.trailingTimer);this.trailingTimer=null;
         this.frame=requestAnimationFrame(()=>{
             this.frame=null;const start=performance.now();this.lastRun=start;
             // Read all projected rectangles first, then write suppression flags:
@@ -52,5 +61,5 @@ class LabelDensity {
             if(result.recheck)this.timer=setTimeout(()=>{this.timer=null;this.request(this.read,true);},this.restoreDelay+10);
         });
     }
-    destroy(){if(this.frame!==null)cancelAnimationFrame(this.frame);clearTimeout(this.timer);this.frame=this.timer=null;this.states.clear();}
+    destroy(){if(this.frame!==null)cancelAnimationFrame(this.frame);clearTimeout(this.timer);clearTimeout(this.trailingTimer);this.frame=this.timer=this.trailingTimer=null;this.states.clear();}
 }

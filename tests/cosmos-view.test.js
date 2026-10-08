@@ -3,6 +3,22 @@ const { test } = require('node:test');
 function load() { const context = vm.createContext({}); vm.runInContext(fs.readFileSync(path.join(__dirname, '../cosmos-view.js'), 'utf8'), context); return vm.runInContext('cosmosView', context); }
 const plain = value => JSON.parse(JSON.stringify(value));
 
+test('screen diameters plateau independently by role while semantic detail keeps revealing', () => {
+    const view = load(), sizes = { sun: 52, planet: 28.6, moon: 13.52, satellite: 9.88, astronaut: 7.28 };
+    const caps = { sun: 76, planet: 44, moon: 25, satellite: 18, astronaut: 14 };
+    for (const [role, diameter] of Object.entries(sizes)) {
+        assert.equal(view.renderedDiameter(role, diameter, 1), diameter);
+        assert.equal(view.renderedDiameter(role, diameter, 3), caps[role]);
+        assert.equal(view.renderedDiameter(role, diameter, 100), caps[role]);
+        let previous = 0;
+        for (let scale = .1; scale < 3; scale += .01) {
+            const size = view.renderedDiameter(role, diameter, scale, view.detail(scale)[role]);
+            assert.ok(size >= previous && size <= caps[role]); previous = size;
+        }
+    }
+    assert.equal(view.detail(1.6).astronautLabel, 1);
+});
+
 test('Constellation lens keeps bodies distinct from labels and restores non-entry context through normal role fades', () => {
     const view = load(), roles = ['galaxy', 'sun', 'planet', 'moon', 'satellite', 'astronaut'];
     for (const role of roles) {
