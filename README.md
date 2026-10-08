@@ -1032,3 +1032,23 @@ independent section state, native Enter/Space activation, preserved child branch
 content drafts/camera/lenses/physics, Universe + and Starter creation, Archive
 appearance/restore/last-row removal, hidden diagnostics, existing canvas Fit,
 mobile targets, preference reloads and the isolated Sample utility.
+
+### Quick help
+
+The quiet **?** in the sidebar header opens local Quick help. Seven short,
+collapsible topics cover getting started, moving around, adding content,
+Constellations, archiving, useful tricks, and using the same item in two places.
+The last topic stays secondary and closed initially. There is no startup tour,
+external documentation, dependency, or storage change.
+
+Help uses a compact dark modal on desktop and responsive sizing on phones, with
+an always-reachable header and internally scrolling topics. Enter/Space activate
+topics, Tab stays in Help, and Close or Escape returns focus to the trigger.
+Content drafts, selection, active Constellations, and camera state remain intact.
+Help has no animation, including with reduced motion.
+
+`python tests/browser-check.py --help-only --screenshots` checks disclosure state,
+keyboard/focus, terminology, desktop and narrow/landscape mobile bounds, touch
+targets, internal scrolling, reduced motion, and unchanged workspace/data.
+Before committing, skim the copy, try Help with an unfinished Note and active
+Constellation, and check long scrolling topics on a phone.
