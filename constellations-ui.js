@@ -87,7 +87,8 @@ class ConstellationWorkspace {
         const memberList=document.getElementById('constellation-member-list'),focused=document.activeElement?.closest('#constellation-member-list > li');
         const focusId=focused?.dataset.entryId,focusIndex=focused?[...memberList.children].indexOf(focused):-1;
         const focusMenu=focused?.querySelector('details')?.contains(document.activeElement);
-        document.getElementById('panel-name').textContent=collection.name;document.getElementById('panel-kind').textContent='Constellation';
+        document.getElementById('panel-name').textContent=collection.name;
+        const panelKind=document.getElementById('panel-kind');panelKind.textContent='Constellation';panelKind.hidden=false;
         const closeButton=document.getElementById('close-inspector-button');closeButton.setAttribute('aria-label','Deactivate Constellation');closeButton.title='Deactivate Constellation';
         document.getElementById('panel-ancestry').hidden=true;document.getElementById('panel-rich-content').hidden=true;
         document.getElementById('constellation-content').hidden=false;document.getElementById('entry-action-status').hidden=true;

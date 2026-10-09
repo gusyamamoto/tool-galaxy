@@ -92,9 +92,11 @@ CRUD/persistence, canonical drops, gallery rendering and touch checklists.
 - **Contents:** selecting a tree item, body or search result opens a narrow right
   drawer. It starts hidden and can be closed with its ×, Escape or an empty-canvas
   click. Closing preserves selection and tree state; selecting again reopens it.
-  A sticky header shows the name, **•••** beside the title, and a clickable
-  ancestor-only breadcrumb below. Files, read-first Notes and Bookmarks follow in
-  that order. Item management is
+  A sticky header shows a quiet single-line ancestor-only breadcrumb above the
+  name, **•••** beside the title, and Close at the top-right. Long breadcrumb names
+  use ellipsis; deep paths keep all clickable ancestors available through horizontal
+  scrolling, initially showing the nearest ancestors. Media appears when photos/videos are attached, followed
+  by Files, read-first Notes and Bookmarks. Item management is
   available under **••• → Rename**, **Move / change parent**, and **Delete item**.
   On mobile it becomes a bottom sheet; opening navigation closes it, and selecting
   from navigation switches back to Contents. Right-click updates selection and
@@ -555,9 +557,17 @@ Every canonical entry, at every depth, can hold an optional `content` object:
 }
 ```
 
-The contextual **Content panel** shows Files first, Notes second and Bookmarks
-third. Empty sections say No files / No notes / No bookmarks. Sidebar + retains
-the universal contextual Add menu. Files and Bookmarks also have a quiet heading
+The contextual **Content panel** shows Media (when photos/videos are attached),
+Files, Notes and Bookmarks. Media is one dark inset observation surface with a
+fine border and quiet corner marks. One attachment uses a compact 148px-high wide
+preview; multiple attachments use an orderly two-column layout with 104px previews.
+There are no generated image labels, captions or filename rows. Video previews show
+a Play affordance and duration when available. Original filename, format, size,
+dimensions and video duration remain secondary in the unified viewer's Info.
+PDFs, Office documents, archives, text and other generic attachments stay in Files.
+This uses the same attachment metadata and binary store. Media is hidden when empty;
+other empty sections remain quiet. Sidebar + retains
+the universal contextual Add menu. Media, Files and Bookmarks have a quiet heading
 `+` shortcut; clicking **No notes** opens the single existing note editor. These
 reuse `chooseFiles()`, `editNotes()` and `editLink()`, targeting the selected
 canonical entry even after Portal navigation. Heading shortcuts appear on desktop
@@ -602,20 +612,51 @@ never in localStorage. The UI receives the adapter by dependency injection and
 does not call IndexedDB directly. A startup scan reads only owner/key metadata,
 not blobs/previews, so cleanup also finds unreferenced files belonging to an entry.
 
-Ordinary documents, archives, design/CAD and project files are accepted broadly.
-Internal previews remain JPG/JPEG, PNG, WebP, PDF, TXT and MD. Central limits live in
-`galaxyModel.contentLimits`: **10 MiB per file**, **20 megapixels per image**,
+General attachments include Office documents, archives, design/project files and
+unknown formats. Generic files open File Details with explicit **Save a copy**;
+they never run in a preview. The existing executable/installer/script upload
+restrictions remain. Photo previews support JPG/JPEG, PNG and WebP; video previews
+support MP4, WebM and MOV where the browser can decode the original codec.
+PDF, TXT and MD retain their existing native-reader/plain-text behavior.
+Media + filters photos/videos; Files + accepts general attachments. Body/sidebar
+drops route automatically, with no manual classification.
+Central limits live in `galaxyModel.contentLimits`: **10 MiB per image/normal file**,
+**100 MiB per video** (provisional local-prototype policy), **20 megapixels per image**,
 **240px thumbnail edge**, **2048-byte text previews**, and **100,000 note characters**.
 Image headers provide dimensions cheaply; JPEG orientation is respected.
 Only the visible selected Content panel requests previews.
-Images display bounded, aspect-preserving thumbnails; explicit Open uses original
-bytes. PDFs use the browser-native reader inside the attachment viewer. TXT/MD previews are bounded
+Images display bounded thumbnails; the full viewer enlarges images to fit available
+space while preserving aspect ratio and never cropping. Videos use native HTML5
+controls, without autoplay, transcoding or uploads. Local thumbnail extraction seeks
+to a representative frame, discovers duration when practical, and times out after
+six seconds. Failed thumbnails use a quiet video tile. Unsupported playback retains
+the valid attachment and offers an explanation plus explicit Save a copy.
+Photos/videos share attachment-order side navigation, keyboard arrows (outside
+native video controls), a counter and thumbnail filmstrip. One attachment hides
+navigation/filmstrip. Switching/closing pauses videos and releases object URLs;
+Escape, backdrop dismissal, Info and keyboard focus restoration remain available.
+PDFs use the browser-native reader inside the attachment viewer. TXT/MD previews are bounded
 plain text, and MD opens as text rather than executable HTML or rendered Markdown.
 Preview object URLs are revoked on selection/close, and full-file URLs on tab close
-or page exit. Choose files through sidebar + → Add files; file-policy/size
-information appears only during selection or validation. There are no file drop
-targets. File overflow → Remove requires a second
+or page exit. Choose files through sidebar + → Add files; supported-format/size
+information appears only during selection or validation. Body/sidebar file drops
+reuse preparation and the same transaction. File overflow → Remove requires a second
 **Confirm remove** click.
+
+Existing v5 metadata accepts syntactically valid original MIME types independently
+of whether Cosmifold can preview them. This restores compatibility with general
+attachments written by the broad-file implementation; an older six-type allowlist
+incorrectly rejected legitimate DOCX metadata and made the entire dataset read-only.
+The fix preserves MIME, optional extension, IDs and storage keys without rewriting
+saved data on load. Corrupt content, ownership, IDs, MIME syntax and unsupported
+content versions still trigger the existing warning and saving protection.
+Storage stays at localStorage v5, content v1 and IndexedDB v1; video duration is
+optional metadata, with no required migration or second binary store.
+
+Focused browser checks: `python tests/browser-check.py --media-only --screenshots`,
+`--compatibility-only`, `--general-files-only`, and `--attachment-viewer-only`.
+`--compatibility-only --saved-snapshot PATH` can validate a read-only saved JSON copy
+inside an isolated browser profile. It never opens or modifies the user's profile.
 
 Upload/removal coordinates a synchronous metadata write with an abortable binary
 transaction. Failed validation, quota or metadata writes leave no broken reference
@@ -1195,18 +1236,22 @@ including native reader focus/keyboard behavior and Open externally.
 File acceptance is separate from viewing capability. Ordinary Office documents,
 ZIPs, design/CAD/project files and unfamiliar formats use the same attachment
 metadata, IDs, file adapter, IndexedDB bytes, deletion and Sample isolation as
-images/PDFs. The picker has no format whitelist. The limit remains **10 MiB per
-file**, and existing image pixel/thumbnail limits are unchanged. Storage stays
-v5; new uploads include an optional lowercase extension. Older attachments load
-without that field and need no migration.
+photos/videos/PDFs. Files + has no format whitelist; Media + filters photo/video
+formats. Normal files and images retain the **10 MiB** limit; MP4, WebM and MOV
+have the provisional local **100 MiB per video** limit. Existing image
+pixel/thumbnail limits are unchanged. Storage stays v5; new uploads include an
+optional lowercase extension, and videos can include optional duration metadata.
+Older attachments load without those fields and need no migration.
 
 `galaxyModel.filePolicy` is the one acceptance/preview decision point. It keeps
 original filenames and reported MIME types, with `application/octet-stream` when
 MIME is missing/invalid. Known extensions recover preview capability when MIME
-is absent/generic; conflicting MIME/extension signals stay generic. Images/PDFs
+is absent/generic; conflicting non-video MIME/extension signals stay generic.
+Known video extensions remain Media even when the browser cannot decode the codec;
+the unified viewer offers graceful fallback and explicit Save a copy. Images/PDFs
 retain their validation, internal viewers, Info and fallback. TXT/MD retain safe
-plain-text previews/opening. Other formats, including video for now, get quiet
-type badges, filenames, sizes and accessible File Details actions. Generic files
+plain-text previews/opening. Other formats get quiet type badges, filenames,
+sizes and accessible File Details actions. Generic files
 are not read for a preview. Clicking opens a compact internal File Details dialog
 with filename, type/extension, size and a friendly preview explanation. Only an
 explicit **Save a copy** action downloads original bytes under the original name

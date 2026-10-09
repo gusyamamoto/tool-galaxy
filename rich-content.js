@@ -21,7 +21,7 @@ function createPanelItemMenu(actions, label, root) {
         if (menu.open) {
             root.querySelectorAll(".content-item-menu[open]").forEach(other => { if (other !== menu) other.open = false; });
             const point = summary.getBoundingClientRect();
-            if(window.matchMedia('(max-width: 760px), (pointer: coarse) and (max-width: 1024px) and (max-height: 500px)').matches){
+            if(menu.closest('.content-media-item') || window.matchMedia('(max-width: 760px), (pointer: coarse) and (max-width: 1024px) and (max-height: 500px)').matches){
                 menu.classList.toggle('opens-up',positionCosmosMenu(actions,point.right-actions.offsetWidth,point.bottom+4,{above:point.top-4}));
             }else{
                 actions.removeAttribute('style');const bounds=root.closest('#entry-panel').getBoundingClientRect();
@@ -61,7 +61,7 @@ class EntryContentInspector {
         this.downloadUrls = new Map();
         this.setupFileDetails();
         this.notes.maxLength = galaxyModel.contentLimits.notes;
-        document.getElementById("content-file-limit").textContent = `Documents, archives, images, and project files · up to ${galaxyModel.contentLimits.fileBytes / 1024 / 1024} MiB per file`;
+        document.getElementById("content-file-limit").textContent = `Photos and files · up to ${galaxyModel.contentLimits.fileBytes / 1024 / 1024} MiB each. Videos · up to ${galaxyModel.contentLimits.videoBytes / 1024 / 1024} MiB each in local browser storage.`;
         this.root.addEventListener("input", () => this.onAction());
         this.root.addEventListener("click", () => this.onAction());
         this.notesForm.addEventListener("submit", event => {
@@ -85,6 +85,7 @@ class EntryContentInspector {
         });
         document.getElementById("content-edit-notes").addEventListener("click", () => this.editNotes());
         document.getElementById("content-add-files").addEventListener("click", () => this.chooseFiles());
+        document.getElementById("content-add-media").addEventListener("click", () => this.chooseFiles({media:true}));
         document.getElementById("content-notes-empty").addEventListener("click", () => this.editNotes());
         document.getElementById("content-add-bookmark").addEventListener("click", () => this.editLink());
         document.getElementById("content-cancel-notes").addEventListener("click", () => { this.notesForm.hidden = true; this.renderNotes(); this.onLayout(); });
@@ -125,7 +126,8 @@ class EntryContentInspector {
         if (!error) this.statusTimer = setTimeout(() => { this.status.hidden = true; this.onLayout(); }, 4000);
     }
     error(error) {
-        this.message(error?.name === "QuotaExceededError" ? "Browser storage is full. Remove some files and try again." : error?.message || "This content could not be saved.", true);
+        const quota = error?.name === "QuotaExceededError" || error?.cause?.name === "QuotaExceededError";
+        this.message(quota ? "There isn’t enough local browser storage for this attachment. Free some space or choose a smaller file or video and try again." : error?.message || "This content could not be saved.", true);
     }
     select(entry, visible) {
         clearTimeout(this.statusTimer);
@@ -160,8 +162,11 @@ class EntryContentInspector {
         this.linkForm.hidden = false; this.renderBookmarkState();
         document.getElementById("content-link-url").focus({ preventScroll: true }); this.onLayout();
     }
-    chooseFiles() {
+    chooseFiles({media=false} = {}) {
         if (this.entryId && !this.jobs.get(this.entryId)) {
+            if (media) this.files.accept = '.jpg,.jpeg,.png,.webp,.mp4,.webm,.mov';
+            else this.files.removeAttribute('accept');
+            this.files.setAttribute('aria-label', media ? 'Choose photos or videos' : 'Choose files');
             this.onAction(); document.getElementById("content-file-limit").hidden = false;
             this.onLayout(); this.files.click();
         }
@@ -207,14 +212,15 @@ class EntryContentInspector {
     }
     clearPreviews() { this.generation++; this.urls.forEach(url => URL.revokeObjectURL(url)); this.urls.clear(); }
     renderLists() {
-        const links = document.getElementById("content-links"), files = document.getElementById("content-attachments");
+        const links = document.getElementById("content-links"), files = document.getElementById("content-attachments"), media = document.getElementById("content-media");
         const changed=this.listEntryId!==this.entryId,previous=this.listFileIds||new Set(),current=new Set(this.content().attachments.map(file=>file.id));
         if(!changed&&this.visible&&this.motion&&!this.motion.reduced){
-            const removed=[...files.children].filter(row=>!current.has(row.dataset.attachmentId)).map(row=>({rect:row.getBoundingClientRect(),name:row.querySelector('.content-file-name').textContent}));
+            const removed=[...media.children,...files.children].filter(row=>!current.has(row.dataset.attachmentId)).map(row=>({rect:row.getBoundingClientRect(),name:row.querySelector('.content-file-name')?.textContent || 'Media'}));
             removed.forEach(row=>this.motion.fileExit(row.name,row.rect,this.root.closest('#entry-panel')));
         }
         this.listEntryId=this.entryId;this.listFileIds=current;this.clearPreviews();
-        links.replaceChildren(); files.replaceChildren();
+        links.replaceChildren(); files.replaceChildren(); media.replaceChildren();
+        document.getElementById("content-media-section").hidden = true;
         if (!this.entryId) return;
         this.content().links.forEach(link => {
             const item = document.createElement("li"), anchor = document.createElement("a"), url = document.createElement("small"), actions = document.createElement("div"), info = document.createElement("div"), icon = document.createElement("span");
@@ -234,19 +240,24 @@ class EntryContentInspector {
             item.append(icon, info, this.itemMenu(actions, link.title || link.url)); links.append(item);
         });
         const generation = this.generation;
-        const gallery=this.content().attachments.filter(file=>galaxyModel.filePolicy.classify(file).kind==='image').length>1;
-        files.classList.toggle('has-image-gallery',gallery);
+        const mediaCount = this.content().attachments.filter(file => galaxyModel.filePolicy.isMedia(file)).length;
+        document.getElementById("content-media-section").hidden = mediaCount === 0;
+        media.classList.toggle('has-multiple-media', mediaCount > 1);
         this.content().attachments.forEach(metadata => {
-            const capability = galaxyModel.filePolicy.classify(metadata), generic = capability.kind === 'generic';
-            const item = document.createElement("li"), name = this.button(metadata.filename, event => this.openFile(metadata,event.currentTarget), `${generic?'File details for':'Open attachment'} ${metadata.filename}`), size = document.createElement("small"), preview = document.createElement("div"), actions = document.createElement("div"), info = document.createElement("div");
-            item.className = "content-file"; item.dataset.attachmentId = metadata.id;
-            if(capability.kind==='image')item.classList.add('content-image');
-            name.className = "content-file-name";
+            const capability = galaxyModel.filePolicy.classify(metadata), isMedia = ['image','video'].includes(capability.kind);
+            const item = document.createElement("li"), preview = document.createElement("div"), actions = document.createElement("div");
+            item.className = isMedia ? `content-media-item content-${capability.kind}` : "content-file"; item.dataset.attachmentId = metadata.id;
             preview.className = "content-file-preview";
-            const badge = this.button(capability.badge, event => this.openFile(metadata,event.currentTarget), `${generic?'File details for':'View'} ${metadata.filename}`);
-            badge.className = "content-file-icon"; preview.append(badge);
-            name.title = name.ariaLabel; badge.title = badge.ariaLabel;
-            size.textContent = `${metadata.size >= 1024*1024 ? (metadata.size/1024/1024).toFixed(1)+" MiB" : metadata.size >= 1024 ? (metadata.size/1024).toFixed(1)+" KiB" : metadata.size+" B"}`;
+            const badge = this.button(isMedia ? '' : capability.badge, event => this.openFile(metadata,event.currentTarget), `${capability.kind === 'generic' ? 'File details for' : 'View '+(isMedia ? capability.kind+':' : '')} ${metadata.filename}`);
+            badge.className = isMedia ? "content-media-viewport" : "content-file-icon"; badge.title = metadata.filename; preview.append(badge);
+            if (isMedia) {
+                const placeholder = document.createElement('span');placeholder.className='content-media-placeholder';placeholder.textContent=capability.kind==='video'?'Video':'Photo';placeholder.setAttribute('aria-hidden','true');badge.append(placeholder);
+                if (capability.kind==='video') {
+                    badge.classList.add('is-video');
+                    const play=document.createElement('span');play.className='content-media-play';play.setAttribute('aria-hidden','true');play.innerHTML='<svg viewBox="0 0 24 24"><path d="m9 5 11 7-11 7z"/></svg>';badge.append(play);
+                    if (Number.isFinite(metadata.duration)) { const duration=document.createElement('span');duration.className='content-media-duration';duration.setAttribute('aria-hidden','true');duration.textContent=cosmosMediaDuration(metadata.duration);badge.append(duration); }
+                }
+            }
             actions.className = "content-row-actions";
             actions.append(this.button("Remove", event => {
                 const button = event.currentTarget;
@@ -259,35 +270,56 @@ class EntryContentInspector {
                         () => this.rollback(id, previous));
                 });
             }, `Remove attachment ${metadata.filename}`));
-            info.className = "content-file-info"; info.append(name, size);
-            item.append(preview, info, this.itemMenu(actions, metadata.filename)); files.append(item);
+            if (isMedia) {
+                item.append(preview, this.itemMenu(actions, metadata.filename)); media.append(item);
+            } else {
+                const name = this.button(metadata.filename, event => this.openFile(metadata,event.currentTarget), `${capability.kind==='generic'?'File details for':'Open attachment'} ${metadata.filename}`), size = document.createElement("small"), info = document.createElement("div");
+                name.className = "content-file-name";
+                name.title = name.ariaLabel; badge.title = badge.ariaLabel;
+                size.textContent = `${metadata.size >= 1024*1024 ? (metadata.size/1024/1024).toFixed(1)+" MiB" : metadata.size >= 1024 ? (metadata.size/1024).toFixed(1)+" KiB" : metadata.size+" B"}`;
+                info.className = "content-file-info"; info.append(name, size);
+                item.append(preview, info, this.itemMenu(actions, metadata.filename)); files.append(item);
+            }
             if(!changed&&!previous.has(metadata.id)&&this.visible)this.motion?.fileEnter(item);
             if (this.visible) this.preview(metadata, preview, generation);
         });
-        document.getElementById("content-files-empty").hidden = !!this.content().attachments.length;
+        document.getElementById("content-files-empty").hidden = this.content().attachments.length > mediaCount;
         this.renderBookmarkState();
         this.onLayout();
     }
     async preview(metadata, element, generation) {
         const capability = galaxyModel.filePolicy.classify(metadata);
-        if (!['image','text'].includes(capability.kind)) return;
+        if (!['image','video','text'].includes(capability.kind)) return;
         this.previewLoads++;
         try {
             const record = await this.store.get(metadata.storageKey);
             if (generation !== this.generation || !this.visible) return;
-            if (!record || record.entryId !== metadata.entryId) { element.textContent = "File unavailable in this browser storage."; return; }
-            if (capability.kind === 'image' && record.thumbnail) {
+            if (!record || record.entryId !== metadata.entryId) { this.previewUnavailable(element, "File unavailable in this browser storage."); return; }
+            if (['image','video'].includes(capability.kind) && record.thumbnail) {
                 const image = document.createElement("img"), url = URL.createObjectURL(record.thumbnail);
-                this.urls.add(url); image.src = url; image.alt = `Preview of ${metadata.filename}`; image.loading = "lazy";
-                element.querySelector("button").replaceChildren(image);
+                this.urls.add(url); image.src = url; image.alt = ""; image.loading = "lazy";
+                const button = element.querySelector("button");button.querySelector('.content-media-placeholder')?.remove();button.prepend(image);
                 image.onload = () => this.onLayout();
+                image.onerror = () => { if (generation === this.generation && this.visible) this.previewUnavailable(element, "Preview unavailable. Open to try again."); };
             } else if (capability.kind === 'text') {
                 const text = await record.blob.slice(0,galaxyModel.contentLimits.textPreviewBytes).text();
                 if (generation !== this.generation) return;
                 const pre = document.createElement("pre"); pre.textContent = text; pre.className = "content-text-preview";
                 element.parentElement.append(pre);
             }
-        } catch (error) { if (generation === this.generation) element.textContent = "Preview unavailable. Use Open to try again."; }
+        } catch (error) { if (generation === this.generation && this.visible) this.previewUnavailable(element, "Preview unavailable. Open to try again."); }
+    }
+    previewUnavailable(element, message) {
+        // Keep the opening control available even when stored thumbnails cannot load.
+        const button = element.querySelector("button");
+        if (button?.classList.contains("content-media-viewport")) {
+            button.querySelector('img')?.remove();
+            let placeholder = button.querySelector('.content-media-placeholder');
+            if (!placeholder) { placeholder=document.createElement('span');placeholder.className='content-media-placeholder';button.prepend(placeholder); }
+            placeholder.textContent = button.classList.contains('is-video') ? 'Video' : message;
+        }
+        else element.textContent = message;
+        this.onLayout();
     }
     upload(files) {
         const id = this.entryId;
@@ -368,7 +400,7 @@ class EntryContentInspector {
     async openFile(metadata, trigger = document.activeElement) {
         this.onAction();
         const capability = galaxyModel.filePolicy.classify(metadata);
-        if (['image','pdf'].includes(capability.kind)) { this.imageViewer.open(metadata, trigger); return; }
+        if (['image','video','pdf'].includes(capability.kind)) { this.imageViewer.open(metadata, trigger); return; }
         if (capability.kind === 'generic') { this.showFileDetails(metadata,trigger); return; }
         const tab = window.open("about:blank", "_blank");
         if (!tab) { this.message("Allow this file to open in a new browser tab.", true); return; }

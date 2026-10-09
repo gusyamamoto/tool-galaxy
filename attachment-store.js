@@ -6,7 +6,9 @@ const galaxyAttachmentFiles = {
         const policy = galaxyModel.filePolicy, extension = policy.extension(file.name);
         const mimeType = policy.validMime(file.type) ? file.type : 'application/octet-stream';
         if (policy.blocked(file.name,mimeType)) throw new Error('Executable files, installers, and scripts cannot be attached. Choose a document, project file, or archive instead.');
-        if (file.size > galaxyModel.contentLimits.fileBytes) throw new Error(`This file is too large. The per-file limit is ${galaxyModel.contentLimits.fileBytes / 1024 / 1024} MiB.`);
+        const isVideo = policy.classify({filename:file.name,mimeType}).kind === 'video';
+        const limit = isVideo ? galaxyModel.contentLimits.videoBytes : galaxyModel.contentLimits.fileBytes;
+        if (file.size > limit) throw new Error(`This ${isVideo ? 'video' : 'file'} is too large. The ${isVideo ? 'local video' : 'per-file'} limit is ${limit / 1024 / 1024} MiB.`);
         const id = crypto.randomUUID(), metadata = { id, kind: "upload", entryId, filename: file.name,
             mimeType, extension, size: file.size, storageKey: id, createdAt: new Date().toISOString() };
         const record = { key: id, entryId, blob: new Blob([file], { type: mimeType }) };
@@ -61,6 +63,56 @@ const galaxyAttachmentFiles = {
                 metadata.width=width;metadata.height=height;
             } finally { bitmap.close(); }
         }
+        if (kind === 'video') await this.videoPreview(record, metadata, renderType);
         return { metadata, record };
+    },
+    async videoPreview(record, metadata, renderType) {
+        // Best-effort local frame extraction. Unsupported codecs remain valid attachments.
+        const video = document.createElement('video'), url = URL.createObjectURL(new Blob([record.blob],{type:renderType}));
+        let timer;
+        try {
+            video.preload = 'auto'; video.muted = true; video.playsInline = true;
+            await new Promise(resolve => {
+                let seeking = false, done = false, capturing = false, discoveringDuration = false;
+                const finish = () => { if (!done) { done = true; resolve(); } };
+                const capture = () => {
+                    if (done || capturing || !video.videoWidth || !video.videoHeight || video.readyState < 2) return;
+                    capturing = true;
+                    const ratio = Math.min(1,galaxyModel.contentLimits.thumbnailEdge / Math.max(video.videoWidth,video.videoHeight));
+                    const canvas = document.createElement('canvas');
+                    canvas.width = Math.max(1,Math.round(video.videoWidth*ratio)); canvas.height = Math.max(1,Math.round(video.videoHeight*ratio));
+                    try { canvas.getContext('2d').drawImage(video,0,0,canvas.width,canvas.height); canvas.toBlob(blob=>{if(!done && blob)record.thumbnail=blob;finish()},'image/webp',.8); }
+                    catch { finish(); }
+                };
+                video.onloadedmetadata = () => {
+                    if (done) return;
+                    if (video.videoWidth && video.videoHeight) { metadata.width=video.videoWidth;metadata.height=video.videoHeight; }
+                    if (Number.isFinite(video.duration) && video.duration >= 0) metadata.duration=video.duration;
+                    // Some locally recorded WebM/fragmented MP4 files omit container duration.
+                    // A native seek to the end can discover it without altering the file.
+                    if (video.duration === Infinity) { seeking=true;discoveringDuration=true;video.currentTime=1e10;return; }
+                    const position = Number.isFinite(video.duration) ? Math.min(2,video.duration*.2) : 0;
+                    if (position > 0) { seeking = true;video.currentTime=position; }
+                };
+                video.onloadeddata = () => { if (!seeking) capture(); };
+                video.onseeked = () => {
+                    if (done) return;
+                    if (discoveringDuration) {
+                        discoveringDuration=false;
+                        const duration=Number.isFinite(video.duration)?video.duration:video.currentTime;
+                        if (duration>0 && duration<1e10) {metadata.duration=duration;video.currentTime=Math.min(2,duration*.2);return;}
+                    }
+                    seeking=false;
+                    capture();
+                };
+                video.onerror = finish;
+                timer = setTimeout(finish,6000);
+                video.src = url;
+            });
+        } catch { /* A polished fallback tile uses the original video bytes. */ }
+        finally {
+            clearTimeout(timer); video.onloadedmetadata=video.onloadeddata=video.onseeked=video.onerror=null;
+            video.pause(); video.removeAttribute('src'); video.load(); URL.revokeObjectURL(url);
+        }
     }
 };

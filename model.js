@@ -3,7 +3,7 @@ const galaxyModel = {
     // Acceptance is independent of preview capability. Persisted metadata keeps
     // its original MIME; only these formats enter Cosmifold's preview pipelines.
     filePolicy: {
-        previewTypes: {jpg:'image/jpeg',jpeg:'image/jpeg',png:'image/png',webp:'image/webp',pdf:'application/pdf',txt:'text/plain',md:'text/markdown'},
+        previewTypes: {jpg:'image/jpeg',jpeg:'image/jpeg',png:'image/png',webp:'image/webp',mp4:'video/mp4',webm:'video/webm',mov:'video/quicktime',pdf:'application/pdf',txt:'text/plain',md:'text/markdown'},
         previewMimeAliases: {'image/jpg':'image/jpeg','image/pjpeg':'image/jpeg','image/x-png':'image/png','application/x-pdf':'application/pdf','text/x-markdown':'text/markdown'},
         blockedExtensions: new Set(['exe','msi','msp','msix','msixbundle','appx','appxbundle','com','scr','bat','cmd','cpl','pif','lnk',
             'ps1','psm1','vbs','vbe','jse','wsf','wsh','hta','js','mjs','cjs','py','pyw','sh','bash','zsh','fish',
@@ -30,10 +30,13 @@ const galaxyModel = {
             const expected = Object.hasOwn(this.previewTypes,extension) ? this.previewTypes[extension] : null;
             let renderType = expected || (!extension && Object.values(this.previewTypes).includes(mime) ? mime : null);
             // Ambiguous/conflicting metadata remains a valid generic download.
-            if (expected && mime && mime !== 'application/octet-stream' && mime !== expected &&
+            if (expected && !expected.startsWith('video/') && mime && mime !== 'application/octet-stream' && mime !== expected &&
                 !(extension === 'md' && ['text/plain','text/x-markdown'].includes(mime))) renderType = null;
-            const kind = renderType?.startsWith('image/') ? 'image' : renderType === 'application/pdf' ? 'pdf' : renderType?.startsWith('text/') ? 'text' : 'generic';
-            return {kind,renderType,extension,badge:kind==='image'?'IMG':kind==='pdf'?'PDF':kind==='text'?(extension==='md'?'MD':'TXT'):extension && extension.length<=5?extension.toUpperCase():'FILE'};
+            const kind = renderType?.startsWith('image/') ? 'image' : renderType?.startsWith('video/') ? 'video' : renderType === 'application/pdf' ? 'pdf' : renderType?.startsWith('text/') ? 'text' : 'generic';
+            return {kind,renderType,extension,badge:kind==='image'?'IMG':kind==='video'?'VIDEO':kind==='pdf'?'PDF':kind==='text'?(extension==='md'?'MD':'TXT'):extension && extension.length<=5?extension.toUpperCase():'FILE'};
+        },
+        isMedia(file) {
+            return ['image','video'].includes(this.classify(file).kind);
         }
     },
     roles: {
@@ -45,7 +48,7 @@ const galaxyModel = {
         astronaut: { name: "Astronaut", label: "Astronaut · Entry", body: "astronaut", scale: 0.28 }
     },
     roleAtDepth(depth) { return ["galaxy", "sun", "planet", "moon", "satellite"][depth] || "astronaut"; },
-    contentLimits: { notes: 100000, fileBytes: 10 * 1024 * 1024, thumbnailEdge: 240, imagePixels: 20000000, textPreviewBytes: 2048 },
+    contentLimits: { notes: 100000, fileBytes: 10 * 1024 * 1024, videoBytes: 100 * 1024 * 1024, thumbnailEdge: 240, imagePixels: 20000000, textPreviewBytes: 2048 },
     emptyContent() { return { version: 1, notes: { format: "plain", text: "" }, links: [], attachments: [] }; },
     webUrl(value) {
         if (typeof value !== "string" || value.length > 2048) return null;
@@ -81,11 +84,13 @@ const galaxyModel = {
                 typeof file.storageKey !== "string" || !file.storageKey.trim() || file.storageKey.length > 1024 || typeof file.filename !== "string" || !file.filename || file.filename.length > 255 ||
                 !this.filePolicy.validMime(file.mimeType) ||
                 (file.extension != null && (typeof file.extension !== 'string' || file.extension.length > 255)) ||
+                (file.duration != null && (!Number.isFinite(file.duration) || file.duration < 0)) ||
                 !Number.isSafeInteger(file.size) || file.size < 0 || typeof file.createdAt !== "string" || !Number.isFinite(Date.parse(file.createdAt))) return null;
             ids.add(file.id);
             attachments.push({ id: file.id, kind: "upload", entryId, filename: file.filename, mimeType: file.mimeType,
                 size: file.size, storageKey: file.storageKey, createdAt: file.createdAt,
                 ...(file.extension != null ? {extension:file.extension} : {}),
+                ...(file.duration != null ? {duration:file.duration} : {}),
                 ...(Number.isSafeInteger(file.width) && file.width > 0 && Number.isSafeInteger(file.height) && file.height > 0 ? { width: file.width, height: file.height } : {}) });
         }
         return { version: 1, notes: { format: "plain", text: value.notes.text }, links, attachments };

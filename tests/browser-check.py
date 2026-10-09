@@ -139,6 +139,9 @@ def main():
     args.add_argument("--usability-only", action="store_true", help="Check utility Help, shared inline rename and the internal image attachment viewer")
     args.add_argument("--attachment-viewer-only", action="store_true", help="Check image-first viewing, optional Info and internal/native PDF with fallback")
     args.add_argument("--general-files-only", action="store_true", help="Check broad file acceptance, generic downloads, persistence, shared drop and blocked formats")
+    args.add_argument("--media-only", action="store_true", help="Check unified photo/video Media, local thumbnails, playback, limits and mobile")
+    args.add_argument("--compatibility-only", action="store_true", help="Check legitimate broad-file v5 data and unchanged corruption protection")
+    args.add_argument("--saved-snapshot", type=Path, help="Read a saved snapshot into an isolated test profile; never change the original browser data")
     args.add_argument("--sidebar-sections-only", action="store_true", help="Check independent navigation sections, heading creation, Archive restore and Sample utility")
     args.add_argument("--archive-only", action="store_true", help="Check Galaxy archive/restore, references, file preservation, persistence and motion")
     args.add_argument("--body-hierarchy-only", action="store_true", help="Inspect restrained bodies, screen caps, nebula territories, radial branches, deep focus and mobile")
@@ -201,10 +204,20 @@ def main():
             "builtInPositions": [{"id": "github", "x": 310, "y": 300}, {"id": "vs-code", "x": 540, "y": 350}, {"id": "codex", "x": 750, "y": 300}]
         }
         old_raw = json.dumps(legacy)
+        if options.compatibility_only:
+            attachment = dict(id='old-docx',kind='upload',entryId='old-owner',filename='reference.docx',mimeType='application/vnd.openxmlformats-officedocument.wordprocessingml.document',extension='docx',size=15471,storageKey='old-docx',createdAt='2026-10-08T23:16:21.024Z')
+            old_raw = json.dumps(dict(version=5,entries=[dict(id='old-owner',name='Test',parentId=None,content=dict(version=1,notes=dict(format='plain',text='Keep this note'),links=[],attachments=[attachment]))],connections=[],layout=[]))
+        if options.saved_snapshot:
+            assert options.compatibility_only, '--saved-snapshot requires --compatibility-only'
+            old_raw = options.saved_snapshot.read_text(encoding='utf-8')
         cdp.call("Page.addScriptToEvaluateOnNewDocument", source=f"""
             if ({seed_condition} && !sessionStorage.getItem('seeded')) {{
                 localStorage.setItem('galaxy:user-data',{json.dumps(old_raw)});
                 sessionStorage.setItem('seeded','yes');
+            }}
+            if ({seed_condition} && sessionStorage.getItem('compatibility-next') !== null) {{
+                localStorage.setItem('galaxy:user-data',sessionStorage.getItem('compatibility-next'));
+                sessionStorage.removeItem('compatibility-next');
             }}
             document.addEventListener('DOMContentLoaded',()=>{{if(window===window.top&&typeof physics!=='undefined')physics.setReducedMotion(false)}});
             window.openSelectedRowAdd=()=>hierarchySidebar.rows.get(selectedNode.dataset.entryId).querySelector('.tree-add').click();
@@ -239,6 +252,8 @@ def main():
 
         def load():
             wait_for("document.readyState==='complete' && typeof physics!=='undefined'")
+            if options.compatibility_only:
+                evaluate('physics.pause()');return
             wait_for("physics.settled", timeout=25)
 
         def wait_camera():
@@ -319,11 +334,45 @@ def main():
 
         cdp.call("Page.navigate", url=page_url)
         load()
+        if options.compatibility_only:
+            expected = json.loads(old_raw)
+            check(evaluate('storageAvailable&&storageStatus.hidden'), 'legitimate persisted v5 generic attachments launch without a warning')
+            check(evaluate('entries.size') == len(expected['entries']), 'every saved entry survives validation')
+            check(evaluate("localStorage.getItem('galaxy:user-data')") == old_raw, 'loading legitimate v5 data leaves the original snapshot byte-for-byte unchanged')
+            for record in expected['entries']:
+                if record.get('content'):
+                    check(evaluate(f"entries.get({json.dumps(record['id'])}).content") == record['content'], 'saved content and attachment metadata remain intact: '+record['id'])
+            for defect in ('mime','ownership','future-content'):
+                broken = json.loads(old_raw)
+                record = next(e for e in broken['entries'] if e.get('content',{}).get('attachments'))
+                if defect == 'mime': record['content']['attachments'][0]['mimeType']='malformed MIME'
+                elif defect == 'ownership': record['content']['attachments'][0]['entryId']='different-owner'
+                else: record['content']['version']=99
+                damaged = json.dumps(broken)
+                evaluate(f"window.__compatibilityPage=true;sessionStorage.setItem('compatibility-next',{json.dumps(damaged)})");cdp.call('Page.reload',ignoreCache=True)
+                wait_for("typeof window.__compatibilityPage==='undefined'&&document.readyState==='complete'&&typeof physics!=='undefined'");load()
+                wait_for('!storageAvailable&&!storageStatus.hidden')
+                check(evaluate("!storageAvailable&&!storageStatus.hidden&&storageStatus.textContent.includes('Some saved entries are invalid')"), 'corruption remains visible and read-only: '+defect)
+                check(evaluate("localStorage.getItem('galaxy:user-data')") == damaged, 'corrupt snapshot is preserved exactly: '+defect)
+            evaluate(f"window.__compatibilityPage=true;sessionStorage.setItem('compatibility-next',{json.dumps(old_raw)})");cdp.call('Page.reload',ignoreCache=True)
+            wait_for("typeof window.__compatibilityPage==='undefined'&&document.readyState==='complete'&&typeof physics!=='undefined'");load()
+            wait_for('storageAvailable&&storageStatus.hidden')
+            check(evaluate('storageAvailable&&storageStatus.hidden'), 'restored legitimate data loads normally again')
+            check(not cdp.errors, f'no compatibility exceptions: {cdp.errors}')
+            print(f'{count} persisted-data compatibility checks passed',flush=True);return
         check(evaluate("entries.size===6 && entries.get('old-star').role==='sun' && entries.get('old-moon').parentId==='migration-my-galaxy'"), "legacy records migrate intact into My Galaxy")
         check(evaluate("typeof relationships==='undefined' && JSON.parse(localStorage.getItem('galaxy:user-data')).connections.length===0"), 'legacy pairwise records no longer enter application state')
         check(evaluate("localStorage.getItem('galaxy:user-data:pre-cosmic-tree')") == old_raw, "exact original snapshot retained before migration")
         check(evaluate("JSON.parse(localStorage.getItem('galaxy:user-data')).version===5 && JSON.parse(localStorage.getItem('galaxy:user-data')).entries.every(e=>!('role' in e) && !('depth' in e))"), "version 5 persists generic ancestry without hardcoded roles or depth")
         check(evaluate("!document.querySelector('#pin-position-button,[data-action=pin],#panel-placement,#panel-role,#connection-options') && !panel.textContent.includes('Moves naturally') && !dialog.textContent.includes('Other connections') && roleField.tagName==='OUTPUT' && [...entries.values()].every(e=>e.depth>=0)"), "normal UI derives roles without pin, physics status or relationship controls")
+
+        if options.media_only:
+            from media_browser import run_media_checks
+            def shot(name):
+                if screenshot_dir:
+                    result=cdp.call('Page.captureScreenshot',format='png',captureBeyondViewport=False);(screenshot_dir/(name+'.png')).write_bytes(base64.b64decode(result['data']))
+            run_media_checks(cdp=cdp,evaluate=evaluate,check=check,wait_for=wait_for,load=load,add=add,select=select,click_selector=click_selector,shot=shot)
+            print(f'{count} Media browser checks passed',flush=True);return
 
         if options.general_files_only:
             g=add('General files');owner=add('Project documents',g);wait_for('physics.settled');wait_camera();evaluate('physics.pause()')
@@ -372,7 +421,7 @@ def main():
             evaluate("contentInspector.upload([new File(['Missing MIME'],'no-mime.custom'),new File(['Unknown MIME'],'unknown.custom',{type:'application/x-custom-test'}),new File(['Video bytes'],'clip.mp4',{type:'video/mp4'}),new File(['<script>window.executedGeneric=true</script>'],'page.html',{type:'text/html'})])")
             wait_for('contentInspector.jobs.size===0&&contentInspector.content().attachments.length===10')
             check(evaluate("contentInspector.content().attachments.find(f=>f.filename==='no-mime.custom').mimeType==='application/octet-stream'&&contentInspector.content().attachments.find(f=>f.filename==='unknown.custom').mimeType==='application/x-custom-test'"),'missing MIME falls back safely while an uncommon reported MIME is preserved')
-            check(evaluate("contentInspector.content().attachments.filter(f=>['clip.mp4','page.html'].includes(f.filename)).every(f=>galaxyModel.filePolicy.classify(f).kind==='generic')&&!window.executedGeneric"),'video and active browser formats remain generic downloads with no new previewer')
+            check(evaluate("contentInspector.content().attachments.filter(f=>['clip.mp4','page.html'].includes(f.filename)).every(f=>galaxyModel.filePolicy.classify(f).kind===(f.filename==='clip.mp4'?'video':'generic'))&&!window.executedGeneric"),'video routes into Media while active browser formats remain inert generic downloads')
             evaluate("window.storeWrites=0;window.originalGeneralSave=attachmentStore.save;attachmentStore.save=(...args)=>{storeWrites++;return originalGeneralSave(...args)}")
             for filename,mime in [('payload.EXE','application/octet-stream'),('install.msi',''),('run.BAT','text/plain'),('run.cmd',''),('screen.scr',''),('program.com',''),('ordinary.docx','application/x-msdownload')]:
                 evaluate(f"contentInspector.upload([new File(['Blocked'],{json.dumps(filename)},{{type:{json.dumps(mime)}}})])");wait_for('contentInspector.jobs.size===0')
@@ -428,13 +477,14 @@ def main():
             evaluate("(async()=>{const c=document.createElement('canvas');c.width=800;c.height=400;c.getContext('2d').fillRect(0,0,800,400);for(const name of ['IMG_4827.JPG','DSC_0193.JPG']){const b=await new Promise(r=>c.toBlob(r,'image/jpeg'));await contentInspector.upload([new File([b],name,{type:'image/jpeg'})]);}})()")
             # Small genuine PDF with a page tree/content stream; the native reader handles pages.
             evaluate("""(()=>{const objects=['<< /Type /Catalog /Pages 2 0 R >>','<< /Type /Pages /Kids [3 0 R 3 0 R] /Count 2 >>','<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>','<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>'];const stream='BT /F1 24 Tf 60 700 Td (Cosmifold document) Tj ET';objects.push('<< /Length '+stream.length+' >>\\nstream\\n'+stream+'\\nendstream');let pdf='%PDF-1.4\\n',offsets=[0];objects.forEach((o,i)=>{offsets.push(pdf.length);pdf+=(i+1)+' 0 obj\\n'+o+'\\nendobj\\n'});const xref=pdf.length;pdf+='xref\\n0 '+offsets.length+'\\n0000000000 65535 f \\n';offsets.slice(1).forEach(n=>pdf+=String(n).padStart(10,'0')+' 00000 n \\n');pdf+='trailer\\n<< /Size '+offsets.length+' /Root 1 0 R >>\\nstartxref\\n'+xref+'\\n%%EOF';return contentInspector.upload([new File([pdf],'Trip document.pdf',{type:'application/pdf'}),new File(['Plain text remains external'],'readme.txt',{type:'text/plain'})]);})()""")
-            wait_for('contentInspector.jobs.size===0');wait_for("document.querySelector('#content-attachments img')?.naturalWidth>0")
+            wait_for('contentInspector.jobs.size===0');wait_for("document.querySelector('#content-media img')?.naturalWidth>0")
             image=evaluate('contentInspector.content().attachments[0]');pdf=evaluate("contentInspector.content().attachments.find(f=>f.mimeType==='application/pdf')")
-            image_trigger=f'[data-attachment-id="{image["id"]}"] .content-file-icon';pdf_trigger=f'[data-attachment-id="{pdf["id"]}"] .content-file-icon'
+            image_trigger=f'[data-attachment-id="{image["id"]}"] .content-media-viewport';pdf_trigger=f'[data-attachment-id="{pdf["id"]}"] .content-file-icon'
             targets={t['targetId'] for t in cdp.call('Target.getTargets')['targetInfos'] if t['type']=='page'}
             click_selector(image_trigger);wait_for('imageViewer.dialog.open&&!imageViewer.image.hidden')
-            check(evaluate("imageViewer.name.hidden&&imageViewer.info.hidden&&imageViewer.dialog.getAttribute('aria-label')==='Photo viewer'"),'photo viewer has no permanent filename title and starts image-first')
-            check(evaluate(f"contentInspector.content().attachments[0].filename==='IMG_4827.JPG'&&document.querySelector('[data-attachment-id=\"{image['id']}\"] .content-file-name').textContent==='IMG_4827.JPG'"),'original photo filename remains unchanged in metadata and Files UI')
+            check(evaluate("imageViewer.name.hidden&&imageViewer.info.hidden&&imageViewer.dialog.getAttribute('aria-label')==='Media viewer'"),'photo viewer has no permanent filename title and starts image-first')
+            check(evaluate(f"contentInspector.content().attachments[0].filename==='IMG_4827.JPG'&&document.querySelector('[data-attachment-id=\"{image['id']}\"] .content-media-viewport').getAttribute('aria-label').includes('IMG_4827.JPG')&&!document.getElementById('content-media').innerText.includes('IMG_4827.JPG')"),'original photo filename remains in metadata and accessible labels without dominating Media')
+            check(evaluate("document.querySelectorAll('#content-media > li').length===2&&document.querySelectorAll('#content-attachments > li').length===2&&[...document.querySelectorAll('#content-attachments > li')].every(n=>!n.classList.contains('content-image'))"),'mixed images, PDF and text separate into Media and Files')
             click_selector('#image-viewer-info-button');check(evaluate("!imageViewer.info.hidden&&imageViewer.info.textContent.includes('IMG_4827.JPG')&&imageViewer.info.textContent.includes('800 × 400')&&imageViewer.infoButton.getAttribute('aria-expanded')==='true'"),'optional Info reveals only existing filename, type, size and dimensions')
             click_selector('#image-viewer-info-button');click_selector('#image-viewer-next');wait_for('imageViewer.index===1&&!imageViewer.image.hidden');key('ArrowLeft','ArrowLeft');wait_for('imageViewer.index===0&&!imageViewer.image.hidden')
             check(evaluate('imageViewer.name.hidden&&imageViewer.info.hidden'),'image buttons/arrows still browse without displaying filenames');shot('image-first')
@@ -533,8 +583,8 @@ def main():
             check(evaluate(f"entries.get({json.dumps(item)}).name==='Holiday photos'&&portals.has('portal:usability')&&constellations.has('constellation:usability')"),'inline rename and canonical relationships survive refresh')
             select(item);wait_camera();evaluate('physics.pause()')
             evaluate("(async()=>{const canvas=document.createElement('canvas');canvas.width=800;canvas.height=400;const c=canvas.getContext('2d');c.fillStyle='#456b83';c.fillRect(0,0,800,400);for(const [name,type] of [['first.png','image/png'],['second.webp','image/webp'],['third.jpg','image/jpeg']]){const blob=await new Promise(resolve=>canvas.toBlob(resolve,type));await contentInspector.upload([new File([blob],name,{type})]);}})()")
-            wait_for('contentInspector.jobs.size===0');wait_for("document.querySelector('#content-attachments img')?.naturalWidth>0")
-            attachment=evaluate('contentInspector.content().attachments[0]');trigger=f'[data-attachment-id="{attachment["id"]}"] .content-file-icon'
+            wait_for('contentInspector.jobs.size===0');wait_for("document.querySelector('#content-media img')?.naturalWidth>0")
+            attachment=evaluate('contentInspector.content().attachments[0]');trigger=f'[data-attachment-id="{attachment["id"]}"] .content-media-viewport'
             targets={t['targetId'] for t in cdp.call('Target.getTargets')['targetInfos'] if t['type']=='page'};view=evaluate('JSON.stringify(camera.view)')
             click_selector(trigger);wait_for("imageViewer.dialog.open&&!imageViewer.image.hidden")
             check({t['targetId'] for t in cdp.call('Target.getTargets')['targetInfos'] if t['type']=='page'}==targets,'image thumbnail opens internally without another browser tab')
@@ -546,11 +596,11 @@ def main():
             click_selector('#image-viewer-previous');wait_for("imageViewer.name.textContent==='first.png'&&!imageViewer.image.hidden")
             check(evaluate('imageViewer.previous.disabled'),'Previous and Left return in attachment order without wrapping')
             evaluate("imageViewer.infoButton.focus()");key('Tab','Tab',modifiers=8)
-            check(evaluate("document.activeElement.id==='image-viewer-next'"),'viewer traps backward keyboard focus among available controls')
+            check(evaluate("document.activeElement===imageViewer.filmstrip.lastElementChild"),'viewer traps backward keyboard focus among available filmstrip controls')
             shot('viewer-desktop');key('Escape','Escape');wait_for('!imageViewer.dialog.open')
             check(evaluate(f"document.activeElement===document.querySelector({json.dumps(trigger)})&&imageViewer.url===null&&JSON.stringify(camera.view)==={json.dumps(view)}"),'Escape revokes the image URL and restores attachment focus without changing the camera')
             click_selector(trigger);wait_for('!imageViewer.image.hidden');click_selector('#image-viewer-close');check(evaluate('!imageViewer.dialog.open'),'Close dismisses the viewer')
-            click_selector(trigger);wait_for('!imageViewer.image.hidden');mouse('mousePressed',x=20,y=150,button='left',clickCount=1);mouse('mouseReleased',x=20,y=150,button='left',clickCount=1)
+            click_selector(trigger);wait_for('!imageViewer.image.hidden');mouse('mousePressed',x=2,y=150,button='left',clickCount=1);mouse('mouseReleased',x=2,y=150,button='left',clickCount=1)
             check(evaluate('!imageViewer.dialog.open'),'empty overlay space closes the viewer')
             evaluate("window.viewerGet=attachmentStore.get;attachmentStore.get=async()=>null")
             click_selector(trigger);wait_for("imageViewer.status.textContent.includes('could not')")
@@ -1142,6 +1192,9 @@ def main():
 
         if options.everyday_only:
             evaluate('physics.pause()')
+            def media_key(value, code, text=''):
+                cdp.call('Input.dispatchKeyEvent',type='keyDown',key=value,code=code,text=text)
+                cdp.call('Input.dispatchKeyEvent',type='keyUp',key=value,code=code)
             def shot(name):
                 if screenshot_dir:
                     result=cdp.call('Page.captureScreenshot',format='png',captureBeyondViewport=False);(screenshot_dir/(name+'.png')).write_bytes(base64.b64decode(result['data']))
@@ -1175,11 +1228,17 @@ def main():
             target=f"nodes.get({json.dumps(owner)})"
             drop(target,"dt.items.add(dropImages[0])")
             check(evaluate("dropHighlighted&&contentInspector.content().attachments.length===1&&!document.querySelector('.content-drop-target')"),'file drop highlights its canonical target then cleans feedback')
-            wait_for("document.querySelector('#content-attachments img')!==null")
-            check(evaluate("document.querySelector('#content-attachments img').src.startsWith('blob:')&&document.querySelector('.content-image .content-file-icon').getBoundingClientRect().width===64"),'one image uses its existing stored thumbnail in a more visual row')
+            wait_for("document.querySelector('#content-media img')?.naturalWidth>0")
+            shot('media-single-desktop')
+            check(evaluate("document.querySelector('#content-media img').src.startsWith('blob:')&&!document.getElementById('content-media').classList.contains('has-multiple-media')&&Math.abs(document.querySelector('.content-media-viewport').getBoundingClientRect().height-148)<.1&&getComputedStyle(document.querySelector('#content-media img')).objectFit==='contain'&&document.querySelectorAll('#content-attachments > li').length===0"),'one image uses a compact full-width viewing frame, preserves its aspect ratio and stays out of Files')
+            evaluate("window.mediaPickerOwner=null;const intercept=event=>{mediaPickerOwner=contentInspector.entryId;event.preventDefault()};contentInspector.files.addEventListener('click',intercept,{once:true});document.getElementById('content-add-media').click()")
+            check(evaluate("mediaPickerOwner===contentInspector.entryId&&!document.getElementById('content-file-limit').hidden"),'Media + reuses the existing attachment picker for the selected item')
+            evaluate("contentInspector.files.dispatchEvent(new Event('cancel'))")
+            evaluate("document.querySelector('.content-media-viewport').focus()");media_key('Enter','Enter','\r');wait_for('imageViewer.dialog.open&&!imageViewer.image.hidden');media_key('Escape','Escape');wait_for('!imageViewer.dialog.open')
+            check(evaluate("document.activeElement===document.querySelector('.content-media-viewport')"),'single image opens by keyboard and returns focus after Escape')
             drop(target,"dt.items.add(dropImages[1]);dt.items.add(new File(['%PDF-1.4\\n'],'document.pdf',{type:'application/pdf'}));dt.items.add(new File(['Text preview'],'notes.txt',{type:'text/plain'}));dt.items.add(new File(['# Markdown'],'guide.md',{type:'text/markdown'}))")
-            wait_for("document.querySelectorAll('#content-attachments img').length===2")
-            check(evaluate("contentInspector.content().attachments.length===5&&document.getElementById('content-attachments').classList.contains('has-image-gallery')&&getComputedStyle(document.querySelector('.content-image .content-file-icon')).height==='80px'&&[...document.querySelectorAll('.content-file:not(.content-image) .content-file-icon')].every(n=>n.getBoundingClientRect().width===36&&n.getBoundingClientRect().height===38)"),'multiple images form a compact thumbnail grid beside normal documents')
+            wait_for("document.querySelectorAll('#content-media img').length===2")
+            check(evaluate("contentInspector.content().attachments.length===5&&document.getElementById('content-media').classList.contains('has-multiple-media')&&getComputedStyle(document.querySelector('.content-media-viewport')).height==='104px'&&document.querySelectorAll('#content-attachments > li').length===3&&[...document.querySelectorAll('.content-file .content-file-icon')].every(n=>{const r=n.getBoundingClientRect();return Math.abs(r.width-36)<.1&&Math.abs(r.height-38)<.1})"),'multiple images form a compact Media grid while PDF, TXT and MD keep utilitarian Files rows')
             check(evaluate('JSON.stringify(camera.view)')==view and evaluate('physics.simulation.alpha()')==alpha,'external drops preserve camera and physics heat')
             shot('everyday-gallery-desktop')
             evaluate(f"commitConstellations(new Map([...constellations,['constellation:everyday-lens',{{id:'constellation:everyday-lens',name:'Trip plans',memberEntryIds:[{json.dumps(owner)}],createdAt:new Date().toISOString()}}]]));activateConstellation('constellation:everyday-lens')")
@@ -1206,6 +1265,7 @@ def main():
                 for event in ['dragEnter','dragOver','drop']:cdp.call('Input.dispatchDragEvent',type=event,**point,data=data)
                 wait_for('contentInspector.jobs.size===0');evaluate('physics.pause()')
             check(evaluate(f"entries.get({json.dumps(other)}).content.attachments.length===1&&entries.get({json.dumps(other)}).content.links.at(-1).url==='https://example.com/native'"),'native browser drag injection accepts file and URL payloads on a body')
+            check(evaluate("document.getElementById('content-media-section').hidden&&document.getElementById('content-files-empty').hidden&&document.querySelectorAll('#content-attachments > li').length===1"),'file-only items hide Media and retain their Files row')
             evaluate(f"(()=>{{const n=nodes.get({json.dumps(other)}),dt=new DataTransfer();dt.setData('text/plain','example.com');n.dispatchEvent(new DragEvent('dragover',{{bubbles:true,cancelable:true,dataTransfer:dt}}));n.dispatchEvent(new DragEvent('dragleave',{{bubbles:true,dataTransfer:dt}}));}})()")
             check(evaluate("!document.querySelector('.content-drop-target')"),'cancelled drag removes its visual feedback')
             evaluate("contentInspector.editNotes();contentInspector.notes.value='Planning\\n- [ ] Book hotel\\n- [x] Buy ferry tickets\\n- [ ] Pack charger';contentInspector.notesForm.requestSubmit()")
@@ -1226,8 +1286,8 @@ def main():
                 before=evaluate('contentInspector.content().notes.text');cdp.call('Input.dispatchTouchEvent',type='touchStart',touchPoints=[point]);cdp.call('Input.dispatchTouchEvent',type='touchEnd',touchPoints=[])
                 check(evaluate('contentInspector.content().notes.text')!=before and evaluate("document.querySelector('.note-checklist').getBoundingClientRect().height>=44"),'touch checklist uses a comfortable tap route: '+str(width))
                 evaluate(f"selectEntry(entries.get({json.dumps(owner)}),nodes.get({json.dumps(owner)}),{{reframe:false}})")
-                wait_for("document.querySelectorAll('#content-attachments img').length===2")
-                check(evaluate("[...document.querySelectorAll('.content-image .content-file-icon')].every(n=>{const r=n.getBoundingClientRect();return r.width>50&&r.right<=innerWidth})&&document.querySelectorAll('.content-image summary[aria-label]').length===2"),'thumbnail layout and labeled management remain usable on mobile: '+str(width))
+                wait_for("document.querySelectorAll('#content-media img').length===2")
+                check(evaluate("[...document.querySelectorAll('.content-media-viewport')].every(n=>{const r=n.getBoundingClientRect();return r.width>50&&r.right<=innerWidth})&&[...document.querySelectorAll('.content-image summary[aria-label]')].every(n=>n.getBoundingClientRect().height>=44)&&document.documentElement.scrollWidth<=innerWidth"),'Media layout and labeled management retain comfortable touch targets without horizontal overflow: '+str(width))
                 shot('everyday-mobile-'+str(width));evaluate(f"selectEntry(entries.get({json.dumps(other)}),nodes.get({json.dumps(other)}),{{reframe:false}})")
             cdp.call('Emulation.setTouchEmulationEnabled',enabled=False,maxTouchPoints=1);cdp.call('Emulation.setDeviceMetricsOverride',width=1440,height=1000,deviceScaleFactor=1,mobile=False);time.sleep(.2)
             evaluate(f"focusEntry({json.dumps(other)})");wait_camera();evaluate('physics.pause()')
@@ -1239,9 +1299,9 @@ def main():
             evaluate("contentInspector.openFile(contentInspector.content().attachments[0])");wait_for('imageViewer.dialog.open&&!imageViewer.image.hidden')
             check(evaluate("imageViewer.image.src.startsWith('blob:')"),'gallery image opens the existing stored bytes inside Cosmifold');evaluate('imageViewer.dialog.close()')
             removed=evaluate("contentInspector.content().attachments[1].storageKey")
-            evaluate("const imageRow=document.querySelectorAll('#content-attachments .content-image')[1];imageRow.querySelector('summary').click();const remove=imageRow.querySelector('.content-row-actions button');remove.click();remove.click()")
+            evaluate("const imageRow=document.querySelectorAll('#content-media .content-image')[1];imageRow.querySelector('summary').click();const remove=imageRow.querySelector('.content-row-actions button');remove.click();remove.click()")
             wait_for('contentInspector.jobs.size===0&&contentInspector.content().attachments.length===4')
-            check(evaluate(f"(async()=>await attachmentStore.get({json.dumps(removed)})===null&&!document.getElementById('content-attachments').classList.contains('has-image-gallery')&&contentInspector.content().attachments.filter(f=>f.mimeType.startsWith('image/')).length===1)()"),'removing an image cleans its bytes and restores the single-image layout')
+            check(evaluate(f"(async()=>await attachmentStore.get({json.dumps(removed)})===null&&!document.getElementById('content-media').classList.contains('has-multiple-media')&&contentInspector.content().attachments.filter(f=>f.mimeType.startsWith('image/')).length===1)()"),'removing an image cleans its bytes and restores the single-image layout')
             evaluate(f"focusEntry({json.dumps(root)})");wait_camera();evaluate('physics.pause()')
             view=evaluate('JSON.stringify(camera.view)')
             evaluate(f"(()=>{{const e=entries.get({json.dumps(root)}),p=camera.worldToScreen(e.x,e.y),dt=new DataTransfer();dt.setData('text/plain','https://example.com/trip');graphViewport.dispatchEvent(new DragEvent('drop',{{bubbles:true,cancelable:true,dataTransfer:dt,clientX:p.x,clientY:p.y}}));}})()")
@@ -1251,6 +1311,13 @@ def main():
             cdp.call('Page.reload',ignoreCache=True);load();evaluate('physics.pause()')
             check(evaluate(f"entries.has({json.dumps(root)})&&entries.get({json.dumps(owner)}).content.attachments.length===4&&entries.get({json.dumps(other)}).content.notes.text.includes('[x] Buy ferry tickets')&&JSON.parse(localStorage.getItem('galaxy:user-data')).version===5"),'ordinary starters, files/bookmarks/checklists survive refresh in storage v5')
             check(evaluate(f"(async()=>{{for(const key of {json.dumps(keys)})if(!(await attachmentStore.get(key))?.blob)return false;return true}})()"),'all dropped attachment bytes survive refresh through IndexedDB')
+            evaluate(f"selectEntry(entries.get({json.dumps(owner)}),nodes.get({json.dumps(owner)}),{{reframe:false}})");wait_for("document.querySelector('#content-media img')?.naturalWidth>0")
+            check(evaluate("document.querySelectorAll('#content-media > li').length===1&&document.querySelectorAll('#content-attachments > li').length===3&&!document.getElementById('content-media-section').hidden"),'Media and Files presentation rebuilds correctly after deletion and refresh')
+            evaluate("window.mediaGet=contentInspector.store.get;contentInspector.store.get=async()=>null;contentInspector.renderLists()");wait_for("document.querySelector('.content-media-viewport')?.textContent.includes('unavailable')")
+            check(evaluate("!!document.querySelector('.content-media-viewport[aria-label]')&&!document.querySelector('.content-media-viewport').disabled"),'unavailable thumbnail retains its accessible opening control')
+            evaluate("contentInspector.store.get=mediaGet;contentInspector.renderLists()");wait_for("document.querySelector('#content-media img')?.naturalWidth>0")
+            evaluate("const lastImage=document.querySelector('#content-media > li');lastImage.querySelector('summary').click();const remove=lastImage.querySelector('.content-row-actions button');remove.click();remove.click()");wait_for('contentInspector.jobs.size===0&&contentInspector.content().attachments.length===3')
+            check(evaluate("document.getElementById('content-media-section').hidden&&document.querySelectorAll('#content-attachments > li').length===3"),'removing the last image hides Media and preserves documents')
             evaluate('saveGalaxy()');saved=evaluate("localStorage.getItem('galaxy:user-data')")
             evaluate('loadSampleButton.click()');wait_for("typeof sampleMode!=='undefined'&&sampleMode&&document.readyState==='complete'");load();evaluate('physics.pause()')
             evaluate("openEntryForm();galaxyStarter.value='trip';galaxyStarter.dispatchEvent(new Event('change'));fields[0].value='Sample everyday Galaxy';form.requestSubmit();physics.pause()")
@@ -1275,7 +1342,7 @@ def main():
                 evaluate(f"exitConstellation();focusEntry({json.dumps(entry)});void 0");wait_camera();evaluate('physics.pause()')
                 evaluate("contentInspector.save(contentInspector.entryId,galaxyModel.emptyContent());contentInspector.select(entries.get(contentInspector.entryId),true);panel.scrollTop=0")
                 view=evaluate('JSON.stringify(camera.view)');empty=size()
-                check(.35<=empty['height']/empty['viewport']<=.46 if height>500 else empty['height']<=empty['viewport']*.74+1,'empty sheet keeps substantial Cosmos visible: '+label+' '+str(empty))
+                check(.30<=empty['height']/empty['viewport']<=.46 if height>500 else empty['height']<=empty['viewport']*.74+1,'compact empty sheet keeps substantial Cosmos visible: '+label+' '+str(empty))
                 shot('sheet-empty-'+label)
                 evaluate("contentInspector.save(contentInspector.entryId,{...contentInspector.content(),notes:{format:'plain',text:'Marinate overnight for better results.'}});contentInspector.select(entries.get(contentInspector.entryId),true)")
                 note=size();check(note['height']<=note['viewport']*.46+1 if height>500 else note['height']<=note['viewport']*.74+1,'one short note remains compact: '+label+' '+str(note))
@@ -2388,7 +2455,7 @@ def main():
             check(evaluate("lines.every(l=>l.kind==='hierarchy'&&entries.get(l.to).parentId===l.from&&l.element.getAttribute('aria-hidden')==='true')&&physics.simulation.force('relationships')===undefined"),'all paths derive from structural parents and the pairwise physics hook is gone')
             evaluate(f"focusEntry({json.dumps(target)})");wait_camera();evaluate('physics.pause()')
             check(evaluate("(()=>{const line=lines.find(l=>l.element.classList.contains('astronaut-tether'));return line.element.tagName==='path'&&line.element.getAttribute('d').includes('Q')&&getComputedStyle(line.element).strokeDasharray==='none'&&+line.element.style.opacity>0})()"),'Astronaut curved solid tethers still render in detailed hierarchy views')
-            check(evaluate("(()=>{const h=panelName.getBoundingClientRect(),m=moreButton.getBoundingClientRect(),b=panelAncestry.getBoundingClientRect();return Math.abs(h.top-m.top)<.1&&m.left>h.right&&b.top>=h.bottom&&!document.querySelector('.content-header-actions #connect-entry-button')})()"),'Content title, More and breadcrumbs have no empty Connection row')
+            check(evaluate("(()=>{const h=panelName.getBoundingClientRect(),m=moreButton.getBoundingClientRect(),b=panelAncestry.getBoundingClientRect();return Math.abs(h.top-m.top)<.1&&m.left>h.right&&b.bottom<=h.top&&document.getElementById('panel-kind').hidden&&!document.querySelector('.content-header-actions #connect-entry-button')})()"),'quiet ancestor breadcrumbs precede the Content title and More without a permanent Contents label')
             if screenshot_dir:
                 result=cdp.call('Page.captureScreenshot',format='png',captureBeyondViewport=False);(screenshot_dir/'no-connections-desktop.png').write_bytes(base64.b64decode(result['data']))
             evaluate(f"focusEntry({json.dumps(other)})");wait_camera();evaluate('physics.pause()')
@@ -2662,7 +2729,7 @@ def main():
             evaluate(f"hierarchySidebar.rows.get({json.dumps(target)}).querySelector('.tree-add').click();addMenu.querySelector('[data-add=bookmark]').click();document.getElementById('content-link-url').value='google.com';contentInspector.linkForm.requestSubmit()")
             check(evaluate(f"entries.get({json.dumps(target)}).content.links[0].url==='https://google.com/' && !entries.get({json.dumps(first)}).content"),'Add bookmark saves to the clicked row through the existing handler')
             check(evaluate("(()=>{const h=panelName.getBoundingClientRect(),m=moreButton.getBoundingClientRect();return Math.abs(h.top-m.top)<.1&&m.width===28&&m.height===28&&m.left>h.right&&moreButton.ariaLabel==='More actions'&&moreButton.title==='More actions'})()"),'More actions remains compact and associated with the selected-item title')
-            for action,condition in [('edit-entry-button',"dialog.open && !document.getElementById('entry-info-fields').hidden"),('move-entry-button',"dialog.open && !document.getElementById('parent-field').hidden"),('delete-entry-button','deleteDialog.open')]:
+            for action,condition in [('edit-entry-button',"dialog.open && document.getElementById('entry-info-fields').hidden && document.getElementById('parent-field').hidden"),('move-entry-button',"dialog.open && !document.getElementById('parent-field').hidden"),('delete-entry-button','deleteDialog.open')]:
                 click_selector('#entry-more-button');click_selector('#'+action)
                 check(evaluate(condition),'header More reuses '+action)
                 evaluate('if(dialog.open)document.getElementById("cancel-add-entry").click();if(deleteDialog.open)deleteDialog.close();physics.pause()')
@@ -2713,7 +2780,7 @@ def main():
                 check(evaluate(f"!panel.hidden && contentInspector.entryId==={json.dumps(owner)} && hierarchySidebar.selectedId==={json.dumps(owner)}"),'Cosmos selection opens matching contents and sidebar selection')
                 check(evaluate('JSON.stringify(camera.view)')==before,'reopening contents through body selection does not move camera')
                 click_selector('#entry-more-button')
-                check(evaluate("!entryActions.hidden && [...entryActions.children].filter(b=>!b.hidden).map(b=>b.textContent).join('|')==='Rename|Move / change parent|Delete item'"),'More contains management actions without permanent metadata')
+                check(evaluate("!entryActions.hidden && [...entryActions.children].filter(b=>!b.hidden).map(b=>b.textContent).join('|')==='Rename|Move / change parent|Archive Galaxy|Delete item'"),'Galaxy More retains management actions including Archive without permanent metadata')
                 check(evaluate('JSON.stringify(camera.view)')==before,'opening More leaves camera unchanged')
                 cdp.call('Input.dispatchKeyEvent',type='keyDown',key='ArrowDown',code='ArrowDown',windowsVirtualKeyCode=40)
                 check(evaluate("document.activeElement.id==='move-entry-button'"),'More supports arrow-key navigation')
@@ -2756,7 +2823,7 @@ def main():
                 def shot(name):
                     if screenshot_dir:
                         result=cdp.call('Page.captureScreenshot',format='png',captureBeyondViewport=False);(screenshot_dir/(name+'.png')).write_bytes(base64.b64decode(result['data']))
-                check(evaluate("document.querySelectorAll('.content-section-add').length===2&&document.getElementById('content-notes-empty').tagName==='BUTTON'&&document.getElementById('content-edit-notes').hidden&&contentInspector.notesForm.hidden&&contentInspector.linkForm.hidden&&document.getElementById('content-file-limit').hidden"),'read state has only compact section shortcuts, without permanent editing forms or technical upload information')
+                check(evaluate("document.querySelectorAll('.content-section-add:not(#content-add-media)').length===2&&document.getElementById('content-media-section').hidden&&document.getElementById('content-notes-empty').tagName==='BUTTON'&&document.getElementById('content-edit-notes').hidden&&contentInspector.notesForm.hidden&&contentInspector.linkForm.hidden&&document.getElementById('content-file-limit').hidden"),'read state has only compact section shortcuts, without permanent editing forms or technical upload information')
                 check(evaluate("document.getElementById('content-files-empty').textContent==='No files'&&document.getElementById('content-notes-empty').textContent==='No notes'&&!contentInspector.quickBookmark.hidden&&contentInspector.quickUrl.placeholder==='Paste a link...'"),'empty content sections stay quiet with direct URL entry for Bookmarks')
                 check(evaluate("!document.querySelector('.sidebar-controls .tree-add,.sidebar-controls #add-entry-button') && [...hierarchySidebar.tree.children].every(row=>row.querySelector('.tree-add'))"),'contextual + lives on tree rows rather than beside Search')
                 check(evaluate("!hierarchySidebar.sidebar.contains(document.getElementById('canvas-fit')) && !!addEntryButton.closest('#universe-section')"),'canvas Fit and Universe creation have separate clear homes')
@@ -2856,8 +2923,8 @@ def main():
                 check(evaluate('JSON.stringify(camera.view)')==before_menu and evaluate('physics.simulation.alpha()')==alpha_menu,'opening/closing content overflow and editing bookmark UI do not move camera or reheat physics')
                 evaluate('panel.scrollTop=0')
             pick([]);check(evaluate('contentInspector.content().attachments.length===7 && contentInspector.jobs.size===0'),'canceled/empty file selection makes no content or storage change')
-            wait_for("document.querySelector('#content-attachments img')?.naturalWidth>0")
-            check(evaluate("document.querySelector('#content-attachments img').naturalWidth<=240 && [...document.querySelectorAll('#content-attachments pre')].every(p=>p.textContent.length<=2048) && !window.fileXss"),'small image thumbnails and bounded plain-text previews render safely')
+            wait_for("document.querySelector('#content-media img')?.naturalWidth>0")
+            check(evaluate("document.querySelector('#content-media img').naturalWidth<=240 && [...document.querySelectorAll('#content-attachments pre')].every(p=>p.textContent.length<=2048) && !window.fileXss"),'small image thumbnails and bounded plain-text previews render safely')
             check(evaluate(f"(async()=>{{const r=await attachmentStore.get({json.dumps(image['storageKey'])}),b=await createImageBitmap(r.thumbnail);const ok=r.blob.size==={image['size']}&&b.width===240&&b.height===120;b.close();return ok;}})()"),'IndexedDB retains original bytes plus an aspect-preserving bounded thumbnail')
             check(evaluate("panelName.getBoundingClientRect().height>0 && panelName.closest('.panel-content').clientHeight>0"),'many attachments do not collapse the existing entry name/description area')
             check(evaluate(f"(async()=>{{const r=await attachmentStore.get({json.dumps(files[1]['storageKey'])}),original=new Uint8Array(await r.blob.arrayBuffer()),exif=new Uint8Array([255,225,0,34,69,120,105,102,0,0,73,73,42,0,8,0,0,0,1,0,18,1,3,0,1,0,0,0,6,0,0,0,0,0,0,0]);const prepared=await galaxyAttachmentFiles.prepare(new File([original.slice(0,2),exif,original.slice(2)],'portrait.jpg',{{type:'image/jpeg'}}),contentInspector.entryId),b=await createImageBitmap(prepared.record.thumbnail);const ok=prepared.metadata.width===320&&prepared.metadata.height===640&&b.width===120&&b.height===240;b.close();return ok;}})()"),'JPEG orientation is preserved while generating bounded portrait thumbnails')
@@ -2867,7 +2934,7 @@ def main():
             pick(['blocked.EXE']);check(evaluate("contentInspector.status.textContent.includes('cannot be attached') && contentInspector.content().attachments.length===7"),'blocked executables fail without creating metadata')
             pick(['large.txt']);check(evaluate("contentInspector.status.textContent.includes('too large') && contentInspector.content().attachments.length===7"),'oversized files fail before binary storage')
             evaluate("window.originalBinarySave=attachmentStore.save;attachmentStore.save=async()=>{throw new DOMException('Full','QuotaExceededError')}")
-            pick(['plan.pdf']);check(evaluate("contentInspector.status.textContent.includes('full') && contentInspector.content().attachments.length===7"),'binary quota failure preserves entry content')
+            pick(['plan.pdf']);check(evaluate("contentInspector.status.textContent.includes('local browser storage') && contentInspector.content().attachments.length===7"),'binary quota failure preserves entry content')
             evaluate("attachmentStore.save=originalBinarySave;window.originalMetadataSave=persistence.metadata.save;attachmentStore.save=function(r,...args){window.failedKey=r.key;return originalBinarySave.call(this,r,...args)};persistence.metadata.save=()=>{throw new DOMException('Full','QuotaExceededError')}")
             pick(['plan.pdf'])
             check(evaluate("(async()=>contentInspector.content().attachments.length===7 && await attachmentStore.get(failedKey)===null)()"),'metadata failure aborts the real IndexedDB upload without leaving an orphan blob')
