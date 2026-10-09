@@ -77,7 +77,7 @@
         <aside id="entry-panel" aria-labelledby="panel-name" hidden>
             <div class="content-panel-header">
             <div id="active-constellation-indicator" hidden><button id="active-constellation-name" type="button"></button><button id="deactivate-constellation-button" type="button" aria-label="Deactivate Constellation" title="Deactivate Constellation">&times;</button></div>
-            <header class="inspector-header"><span id="panel-kind" class="panel-eyebrow">Contents</span><button id="close-inspector-button" type="button" aria-label="Close contents" title="Close contents">&times;</button></header>
+            <header class="inspector-header"><span id="panel-kind" class="panel-eyebrow" hidden></span><nav id="panel-ancestry" aria-label="Item location" hidden></nav><button id="close-inspector-button" type="button" aria-label="Close contents" title="Close contents">&times;</button></header>
             <div class="panel-content">
                 <h2 id="panel-name">Select an item</h2>
             <div class="content-header-actions">
@@ -92,13 +92,16 @@
                 </div>
             </div>
             </div>
-            <nav id="panel-ancestry" aria-label="Item location" hidden></nav>
             <p id="constellation-count" hidden></p>
             </div>
             <section id="panel-rich-content" aria-label="Contents">
+                <section id="content-media-section" aria-labelledby="media-heading" hidden>
+                    <header class="content-heading"><h3 id="media-heading">Media</h3><button id="content-add-media" class="quiet-icon content-section-add" type="button" aria-label="Add media" title="Add media">+</button></header>
+                    <ul id="content-media"></ul>
+                </section>
                 <section aria-labelledby="files-heading">
                     <header class="content-heading"><h3 id="files-heading">Files</h3><button id="content-add-files" class="quiet-icon content-section-add" type="button" aria-label="Add files" title="Add files">+</button></header>
-                    <input id="content-files" type="file" multiple accept=".jpg,.jpeg,.png,.webp,.pdf,.txt,.md" hidden aria-label="Choose files">
+                    <input id="content-files" type="file" multiple hidden aria-label="Choose files">
                     <ul id="content-attachments"></ul>
                     <p id="content-files-empty" class="content-empty">No files</p>
                     <small id="content-file-limit" hidden></small>
@@ -275,7 +278,7 @@
                 <summary>Adding your stuff</summary>
                 <div class="help-copy">
                     <p>The + beside Universe creates a Galaxy. The + beside an item in the sidebar lets you add something inside it.</p>
-                    <p>Got a PDF, photo, or link? Drop it onto an item, on the canvas or in the sidebar. Files go into Files; links become Bookmarks. Files, Notes, and Bookmarks stay with that item.</p>
+                    <p>Got a document, photo, video, or link? Drop it onto an item, on the canvas or in the sidebar. Photos and videos go into Media, documents into Files, and links become Bookmarks. Media, Files, Notes, and Bookmarks stay with that item.</p>
                     <p>Dragging through the sidebar? Pause over a collapsed branch and it opens so you can reach the items inside.</p>
                 </div>
             </details>
@@ -314,12 +317,26 @@
         </div>
     </dialog>
 
-    <dialog id="image-viewer" aria-label="Photo viewer">
-        <header class="image-viewer-header"><h2 id="image-viewer-name" hidden>Image</h2><div class="attachment-viewer-actions"><button id="image-viewer-info-button" type="button" aria-label="Image information" title="Image information" aria-expanded="false" aria-controls="image-viewer-info">ⓘ</button><button id="image-viewer-close" type="button" aria-label="Close attachment viewer" title="Close attachment viewer" autofocus>&times;</button></div></header>
-        <aside id="image-viewer-info" aria-label="Image information" hidden></aside>
-        <div class="image-viewer-stage"><img id="image-viewer-image" alt="" hidden><embed id="attachment-viewer-pdf" title="PDF document" hidden><p id="image-viewer-status" role="status">Loading image...</p></div>
+    <dialog id="image-viewer" aria-label="Media viewer">
+        <header class="image-viewer-header"><h2 id="image-viewer-name" hidden>Media</h2><div class="attachment-viewer-actions"><button id="image-viewer-info-button" class="media-viewer-control" type="button" aria-label="Media information" title="Media information" aria-expanded="false" aria-controls="image-viewer-info"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 11v7M12 6h.01"/></svg></button><button id="image-viewer-close" class="media-viewer-control" type="button" aria-label="Close attachment viewer" title="Close attachment viewer" autofocus><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m6 6 12 12M18 6 6 18"/></svg></button></div></header>
+        <aside id="image-viewer-info" aria-label="Media information" hidden><div id="media-viewer-info-text"></div><a id="media-viewer-info-copy" download>Save a copy</a></aside>
+        <div class="image-viewer-stage">
+            <button id="image-viewer-previous" class="media-viewer-control" type="button" aria-label="Previous media" title="Previous media" hidden><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m15 6-6 6 6 6"/></svg></button>
+            <div class="media-viewer-area"><img id="image-viewer-image" alt="" hidden><video id="media-viewer-video" controls playsinline preload="metadata" tabindex="0" aria-label="Attached video" hidden></video><embed id="attachment-viewer-pdf" title="PDF document" hidden><div class="media-viewer-message"><p id="image-viewer-status" role="status">Loading media...</p><a id="media-viewer-save-copy" download hidden>Save a copy</a></div></div>
+            <button id="image-viewer-next" class="media-viewer-control" type="button" aria-label="Next media" title="Next media" hidden><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m9 6 6 6-6 6"/></svg></button>
+        </div>
         <footer id="attachment-viewer-pdf-tools" hidden><span id="attachment-viewer-pdf-hint">PDF not displaying?</span> <a id="attachment-viewer-external" target="_blank" rel="noopener noreferrer">Open externally</a></footer>
-        <nav id="image-viewer-navigation" aria-label="Browse attached images" hidden><button id="image-viewer-previous" type="button" aria-label="Previous image" title="Previous image">&larr;</button><span id="image-viewer-position" aria-live="polite"></span><button id="image-viewer-next" type="button" aria-label="Next image" title="Next image">&rarr;</button></nav>
+        <nav id="image-viewer-navigation" aria-label="Browse attached media" hidden><span id="image-viewer-position" aria-live="polite"></span><div id="media-viewer-filmstrip" role="group" aria-label="Attached photos and videos"></div></nav>
+    </dialog>
+    <dialog id="file-details-dialog" aria-labelledby="file-details-title">
+        <header class="file-details-header"><h2 id="file-details-title">File details</h2><button id="file-details-close" type="button" aria-label="Close file details" title="Close file details" autofocus>&times;</button></header>
+        <div class="file-details-body">
+            <p id="file-details-name"></p>
+            <dl><div><dt>Type</dt><dd id="file-details-type"></dd></div><div><dt>Size</dt><dd id="file-details-size"></dd></div></dl>
+            <p>Cosmifold can keep this file here, but it can’t preview this format yet.</p>
+            <p id="file-details-status" role="status" hidden></p>
+        </div>
+        <footer><button id="file-details-save-copy" type="button">Save a copy</button></footer>
     </dialog>
     <script src="image-viewer.js"></script>
     <script src="help.js"></script>

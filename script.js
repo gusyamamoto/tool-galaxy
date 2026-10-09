@@ -50,6 +50,9 @@ const editEntryButton = document.getElementById("edit-entry-button");
 const deleteEntryButton = document.getElementById("delete-entry-button");
 const actionStatus = document.getElementById("entry-action-status");
 const panelAncestry = document.getElementById("panel-ancestry");
+panelAncestry.addEventListener('scroll', () => {
+    panelAncestry.classList.toggle('has-clipped-ancestors', panelAncestry.scrollLeft > 1);
+}, {passive:true});
 const regionsLayer = document.getElementById("regions-layer");
 const regions = new Map();
 const roleField = document.getElementById("entry-role");
@@ -589,7 +592,8 @@ function entityPanelMode() {
     constellationOverview = false;
     const closeButton = document.getElementById('close-inspector-button');
     closeButton.setAttribute('aria-label', 'Close contents'); closeButton.title = 'Close contents';
-    document.getElementById('panel-kind').textContent = 'Contents';
+    const panelKind = document.getElementById('panel-kind');
+    panelKind.textContent = ''; panelKind.hidden = true;
     document.getElementById('panel-rich-content').hidden = false;
     document.getElementById('constellation-content').hidden = true;
     document.getElementById('constellation-count').hidden = true;
@@ -789,7 +793,12 @@ function selectEntry(entry, node, { openInspector = true, reframe = false, scrol
     hierarchySidebar.select(entry.id, { scroll });
     if (openInspector && !activeNodeDrags) setInspectorOpen(true, { reframe });
     else { contentInspector.select(entry, !panel.hidden); if (!activeNodeDrags) updateGraphViewport(); }
-    if (changingEntry) panel.scrollTop = 0;
+    if (changingEntry) {
+        panel.scrollTop = 0;
+        // Keep the nearest ancestors in view when a deep path exceeds one line.
+        panelAncestry.scrollLeft = panelAncestry.scrollWidth;
+    }
+    panelAncestry.classList.toggle('has-clipped-ancestors', panelAncestry.scrollLeft > 1);
 }
 
 function setInspectorOpen(open, { reframe = false } = {}) {
