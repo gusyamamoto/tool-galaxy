@@ -1229,3 +1229,64 @@ new tab, explicit unsupported-reader fallback, Close/focus/URL cleanup, Escape
 from viewer controls, phone/landscape bounds and unchanged text-file opening.
 Before committing, test representative PDFs in your desktop and phone browsers,
 including native reader focus/keyboard behavior and Open externally.
+
+
+### General file support
+
+File acceptance is separate from viewing capability. Ordinary Office documents,
+ZIPs, design/CAD/project files and unfamiliar formats use the same attachment
+metadata, IDs, file adapter, IndexedDB bytes, deletion and Sample isolation as
+photos/videos/PDFs. Files + has no format whitelist; Media + filters photo/video
+formats. Normal files and images retain the **10 MiB** limit; MP4, WebM and MOV
+have the provisional local **100 MiB per video** limit. Existing image
+pixel/thumbnail limits are unchanged. Storage stays v5; new uploads include an
+optional lowercase extension, and videos can include optional duration metadata.
+Older attachments load without those fields and need no migration.
+
+`galaxyModel.filePolicy` is the one acceptance/preview decision point. It keeps
+original filenames and reported MIME types, with `application/octet-stream` when
+MIME is missing/invalid. Known extensions recover preview capability when MIME
+is absent/generic; conflicting non-video MIME/extension signals stay generic.
+Known video extensions remain Media even when the browser cannot decode the codec;
+the unified viewer offers graceful fallback and explicit Save a copy. Images/PDFs
+retain their validation, internal viewers, Info and fallback. TXT/MD retain safe
+plain-text previews/opening. Other formats get quiet type badges, filenames,
+sizes and accessible File Details actions. Generic files
+are not read for a preview. Clicking opens a compact internal File Details dialog
+with filename, type/extension, size and a friendly preview explanation. Only an
+explicit **Save a copy** action downloads original bytes under the original name
+through an inert object URL. HTML/SVG do not execute inside Cosmifold. URLs expire
+after a download grace period or page exit.
+
+New uploads are blocked by case-insensitive filename extension or executable/
+script MIME, independently. The focused list covers Windows programs/installers
+(`exe`, `msi`, `msp`, `msix`, `msixbundle`, `appx`, `appxbundle`, `com`, `scr`,
+`cpl`, `pif`, `lnk`), command/PowerShell/VB/JS/Python/shell scripts (`bat`, `cmd`,
+`ps1`, `psm1`, `vbs`, `vbe`, `jse`, `wsf`, `wsh`, `hta`, `js`, `mjs`, `cjs`,
+`py`, `pyw`, `sh`, `bash`, `zsh`, `fish`) and executable distribution formats
+(`jar`, `apk`, `dmg`, `pkg`, `app`, `appimage`, `deb`, `rpm`, `run`). Trailing
+spaces/dots and uppercase extensions cannot bypass matching. Blocking explains
+that documents, project files or archives can be chosen instead. Archives are
+not unpacked or scanned, and this is not antivirus/content-based detection.
+Persisted metadata validation retains old content rather than discarding it
+because of upload policy; generic opening stays in File Details until the user
+chooses Save a copy. No generic-file action promises direct access to Word/Excel
+or the original local file.
+
+The existing picker and body/Galaxy/sidebar drop workflows share `prepare` and
+file-store commits. Spring-loaded navigation and edge scrolling are unchanged.
+Run `node --test tests/file-policy.test.js tests/content.test.js tests/storage.test.js`
+and `python tests/browser-check.py --general-files-only --screenshots`, plus the
+attachment-viewer, content, interface, everyday and spring-drop browser suites.
+Before committing, attach/download real Office, ZIP and project files, refresh,
+remove one, test body/sidebar/cloud drops and phone File Details/Save a copy, and check
+that your existing images, PDFs and text files still open normally.
+
+File Details uses a compact dark native modal, with Close/Escape/backdrop dismissal,
+keyboard focus wrapping and focus restoration to the launching attachment. Phone
+controls are 44px; the body scrolls independently when necessary. Opening or
+closing Details does not create a duplicate file or write metadata. Save a copy
+reuses the existing download path, displays read failures inside the dialog, and
+keeps the managed attachment intact. No new animation or storage/schema change.
+The general-file browser checks verify no download on activation, explicit saved
+filename/bytes, dialog contents, keyboard/close/focus, backdrop and phone bounds.

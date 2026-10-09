@@ -275,6 +275,7 @@ class EntryContentInspector {
             } else {
                 const name = this.button(metadata.filename, event => this.openFile(metadata,event.currentTarget), `${capability.kind==='generic'?'File details for':'Open attachment'} ${metadata.filename}`), size = document.createElement("small"), info = document.createElement("div");
                 name.className = "content-file-name";
+                name.title = name.ariaLabel; badge.title = badge.ariaLabel;
                 size.textContent = `${metadata.size >= 1024*1024 ? (metadata.size/1024/1024).toFixed(1)+" MiB" : metadata.size >= 1024 ? (metadata.size/1024).toFixed(1)+" KiB" : metadata.size+" B"}`;
                 info.className = "content-file-info"; info.append(name, size);
                 item.append(preview, info, this.itemMenu(actions, metadata.filename)); files.append(item);

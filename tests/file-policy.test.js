@@ -25,6 +25,24 @@ test('preview capability is selective, case insensitive and robust to missing/un
         ['data.project','image/png','generic'],['icon.svg','image/svg+xml','generic'],['web.html','text/html','generic'],['animation.gif','image/gif','generic']])
         assert.equal(policy.classify({filename,mimeType}).kind,kind,filename);
 });
+
+test('video promotion retains original file metadata and bytes while joining Media',async()=>{
+    const files=vm.runInContext('galaxyAttachmentFiles',context),preview=files.videoPreview;
+    // Browser-native decoding is covered by the real Media suite; this preserves
+    // main's original-byte acceptance checks for videos after their promotion.
+    files.videoPreview=async()=>{};
+    try {
+        for(const [name,type] of [['movie.mp4','video/mp4'],['movie.webm','video/webm'],['movie.MOV','video/quicktime']]){
+            const {metadata,record}=await prepare(file(name,type),'owner');
+            assert.equal(metadata.filename,name);assert.equal(metadata.mimeType,type);
+            assert.equal(metadata.extension,policy.extension(name));assert.equal(metadata.entryId,'owner');
+            assert.equal(metadata.storageKey,metadata.id);assert.equal(record.key,metadata.id);
+            assert.equal(record.blob.size,metadata.size);assert.equal(await record.blob.text(),'Original bytes');
+            assert.equal(policy.classify(metadata).kind,'video');assert.equal(policy.isMedia(metadata),true);
+            assert.deepEqual(plain(model.normalizeContent({...model.emptyContent(),attachments:[metadata]},'owner').attachments),[plain(metadata)]);
+        }
+    } finally {files.videoPreview=preview;}
+});
 test('dangerous extensions and MIME signals block uploads independently, including casing and trailing dots',async()=>{
     for(const extension of policy.blockedExtensions){await assert.rejects(prepare(file('payload.'+extension.toUpperCase(),'application/octet-stream'),'owner'),/cannot be attached/);}
     for(const mime of policy.blockedMimes){await assert.rejects(prepare(file('innocent.docx',mime),'owner'),/cannot be attached/);}

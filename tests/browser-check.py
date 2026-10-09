@@ -530,6 +530,9 @@ def main():
             evaluate("window.textOpen=window.open;window.textOpened=false;window.open=()=>({location:{replace:url=>textOpened=url.startsWith('blob:')},closed:true,close(){}});contentInspector.openFile(contentInspector.content().attachments.find(f=>f.mimeType==='text/plain'));void 0")
             wait_for('textOpened===true');evaluate('window.open=textOpen')
             check(evaluate('!imageViewer.dialog.open'),'text files retain their existing external opening path')
+            for name in ['missing-type.txt','missing-type.md']:
+                evaluate(f"contentInspector.upload([new File(['Plain text stays readable'],{json.dumps(name)})])");wait_for('contentInspector.jobs.size===0')
+                check(evaluate(f"(async()=>{{const original=window.open;let url;window.open=()=>({{location:{{replace:value=>url=value}},closed:true,close(){{}}}});try{{const meta=contentInspector.content().attachments.find(f=>f.filename==={json.dumps(name)});await contentInspector.openFile(meta);const response=await fetch(url);return response.headers.get('Content-Type')==='text/plain'&&(await response.text())==='Plain text stays readable'&&meta.mimeType==='application/octet-stream'&&!contentInspector.fileDetails.open}}finally{{window.open=original}}}})()"),f'{name} keeps safe text viewing without changing stored MIME or opening File Details')
             check(not cdp.errors,f'no attachment-viewer exceptions: {cdp.errors}');print(f'{count} attachment-viewer checks passed',flush=True);return
 
         if options.usability_only:
@@ -1140,7 +1143,7 @@ def main():
             check(evaluate(f"!hierarchySidebar.expanded.has({json.dumps(cancel_row)})&&contentDrops.hoverTimer===null"),'drop before the delay prevents any later expansion')
             evaluate("springTransfer=new DataTransfer();springTransfer.items.add(new File(['unsupported'],'bad.EXE',{type:'application/octet-stream'}))")
             over(cancel_row);drop(cancel_row);wait_hover()
-            check(evaluate(f"contentInspector.status.dataset.error==='true'&&!hierarchySidebar.expanded.has({json.dumps(cancel_row)})&&contentDrops.hoverTimer===null"),'unsupported dropped file keeps normal validation and no stale timers')
+            check(evaluate(f"contentInspector.status.dataset.error==='true'&&!hierarchySidebar.expanded.has({json.dumps(cancel_row)})&&contentDrops.hoverTimer===null"),'blocked script drop keeps validation and no stale timers')
             p=point(cancel_row);data={'items':[{'mimeType':'text/uri-list','data':'https://example.com/native-spring'}],'dragOperationsMask':1}
             cdp.call('Input.dispatchDragEvent',type='dragEnter',**p,data=data);cdp.call('Input.dispatchDragEvent',type='dragOver',**p,data=data);wait_hover()
             check(evaluate(f"hierarchySidebar.expanded.has({json.dumps(cancel_row)})"),'native browser external drag also spring-opens a collapsed row')
@@ -1245,7 +1248,7 @@ def main():
             check(evaluate("activeConstellationId==='constellation:everyday-lens'&&!contentInspector.notesForm.hidden&&contentInspector.notes.value==='Unsaved planning draft'") and evaluate('JSON.stringify(camera.view)')==view and evaluate('JSON.stringify([...constellations.values()])')==members,'drop preserves the active lens, camera, references and an open note draft')
             evaluate("document.getElementById('content-cancel-notes').click();contentInspector.save(contentInspector.entryId,{...contentInspector.content(),links:[]});contentInspector.renderLists();exitConstellation()")
             drop(target,"dt.items.add(new File(['unsupported'],'blocked.CMD',{type:'application/octet-stream'}))")
-            check(evaluate("contentInspector.content().attachments.length===5&&contentInspector.status.dataset.error==='true'"),'unsupported dropped files use existing validation')
+            check(evaluate("contentInspector.content().attachments.length===5&&contentInspector.status.dataset.error==='true'"),'blocked executable drops use existing validation')
             drop(target,"dt.items.add(new File([new Uint8Array(galaxyModel.contentLimits.fileBytes+1)],'oversized.txt',{type:'text/plain'}))")
             check(evaluate("contentInspector.content().attachments.length===5&&contentInspector.status.dataset.error==='true'"),'oversized dropped files use the same size limit')
             drop(target,"dt.setData('text/plain','google.com')")
@@ -2928,7 +2931,7 @@ def main():
             check(evaluate("(()=>{const data=JSON.parse(localStorage.getItem('galaxy:user-data'));return data.version===5 && !JSON.stringify(data).includes('blob:') && !JSON.stringify(data).includes('data:image') && data.entries.find(e=>e.id===contentInspector.entryId).content.attachments.every(a=>!('blob' in a)&&a.storageKey);})()"),'localStorage contains metadata/references only and stays at schema 5')
             preview('rich-content-desktop')
             stable(before,'file uploads and previews preserve camera state')
-            pick(['blocked.EXE']);check(evaluate("contentInspector.status.textContent.includes('cannot be attached') && contentInspector.content().attachments.length===7"),'unsupported files fail without creating metadata')
+            pick(['blocked.EXE']);check(evaluate("contentInspector.status.textContent.includes('cannot be attached') && contentInspector.content().attachments.length===7"),'blocked executables fail without creating metadata')
             pick(['large.txt']);check(evaluate("contentInspector.status.textContent.includes('too large') && contentInspector.content().attachments.length===7"),'oversized files fail before binary storage')
             evaluate("window.originalBinarySave=attachmentStore.save;attachmentStore.save=async()=>{throw new DOMException('Full','QuotaExceededError')}")
             pick(['plan.pdf']);check(evaluate("contentInspector.status.textContent.includes('local browser storage') && contentInspector.content().attachments.length===7"),'binary quota failure preserves entry content')
