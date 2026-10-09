@@ -52,9 +52,9 @@ class CosmifoldImageViewer {
     }
     open(metadata, trigger) {
         if (document.querySelector('dialog[open]')) return;
-        this.isPdf = metadata.mimeType === 'application/pdf';
+        this.isPdf = galaxyModel.filePolicy.classify(metadata).kind === 'pdf';
         const attachments = this.getEntry(metadata.entryId)?.content?.attachments || [];
-        this.images = attachments.filter(file => this.isPdf ? file.id === metadata.id && file.mimeType === 'application/pdf' : file.mimeType.startsWith('image/'));
+        this.images = attachments.filter(file => this.isPdf ? file.id === metadata.id && galaxyModel.filePolicy.classify(file).kind === 'pdf' : galaxyModel.filePolicy.classify(file).kind === 'image');
         this.dialog.setAttribute('aria-label', this.isPdf ? 'PDF viewer' : 'Photo viewer');
         this.info.hidden = true; this.infoButton.hidden = this.isPdf; this.infoButton.setAttribute('aria-expanded','false');
         const index = this.images.findIndex(file => file.id === metadata.id);
@@ -88,7 +88,7 @@ class CosmifoldImageViewer {
             const record = await this.store.get(metadata.storageKey);
             if (version !== this.version || !this.dialog.open) return;
             if (!record || record.entryId !== metadata.entryId) throw new Error('This image is unavailable in this browser storage.');
-            this.url = URL.createObjectURL(record.blob);
+            this.url = URL.createObjectURL(new Blob([record.blob], {type:galaxyModel.filePolicy.classify(metadata).renderType}));
             if (this.isPdf) {
                 this.external.href = this.url; this.pdfTools.hidden = false;
                 const supported = this.supportsPdf();

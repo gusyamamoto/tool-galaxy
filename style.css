@@ -1117,6 +1117,22 @@ summary:focus-visible { outline: 1px solid #b9d0e9; outline-offset: 3px; }
 
 
 /* Quiet, local help; the header stays reachable while topics scroll. */
+#file-details-dialog { width: min(390px,calc(100vw - 32px)); max-height: calc(var(--mobile-visible-height,100dvh) - 24px); padding: 0; overflow: hidden; border: 1px solid #50627c55; border-radius: 7px; background: #0e1621; color: #a3b5cc; box-shadow: 0 8px 28px #0007; }
+#file-details-dialog[open] { display: flex; flex-direction: column; }
+#file-details-dialog::backdrop { background: #02060bb3; }
+.file-details-header { flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; border-bottom: 1px solid #50627c26; }
+#file-details-title { margin: 0; font-size: 12px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; }
+#file-details-close { width: 32px; height: 32px; padding: 0; border: 0; box-shadow: none; background: transparent; color: #99adc4; font-size: 20px; }
+.file-details-body { min-height: 0; overflow-y: auto; padding: 4px 14px; font-size: 12px; line-height: 1.65; overflow-wrap: anywhere; }
+#file-details-name { font-size: 14px; color: #d8e5f4; }
+.file-details-body dl { margin: 12px 0; }
+.file-details-body dl > div { display: flex; gap: 12px; }
+.file-details-body dt { flex: 0 0 38px; color: #8195ad; }
+.file-details-body dd { margin: 0; }
+#file-details-dialog footer { flex: 0 0 auto; padding: 8px 14px 14px; display: flex; justify-content: flex-end; }
+#file-details-save-copy { min-height: 32px; padding: 6px 10px; border: 1px solid #50627c55; border-radius: 4px; box-shadow: none; background: transparent; color: #bdcde0; font-size: 12px; }
+#file-details-dialog button:focus-visible { outline: 1px solid #91adc9; outline-offset: 2px; }
+@media (max-width:760px), (pointer:coarse) { #file-details-close { width: 44px; height: 44px; } #file-details-save-copy { min-height: 44px; } }
 #sidebar-utilities { flex: 0 0 auto; margin: auto 14px 12px; padding-top: 5px; border-top: 1px solid #50627c22; }
 #sidebar-utilities #help-button { display: flex; align-items: center; gap: 5px; width: auto; height: 28px; margin: 0; padding: 0; color: #73849b; font-size: 10px; }
 .tree-name .tree-rename { display: block; width: 100%; min-width: 0; height: 24px; padding: 1px 3px; border: 1px solid #839ab5; border-radius: 3px; background: #101b29; color: #d8e5f4; font: inherit; outline: none; }

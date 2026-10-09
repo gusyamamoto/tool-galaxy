@@ -602,7 +602,8 @@ never in localStorage. The UI receives the adapter by dependency injection and
 does not call IndexedDB directly. A startup scan reads only owner/key metadata,
 not blobs/previews, so cleanup also finds unreferenced files belonging to an entry.
 
-Supported uploads: JPG/JPEG, PNG, WebP, PDF, TXT and MD. Central limits live in
+Ordinary documents, archives, design/CAD and project files are accepted broadly.
+Internal previews remain JPG/JPEG, PNG, WebP, PDF, TXT and MD. Central limits live in
 `galaxyModel.contentLimits`: **10 MiB per file**, **20 megapixels per image**,
 **240px thumbnail edge**, **2048-byte text previews**, and **100,000 note characters**.
 Image headers provide dimensions cheaply; JPEG orientation is respected.
@@ -611,7 +612,7 @@ Images display bounded, aspect-preserving thumbnails; explicit Open uses origina
 bytes. PDFs use the browser-native reader inside the attachment viewer. TXT/MD previews are bounded
 plain text, and MD opens as text rather than executable HTML or rendered Markdown.
 Preview object URLs are revoked on selection/close, and full-file URLs on tab close
-or page exit. Choose files through sidebar + → Add files; supported-format/size
+or page exit. Choose files through sidebar + → Add files; file-policy/size
 information appears only during selection or validation. There are no file drop
 targets. File overflow → Remove requires a second
 **Confirm remove** click.
@@ -1187,3 +1188,60 @@ new tab, explicit unsupported-reader fallback, Close/focus/URL cleanup, Escape
 from viewer controls, phone/landscape bounds and unchanged text-file opening.
 Before committing, test representative PDFs in your desktop and phone browsers,
 including native reader focus/keyboard behavior and Open externally.
+
+
+### General file support
+
+File acceptance is separate from viewing capability. Ordinary Office documents,
+ZIPs, design/CAD/project files and unfamiliar formats use the same attachment
+metadata, IDs, file adapter, IndexedDB bytes, deletion and Sample isolation as
+images/PDFs. The picker has no format whitelist. The limit remains **10 MiB per
+file**, and existing image pixel/thumbnail limits are unchanged. Storage stays
+v5; new uploads include an optional lowercase extension. Older attachments load
+without that field and need no migration.
+
+`galaxyModel.filePolicy` is the one acceptance/preview decision point. It keeps
+original filenames and reported MIME types, with `application/octet-stream` when
+MIME is missing/invalid. Known extensions recover preview capability when MIME
+is absent/generic; conflicting MIME/extension signals stay generic. Images/PDFs
+retain their validation, internal viewers, Info and fallback. TXT/MD retain safe
+plain-text previews/opening. Other formats, including video for now, get quiet
+type badges, filenames, sizes and accessible File Details actions. Generic files
+are not read for a preview. Clicking opens a compact internal File Details dialog
+with filename, type/extension, size and a friendly preview explanation. Only an
+explicit **Save a copy** action downloads original bytes under the original name
+through an inert object URL. HTML/SVG do not execute inside Cosmifold. URLs expire
+after a download grace period or page exit.
+
+New uploads are blocked by case-insensitive filename extension or executable/
+script MIME, independently. The focused list covers Windows programs/installers
+(`exe`, `msi`, `msp`, `msix`, `msixbundle`, `appx`, `appxbundle`, `com`, `scr`,
+`cpl`, `pif`, `lnk`), command/PowerShell/VB/JS/Python/shell scripts (`bat`, `cmd`,
+`ps1`, `psm1`, `vbs`, `vbe`, `jse`, `wsf`, `wsh`, `hta`, `js`, `mjs`, `cjs`,
+`py`, `pyw`, `sh`, `bash`, `zsh`, `fish`) and executable distribution formats
+(`jar`, `apk`, `dmg`, `pkg`, `app`, `appimage`, `deb`, `rpm`, `run`). Trailing
+spaces/dots and uppercase extensions cannot bypass matching. Blocking explains
+that documents, project files or archives can be chosen instead. Archives are
+not unpacked or scanned, and this is not antivirus/content-based detection.
+Persisted metadata validation retains old content rather than discarding it
+because of upload policy; generic opening stays in File Details until the user
+chooses Save a copy. No generic-file action promises direct access to Word/Excel
+or the original local file.
+
+The existing picker and body/Galaxy/sidebar drop workflows share `prepare` and
+file-store commits. Spring-loaded navigation and edge scrolling are unchanged.
+Run `node --test tests/file-policy.test.js tests/content.test.js tests/storage.test.js`
+and `python tests/browser-check.py --general-files-only --screenshots`, plus the
+attachment-viewer, content, interface, everyday and spring-drop browser suites.
+Before committing, attach/download real Office, ZIP and project files, refresh,
+remove one, test body/sidebar/cloud drops and phone File Details/Save a copy, and check
+that your existing images, PDFs and text files still open normally.
+
+File Details uses a compact dark native modal, with Close/Escape/backdrop dismissal,
+keyboard focus wrapping and focus restoration to the launching attachment. Phone
+controls are 44px; the body scrolls independently when necessary. Opening or
+closing Details does not create a duplicate file or write metadata. Save a copy
+reuses the existing download path, displays read failures inside the dialog, and
+keeps the managed attachment intact. No new animation or storage/schema change.
+The general-file browser checks verify no download on activation, explicit saved
+filename/bytes, dialog contents, keyboard/close/focus, backdrop and phone bounds.

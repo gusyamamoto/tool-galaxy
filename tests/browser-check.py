@@ -138,6 +138,7 @@ def main():
     args.add_argument("--help-only", action="store_true", help="Check local Help, keyboard/focus, desktop/mobile layout and preserved workspace state")
     args.add_argument("--usability-only", action="store_true", help="Check utility Help, shared inline rename and the internal image attachment viewer")
     args.add_argument("--attachment-viewer-only", action="store_true", help="Check image-first viewing, optional Info and internal/native PDF with fallback")
+    args.add_argument("--general-files-only", action="store_true", help="Check broad file acceptance, generic downloads, persistence, shared drop and blocked formats")
     args.add_argument("--sidebar-sections-only", action="store_true", help="Check independent navigation sections, heading creation, Archive restore and Sample utility")
     args.add_argument("--archive-only", action="store_true", help="Check Galaxy archive/restore, references, file preservation, persistence and motion")
     args.add_argument("--body-hierarchy-only", action="store_true", help="Inspect restrained bodies, screen caps, nebula territories, radial branches, deep focus and mobile")
@@ -324,6 +325,98 @@ def main():
         check(evaluate("JSON.parse(localStorage.getItem('galaxy:user-data')).version===5 && JSON.parse(localStorage.getItem('galaxy:user-data')).entries.every(e=>!('role' in e) && !('depth' in e))"), "version 5 persists generic ancestry without hardcoded roles or depth")
         check(evaluate("!document.querySelector('#pin-position-button,[data-action=pin],#panel-placement,#panel-role,#connection-options') && !panel.textContent.includes('Moves naturally') && !dialog.textContent.includes('Other connections') && roleField.tagName==='OUTPUT' && [...entries.values()].every(e=>e.depth>=0)"), "normal UI derives roles without pin, physics status or relationship controls")
 
+        if options.general_files_only:
+            g=add('General files');owner=add('Project documents',g);wait_for('physics.settled');wait_camera();evaluate('physics.pause()')
+            fixtures=Path(tempfile.mkdtemp(prefix='galaxy-general-files-'));downloads=fixtures/'downloads';downloads.mkdir()
+            cdp.call('Browser.setDownloadBehavior',behavior='allow',downloadPath=str(downloads),eventsEnabled=True)
+            names=['proposal.docx','budget.XLSX','slides.pptx','assets.zip','drawing.dwg','project.unfamiliar']
+            for name in names:(fixtures/name).write_bytes(('Original '+name+' bytes').encode()+b'\x00\x01')
+            check(evaluate("!contentInspector.files.hasAttribute('accept')&&document.getElementById('content-file-limit').textContent.includes('10 MiB')"),'native picker permits ordinary generic files and still advertises the 10 MiB limit')
+            root=cdp.call('DOM.getDocument')['root']['nodeId'];file_node=cdp.call('DOM.querySelector',nodeId=root,selector='#content-files')['nodeId']
+            cdp.call('DOM.setFileInputFiles',nodeId=file_node,files=[str(fixtures/name) for name in names]);wait_for('contentInspector.jobs.size===0&&contentInspector.content().attachments.length===6')
+            for name in names:
+                check(evaluate(f"contentInspector.content().attachments.some(f=>f.filename==={json.dumps(name)}&&galaxyModel.filePolicy.classify(f).kind==='generic')"),'picker accepts '+name+' as an ordinary generic attachment')
+            records=evaluate('contentInspector.content().attachments')
+            check(evaluate("contentInspector.content().attachments.every(f=>f.extension===galaxyModel.filePolicy.extension(f.filename)&&f.id===f.storageKey&&!!f.createdAt&&f.size>0)"),'generic metadata retains original name, MIME, extension, size, stable ID and creation date')
+            check(evaluate("[...document.querySelectorAll('#content-attachments .content-file-icon')].every(b=>b.ariaLabel.startsWith('File details for '))&&document.querySelectorAll('#content-attachments .content-image').length===0&&document.querySelectorAll('#content-attachments pre,#content-attachments img').length===0"),'generic rows show restrained type badges and named File Details actions without error or invalid preview')
+            targets={t['targetId'] for t in cdp.call('Target.getTargets')['targetInfos'] if t['type']=='page'}
+            evaluate(f"document.querySelector('[data-attachment-id=\"{records[0]['id']}\"] .content-file-name').focus()")
+            cdp.call('Input.dispatchKeyEvent',type='keyDown',key='Enter',code='Enter',windowsVirtualKeyCode=13,text='\r');cdp.call('Input.dispatchKeyEvent',type='keyUp',key='Enter',code='Enter',windowsVirtualKeyCode=13)
+            wait_for('contentInspector.fileDetails.open');time.sleep(.2)
+            check(not list(downloads.iterdir()) and evaluate('contentInspector.downloadUrls.size===0'),'normal generic-file activation opens Details without creating or downloading a duplicate')
+            check(evaluate(f"document.getElementById('file-details-name').textContent==={json.dumps(names[0])}&&document.getElementById('file-details-type').textContent==='DOCX file'&&document.getElementById('file-details-size').textContent==={json.dumps(str(records[0]['size'])+' B')}&&document.getElementById('file-details-save-copy').textContent==='Save a copy'"),'File Details shows filename, simple type, exact size and an explicit Save a copy action')
+            cdp.call('Input.dispatchKeyEvent',type='keyDown',key='Tab',code='Tab',modifiers=8,windowsVirtualKeyCode=9);cdp.call('Input.dispatchKeyEvent',type='keyUp',key='Tab',code='Tab',modifiers=8,windowsVirtualKeyCode=9)
+            check(evaluate("document.activeElement.id==='file-details-save-copy'"),'File Details traps backward keyboard focus on Save a copy')
+            cdp.call('Input.dispatchKeyEvent',type='keyDown',key='Enter',code='Enter',windowsVirtualKeyCode=13,text='\r');cdp.call('Input.dispatchKeyEvent',type='keyUp',key='Enter',code='Enter',windowsVirtualKeyCode=13)
+            until=time.monotonic()+10
+            while not (downloads/names[0]).exists():
+                assert time.monotonic()<until,'generic download did not finish';time.sleep(.1)
+            check((downloads/names[0]).read_bytes()==(fixtures/names[0]).read_bytes(),'explicit keyboard Save a copy preserves the original filename and exact bytes')
+            check({t['targetId'] for t in cdp.call('Target.getTargets')['targetInfos'] if t['type']=='page'}==targets and evaluate('!imageViewer.dialog.open&&contentInspector.fileDetails.open'),'Save a copy keeps File Details inside Cosmifold without a browser tab')
+            cdp.call('Input.dispatchKeyEvent',type='keyDown',key='Escape',code='Escape',windowsVirtualKeyCode=27);cdp.call('Input.dispatchKeyEvent',type='keyUp',key='Escape',code='Escape',windowsVirtualKeyCode=27)
+            wait_for(f"!contentInspector.fileDetails.open&&document.activeElement===document.querySelector('[data-attachment-id=\"{records[0]['id']}\"] .content-file-name')")
+            check(True,'Escape closes File Details and restores the launching file button')
+            click_selector(f'[data-attachment-id="{records[1]["id"]}"] .content-file-icon');wait_for('contentInspector.fileDetails.open');click_selector('#file-details-close');wait_for('!contentInspector.fileDetails.open')
+            check(len(list(downloads.iterdir()))==1,'Close dismisses a different file without downloading it')
+            click_selector(f'[data-attachment-id="{records[1]["id"]}"] .content-file-icon');wait_for('contentInspector.fileDetails.open')
+            if screenshot_dir:
+                result=cdp.call('Page.captureScreenshot',format='png',captureBeyondViewport=False);(screenshot_dir/'file-details-desktop.png').write_bytes(base64.b64decode(result['data']))
+            mouse('mousePressed',x=20,y=20,button='left',clickCount=1);mouse('mouseReleased',x=20,y=20,button='left',clickCount=1);wait_for('!contentInspector.fileDetails.open')
+            check(True,'File Details backdrop closes without triggering a file action')
+            check(evaluate("!document.querySelector('#file-details-dialog a')"),'File Details offers no misleading Open externally action')
+            click_selector(f'[data-attachment-id="{records[1]["id"]}"] .content-file-icon');wait_for('contentInspector.fileDetails.open')
+            evaluate("window.detailsGet=attachmentStore.get;attachmentStore.get=async()=>null")
+            click_selector('#file-details-save-copy');wait_for("!document.getElementById('file-details-status').hidden&&!document.getElementById('file-details-save-copy').disabled")
+            check(evaluate("contentInspector.fileDetails.open&&document.getElementById('file-details-status').textContent.includes('unavailable')") and len(list(downloads.iterdir()))==1,'failed Save a copy reports inside File Details without creating another file')
+            evaluate('attachmentStore.get=detailsGet');click_selector('#file-details-close');wait_for('!contentInspector.fileDetails.open')
+            evaluate("contentInspector.upload([new File(['Missing MIME'],'no-mime.custom'),new File(['Unknown MIME'],'unknown.custom',{type:'application/x-custom-test'}),new File(['Video bytes'],'clip.mp4',{type:'video/mp4'}),new File(['<script>window.executedGeneric=true</script>'],'page.html',{type:'text/html'})])")
+            wait_for('contentInspector.jobs.size===0&&contentInspector.content().attachments.length===10')
+            check(evaluate("contentInspector.content().attachments.find(f=>f.filename==='no-mime.custom').mimeType==='application/octet-stream'&&contentInspector.content().attachments.find(f=>f.filename==='unknown.custom').mimeType==='application/x-custom-test'"),'missing MIME falls back safely while an uncommon reported MIME is preserved')
+            check(evaluate("contentInspector.content().attachments.filter(f=>['clip.mp4','page.html'].includes(f.filename)).every(f=>galaxyModel.filePolicy.classify(f).kind==='generic')&&!window.executedGeneric"),'video and active browser formats remain generic downloads with no new previewer')
+            evaluate("window.storeWrites=0;window.originalGeneralSave=attachmentStore.save;attachmentStore.save=(...args)=>{storeWrites++;return originalGeneralSave(...args)}")
+            for filename,mime in [('payload.EXE','application/octet-stream'),('install.msi',''),('run.BAT','text/plain'),('run.cmd',''),('screen.scr',''),('program.com',''),('ordinary.docx','application/x-msdownload')]:
+                evaluate(f"contentInspector.upload([new File(['Blocked'],{json.dumps(filename)},{{type:{json.dumps(mime)}}})])");wait_for('contentInspector.jobs.size===0')
+                check(evaluate("contentInspector.status.dataset.error==='true'&&contentInspector.status.textContent.includes('cannot be attached')&&contentInspector.content().attachments.length===10&&storeWrites===0"),'extension/MIME validation blocks '+filename+' before storage')
+            evaluate("attachmentStore.save=originalGeneralSave;contentInspector.upload([new File([new Uint8Array(10*1024*1024+1)],'too-large.docx')])");wait_for('contentInspector.jobs.size===0')
+            check(evaluate("contentInspector.status.textContent.includes('10 MiB')&&contentInspector.content().attachments.length===10"),'10 MiB limit still applies to generic documents')
+            evaluate("(async()=>{const c=document.createElement('canvas');c.width=20;c.height=10;c.getContext('2d').fillRect(0,0,20,10);const b=await new Promise(r=>c.toBlob(r,'image/png'));await contentInspector.upload([new File([b],'UNKNOWN-MIME.PNG',{type:'application/octet-stream'}),new File(['%PDF-1.4\\n'],'unknown-mime.PDF')]);})()")
+            wait_for('contentInspector.jobs.size===0')
+            check(evaluate("contentInspector.content().attachments.some(f=>f.filename==='UNKNOWN-MIME.PNG'&&f.mimeType==='application/octet-stream'&&f.width===20&&galaxyModel.filePolicy.classify(f).kind==='image')&&contentInspector.content().attachments.some(f=>f.filename==='unknown-mime.PDF'&&f.mimeType==='application/octet-stream'&&galaxyModel.filePolicy.classify(f).kind==='pdf')"),'recognized formats retain preview capability when browser MIME is missing or generic')
+            evaluate("contentInspector.openFile(contentInspector.content().attachments.find(f=>f.filename==='UNKNOWN-MIME.PNG'))");wait_for('imageViewer.dialog.open&&!imageViewer.image.hidden');evaluate('imageViewer.dialog.close()');wait_for('imageViewer.url===null')
+            check(evaluate('!imageViewer.dialog.open'),'missing-MIME image opens internally from its validated original bytes')
+            view=evaluate('JSON.stringify(camera.view)')
+            def drop(target,name):
+                evaluate(f"(()=>{{const node={target},dt=new DataTransfer();dt.items.add(new File(['Drop bytes'],{json.dumps(name)},{{type:'application/octet-stream'}}));node.dispatchEvent(new DragEvent('dragover',{{bubbles:true,cancelable:true,dataTransfer:dt}}));node.dispatchEvent(new DragEvent('drop',{{bubbles:true,cancelable:true,dataTransfer:dt}}));}})()")
+                wait_for('contentInspector.jobs.size===0');evaluate('physics.pause()')
+            drop(f'nodes.get({json.dumps(owner)})','body-drop.docx');drop(f'hierarchySidebar.rows.get({json.dumps(owner)})','sidebar-drop.xlsx')
+            check(evaluate('JSON.stringify(camera.view)')==view,'body/sidebar generic drops preserve camera state')
+            evaluate(f"focusEntry({json.dumps(g)})");wait_camera();evaluate('physics.pause()');view=evaluate('JSON.stringify(camera.view)')
+            evaluate(f"(()=>{{const e=entries.get({json.dumps(g)}),p=camera.worldToScreen(e.x,e.y),dt=new DataTransfer();dt.items.add(new File(['Drop bytes'],'galaxy-drop.zip',{{type:'application/zip'}}));graphViewport.dispatchEvent(new DragEvent('drop',{{bubbles:true,cancelable:true,dataTransfer:dt,clientX:p.x,clientY:p.y}}))}})()");wait_for('contentInspector.jobs.size===0');evaluate('physics.pause()')
+            check(evaluate(f"entries.get({json.dumps(owner)}).content?.attachments.some(f=>f.filename==='body-drop.docx')&&entries.get({json.dumps(owner)}).content?.attachments.some(f=>f.filename==='sidebar-drop.xlsx')&&entries.get({json.dumps(g)}).content?.attachments.some(f=>f.filename==='galaxy-drop.zip')"),'generic files share celestial-body, sidebar and Galaxy drop pipelines')
+            check(evaluate('JSON.stringify(camera.view)')==view and evaluate("!document.querySelector('.content-drop-target')&&contentDrops.hoverTimer===null"),'generic drops preserve camera and clean their interaction feedback')
+            wait_for('physics.settled');evaluate('physics.pause();saveGalaxy()');cdp.call('Page.reload');load();wait_camera();select(owner);evaluate('physics.pause()')
+            check(evaluate(f"{json.dumps([r['id'] for r in records])}.every(id=>contentInspector.content().attachments.some(f=>f.id===id))&&JSON.parse(localStorage.getItem('galaxy:user-data')).version===5"),'generic attachments refresh with the same IDs and metadata in storage v5')
+            check(evaluate(f"(async()=>{{const r=await attachmentStore.get({json.dumps(records[0]['storageKey'])});return await r.blob.text()==={json.dumps((fixtures/names[0]).read_bytes().decode())}}})()"),'generic original binary bytes survive refresh')
+            for width in [320,390]:
+                cdp.call('Emulation.setDeviceMetricsOverride',width=width,height=844,deviceScaleFactor=1,mobile=True);cdp.call('Emulation.setTouchEmulationEnabled',enabled=True)
+                evaluate('hierarchySidebar.setCollapsed(true)');select(owner);wait_camera();evaluate('physics.pause()')
+                check(evaluate("document.documentElement.scrollWidth<=innerWidth&&[...document.querySelectorAll('#content-attachments .content-file-name')].every(b=>b.ariaLabel.startsWith('File details for ')||b.ariaLabel.startsWith('Open attachment '))&&[...document.querySelectorAll('#content-attachments .content-file-icon')].every(b=>b.getBoundingClientRect().right<=innerWidth)"),f'generic Files rows retain named keyboard/touch actions without overflow at {width}px')
+                evaluate(f"contentInspector.openFile(contentInspector.content().attachments.find(f=>f.id==={json.dumps(records[1]['id'])}),document.querySelector('[data-attachment-id=\"{records[1]['id']}\"] .content-file-icon'))")
+                check(evaluate("(()=>{const d=contentInspector.fileDetails,r=d.getBoundingClientRect();return d.open&&r.left>=0&&r.right<=innerWidth&&r.top>=0&&r.bottom<=innerHeight&&document.getElementById('file-details-close').getBoundingClientRect().height>=44&&document.getElementById('file-details-save-copy').getBoundingClientRect().height>=44})()"),f'compact File Details fits {width}px with reachable 44px Close and Save a copy controls')
+                if screenshot_dir and width==320:
+                    result=cdp.call('Page.captureScreenshot',format='png',captureBeyondViewport=False);(screenshot_dir/'file-details-mobile.png').write_bytes(base64.b64decode(result['data']))
+                click_selector('#file-details-close');wait_for('!contentInspector.fileDetails.open')
+            cdp.call('Emulation.setDeviceMetricsOverride',width=1440,height=1000,deviceScaleFactor=1,mobile=False);cdp.call('Emulation.setTouchEmulationEnabled',enabled=False)
+            evaluate('hierarchySidebar.setCollapsed(false)');wait_camera()
+            if screenshot_dir:
+                result=cdp.call('Page.captureScreenshot',format='png',captureBeyondViewport=False);(screenshot_dir/'generic-files.png').write_bytes(base64.b64decode(result['data']))
+            evaluate(f"(()=>{{const row=document.querySelector('[data-attachment-id=\"{records[0]['id']}\"]');const remove=row.querySelector('.content-row-actions button');remove.click();remove.click()}})()");wait_for('contentInspector.jobs.size===0')
+            check(evaluate(f"(async()=>!contentInspector.content().attachments.some(f=>f.id==={json.dumps(records[0]['id'])})&&await attachmentStore.get({json.dumps(records[0]['storageKey'])})===null)()"),'existing confirmed deletion removes generic metadata and owned bytes')
+            evaluate('physics.pause();saveGalaxy()');real=evaluate("localStorage.getItem('galaxy:user-data')");evaluate('loadSampleButton.click()');wait_for("document.readyState==='complete'&&typeof sampleMode!=='undefined'&&sampleMode");load();wait_camera()
+            evaluate("selectEntry(entries.get('sample-satellite-2-0-0-0'),nodes.get('sample-satellite-2-0-0-0'),{reframe:false});contentInspector.upload([new File(['Temporary generic'],'sample.docx')])");wait_for('contentInspector.jobs.size===0')
+            check(evaluate("contentInspector.content().attachments.some(f=>f.filename==='sample.docx')&&attachmentStore.temporary") and evaluate("localStorage.getItem('galaxy:user-data')")==real,'generic Sample uploads remain disposable and cannot modify personal persistence')
+            check(not cdp.errors,f'no general-file exceptions: {cdp.errors}');print(f'{count} general-file checks passed',flush=True);return
+
         if options.attachment_viewer_only:
             def key(value,code,modifiers=0):
                 vk={'Escape':27,'Tab':9,'ArrowLeft':37,'ArrowRight':39}.get(value,0)
@@ -387,6 +480,9 @@ def main():
             evaluate("window.textOpen=window.open;window.textOpened=false;window.open=()=>({location:{replace:url=>textOpened=url.startsWith('blob:')},closed:true,close(){}});contentInspector.openFile(contentInspector.content().attachments.find(f=>f.mimeType==='text/plain'));void 0")
             wait_for('textOpened===true');evaluate('window.open=textOpen')
             check(evaluate('!imageViewer.dialog.open'),'text files retain their existing external opening path')
+            for name in ['missing-type.txt','missing-type.md']:
+                evaluate(f"contentInspector.upload([new File(['Plain text stays readable'],{json.dumps(name)})])");wait_for('contentInspector.jobs.size===0')
+                check(evaluate(f"(async()=>{{const original=window.open;let url;window.open=()=>({{location:{{replace:value=>url=value}},closed:true,close(){{}}}});try{{const meta=contentInspector.content().attachments.find(f=>f.filename==={json.dumps(name)});await contentInspector.openFile(meta);const response=await fetch(url);return response.headers.get('Content-Type')==='text/plain'&&(await response.text())==='Plain text stays readable'&&meta.mimeType==='application/octet-stream'&&!contentInspector.fileDetails.open}}finally{{window.open=original}}}})()"),f'{name} keeps safe text viewing without changing stored MIME or opening File Details')
             check(not cdp.errors,f'no attachment-viewer exceptions: {cdp.errors}');print(f'{count} attachment-viewer checks passed',flush=True);return
 
         if options.usability_only:
@@ -995,9 +1091,9 @@ def main():
             check(evaluate(f"!hierarchySidebar.expanded.has({json.dumps(cancel_row)})&&activeConstellationId==='sample-constellation-trip'&&contentDrops.hoverTimer===null"),'Escape cancels the drag without deactivating its Constellation')
             over(cancel_row);drop(cancel_row);wait_hover()
             check(evaluate(f"!hierarchySidebar.expanded.has({json.dumps(cancel_row)})&&contentDrops.hoverTimer===null"),'drop before the delay prevents any later expansion')
-            evaluate("springTransfer=new DataTransfer();springTransfer.items.add(new File(['unsupported'],'bad.zip',{type:'application/zip'}))")
+            evaluate("springTransfer=new DataTransfer();springTransfer.items.add(new File(['unsupported'],'bad.EXE',{type:'application/octet-stream'}))")
             over(cancel_row);drop(cancel_row);wait_hover()
-            check(evaluate(f"contentInspector.status.dataset.error==='true'&&!hierarchySidebar.expanded.has({json.dumps(cancel_row)})&&contentDrops.hoverTimer===null"),'unsupported dropped file keeps normal validation and no stale timers')
+            check(evaluate(f"contentInspector.status.dataset.error==='true'&&!hierarchySidebar.expanded.has({json.dumps(cancel_row)})&&contentDrops.hoverTimer===null"),'blocked script drop keeps validation and no stale timers')
             p=point(cancel_row);data={'items':[{'mimeType':'text/uri-list','data':'https://example.com/native-spring'}],'dragOperationsMask':1}
             cdp.call('Input.dispatchDragEvent',type='dragEnter',**p,data=data);cdp.call('Input.dispatchDragEvent',type='dragOver',**p,data=data);wait_hover()
             check(evaluate(f"hierarchySidebar.expanded.has({json.dumps(cancel_row)})"),'native browser external drag also spring-opens a collapsed row')
@@ -1092,8 +1188,8 @@ def main():
             drop(target,"dt.setData('text/plain','https://example.com/planning')")
             check(evaluate("activeConstellationId==='constellation:everyday-lens'&&!contentInspector.notesForm.hidden&&contentInspector.notes.value==='Unsaved planning draft'") and evaluate('JSON.stringify(camera.view)')==view and evaluate('JSON.stringify([...constellations.values()])')==members,'drop preserves the active lens, camera, references and an open note draft')
             evaluate("document.getElementById('content-cancel-notes').click();contentInspector.save(contentInspector.entryId,{...contentInspector.content(),links:[]});contentInspector.renderLists();exitConstellation()")
-            drop(target,"dt.items.add(new File(['unsupported'],'archive.zip',{type:'application/zip'}))")
-            check(evaluate("contentInspector.content().attachments.length===5&&contentInspector.status.dataset.error==='true'"),'unsupported dropped files use existing validation')
+            drop(target,"dt.items.add(new File(['unsupported'],'blocked.CMD',{type:'application/octet-stream'}))")
+            check(evaluate("contentInspector.content().attachments.length===5&&contentInspector.status.dataset.error==='true'"),'blocked executable drops use existing validation')
             drop(target,"dt.items.add(new File([new Uint8Array(galaxyModel.contentLimits.fileBytes+1)],'oversized.txt',{type:'text/plain'}))")
             check(evaluate("contentInspector.content().attachments.length===5&&contentInspector.status.dataset.error==='true'"),'oversized dropped files use the same size limit')
             drop(target,"dt.setData('text/plain','google.com')")
@@ -2731,7 +2827,7 @@ def main():
             for i,obj in enumerate(objects,1):offsets.append(len(pdf));pdf+=str(i).encode()+b' 0 obj\n'+obj+b'\nendobj\n'
             xref=len(pdf);pdf+=b'xref\n0 4\n0000000000 65535 f \n'+b''.join(f'{pos:010d} 00000 n \n'.encode() for pos in offsets)+f'trailer\n<< /Root 1 0 R /Size 4 >>\nstartxref\n{xref}\n%%EOF\n'.encode()
             (fixtures/'plan.pdf').write_bytes(pdf);(fixtures/'notes.txt').write_text('Preview\n'+('Text line\n'*1000),encoding='utf-8');(fixtures/'readme.md').write_text('# Markdown\n<script>window.fileXss=true</script>',encoding='utf-8')
-            (fixtures/'unsupported.zip').write_bytes(b'not supported');(fixtures/'large.txt').write_bytes(b'x'*(10*1024*1024+1))
+            (fixtures/'blocked.EXE').write_bytes(b'blocked executable');(fixtures/'large.txt').write_bytes(b'x'*(10*1024*1024+1))
             def pick(names):
                 node=cdp.call('DOM.getDocument')['root']['nodeId'];file_node=cdp.call('DOM.querySelector',nodeId=node,selector='#content-files')['nodeId']
                 cdp.call('DOM.setFileInputFiles',nodeId=file_node,files=[str(fixtures/name) for name in names]);wait_for('contentInspector.jobs.size===0')
@@ -2768,7 +2864,7 @@ def main():
             check(evaluate("(()=>{const data=JSON.parse(localStorage.getItem('galaxy:user-data'));return data.version===5 && !JSON.stringify(data).includes('blob:') && !JSON.stringify(data).includes('data:image') && data.entries.find(e=>e.id===contentInspector.entryId).content.attachments.every(a=>!('blob' in a)&&a.storageKey);})()"),'localStorage contains metadata/references only and stays at schema 5')
             preview('rich-content-desktop')
             stable(before,'file uploads and previews preserve camera state')
-            pick(['unsupported.zip']);check(evaluate("contentInspector.status.textContent.includes('Unsupported') && contentInspector.content().attachments.length===7"),'unsupported files fail without creating metadata')
+            pick(['blocked.EXE']);check(evaluate("contentInspector.status.textContent.includes('cannot be attached') && contentInspector.content().attachments.length===7"),'blocked executables fail without creating metadata')
             pick(['large.txt']);check(evaluate("contentInspector.status.textContent.includes('too large') && contentInspector.content().attachments.length===7"),'oversized files fail before binary storage')
             evaluate("window.originalBinarySave=attachmentStore.save;attachmentStore.save=async()=>{throw new DOMException('Full','QuotaExceededError')}")
             pick(['plan.pdf']);check(evaluate("contentInspector.status.textContent.includes('full') && contentInspector.content().attachments.length===7"),'binary quota failure preserves entry content')

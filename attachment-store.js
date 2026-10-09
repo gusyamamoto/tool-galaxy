@@ -1,23 +1,25 @@
 // File preparation and preview validation; persistence is injected separately.
 const galaxyAttachmentFiles = {
-    types: { jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp", pdf: "application/pdf", txt: "text/plain", md: "text/markdown" },
+    types: galaxyModel.filePolicy.previewTypes,
     async prepare(file, entryId) {
-        const extension = file.name.split(".").pop().toLowerCase(), mimeType = this.types[extension];
-        if (!mimeType) throw new Error("Unsupported file type. Choose JPG, JPEG, PNG, WebP, PDF, TXT or MD.");
         if (!file.name || file.name.length > 255) throw new Error("Choose a file with a shorter filename.");
+        const policy = galaxyModel.filePolicy, extension = policy.extension(file.name);
+        const mimeType = policy.validMime(file.type) ? file.type : 'application/octet-stream';
+        if (policy.blocked(file.name,mimeType)) throw new Error('Executable files, installers, and scripts cannot be attached. Choose a document, project file, or archive instead.');
         if (file.size > galaxyModel.contentLimits.fileBytes) throw new Error(`This file is too large. The per-file limit is ${galaxyModel.contentLimits.fileBytes / 1024 / 1024} MiB.`);
         const id = crypto.randomUUID(), metadata = { id, kind: "upload", entryId, filename: file.name,
-            mimeType, size: file.size, storageKey: id, createdAt: new Date().toISOString() };
+            mimeType, extension, size: file.size, storageKey: id, createdAt: new Date().toISOString() };
         const record = { key: id, entryId, blob: new Blob([file], { type: mimeType }) };
-        if (mimeType === "application/pdf") {
+        const {kind,renderType} = policy.classify(metadata);
+        if (kind === 'pdf') {
             if (await file.slice(0, 5).text() !== "%PDF-") throw new Error("This file is not a valid PDF.");
         }
-        if (mimeType.startsWith("image/")) {
+        if (kind === 'image') {
             const bytes = new Uint8Array(await file.arrayBuffer()), view = new DataView(bytes.buffer);
             let width, height, orientation = 1;
-            if (mimeType === "image/png" && bytes.length >= 24 && bytes.slice(0,8).join() === "137,80,78,71,13,10,26,10") {
+            if (renderType === "image/png" && bytes.length >= 24 && bytes.slice(0,8).join() === "137,80,78,71,13,10,26,10") {
                 width = view.getUint32(16); height = view.getUint32(20);
-            } else if (mimeType === "image/jpeg" && bytes[0] === 255 && bytes[1] === 216) {
+            } else if (renderType === "image/jpeg" && bytes[0] === 255 && bytes[1] === 216) {
                 for (let i = 2; i + 9 < bytes.length;) {
                     if (bytes[i++] !== 255) break;
                     while (bytes[i] === 255) i++;
@@ -41,7 +43,7 @@ const galaxyAttachmentFiles = {
                     if ([192,193,194,195,197,198,199,201,202,203,205,206,207].includes(marker)) { height = view.getUint16(i+3); width = view.getUint16(i+5); break; }
                     i += size;
                 }
-            } else if (mimeType === "image/webp" && bytes.length >= 25 && String.fromCharCode(...bytes.slice(0,4)) === "RIFF" && String.fromCharCode(...bytes.slice(8,12)) === "WEBP") {
+            } else if (renderType === "image/webp" && bytes.length >= 25 && String.fromCharCode(...bytes.slice(0,4)) === "RIFF" && String.fromCharCode(...bytes.slice(8,12)) === "WEBP") {
                 const type = String.fromCharCode(...bytes.slice(12,16));
                 if (type === "VP8X" && bytes.length >= 30) { width = 1+bytes[24]+(bytes[25]<<8)+(bytes[26]<<16); height = 1+bytes[27]+(bytes[28]<<8)+(bytes[29]<<16); }
                 else if (type === "VP8 " && bytes.length >= 30) { width = view.getUint16(26,true)&16383; height = view.getUint16(28,true)&16383; }
