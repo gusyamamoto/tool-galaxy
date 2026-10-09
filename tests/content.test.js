@@ -32,7 +32,7 @@ test('bookmark addresses normalize ordinary domains without accepting unsafe or 
 test('notes can be cleared and malformed/future content is preserved through rejection instead of lossy loading',()=>{
     assert.equal(model.normalizeContent(model.emptyContent(),'entry').notes.text,'');
     for(const invalid of [{...model.emptyContent(),version:2},{...model.emptyContent(),notes:{format:'html',text:'<script>'}},
-        {...model.emptyContent(),attachments:[{...file,entryId:'other'}]}, {...model.emptyContent(),attachments:[{...file,mimeType:'text/html'}]}]){
+        {...model.emptyContent(),attachments:[{...file,entryId:'other'}]}, {...model.emptyContent(),attachments:[{...file,mimeType:'invalid mime'}]}]){
         assert.equal(model.normalizeContent(invalid,'entry'),null);
         assert.equal(model.normalizeEntry({id:'entry',name:'Name',content:invalid}),null);
     }

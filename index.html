@@ -98,7 +98,7 @@
             <section id="panel-rich-content" aria-label="Contents">
                 <section aria-labelledby="files-heading">
                     <header class="content-heading"><h3 id="files-heading">Files</h3><button id="content-add-files" class="quiet-icon content-section-add" type="button" aria-label="Add files" title="Add files">+</button></header>
-                    <input id="content-files" type="file" multiple accept=".jpg,.jpeg,.png,.webp,.pdf,.txt,.md" hidden aria-label="Choose files">
+                    <input id="content-files" type="file" multiple hidden aria-label="Choose files">
                     <ul id="content-attachments"></ul>
                     <p id="content-files-empty" class="content-empty">No files</p>
                     <small id="content-file-limit" hidden></small>
@@ -320,6 +320,16 @@
         <div class="image-viewer-stage"><img id="image-viewer-image" alt="" hidden><embed id="attachment-viewer-pdf" title="PDF document" hidden><p id="image-viewer-status" role="status">Loading image...</p></div>
         <footer id="attachment-viewer-pdf-tools" hidden><span id="attachment-viewer-pdf-hint">PDF not displaying?</span> <a id="attachment-viewer-external" target="_blank" rel="noopener noreferrer">Open externally</a></footer>
         <nav id="image-viewer-navigation" aria-label="Browse attached images" hidden><button id="image-viewer-previous" type="button" aria-label="Previous image" title="Previous image">&larr;</button><span id="image-viewer-position" aria-live="polite"></span><button id="image-viewer-next" type="button" aria-label="Next image" title="Next image">&rarr;</button></nav>
+    </dialog>
+    <dialog id="file-details-dialog" aria-labelledby="file-details-title">
+        <header class="file-details-header"><h2 id="file-details-title">File details</h2><button id="file-details-close" type="button" aria-label="Close file details" title="Close file details" autofocus>&times;</button></header>
+        <div class="file-details-body">
+            <p id="file-details-name"></p>
+            <dl><div><dt>Type</dt><dd id="file-details-type"></dd></div><div><dt>Size</dt><dd id="file-details-size"></dd></div></dl>
+            <p>Cosmifold can keep this file here, but it can’t preview this format yet.</p>
+            <p id="file-details-status" role="status" hidden></p>
+        </div>
+        <footer><button id="file-details-save-copy" type="button">Save a copy</button></footer>
     </dialog>
     <script src="image-viewer.js"></script>
     <script src="help.js"></script>

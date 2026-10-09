@@ -58,8 +58,10 @@ class EntryContentInspector {
         this.files = document.getElementById("content-files");
         this.status = document.getElementById("content-status");
         this.jobs = new Map(); this.urls = new Set(); this.generation = 0; this.entryId = null; this.previewLoads = 0;
+        this.downloadUrls = new Map();
+        this.setupFileDetails();
         this.notes.maxLength = galaxyModel.contentLimits.notes;
-        document.getElementById("content-file-limit").textContent = `JPG, PNG, WebP, PDF, TXT or MD · up to ${galaxyModel.contentLimits.fileBytes / 1024 / 1024} MiB per file`;
+        document.getElementById("content-file-limit").textContent = `Documents, archives, images, and project files · up to ${galaxyModel.contentLimits.fileBytes / 1024 / 1024} MiB per file`;
         this.root.addEventListener("input", () => this.onAction());
         this.root.addEventListener("click", () => this.onAction());
         this.notesForm.addEventListener("submit", event => {
@@ -111,7 +113,10 @@ class EntryContentInspector {
         document.addEventListener("pointerdown", event => {
             this.root.querySelectorAll(".content-item-menu[open]").forEach(menu => { if (!menu.contains(event.target)) menu.open = false; });
         });
-        window.addEventListener("pagehide", () => this.clearPreviews());
+        window.addEventListener("pagehide", () => {
+            this.clearPreviews();
+            this.downloadUrls.forEach((timer,url)=>{clearTimeout(timer);URL.revokeObjectURL(url)});this.downloadUrls.clear();
+        });
     }
     content(id = this.entryId) { return this.getEntry(id)?.content || galaxyModel.emptyContent(); }
     message(text, error = false) {
@@ -229,16 +234,18 @@ class EntryContentInspector {
             item.append(icon, info, this.itemMenu(actions, link.title || link.url)); links.append(item);
         });
         const generation = this.generation;
-        const gallery=this.content().attachments.filter(file=>file.mimeType.startsWith('image/')).length>1;
+        const gallery=this.content().attachments.filter(file=>galaxyModel.filePolicy.classify(file).kind==='image').length>1;
         files.classList.toggle('has-image-gallery',gallery);
         this.content().attachments.forEach(metadata => {
-            const item = document.createElement("li"), name = this.button(metadata.filename, event => this.openFile(metadata,event.currentTarget), `Open attachment ${metadata.filename}`), size = document.createElement("small"), preview = document.createElement("div"), actions = document.createElement("div"), info = document.createElement("div");
+            const capability = galaxyModel.filePolicy.classify(metadata), generic = capability.kind === 'generic';
+            const item = document.createElement("li"), name = this.button(metadata.filename, event => this.openFile(metadata,event.currentTarget), `${generic?'File details for':'Open attachment'} ${metadata.filename}`), size = document.createElement("small"), preview = document.createElement("div"), actions = document.createElement("div"), info = document.createElement("div");
             item.className = "content-file"; item.dataset.attachmentId = metadata.id;
-            if(metadata.mimeType.startsWith('image/'))item.classList.add('content-image');
+            if(capability.kind==='image')item.classList.add('content-image');
             name.className = "content-file-name";
             preview.className = "content-file-preview";
-            const badge = this.button(metadata.mimeType.startsWith("image/") ? "IMG" : metadata.mimeType === "application/pdf" ? "PDF" : metadata.filename.toLowerCase().endsWith(".md") ? "MD" : "TXT", event => this.openFile(metadata,event.currentTarget), `View ${metadata.filename}`);
+            const badge = this.button(capability.badge, event => this.openFile(metadata,event.currentTarget), `${generic?'File details for':'View'} ${metadata.filename}`);
             badge.className = "content-file-icon"; preview.append(badge);
+            name.title = name.ariaLabel; badge.title = badge.ariaLabel;
             size.textContent = `${metadata.size >= 1024*1024 ? (metadata.size/1024/1024).toFixed(1)+" MiB" : metadata.size >= 1024 ? (metadata.size/1024).toFixed(1)+" KiB" : metadata.size+" B"}`;
             actions.className = "content-row-actions";
             actions.append(this.button("Remove", event => {
@@ -262,17 +269,19 @@ class EntryContentInspector {
         this.onLayout();
     }
     async preview(metadata, element, generation) {
+        const capability = galaxyModel.filePolicy.classify(metadata);
+        if (!['image','text'].includes(capability.kind)) return;
         this.previewLoads++;
         try {
             const record = await this.store.get(metadata.storageKey);
             if (generation !== this.generation || !this.visible) return;
             if (!record || record.entryId !== metadata.entryId) { element.textContent = "File unavailable in this browser storage."; return; }
-            if (metadata.mimeType.startsWith("image/") && record.thumbnail) {
+            if (capability.kind === 'image' && record.thumbnail) {
                 const image = document.createElement("img"), url = URL.createObjectURL(record.thumbnail);
                 this.urls.add(url); image.src = url; image.alt = `Preview of ${metadata.filename}`; image.loading = "lazy";
                 element.querySelector("button").replaceChildren(image);
                 image.onload = () => this.onLayout();
-            } else if (metadata.mimeType.startsWith("text/")) {
+            } else if (capability.kind === 'text') {
                 const text = await record.blob.slice(0,galaxyModel.contentLimits.textPreviewBytes).text();
                 if (generation !== this.generation) return;
                 const pre = document.createElement("pre"); pre.textContent = text; pre.className = "content-text-preview";
@@ -293,16 +302,81 @@ class EntryContentInspector {
             }
         });
     }
+    setupFileDetails() {
+        this.fileDetails = document.getElementById('file-details-dialog');
+        const dialog = this.fileDetails, close = document.getElementById('file-details-close');
+        const copy = document.getElementById('file-details-save-copy'), status = document.getElementById('file-details-status');
+        this.fileDetailsSession = 0;
+        close.addEventListener('click', () => dialog.close());
+        dialog.addEventListener('keydown', event => {
+            event.stopPropagation();
+            if (event.key === 'Escape') { event.preventDefault(); dialog.close(); }
+            else if (event.key === 'Tab') {
+                if (event.shiftKey && document.activeElement === close && !copy.disabled) { event.preventDefault(); copy.focus(); }
+                else if (!event.shiftKey && document.activeElement === copy) { event.preventDefault(); close.focus(); }
+                else if (copy.disabled) { event.preventDefault(); close.focus(); }
+            }
+        });
+        const outside = event => { const r=dialog.getBoundingClientRect();return event.target===dialog&&(event.clientX<r.left||event.clientX>r.right||event.clientY<r.top||event.clientY>r.bottom); };
+        let backdrop = false;
+        dialog.addEventListener('pointerdown', event => { backdrop = outside(event); });
+        dialog.addEventListener('click', event => { if (backdrop && outside(event)) dialog.close(); backdrop=false; });
+        dialog.addEventListener('close', () => {
+            if (dialog.open) return;
+            this.fileDetailsSession++; this.fileDetailsMetadata = null;
+            const trigger = this.fileDetailsTrigger;
+            const fallback = document.getElementById('close-inspector-button');
+            (trigger?.isConnected && trigger.getClientRects().length ? trigger : fallback.getClientRects().length ? fallback : document.getElementById('sidebar-toggle')).focus({preventScroll:true});
+        });
+        copy.addEventListener('click', async () => {
+            const metadata = this.fileDetailsMetadata, session = this.fileDetailsSession;
+            if (!metadata || copy.disabled) return;
+            copy.disabled = true; status.hidden = true;
+            const success = await this.downloadFile(metadata, error => {
+                if (session !== this.fileDetailsSession || !dialog.open) return;
+                status.textContent = error.message || 'This copy could not be saved. Please try again.';status.hidden=false;
+            });
+            if (session !== this.fileDetailsSession || !dialog.open) return;
+            copy.disabled=false;
+            if (success) { status.textContent='Copy sent to your browser’s downloads.';status.hidden=false; }
+        });
+    }
+    showFileDetails(metadata, trigger) {
+        if (document.querySelector('dialog[open]')) return;
+        this.fileDetailsSession++;this.fileDetailsMetadata={...metadata};this.fileDetailsTrigger=trigger;
+        const extension = galaxyModel.filePolicy.extension(metadata.filename);
+        document.getElementById('file-details-name').textContent = metadata.filename;
+        document.getElementById('file-details-type').textContent = extension ? `${extension.toUpperCase()} file` : 'File';
+        document.getElementById('file-details-size').textContent = metadata.size>=1024*1024 ? `${(metadata.size/1024/1024).toFixed(1)} MiB` : metadata.size>=1024 ? `${(metadata.size/1024).toFixed(1)} KiB` : `${metadata.size} B`;
+        document.getElementById('file-details-status').hidden=true;document.getElementById('file-details-save-copy').disabled=false;
+        this.fileDetails.showModal();
+    }
+    async downloadFile(metadata, onError = error => this.error(error)) {
+        try {
+            const record = await this.store.get(metadata.storageKey);
+            if (!record || record.entryId !== metadata.entryId) throw new Error('This file is unavailable in this browser storage.');
+            // Generic files download inertly; never navigate to active HTML/SVG
+            // or let a browser infer an executable preview from a MIME guess.
+            const url = URL.createObjectURL(new Blob([record.blob], {type:'application/octet-stream'}));
+            const link = document.createElement('a');link.href=url;link.download=metadata.filename;link.hidden=true;
+            document.body.append(link);link.click();link.remove();
+            const timer = setTimeout(()=>{URL.revokeObjectURL(url);this.downloadUrls.delete(url)},60000);
+            this.downloadUrls.set(url,timer);
+            return true;
+        } catch (error) { onError(error); return false; }
+    }
     async openFile(metadata, trigger = document.activeElement) {
         this.onAction();
-        if (metadata.mimeType.startsWith('image/') || metadata.mimeType === 'application/pdf') { this.imageViewer.open(metadata, trigger); return; }
+        const capability = galaxyModel.filePolicy.classify(metadata);
+        if (['image','pdf'].includes(capability.kind)) { this.imageViewer.open(metadata, trigger); return; }
+        if (capability.kind === 'generic') { this.showFileDetails(metadata,trigger); return; }
         const tab = window.open("about:blank", "_blank");
         if (!tab) { this.message("Allow this file to open in a new browser tab.", true); return; }
         tab.opener = null;
         try {
             const record = await this.store.get(metadata.storageKey);
             if (!record || record.entryId !== metadata.entryId) throw new Error("This file is unavailable in this browser storage.");
-            const blob = metadata.mimeType === "text/markdown" ? new Blob([record.blob],{type:"text/plain"}) : record.blob;
+            const blob = new Blob([record.blob],{type:"text/plain"});
             const url = URL.createObjectURL(blob);
             tab.location.replace(url);
             const timer = setInterval(() => { if (tab.closed) { URL.revokeObjectURL(url); clearInterval(timer); } },1000);
