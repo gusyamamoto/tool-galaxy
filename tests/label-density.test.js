@@ -16,6 +16,30 @@ test('overlap tolerance and delayed restoration avoid alternating labels as phys
     assert.ok(run(80,410).hidden.has('b'));layout.resolve([],500);assert.equal(layout.states.size,0);
 });
 
+test('crowded families bound ordinary captions while interaction labels and other families stay readable',()=>{
+    const items=Array.from({length:8},(_,i)=>({...label('child-'+i,i*100,0),group:'family',maxVisible:3}));
+    const selected={...label('selected',1000,0,0,true),group:'family',maxVisible:3};
+    const other={...label('other',1200,0),group:'another-family',maxVisible:3};
+    const hidden=new Layout().resolve([...items,selected,other],0).hidden;
+    assert.equal(items.filter(item=>!hidden.has(item.id)).length,3);
+    assert.equal(hidden.has(selected.id),false);assert.equal(hidden.has(other.id),false);
+});
+
+test('small parent-owned detail clusters can reserve more readable caption spacing without hiding protected labels',()=>{
+    const a=label('a',0,0),b={...label('b',68,0),maxOverlap:.08};
+    assert.equal(new Layout().resolve([a,b],0).hidden.has('b'),true);
+    assert.equal(new Layout().resolve([a,{...b,protected:true}],0).hidden.has('b'),false);
+});
+
+test('additional caption room restores hidden names with the same hysteresis instead of flashing',()=>{
+    const layout=new Layout(),run=(limit,time)=>layout.resolve(Array.from({length:4},(_,i)=>({
+        ...label('child-'+i,i*100,0),group:'family',maxVisible:limit})),time);
+    assert.ok(run(2,0).hidden.has('child-3'));
+    assert.ok(run(4,10).hidden.has('child-3'));
+    assert.equal(run(4,251).hidden.has('child-3'),false);
+    assert.ok(run(2,300).hidden.has('child-3'));
+});
+
 test('the last throttled camera change updates collision decisions once after motion stops',()=>{
     let now=0,next=1;const frames=new Map(),timers=new Map();
     const context=vm.createContext({document:{hidden:false},performance:{now:()=>now},

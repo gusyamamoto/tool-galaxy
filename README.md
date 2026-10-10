@@ -132,16 +132,134 @@ CRUD/persistence, canonical drops, gallery rendering and touch checklists.
   matches and their ancestry reveal even at Universe zoom. Choose a result to select it, open Contents and
   smoothly focus. Contents includes clickable ancestor names. Arrow Down reaches
   results, Enter selects the first match, Escape dismisses results.
-- **Explore:** wheel zoom toward the cursor, drag space to pan, Fit Galaxy to
-  include all regions and content beside the panel. Galaxy/Sun search frames its
-  region/system; deeper search focuses the body at a useful close scale.
-  Single-click a Galaxy name or cloud to frame its systems, then a Sun or its
-  name to frame that system. Focus uses eased camera motion and viewport padding;
+- **Explore:** wheel/pinch magnify the current world. Double-click/tap enters a
+  Sun, Planet or Moon; Satellite/Astronaut targets are inspected within Moon.
+  Zoom never changes hierarchy. Local families retain their radial territory
+  and bounded hints.
+  Parent explicitly leaves one world; Universe returns to root. Panning and all
+  camera zoom keep world ownership stable.
+  Fit frames the anchor and its immediate children; outside
+  local focus it includes the Universe. Parent and Universe controls leave local
+  focus predictably. Search and sidebar navigation establish the target's world.
+  Single-click selects Content; double-click a Galaxy cloud/name or a celestial
+  body to enter. Focus uses eased camera motion and viewport padding;
   Sun framing centers the Sun. Dragging suppresses the following focus click.
 - **Drag:** celestial bodies flow naturally. Dragging influences a preferred
   parent-relative angle and gently bounded orbital region. An extreme drop
   returns gradually toward its parent; release preserves inertia. There are no
   fixed-position controls or physics-status messages.
+
+## Hierarchical local worlds
+
+Camera zoom and entering a hierarchy level are separate. Wheel/trackpad/pinch in
+either direction magnify the current view without entering or leaving a world.
+Double-click/double-tap, sidebar, Search and linked originals are explicit entry.
+Panning and pointer movement never change semantic ownership.
+Entry captures the world's geometry. Wheel/trackpad/pinch, pan, Fit and changing
+panel bounds do not rebuild its bands or move its world-space bodies. Camera
+zoom magnifies the same body sizes and distances together; rendering resolution,
+label density and modest detail-object size limits remain presentation concerns.
+Touch taps use the captured pointer-release target so native click retargeting
+after a label changes cannot lose an intentional double-tap.
+
+Semantic worlds stop at Moon: Galaxy -> Sun -> Planet -> Moon. The persisted
+parentId hierarchy remains unlimited. Satellite, Astronaut and deeper targets
+resolve to their nearest Moon, then center/select the actual detail with modest
+inspection enlargement. Inspecting a detail does not replace the Moon family.
+
+Moon's field contains its detail environment, including deeper descendants.
+Direct children share radial bands; Satellite-owned Astronauts form small,
+deterministic parent-relative mini-orbits inside their own family territories.
+Normal Satellite/Astronaut diameters use a 30:17 ratio; inspection stays modest.
+Nested details keep their actual parent/tethers and never become another world.
+Folded deep chains resolve collisions within their Satellite territory so later
+details do not cover the Satellite's touch target.
+Direct details remain usable; ordinary deeper disclosure is bounded at 96 with
+inspection/selection/Search/interaction exceptions. Captions retain collision
+suppression, restoration hysteresis, protection and an 8–32 ordinary-name budget.
+The sidebar/Content breadcrumbs retain actual unlimited data ancestry.
+
+The single authoritative world descriptor owns its ID, path and local layout;
+selection and camera are independent. Its entry geometry and user arrangements
+are separate from camera projection. There is no outward promotion threshold.
+Parent ascends once; Universe clears the path. Wheel/pinch, Parent and Universe
+preserve Content selection, Notes/Bookmark drafts and active Constellations.
+Returning to a parent removes the former body's world emphasis.
+Universe restores canonical cloud extents and full-size Galaxy names. Retained
+Content selection does not force its deep body/label into the overview. The
+sidebar Universe text and top Universe button share this same navigation action;
+the adjacent chevron only discloses the tree and + still creates a Galaxy.
+
+Clicked bodies retain their projected presentation origin as the new anchor.
+Positions, sizes and visibility blend over 420ms; parent origins are retained
+for smooth return. Saved coordinates never contain these presentation offsets.
+Focused Galaxy labels blend into the fitted family instead of following a large
+cloud offscreen. Reduced motion snaps the same rules without changing identity.
+
+Stable ID sectors, gently irregular multiple bands, layout caching and canonical
+drag preferences/inertia remain. Background physics does not move a settled
+local arrangement. A drag retains a constrained parent-relative placement instead
+of easing back to a generated slot. Existing v5 angle/radius records persist it;
+no second placement store or schema extension is used. Release may settle gently
+against sibling clearance and family boundaries. Child
+territory is independent of body size. The first band starts at 180 world units
+desktop / 156 phone and grows with body clearance/density; later bands add 86/80.
+Moon detail objects share that environment without creating recursive worlds.
+Pin/Unpin controls were already absent in the baseline and are not reintroduced.
+Short landscape drawers retain two hierarchy touch rows and scroll vertically
+when expanded collection/Sample sections would otherwise consume their space.
+Body inspection, Fit and drag release can reclaim an idle landscape Content
+sheet. Home also hides a tall landscape editor if it leaves no usable overview;
+the unsaved draft is retained and restored on same-item reopening. Other drafts
+stay open, and linked Go to original keeps Content open.
+
+Initial whole-body views use roughly Sun 25%, Planet 55%, Moon 45% of usable
+minimum size. Camera zoom may grow natural bodies beyond
+the viewport; cropping comes from genuine scale. There is no cinematic offset,
+child-inference framing or whole-to-half layout toggle. Pan/zoom-out/Fit recover
+the environment. Satellite inspection stays below 120px desktop / 76px phone
+and 15% usable size; Astronaut/deeper below 60px / 40px and 8.5%.
+
+One ID/material/palette recipe paints parent previews and close bodies. Focus
+changes sampling resolution only: coarse surface pattern, color overrides,
+lighting direction, lunar crater positions and ring presence/style do not reroll.
+Visible small spheres use 64–256 samples; close worlds upgrade lazily to
+256/512/768 while retaining previous paint. Images decode before an in-place
+atomic swap on a persistent texture layer. Each viewed sphere retains one small
+64px preview; larger caches remain bounded at 96/six. Evicted URLs stay valid
+while a body displays them and release after replacement/deletion. Native paint
+remains until the first decoded image is ready; a cheap solid canonical base
+stays beneath decoded paint. Genuine role changes to
+vector details release old sphere paint and cancel pending raster installation.
+Existing vector identities remain.
+Detail disclosure uses the world's viewport-based nominal scale, never mutable
+Fit/inspection history. Body opacity uses one interpolation instead of a second
+CSS fade; entering an existing Galaxy does not replay its materialization cue.
+No new archetypes, art dependencies, backend, schema, migration, attachment store
+or persistence adapters are introduced. Storage stays v5.
+
+Descendant hints stay bounded at 16 owners: a few beads, quiet counts or density.
+There is no DOM marker per descendant. Settled world positions are reused until
+hierarchy, world entry or intentional placement changes; invisible boxes retain
+live metadata and install
+their current native size upon reveal. Unchanged opacity variables are not rewritten.
+
+Run node --test (rg --files tests -g '*.test.js') and
+python tests/hierarchical-focus-browser.py --semantic-only --skip-metrics --screenshots
+for camera-only gestures, explicit entry/exit, maximum Moon depth,
+identity, drafts, links, lenses and phones. Use --stability-only --screenshots for
+ten full cycles, frame-by-frame body presence, zoom torture and slowed transition
+captures. Use --transitions-only to refresh controlled-clock intermediate frames
+without repeating the cycles; screenshot latency cannot skip transition frames.
+The default runner covers
+50/100/300-item trees and 100-child parents. Without --skip-metrics it reports
+projection, label, force and frame median/p95 in isolated temporary profiles.
+--capture-baseline preserves app assets for a same-protocol comparison.
+Review captures/metrics live in OS temp, outside the source tree. Headless paint
+timings should also be assessed on a native display.
+Use --usability-only --skip-metrics --screenshots for the fixed-geometry audit,
+20 in/out gestures per world, retained/reloaded manual arrangements, shared
+Universe reset, compact Satellite/Astronaut families and native mobile dragging.
 
 ## Archive and restore Galaxies
 
@@ -209,16 +327,17 @@ logarithmic step. Touch pinch uses a 1.18 distance-ratio exponent while preservi
 its midpoint anchor and camera limits. Double-click/double-tap focuses an entity
 at a readable scale through the existing interruptible camera helpers. Two touch
 taps must hit the same entity within 320ms and 24px; drag/pinch clears that intent.
-Single taps select immediately. Desktop landmark selection is immediate too,
-with its single-click camera focus waiting 320ms to distinguish double-clicks.
+Single clicks/taps select immediately; entering worlds requires explicit intent.
 Compact + / minus / Fit controls sit at the usable canvas's bottom-left on larger
-layouts and are hidden on phones. Fit shares the existing Fit Galaxy handler.
+layouts. They also appear during local focus on phones, above the Content sheet,
+with 44px targets and context-aware Fit.
 Reduced motion makes focus navigation immediate.
-The visual hierarchy refinement adds closer inspection targets: Moon 180%,
-Satellite 220%, Astronaut/deeper 240%. The upper zoom limit is now 300% (previously
-240%), leaving headroom after deep focus. Wheel/trackpad gain, pinch midpoint
-anchoring, interruption and Fit remain unchanged. Galaxy cloud/label fading,
-label collision suppression and Constellation visibility keep their existing rules.
+The hierarchy refinement uses viewport-responsive whole-body entry views and a
+fully independent camera scale. Both inward and outward gestures change camera only;
+local worlds stop at Moon. Local exploration has up to 800% camera headroom;
+mechanical/figure bodies keep strict screen caps at every scale. Wheel/trackpad
+gain, pinch midpoint anchoring and interruption remain intact. Galaxy fading,
+label collision suppression and Constellation visibility share semantic context.
 `python tests/browser-check.py --body-hierarchy-only --screenshots` checks native
 sizes and fixed-scale overview/system/deep desktop and phone views;
 `--body-hierarchy-baseline` captures matching views before tuning.
@@ -271,15 +390,16 @@ sticky-header scrolling, active-lens inspection and keyboard viewport reduction.
 
 ## Visual density and restrained motion
 
-At 100% desktop zoom the body boxes are Sun 52px, Planet 28.6px, Moon 13.52px,
+In free exploration at 100% desktop zoom the base body boxes are Sun 52px, Planet 28.6px, Moon 13.52px,
 Satellite 9.88px and Astronaut 7.28px. Planet diameter is over twice Moon diameter.
 Planets have richer color, surface contrast and a restrained glow; Moons have
 muted stony lighting and faint craters. Mechanical Satellites and human Astronaut
 silhouettes stay distinct. Planet/deeper bodies have transparent pointer areas
 of at least 24px (44px on coarse pointers), independent of their visual size.
-Body fades retain their existing hierarchy thresholds. Label fades are separate:
-Sun .44–.58, Planet .66–.82, Moon .90–1.12, Satellite 1.02–1.30 and Astronaut
-1.20–1.52. Selected, hovered, keyboard-focused, current Search and navigation
+Free exploration emphasizes Galaxies and Suns, then Planets; deeper bodies need
+explicit focus or interaction. Inside a local world, the anchor and immediate
+children have full visibility and label eligibility; deeper descendants have no
+normal body/label. Selected, hovered, keyboard-focused, current Search and navigation
 targets reveal labels; active Constellation bodies retain priority while their
 labels still respect readability. Represented Galaxy names remain context labels.
 
@@ -938,34 +1058,37 @@ zones (1.5% center / 4% size, at least 16 world pixels). Projected sizes round t
 surfaces are projected with transforms; their backing pixels never resize or
 redraw during motion/zoom. Visible clouds may reuse a compositor layer during
 motion; hidden clouds receive no hint. A 160×140px screen minimum keeps small Galaxies legible
-at fitted Universe zoom. Galaxy and Sun focus frame normal member positions
-with 36px viewport padding, capped at 58% and 82% respectively. Sun bounds are
-symmetric around the Sun. Very large systems or narrow viewports can require a
-lower fitted scale. Galaxy names remain native,
+at fitted Universe zoom. Explicit Galaxy entry fits its local Sun family with
+44px padding and a 52% camera ceiling. Sun entry centers a whole Sun at roughly
+25% of the usable short side; context-aware Fit can recover a wider family.
+Very large systems or narrow viewports can require a lower fitted scale.
+Galaxy names remain native,
 14–16px, high contrast and anchored over their cloud.
 Offscreen bodies/clouds are hidden from paint and compositor hints; their world
 positions and physics continue normally. Invisible hierarchy lines use
 `display:none` while retaining their derived hierarchy edges and coordinates.
-Surface noise fields use seeded procedural textures, generated lazily in idle
-time for visible natural bodies from 68% zoom. Reusable 64–1024px tiers match physical display
-pixels; grain, terrain and stable orientation share one overlay. This avoids filter rasterization
-and oversized texture sampling during motion/display-scale changes. Translucent
-highlights/shadows avoid a live blend group, and short blob URLs keep large image
-data out of mutable inline styles. Spherical lighting, edges, rings and labels
-remain native.
+Visible natural bodies of at least 10px request a lazily generated 64–256px
+identity bitmap. Active close worlds upgrade to 256/512/768px. Both resolutions
+share the same canonical seed, palette, material, surface and lighting recipe;
+focus never rerolls appearance. The fixed-size raster layer scales on the
+compositor while body edges, rings, hit areas and labels keep native dimensions.
+Hidden or culled previews cancel pending raster work and retry upon reveal.
+Short blob URLs keep image data out of inline styles; caches remain bounded.
 
 | Scale | Priority |
 | --- | --- |
-| Below 0.45 | Universe: Galaxy clouds/names; Suns begin a soft fade at 0.43 |
-| 0.45–0.58 | Galaxy: Suns and Sun names; deeper levels hidden |
-| 0.58–0.78 | Solar system: Planets, then Moons and Satellites appear |
-| 0.78+ | Close: complete hierarchy bodies by 0.79; labels finish slightly later |
+| Overview below 0.2 | Galaxy clouds/names; routine lower bodies stay hidden |
+| Overview 0.2–0.55 | Suns fade into view; Sun labels emerge at 0.38–0.58 |
+| Overview 0.55–0.86 | Planet previews emerge; deeper entries remain hints |
+| Explicit Sun world | Immediate Planets, with bounded descendant hints |
+| Explicit Planet world | Immediate Moons, with deeper details suppressed/aggregated |
+| Explicit Moon world | Satellite/Astronaut/deeper detail environment; no further worlds |
 
-Visibility uses smoothstep windows across tier boundaries, plus native size
-interpolation from 72% to 100% and a short opacity transition. Body fade ranges:
-Sun **0.43–0.58**, Planet **0.58–0.68**, Moon **0.68–0.76**, Satellite
-**0.70–0.79**. Label fades: Planet **0.62–0.72**, Moon **0.73–0.83**, Satellite
-**0.76–0.88**. No body has a residual opacity floor. Invisible bodies become
+Context visibility uses smoothstep windows and a short opacity transition;
+overview Planet labels emerge at 0.66–0.94. Existing CSS tier names and native
+size interpolation remain, while local ownership controls actual disclosure.
+Selection, Search and Constellation membership retain protected exceptions.
+Invisible bodies become
 inert so they cannot intercept dragging, clicks or keyboard focus; their physics
 continues normally. Context dimming multiplies visibility instead of overriding
 semantic hiding. Hidden clouds/bodies receive no compositor hint or texture work.

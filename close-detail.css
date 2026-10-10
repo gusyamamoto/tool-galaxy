@@ -1,0 +1,52 @@
+/* One identity surface at every scale; focus upgrades resolution only. */
+#nodes-layer .entry-node[data-body-paint="true"][data-semantic-hidden="false"][data-culled="false"] { will-change:transform; }
+#nodes-layer .entry-node:is([data-body="planet"],[data-body="moon"]) {
+    background: radial-gradient(circle at 28% 24%,var(--identity-light),var(--identity-mid) 30%,var(--identity-shadow) 58%,#050a15 86%);
+}
+#nodes-layer .entry-node[data-body-paint="true"]:is([data-body="sun"], [data-body="planet"], [data-body="moon"]) {
+    /* Keep a cheap canonical base beneath the decoded, retained image. This
+       preserves opaque-body paint treatment without a second large gradient. */
+    background:var(--identity-shadow,#a95d21);
+    border-color: hsl(var(--body-hue) 24% 73% / .28);
+    box-shadow: inset 1px 1px 0 #d5e5ed22, inset -1px -1px 0 #01040c66, 0 3px 12px #00000026;
+}
+/* Small previews keep the existing inexpensive edge treatment; a cached
+   identity bitmap does not require a large blurred shadow on every child. */
+#nodes-layer .entry-node[data-body-paint="true"]:not(.is-focus-anchor):is([data-body="planet"],[data-body="moon"]) {
+    box-shadow:inset 1px 1px 0 #e9edf33d,inset -1px -1px 2px #00020899,1px 2px 3px #0004;
+}
+#nodes-layer .entry-node[data-body-paint="true"]::before {
+    /* Keep the identity raster at its sampled size and scale that layer on the
+       compositor. Camera zoom can resize native body/label geometry without
+       repeatedly rasterizing a large background image. */
+    content:"";
+    inset:auto;
+    left:50%;top:50%;
+    width:var(--identity-pixels);height:var(--identity-pixels);
+    background:var(--body-map) center / 100% 100% no-repeat;
+    opacity:1;mix-blend-mode:normal;
+    transform:translate(-50%,-50%) scale(var(--identity-scale,1));
+    will-change:transform;
+}
+#nodes-layer .entry-node[data-body-paint="true"]:is([data-semantic-hidden="true"],[data-culled="true"])::before { content:"";will-change:auto; }
+#nodes-layer .entry-node[data-body-paint="true"]::after {
+    inset: 0;
+    /* Directional lighting and limb shading are already in the identity
+       bitmap. Avoid repainting a second full-size gradient over every sphere. */
+    background:none;
+    box-shadow:none;
+}
+#nodes-layer .entry-node[data-body="sun"][data-body-paint="true"] {
+    border-color: #ffe4a866;
+    box-shadow: inset 1px 1px 0 #fff5d14d, 0 0 0 3px #eac37a07, 0 0 18px #eab55b18;
+}
+#nodes-layer .entry-node[data-body="sun"][data-body-paint="true"]::after {
+    inset: -8%;
+    background: radial-gradient(circle, transparent 42%, #e3b1620a 44%, #d8944605 49%, transparent 58%);
+    box-shadow: none;
+}
+#nodes-layer .entry-node[data-body="moon"][data-body-paint="true"] {
+    border-color: #b9c6d43d;
+    box-shadow: inset 1px 1px 0 #e7edf51c, 0 2px 6px #00000024;
+}
+/* Ring presence, geometry and styling stay in the canonical existing rules. */

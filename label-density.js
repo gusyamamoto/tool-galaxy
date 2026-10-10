@@ -5,7 +5,7 @@ class LabelDensity {
         this.frame = null; this.timer = null; this.trailingTimer = null; this.lastRun = -Infinity; this.hiddenIds = new Set(); this.cost = 0;
     }
     resolve(candidates, now) {
-        const accepted = new Map(), grid = new Map(), hidden = new Set(), size = 96;
+        const accepted = new Map(), grid = new Map(), hidden = new Set(), groups = new Map(), size = 96;
         const cells = rect => {
             const keys=[];
             for(let x=Math.floor(rect.left/size);x<=Math.floor(rect.right/size);x++)
@@ -18,11 +18,12 @@ class LabelDensity {
         candidates.sort((a,b)=>a.priority-b.priority||a.id.localeCompare(b.id));
         for(const candidate of candidates) {
             const keys=cells(candidate.rect),neighbors=new Set(keys.flatMap(key=>grid.get(key)||[]));
-            const previous=this.states.get(candidate.id),threshold=previous?.hidden ? .08 : .24;
+            const previous=this.states.get(candidate.id),threshold=previous?.hidden ? .08 : Math.min(.24,candidate.maxOverlap??.24);
             const area=Math.max(1,(candidate.rect.right-candidate.rect.left)*(candidate.rect.bottom-candidate.rect.top));
-            const blocked=!candidate.protected&&[...neighbors].some(id=>{const other=accepted.get(id).rect;
+            const full=candidate.group&&Number.isFinite(candidate.maxVisible)&&(groups.get(candidate.group)||0)>=candidate.maxVisible;
+            const blocked=!candidate.protected&&(full||[...neighbors].some(id=>{const other=accepted.get(id).rect;
                 const reference=Math.min(area,Math.max(1,(other.right-other.left)*(other.bottom-other.top)));
-                return overlap(candidate.rect,other)>reference*threshold;});
+                return overlap(candidate.rect,other)>reference*threshold;}));
             let suppress=blocked,clearSince=null;
             if(!blocked&&!candidate.protected&&previous?.hidden) {
                 clearSince=previous.clearSince??now;
@@ -30,7 +31,9 @@ class LabelDensity {
             }
             this.states.set(candidate.id,{hidden:suppress,clearSince});
             if(suppress){hidden.add(candidate.id);continue;}
-            accepted.set(candidate.id,candidate);keys.forEach(key=>{if(!grid.has(key))grid.set(key,[]);grid.get(key).push(candidate.id);});
+            accepted.set(candidate.id,candidate);
+            if(candidate.group&&!candidate.protected)groups.set(candidate.group,(groups.get(candidate.group)||0)+1);
+            keys.forEach(key=>{if(!grid.has(key))grid.set(key,[]);grid.get(key).push(candidate.id);});
         }
         const ids=new Set(candidates.map(c=>c.id));this.states.forEach((_,id)=>{if(!ids.has(id))this.states.delete(id);});
         return {hidden,recheck};

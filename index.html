@@ -6,6 +6,8 @@
     <title>Galaxy</title>
 
     <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="focus-world.css">
+    <link rel="stylesheet" href="close-detail.css">
 </head>
 
 <body>
@@ -27,10 +29,17 @@
         </div>
 
         <button id="sidebar-toggle" type="button" aria-controls="hierarchy-sidebar" aria-expanded="true" title="Hide navigation" aria-label="Hide navigation"><svg aria-hidden="true" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M10 4v16"/></svg></button>
+        <div id="world-navigation" role="group" aria-label="Local world navigation" hidden>
+            <button id="world-up" type="button" aria-label="Return to parent world">‹ <span id="world-parent-name">Universe</span></button>
+            <span id="world-current-name"></span>
+            <button id="world-home" type="button" aria-label="Return to Universe">Universe</button>
+        </div>
+        <svg id="local-world-orbits" aria-hidden="true"></svg>
         <div id="canvas-zoom-controls" role="group" aria-label="Cosmos zoom controls">
             <button id="canvas-zoom-in" type="button" aria-label="Zoom in" title="Zoom in">+</button>
             <button id="canvas-zoom-out" type="button" aria-label="Zoom out" title="Zoom out">−</button>
             <button id="canvas-fit" type="button" aria-label="Fit Galaxy" title="Fit Galaxy">Fit</button>
+            <span id="world-outside-count" role="status" hidden></span>
         </div>
         <aside id="hierarchy-sidebar" aria-label="Navigation">
             <header class="sidebar-brand"><h1>Galaxy</h1><span id="sample-indicator" hidden>Sample</span></header>
@@ -48,7 +57,7 @@
                 </div>
             </div>
             <section id="universe-section" aria-labelledby="universe-heading">
-                <header class="sidebar-section-header"><h2 id="universe-heading" class="sidebar-section-title"><button id="universe-toggle" class="sidebar-section-toggle" type="button" aria-controls="hierarchy-tree" aria-expanded="true" aria-label="Collapse Universe"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m6 4 4 4-4 4"/></svg><span>Universe</span></button></h2><button id="add-entry-button" type="button" class="collection-add" aria-label="New Galaxy" title="New Galaxy">+</button></header>
+                <header class="sidebar-section-header"><h2 id="universe-heading" class="sidebar-section-title universe-heading-controls"><button id="universe-toggle" class="sidebar-section-toggle" type="button" aria-controls="hierarchy-tree" aria-expanded="true" aria-label="Collapse Universe"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m6 4 4 4-4 4"/></svg></button><button id="universe-home" class="sidebar-section-toggle" type="button" aria-label="Return to Universe">Universe</button></h2><button id="add-entry-button" type="button" class="collection-add" aria-label="New Galaxy" title="New Galaxy">+</button></header>
                 <div id="hierarchy-tree" role="tree" aria-label="Cosmos Universe navigation"></div>
             </section>
             <section id="constellations-section" aria-labelledby="constellations-heading">
@@ -351,6 +360,8 @@
     <script src="rich-content.js"></script>
     <script src="appearance.js"></script>
     <script src="cosmos-view.js"></script>
+    <script src="local-layout.js"></script>
+    <script src="hierarchical-focus.js"></script>
     <script src="label-density.js"></script>
     <script src="motion.js"></script>
     <script src="sample-data.js"></script>

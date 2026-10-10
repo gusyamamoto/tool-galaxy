@@ -131,6 +131,11 @@ class EntryContentInspector {
     }
     select(entry, visible) {
         clearTimeout(this.statusTimer);
+        // Navigation or reopening the mobile sheet can select the same owner.
+        // Keep its unfinished editor values; only a different item resets them.
+        if(entry?.id===this.entryId&&(!this.notesForm.hidden||!this.linkForm.hidden||(this.quickUrl.value||'').trim())){
+            this.visible=visible;this.renderNotes();this.renderLists();this.busy();return;
+        }
         this.entryId = entry?.id || null; this.visible = visible;
         this.linkForm.hidden = this.notesForm.hidden = true; this.status.hidden = true;
         this.quickUrl.value='';this.quickUrl.removeAttribute('aria-invalid');this.quickSave.hidden=true;

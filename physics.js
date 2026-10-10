@@ -377,11 +377,11 @@ class GalaxyPhysics {
         node.fx = node.x = node.lastX = x; node.fy = node.y = node.lastY = y;
         this.simulation.alphaTarget(.1); this.reheat(.22); this.onTick(this.particles);
     }
-    endDrag(id, moved) {
+    endDrag(id, moved, {placement} = {}) {
         const node = this.particles.get(id); if (!node) return null;
         this.dragging.delete(id);
         if (moved) {
-            node.placement = this.influenceFor(node);
+            node.placement = placement?.parentId===node.parentId?this.copyPlacement(placement):this.influenceFor(node);
             if (!node.parent) this.galaxies.get(id).home = { x: node.x, y: node.y };
         }
         this.releaseConstraint(node); this.simulation.alphaTarget(this.dragging.size ? .1 : 0);

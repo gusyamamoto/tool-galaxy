@@ -1,0 +1,45 @@
+/* Local-world hierarchy is canvas presentation; content/navigation panels retain their styles. */
+#galaxy #nodes-layer .entry-node { transition: outline-color 150ms; }
+#galaxy #nodes-layer .entry-node[data-semantic-hidden="true"] { opacity: 0; pointer-events: none; }
+#galaxy #nodes-layer .entry-node.is-focus-anchor { z-index: 2; outline: 1px solid #c8d9eb3d; outline-offset: 4px; }
+#galaxy #nodes-layer .entry-node.selected:not(.is-focus-anchor):not(:focus-visible) { outline-color:#b8ccdf40; outline-offset:1px; }
+#galaxy #nodes-layer .entry-node[data-body="galaxy"] .node-label { font-size:var(--galaxy-label-size,16px); }
+.universe-heading-controls { display:flex; align-items:center; gap:2px; }
+.universe-heading-controls #universe-toggle { flex:0 0 28px; width:28px; justify-content:center; }
+.universe-heading-controls #universe-home { flex:1; width:auto; padding-left:2px; }
+#galaxy #nodes-layer .entry-node.is-focus-child { z-index: 4; }
+#galaxy #nodes-layer .entry-node.is-focus-child .node-label { opacity: 1; font-size: 11px; max-width: 130px; }
+#galaxy #nodes-layer .entry-node.is-focus-anchor:not([data-body="galaxy"]) .node-label { top: 22%; font-size: 13px; font-weight: 600; max-width: min(220px,max(96px,80%)); padding: 4px 9px; border-radius: 4px; background: #06101b99; }
+#galaxy #nodes-layer .entry-node.is-focus-anchor:is([data-body="satellite"],[data-body="astronaut"]) .node-label { top: calc(100% + 6px); background: #06101bba; }
+.depth-hint { position: absolute; top: calc(100% + 32px); left: 50%; transform: translateX(-50%); width: 32px; height: 10px; pointer-events: none; opacity: .65; color: #9bb0c6; font-size: 9px; line-height: 1; text-align: center; }
+.depth-hint[data-mode="beads"] { background: radial-gradient(circle at 4px 4px,#a4bfd4aa 0 1px,transparent 1.5px),radial-gradient(circle at 16px 6px,#a4bfd499 0 1px,transparent 1.5px),radial-gradient(circle at 28px 4px,#a4bfd488 0 1px,transparent 1.5px); }
+.depth-hint[data-beads="1"][data-mode="beads"] { background: radial-gradient(circle at 16px 4px,#a4bfd4aa 0 1px,transparent 1.5px); }
+.depth-hint[data-beads="2"][data-mode="beads"] { background: radial-gradient(circle at 10px 4px,#a4bfd4aa 0 1px,transparent 1.5px),radial-gradient(circle at 22px 4px,#a4bfd499 0 1px,transparent 1.5px); }
+.depth-hint[data-mode="density"] { border-bottom: 1px solid #a4bfd43d; border-radius: 50%; }
+#world-navigation { position: absolute; z-index: 14; display: flex; align-items: center; gap: 8px; max-width: calc(100% - 32px); color: #8da6c0; font-size: 11px; }
+#world-navigation button { min-height: 32px; padding: 5px 8px; border: 1px solid #58708b33; border-radius: 4px; background: #0c1723da; color: #a8bed3; box-shadow: none; font-size: 11px; white-space: nowrap; }
+#world-navigation button:is(:hover,:focus-visible) { border-color: #829bb666; color: #e0e9f2; }
+#world-navigation button:focus-visible { outline: 1px solid #91adc9; outline-offset: 2px; }
+#world-current-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 210px; }
+#world-parent-name { display: inline-block; max-width: 140px; overflow: hidden; text-overflow: ellipsis; vertical-align: middle; }
+#world-outside-count { align-self: center; padding: 0 8px; font-size: 10px; color: #91a8bf; white-space: nowrap; pointer-events: none; }
+#local-world-orbits { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 1; pointer-events: none; overflow: hidden; }
+#local-world-orbits ellipse { fill: none; stroke: #6887a029; stroke-width: 1; stroke-dasharray: 2 7; }
+@media (max-width:760px), (pointer:coarse) and (max-width:1024px) and (max-height:500px) {
+    #galaxy[data-focus-world="true"] #canvas-zoom-controls { display: flex; }
+    #world-navigation { gap: 5px; font-size: 10px; }
+    #world-navigation button { min-width: 44px; min-height: 44px; padding: 6px; }
+    .universe-heading-controls #universe-toggle { flex-basis:44px; width:44px; }
+    #world-current-name { max-width: 110px; }
+    #world-parent-name { max-width: 80px; }
+    #nodes-layer .entry-node.is-inspected-detail .node-hit-area { min-width:44px; min-height:44px; }
+    #world-outside-count { max-width: 126px; white-space: normal; line-height: 1.35; }
+}
+@media (prefers-reduced-motion:reduce) { #galaxy #nodes-layer .entry-node { transition: none; } }
+/* Expanded collection/Sample sections must not squeeze a short phone drawer's
+   tree below one touch row. Keep two rows and let the drawer scroll naturally. */
+@media (max-width:760px) and (max-height:500px), (pointer:coarse) and (max-width:1024px) and (max-height:500px) {
+    #hierarchy-sidebar { overflow-y:auto; overscroll-behavior:contain; scrollbar-width:thin; scrollbar-color:#344359 transparent; }
+    #universe-section:not(.section-collapsed) { flex:1 0 144px; min-height:144px; }
+    #hierarchy-tree { min-height:100px; }
+}
