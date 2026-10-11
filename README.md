@@ -71,6 +71,16 @@ CRUD/persistence, canonical drops, gallery rendering and touch checklists.
   Mobile rows use 44px height, compressed depth indentation and no horizontal
   scrolling and clean single-line truncation. Full names remain available through
   accessible labels, row titles and the selected entry's Content header.
+  Desktop normal clicks select one item; Ctrl/Cmd clicks toggle individual items,
+  and Shift clicks replace the selection with a range of currently visible
+  canonical rows. The active row retains the strongest highlight and alone drives
+  Content, canvas emphasis and existing actions; secondary rows use a softer tint.
+  `getSelectedEntryIds()` and `activeEntryId` expose ephemeral sidebar state,
+  separate from keyboard focus. Canvas, Search and ordinary explicit navigation
+  return to single selection. Collapsing removes hidden secondary selections;
+  if the active item becomes hidden, only that ordinary active selection remains,
+  preserving Content/drafts. Touch remains single-select. No bulk actions or
+  selection state are stored in hierarchy data.
   The small Cosmifold title stays above Search and three independently collapsible
   sections: Universe, Constellations and Archived Galaxies. Each heading and its
   chevron toggle only that section. Universe + opens the existing New Galaxy /

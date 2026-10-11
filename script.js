@@ -133,7 +133,7 @@ let semanticDetail = cosmosView.detail(1);
 const focusRevealIds = new Set();
 const hierarchySidebar = new HierarchySidebar({ host: galaxy, preferences: persistence.preferences,
     onRename:renameEntry, onRenameStart() { cancelPendingBodyFocus(); camera.stopAnimation(); closeContextMenu(); closeContentMenus(); },
-    onNavigate: id => focusEntry(id), onCreate: (id, button) => toggleContentMenu(addMenu, button, id),
+    onNavigate: (id,options) => focusEntry(id,options), onSelectionEmpty:()=>clearSelection(), onCreate: (id, button) => toggleContentMenu(addMenu, button, id),
     portals, onOpenPortal: id => openPortal(id), onPortalMenu: (id, x, y) => openPortalContextMenu(id, x, y),
     onViewportChange: animate => crudActive || panelChangeActive ? updateGraphViewport() : navigationViewportChanged(animate) });
 const smoothDetail = (scale, start, end) => cosmosView.smooth(scale, start, end);
@@ -778,7 +778,7 @@ removeSampleButton.addEventListener("click", () => {
     if (sampleMode) window.location.reload();
 });
 
-function selectEntry(entry, node, { openInspector = true, reframe = false, scroll = true } = {}) {
+function selectEntry(entry, node, { openInspector = true, reframe = false, scroll = true, preserveSidebarSelection = false } = {}) {
     entityPanelMode();
     closeContentMenus();
     const changingEntry = selectedNode?.dataset.entryId !== entry.id;
@@ -806,7 +806,7 @@ function selectEntry(entry, node, { openInspector = true, reframe = false, scrol
     panelAncestry.hidden = !parent;
     actionStatus.hidden = true;
     updateHierarchyEmphasis();
-    hierarchySidebar.select(entry.id, { scroll });
+    hierarchySidebar.select(entry.id, { scroll, preserveMulti:preserveSidebarSelection });
     if (openInspector && !activeNodeDrags) setInspectorOpen(true, { reframe });
     else { contentInspector.select(entry, !panel.hidden); if (!activeNodeDrags) updateGraphViewport(); }
     if (changingEntry) {
@@ -2038,7 +2038,7 @@ document.getElementById("portal-form").addEventListener("submit", event => {
     }
 });
 
-function focusEntry(id, { travel = false, closeFocus=false, sourceId = selectedNode?.dataset.entryId } = {}) {
+function focusEntry(id, { travel = false, closeFocus=false, sourceId = selectedNode?.dataset.entryId, preserveSidebarSelection = false } = {}) {
     cancelPendingBodyFocus();
     const entry = entries.get(id);
     if(pinch)cancelCanvasTouches();
@@ -2059,7 +2059,7 @@ function focusEntry(id, { travel = false, closeFocus=false, sourceId = selectedN
         focusRevealIds.add(id);
         galaxyModel.ancestors(entries, id).forEach(ancestor => focusRevealIds.add(ancestor.id));
     }
-    selectEntry(entry, nodes.get(id), { reframe: false });
+    selectEntry(entry, nodes.get(id), { reframe: false, preserveSidebarSelection });
     const { left, right, top, bottom } = physics.bounds;
     const particle = physics.particles.get(id);
     const applyView = view => travel ? camera.travelTo(view, physics.bounds, {
