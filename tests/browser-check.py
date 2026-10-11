@@ -50,6 +50,7 @@ class CDP:
         assert header.startswith(b"HTTP/1.1 101 "), header
         self.id = 0
         self.errors = []
+        self.drag_data = None
 
     def read(self, length):
         while len(self.buffer) < length:
@@ -80,6 +81,7 @@ class CDP:
             message = self.receive()
             if message.get("method") == "Runtime.exceptionThrown":
                 self.errors.append(message["params"])
+            if message.get('method')=='Input.dragIntercepted':self.drag_data=message['params']['data']
             if message.get("id") == self.id:
                 assert "error" not in message, message
                 return message.get("result", {})
@@ -133,6 +135,7 @@ def main():
     args.add_argument("--everyday-only", action="store_true", help="Check item copy, ordinary starter Galaxies, canonical file/link drops, visual images and plain-text checklists")
     args.add_argument("--starter-galaxies-only", action="store_true", help="Create and inspect all nested canonical Starter Galaxies")
     args.add_argument("--sidebar-multiselect-only", action="store_true", help="Check canonical sidebar Ctrl/Cmd toggles, Shift ranges and single-active integration")
+    args.add_argument("--sidebar-group-move-only", action="store_true", help="Check native sidebar group drags, atomic moves and data/selection preservation")
     args.add_argument("--spring-drop-only", action="store_true", help="Check external drag hover expansion, deep destinations, timer cleanup, internal-drag exclusion and sidebar scrolling")
     args.add_argument("--linked-items-only", action="store_true", help="Check destination-first existing-item picker, plain linked-item language, Name-only rename and legacy metadata compatibility")
     args.add_argument("--persistence-only", action="store_true", help="Check adapter composition, scoped real IndexedDB operations, metadata recovery and Sample isolation")
@@ -1595,6 +1598,91 @@ def main():
             check(evaluate("localStorage.getItem('galaxy:user-data')")==raw,'spring navigation and Sample drops preserve real saved data')
             check(not cdp.errors,f'no spring-drop browser exceptions: {cdp.errors}')
             print(f'{count} spring-drop browser checks passed',flush=True);return
+
+        if options.sidebar_group_move_only:
+            evaluate("openEntryForm();fields[0].value='Japan';galaxyStarter.value='trip';galaxyStarter.dispatchEvent(new Event('change'));form.requestSubmit()")
+            root=evaluate('selectedNode.dataset.entryId')
+            names=evaluate(f"Object.fromEntries([...galaxyModel.subtreeIds(entries,{json.dumps(root)})].map(id=>[entries.get(id).name,id]))")
+            planning=add('Planning',names['Trip Plan']);group_destination=add('Japan Planning',names['Trip Plan']);wait_for('physics.settled');evaluate('physics.pause()')
+            hotel,restaurant,transport,tickets,food,confirmation=[names[n] for n in ['Hotel','Restaurants','Transport','Tickets','Food','Confirmation']]
+            evaluate(f"selectEntry(entries.get({json.dumps(hotel)}),nodes.get({json.dumps(hotel)}));contentInspector.upload([new File(['Keep hotel bytes'],'hotel.txt',{{type:'text/plain'}})])")
+            wait_for('contentInspector.jobs.size===0');key=evaluate('contentInspector.content().attachments[0].storageKey')
+            evaluate(f"saveEntryContent({json.dumps(hotel)},{{...entries.get({json.dumps(hotel)}).content,notes:{{format:'plain',text:'Keep hotel note'}},links:[{{id:'hotel-link',url:'https://example.com/hotel',title:'Hotel'}}]}});commitConstellations(new Map([...constellations,['move-collection',{{id:'move-collection',name:'Travel',memberEntryIds:[{json.dumps(hotel)},{json.dumps(restaurant)}],createdAt:new Date().toISOString()}}]]));commitPortalReferences(new Map([...portals,['move-link',{{id:'move-link',parentEntryId:{json.dumps(names['Documents'])},targetEntryId:{json.dumps(hotel)},createdAt:new Date().toISOString()}}]]));physics.pause()")
+            integrity=evaluate('JSON.stringify({ids:[...entries.keys()],content:[...entries].map(([id,e])=>[id,e.content,e.appearance,e.createdAt,e.updatedAt]),collections:[...constellations],links:[...portals]})')
+            def pick(ids):
+                evaluate(f"{json.dumps(ids)}.forEach(id=>galaxyModel.ancestors(entries,id).forEach(p=>hierarchySidebar.expanded.add(p.id)));hierarchySidebar.render();hierarchySidebar.setCollapsed(false)")
+                for index,id in enumerate(ids):
+                    evaluate(f"hierarchySidebar.scrollRow({json.dumps(id)})")
+                    p=evaluate(f"(()=>{{const r=hierarchySidebar.rows.get({json.dumps(id)}).querySelector('.tree-name').getBoundingClientRect();return {{x:r.left+10,y:r.top+r.height/2}}}})()")
+                    mouse('mousePressed',**p,button='left',clickCount=1,modifiers=2 if index else 0);mouse('mouseReleased',**p,button='left',clickCount=1,modifiers=2 if index else 0);wait_camera()
+            def drag(source,target,valid=True,remove_destination=False,outside=False):
+                cdp.call('Input.setInterceptDrags',enabled=True);cdp.drag_data=None
+                evaluate(f"hierarchySidebar.scrollRow({json.dumps(source)})")
+                p=evaluate(f"(()=>{{const r=hierarchySidebar.rows.get({json.dumps(source)}).querySelector('.tree-name').getBoundingClientRect();return {{x:r.left+15,y:r.top+r.height/2}}}})()")
+                mouse('mouseMoved',**p);mouse('mousePressed',**p,button='left',clickCount=1);mouse('mouseMoved',x=p['x']+18,y=p['y']+3,button='left',buttons=1)
+                wait_for('!!hierarchySidebar.moveDrag');assert cdp.drag_data,'expected a real native HTML drag payload'
+                payload=evaluate('hierarchySidebar.moveDrag')
+                removed=None
+                if remove_destination:
+                    removed=evaluate(f"entries.get({json.dumps(target)})");evaluate(f"entries.delete({json.dumps(target)})")
+                if outside:q={'x':800,'y':450}
+                else:
+                    evaluate(f"hierarchySidebar.scrollRow({json.dumps(target)})")
+                    q=evaluate(f"(()=>{{const r=hierarchySidebar.rows.get({json.dumps(target)}).querySelector('.tree-name').getBoundingClientRect();return {{x:r.left+12,y:r.top+r.height/2}}}})()")
+                cdp.call('Input.dispatchDragEvent',type='dragEnter',**q,data=cdp.drag_data);cdp.call('Input.dispatchDragEvent',type='dragOver',**q,data=cdp.drag_data)
+                if outside:check(evaluate('!hierarchySidebar.moveTarget'),'canvas is not an internal group-move target')
+                else:check(evaluate(f"hierarchySidebar.rows.get({json.dumps(target)}).classList.contains({'"hierarchy-move-target"' if valid else '"hierarchy-move-invalid"'})"),'native drag highlights the valid/invalid canonical target')
+                if screenshot_dir and valid:
+                    result=cdp.call('Page.captureScreenshot',format='png',captureBeyondViewport=False);(screenshot_dir/'group-move-target.png').write_bytes(base64.b64decode(result['data']))
+                cdp.call('Input.dispatchDragEvent',type='drop',**q,data=cdp.drag_data);mouse('mouseReleased',**q,button='left',clickCount=1)
+                evaluate('hierarchySidebar.endMoveDrag();physics.pause()');cdp.call('Input.setInterceptDrags',enabled=False)
+                if removed:evaluate(f"entries.set({json.dumps(target)},{json.dumps(removed)})")
+                check(evaluate('!hierarchySidebar.moveDrag&&!contentDrops.internalDrag'),'drag cleanup releases internal/external drop state')
+                return payload
+            def selected(ids,active):
+                check(evaluate('hierarchySidebar.getSelectedEntryIds().slice().sort().join("|")')=='|'.join(sorted(ids)) and evaluate('selectedNode.dataset.entryId')==active and evaluate('contentInspector.entryId')==active,'moved selection retains one active Content/canvas item')
+            pick([hotel]);drag(hotel,planning);check(evaluate(f"entries.get({json.dumps(hotel)}).parentId==={json.dumps(planning)}"),'one selected root reparents normally');selected([hotel],hotel)
+            planning=group_destination
+            pick([hotel,restaurant,tickets]);active=tickets;payload=drag(restaurant,planning)
+            check(set(payload['ids'])=={hotel,restaurant,tickets},'dragging any selected row carries the entire cross-parent selection')
+            check(evaluate(f"{json.dumps([hotel,restaurant,tickets])}.every(id=>entries.get(id).parentId==={json.dumps(planning)})"),'all selected roots from different parents move atomically');selected([hotel,restaurant,tickets],active)
+            check(evaluate(f"!hierarchySidebar.expanded.has({json.dumps(planning)})"),'a collapsed destination remains collapsed after moving the group')
+            evaluate(f"hierarchySidebar.toggleBranch({json.dumps(planning)})")
+            pick([restaurant]);drag(restaurant,food)
+            pick([food,restaurant,confirmation]);before=evaluate(f"entries.get({json.dumps(confirmation)}).parentId")
+            payload=drag(food,transport);check(evaluate(f"entries.get({json.dumps(food)}).parentId==={json.dumps(transport)}&&entries.get({json.dumps(restaurant)}).parentId==={json.dumps(food)}&&entries.get({json.dumps(confirmation)}).parentId==={json.dumps(before)}"),'selected descendant roots are normalized without flattening their internal subtree');selected([food,restaurant,confirmation],confirmation)
+            for source,target,group in [(food,food,[food]),(restaurant,confirmation,[restaurant]),(restaurant,confirmation,[hotel,restaurant])]:
+                pick(group);parents=evaluate('JSON.stringify([...entries].map(([id,e])=>[id,e.parentId]))');drag(source,target,False)
+                check(evaluate('JSON.stringify([...entries].map(([id,e])=>[id,e.parentId]))')==parents,'self/descendant/mixed invalid drops make no partial changes');selected(group,group[-1])
+            pick([hotel,restaurant]);payload=drag(names['Documents'],planning)
+            check(payload['ids']==[names['Documents']],'dragging an unselected row replaces the old group');selected([names['Documents']],names['Documents'])
+            check(evaluate('JSON.stringify({ids:[...entries.keys()],content:[...entries].map(([id,e])=>[id,e.content,e.appearance,e.createdAt,e.updatedAt]),collections:[...constellations],links:[...portals]})')==integrity,'IDs, metadata, content, Constellations and Portal references remain unchanged')
+            check(evaluate(f"(async()=>await(await attachmentStore.get({json.dumps(key)})).blob.text()==='Keep hotel bytes')()"),'attachment bytes stay owned by the same item')
+            pick([hotel,names['Documents'],tickets]);drag(hotel,transport)
+            check(evaluate(f"{json.dumps([hotel,names['Documents'],tickets])}.every(id=>entries.get(id).parentId==={json.dumps(transport)})"),'multiple selected siblings reparent together using normal insertion order');selected([hotel,names['Documents'],tickets],tickets)
+            parents=evaluate('JSON.stringify([...entries].map(([id,e])=>[id,e.parentId]))');geometry=evaluate('JSON.stringify([...physics.particles].map(([id,n])=>[id,n.x,n.y]))')
+            drag(hotel,transport,outside=True)
+            check(evaluate('JSON.stringify([...entries].map(([id,e])=>[id,e.parentId]))')==parents and evaluate('JSON.stringify([...physics.particles].map(([id,n])=>[id,n.x,n.y]))')==geometry,'dropping onto canvas neither reparents nor changes body coordinates')
+            pick([hotel,restaurant]);parents=evaluate('JSON.stringify([...entries].map(([id,e])=>[id,e.parentId]))');raw=evaluate("localStorage.getItem('galaxy:user-data')")
+            evaluate("window.moveOriginalSave=persistence.metadata.save;persistence.metadata.save=()=>{throw new DOMException('Browser storage is full','QuotaExceededError')}")
+            drag(hotel,transport);evaluate('persistence.metadata.save=moveOriginalSave')
+            check(evaluate('JSON.stringify([...entries].map(([id,e])=>[id,e.parentId]))')==parents and evaluate("localStorage.getItem('galaxy:user-data')")==raw,'metadata quota failure leaves all original parents and saved bytes unchanged');selected([hotel,restaurant],restaurant)
+            check(evaluate("!storageStatus.hidden&&storageStatus.textContent.includes('original parents are unchanged')"),'storage failure uses existing friendly feedback without a modal')
+            parent_values=evaluate('Object.fromEntries([...entries].map(([id,e])=>[id,e.parentId]))')
+            drag(hotel,planning,False,True)
+            check(evaluate('Object.fromEntries([...entries].map(([id,e])=>[id,e.parentId]))')==parent_values,'a destination removed during drag rejects the whole drop');selected([hotel,restaurant],restaurant)
+            evaluate('saveGalaxy()');saved=evaluate('JSON.stringify([...entries].map(([id,e])=>[id,e.parentId]))');cdp.call('Page.reload');load();evaluate('physics.pause()')
+            check(evaluate('JSON.stringify([...entries].map(([id,e])=>[id,e.parentId]))')==saved and evaluate("JSON.parse(localStorage.getItem('galaxy:user-data')).version===5"),'refresh preserves the atomic moves using unchanged storage v5')
+            personal=evaluate("localStorage.getItem('galaxy:user-data')")
+            evaluate('loadSampleButton.click()');wait_for("typeof sampleMode!=='undefined'&&sampleMode&&entries.size===282")
+            evaluate('physics.pause();physics.simulation.tick(450);physics.onTick(physics.particles)')
+            pick(['sample-planet-0-1','sample-planet-0-2']);drag('sample-planet-0-1','sample-sun-1')
+            check(evaluate("['sample-planet-0-1','sample-planet-0-2'].every(id=>entries.get(id).parentId==='sample-sun-1')&&entries.size===282"),'Sample uses the same ordinary group move without duplicating entries')
+            check(evaluate("localStorage.getItem('galaxy:user-data')")==personal,'Sample group moves never write real saved data')
+            evaluate('removeSampleButton.click()');wait_for("typeof sampleMode!=='undefined'&&!sampleMode");load();evaluate('physics.pause()')
+            check(evaluate(f"entries.has({json.dumps(root)})&&entries.get({json.dumps(hotel)}).parentId==={json.dumps(transport)}"),'leaving Sample restores the original real moved hierarchy')
+            check(not cdp.errors,f'no group-move browser exceptions: {cdp.errors}')
+            print(f'{count} sidebar group-move checks passed',flush=True);return
 
         if options.sidebar_multiselect_only:
             root=add('Multiselect Work');sun=add('Selection system',root)

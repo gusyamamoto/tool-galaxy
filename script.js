@@ -134,6 +134,8 @@ const focusRevealIds = new Set();
 const hierarchySidebar = new HierarchySidebar({ host: galaxy, preferences: persistence.preferences,
     onRename:renameEntry, onRenameStart() { cancelPendingBodyFocus(); camera.stopAnimation(); closeContextMenu(); closeContentMenus(); },
     onNavigate: (id,options) => focusEntry(id,options), onSelectionEmpty:()=>clearSelection(), onCreate: (id, button) => toggleContentMenu(addMenu, button, id),
+    onActivate:id=>selectEntry(entries.get(id),nodes.get(id),{reframe:false}), onMove:moveSidebarEntries,
+    moveBlocked:()=>deletionBusy||crudActive||activeNodeDrags||!!pan||!!pinch||(!sampleMode&&!storageAvailable), onDragEnd:()=>contentDrops.finish(),
     portals, onOpenPortal: id => openPortal(id), onPortalMenu: (id, x, y) => openPortalContextMenu(id, x, y),
     onViewportChange: animate => crudActive || panelChangeActive ? updateGraphViewport() : navigationViewportChanged(animate) });
 const smoothDetail = (scale, start, end) => cosmosView.smooth(scale, start, end);
@@ -794,16 +796,7 @@ function selectEntry(entry, node, { openInspector = true, reframe = false, scrol
     node.classList.add("selected");
     node.setAttribute("aria-pressed", "true");
     if(changingEntry&&!activeNodeDrags){motion.accent(node,'select');if(entry.role==='astronaut')motion.astronaut(node);}
-    panelName.textContent = entry.name;
-    const parent = entries.get(entry.parentId);
-    panelAncestry.replaceChildren();
-    [...galaxyModel.ancestors(entries, entry.id)].reverse().forEach(ancestor => {
-        const button = document.createElement("button");
-        button.type = "button"; button.textContent = ancestor.name; button.title = ancestor.name;
-        button.addEventListener("click", () => focusEntry(ancestor.id));
-        panelAncestry.appendChild(button);
-    });
-    panelAncestry.hidden = !parent;
+    refreshPanelHierarchy(entry);
     actionStatus.hidden = true;
     updateHierarchyEmphasis();
     hierarchySidebar.select(entry.id, { scroll, preserveMulti:preserveSidebarSelection });
@@ -815,6 +808,17 @@ function selectEntry(entry, node, { openInspector = true, reframe = false, scrol
         panelAncestry.scrollLeft = panelAncestry.scrollWidth;
     }
     panelAncestry.classList.toggle('has-clipped-ancestors', panelAncestry.scrollLeft > 1);
+}
+
+function refreshPanelHierarchy(entry) {
+    panelName.textContent=entry.name;
+    document.getElementById('archive-galaxy-button').hidden=entry.depth!==0;
+    panelAncestry.replaceChildren();
+    [...galaxyModel.ancestors(entries,entry.id)].reverse().forEach(ancestor=>{
+        const button=document.createElement('button');button.type='button';button.textContent=ancestor.name;button.title=ancestor.name;
+        button.addEventListener('click',()=>focusEntry(ancestor.id));panelAncestry.appendChild(button);
+    });
+    panelAncestry.hidden=!entries.get(entry.parentId);
 }
 
 function setInspectorOpen(open, { reframe = false } = {}) {
@@ -1473,7 +1477,7 @@ function finishCrudOperation() {
 // One synchronous mutation: model/derived particles -> save -> DOM/tree ->
 // selection/inspector. No navigation helpers or global Fit participate.
 function commitCrudMutation(mutate, { selectionId, topologyChanged = true, reveal = false,
-    preserveScroll = true, inspectorOpen = !panel.hidden, persisted = false, animateCreation = true, preserveInspector = false, changeIntent } = {}) {
+    preserveScroll = true, inspectorOpen = !panel.hidden, persisted = false, animateCreation = true, preserveInspector = false, preserveSidebarSelection = false, changeIntent } = {}) {
     beginCrudOperation();
     const scroll = { top: hierarchySidebar.tree.scrollTop, left: hierarchySidebar.tree.scrollLeft };
     const previousSelection = selectedNode?.dataset.entryId;
@@ -1498,7 +1502,9 @@ function commitCrudMutation(mutate, { selectionId, topologyChanged = true, revea
     hierarchySidebar.setEntries(entries);
     const entry = entries.get(selectionId);
     if (entry && preserveInspector && entry.id === previousSelection) {
-        hierarchySidebar.select(entry.id,{scroll:!preserveScroll});updateHierarchyEmphasis();updateGraphViewport();
+        hierarchySidebar.select(entry.id,{scroll:!preserveScroll,preserveMulti:preserveSidebarSelection});
+        if(preserveSidebarSelection)refreshPanelHierarchy(entry);
+        updateHierarchyEmphasis();updateGraphViewport();
     }
     else if (entry) selectEntry(entry, nodes.get(entry.id), { reframe: false, openInspector: inspectorOpen, scroll: !preserveScroll });
     else clearSelection({ reframe: false });
@@ -1516,6 +1522,22 @@ function commitCrudMutation(mutate, { selectionId, topologyChanged = true, revea
         }
     }
     if(animateCreation)materialized.forEach(node=>motion.materialize(node));
+}
+
+function moveSidebarEntries(payload,destinationId) {
+    const plan=galaxyModel.movePlan(entries,payload.ids,destinationId);
+    if(plan.error)return false;
+    let result;
+    try{result=universeRepository.moveEntries(getGalaxySnapshot(),payload.ids,destinationId);}
+    catch(error){reportStorageFailure(`Items could not be moved. Their original parents are unchanged. ${error.message}`);return false;}
+    if(result.changed.length)storageStatus.hidden=true;
+    hierarchySidebar.restoreMovedSelection(payload.ids,payload.activeId);
+    if(!result.changed.length)return true;
+    commitCrudMutation(()=>{
+        result.changed.forEach(id=>{entries.get(id).parentId=destinationId;layout.delete(id);});
+    },{selectionId:payload.activeId,persisted:true,preserveInspector:true,preserveSidebarSelection:true,animateCreation:false});
+    hierarchySidebar.activeId=destinationId;hierarchySidebar.updateTabStops();hierarchySidebar.rows.get(destinationId)?.focus({preventScroll:true});
+    finishCrudOperation();return true;
 }
 
 function restoreCrudFocus() {

@@ -93,8 +93,8 @@ class NavigationSection {
 }
 
 class HierarchySidebar {
-    constructor({ host, onNavigate, onSelectionEmpty, onCreate, onRename, onRenameStart, onOpenPortal, onPortalMenu, portals = new Map(), onViewportChange, preferences }) {
-        Object.assign(this, { host, onNavigate, onSelectionEmpty, onCreate, onRename, onRenameStart, onOpenPortal, onPortalMenu, portals, onViewportChange, preferences });
+    constructor({ host, onNavigate, onSelectionEmpty, onActivate, onMove, moveBlocked=()=>false, onDragEnd, onCreate, onRename, onRenameStart, onOpenPortal, onPortalMenu, portals = new Map(), onViewportChange, preferences }) {
+        Object.assign(this, { host, onNavigate, onSelectionEmpty, onActivate, onMove, moveBlocked, onDragEnd, onCreate, onRename, onRenameStart, onOpenPortal, onPortalMenu, portals, onViewportChange, preferences });
         this.sidebar = document.getElementById("hierarchy-sidebar");
         this.tree = document.getElementById("hierarchy-tree");
         this.toggle = document.getElementById("sidebar-toggle");
@@ -120,6 +120,17 @@ class HierarchySidebar {
             this.setCollapsed(true);event.preventDefault();event.stopPropagation();
         },true);
         this.tree.addEventListener("keydown", event => this.onKey(event));
+        this.tree.addEventListener('dragover',event=>this.moveOver(event));
+        this.tree.addEventListener('drop',event=>{
+            if(!this.moveDrag)return;
+            event.preventDefault();event.stopPropagation();
+            const target=event.target.closest('.hierarchy-row[data-entry-id]')?.dataset.entryId;
+            try{if(!this.moveBlocked()&&!galaxyModel.movePlan(this.entries,this.moveDrag.ids,target).error)this.onMove(this.moveDrag,target);}
+            finally{this.endMoveDrag();}
+        });
+        this.tree.addEventListener('dragleave',event=>{if(this.moveTarget&&!this.moveTarget.contains(event.relatedTarget))this.clearMoveTarget();});
+        document.addEventListener('keydown',event=>{if(event.key==='Escape'&&this.moveDrag){this.endMoveDrag();event.preventDefault();event.stopImmediatePropagation();}});
+        window.addEventListener('blur',()=>this.endMoveDrag());
         let drag = null;
         this.resize.addEventListener("pointerdown", event => {
             if (event.button !== 0) return;
@@ -173,6 +184,7 @@ class HierarchySidebar {
         const narrow = this.mobileQuery.matches;
         if (narrow !== this.narrow) { this.narrow = narrow; if (narrow) {this.collapsed = true;this.selection.single(this.selectedId);this.paintSelection();} }
         this.applyLayout();
+        this.rows.forEach((row,id)=>{row.draggable=this.entries.has(id)&&!this.narrow&&this.rename?.id!==id;});
     }
     setEntries(entries) {
         const scroll = { top: this.tree.scrollTop, left: this.tree.scrollLeft };
@@ -199,8 +211,19 @@ class HierarchySidebar {
         add.setAttribute("aria-haspopup", "menu"); add.setAttribute("aria-controls", "add-menu"); add.setAttribute("aria-expanded", "false");
         row.append(disclosure, icon, name, add);
         row.addEventListener('pointerdown',event=>{
+            this.moveOriginBlocked=event.button!==0||event.pointerType==='touch'||!!event.target.closest('button,input');
             if(event.button===0&&(event.ctrlKey||event.metaKey||event.shiftKey)&&!event.target.closest('button,input'))event.preventDefault();
         });
+        row.addEventListener('dragstart',event=>{
+            if(!this.entries.has(id)||this.narrow||this.rename||this.moveOriginBlocked||this.moveBlocked()||!event.dataTransfer){event.preventDefault();return;}
+            if(!this.selection.ids.has(id)){
+                this.keepMovedSelection=false;this.selection.single(id);this.selectedId=id;this.paintSelection();this.onActivate(id);
+            }
+            this.moveDrag={ids:this.getSelectedEntryIds(),activeId:this.activeEntryId};
+            event.dataTransfer.effectAllowed='move';event.dataTransfer.setData('application/x-cosmifold-entry-move',JSON.stringify(this.moveDrag.ids));
+            this.moveDrag.ids.forEach(id=>this.rows.get(id)?.classList.add('is-moving'));
+        });
+        row.addEventListener('dragend',()=>this.endMoveDrag());
         row.addEventListener("click", event => {
             if (event.button!==0 || event.target.closest("button,input") || this.rename?.id === id || event.detail > 1) return;
             this.activeId = id; row.focus({ preventScroll: true });
@@ -286,7 +309,7 @@ class HierarchySidebar {
         const focused = focusedRow?.dataset.entryId || focusedRow?.dataset.portalId;
         const focusedAction = document.activeElement?.closest('.tree-add,.tree-portal-actions,.tree-disclosure')?.className;
         this.visibleRows = cosmosHierarchy.visible(this.entries, this.index, this.expanded, this.portals);
-        this.selection.visibleOnly(new Set(this.visibleRows.filter(row=>!row.kind).map(row=>row.id)));
+        if(!this.keepMovedSelection)this.selection.visibleOnly(new Set(this.visibleRows.filter(row=>!row.kind).map(row=>row.id)));
         this.selectedId=this.selection.activeEntryId;
         if (!this.visibleRows.some(row => row.id === this.activeId)) this.activeId = this.visibleRows.some(row => row.id === this.selectedId) ? this.selectedId : this.visibleRows[0]?.id;
         const fragment = document.createDocumentFragment();
@@ -306,6 +329,7 @@ class HierarchySidebar {
             row.classList.toggle("is-search-match", this.searchMatches.has(id));
             row.setAttribute("aria-selected", String(this.selection.ids.has(id)));
             if (!portal) row.dataset.role = entry.role;
+            row.draggable=!portal&&!this.narrow&&this.rename?.id!==id;
             row.title = portal ? `Linked item ${entry.name}\n${location}` : entry.name;
             if (this.rename?.id !== id) row.querySelector(".tree-name").textContent = entry.name;
             if (portal) { const actions=row.querySelector(".tree-portal-actions"); actions.ariaLabel=actions.title=`Linked item actions for ${entry.name}`; }
@@ -333,6 +357,7 @@ class HierarchySidebar {
     }
     toggleBranch(id) {
         if (!this.index.children.get(id)?.length) return;
+        this.keepMovedSelection=false;
         if (this.expanded.has(id)) this.expanded.delete(id); else this.expanded.add(id);
         this.activeId = id; this.render(); this.rows.get(id).focus({ preventScroll: true });
     }
@@ -342,6 +367,23 @@ class HierarchySidebar {
     }
     get activeEntryId(){return this.selectedId;}
     getSelectedEntryIds(){return [...this.selection.ids].filter(id=>this.entries.has(id));}
+    clearMoveTarget(){this.moveTarget?.classList.remove('hierarchy-move-target','hierarchy-move-invalid');this.moveTarget=null;}
+    moveOver(event){
+        if(!this.moveDrag)return;
+        event.stopPropagation();this.clearMoveTarget();
+        const row=event.target.closest('.hierarchy-row[data-entry-id]');
+        const valid=row&&!this.moveBlocked()&&!galaxyModel.movePlan(this.entries,this.moveDrag.ids,row.dataset.entryId).error;
+        if(row){this.moveTarget=row;row.classList.add(valid?'hierarchy-move-target':'hierarchy-move-invalid');}
+        event.dataTransfer.dropEffect=valid?'move':'none';if(valid)event.preventDefault();
+    }
+    endMoveDrag(){
+        if(!this.moveDrag)return;
+        this.moveDrag=null;this.clearMoveTarget();this.rows.forEach(row=>row.classList.remove('is-moving'));this.onDragEnd?.();
+    }
+    restoreMovedSelection(ids,activeId){
+        this.selection.ids=new Set(ids.filter(id=>this.entries.has(id)));this.selection.activate(activeId);
+        this.selection.anchorId=activeId;this.selectedId=activeId;this.keepMovedSelection=true;this.paintSelection();
+    }
     paintSelection(){
         this.rows.forEach((row,id)=>{
             row.classList.toggle('is-selected',id===this.selectedId);
@@ -350,6 +392,8 @@ class HierarchySidebar {
         });
     }
     selectFromClick(id,event){
+        if(this.keepMovedSelection){this.selection.retain(new Set(this.visibleRows.filter(row=>!row.kind).map(row=>row.id)));this.selectedId=this.selection.activeEntryId;}
+        this.keepMovedSelection=false;
         const visible=this.visibleRows.filter(row=>!row.kind).map(row=>row.id);
         if(this.universeSection.collapsed||!visible.includes(id))return;
         const previous=this.selectedId,touch=this.narrow||event.pointerType==='touch'||event.sourceCapabilities?.firesTouchEvents;
@@ -359,15 +403,16 @@ class HierarchySidebar {
         if(this.selectedId!==previous||(!event.ctrlKey&&!event.metaKey))this.onNavigate(this.selectedId,{preserveSidebarSelection:true});
     }
     select(id, { scroll = true, preserveMulti = false } = {}) {
+        if(!preserveMulti)this.keepMovedSelection=false;
         if(!preserveMulti||this.selection.activeEntryId!==id)this.selection.single(id);
         this.selectedId = id || null;
         let changed = false;
-        if (id) galaxyModel.ancestors(this.entries, id).forEach(parent => {
+        if (id&&!this.keepMovedSelection) galaxyModel.ancestors(this.entries, id).forEach(parent => {
             if (!this.expanded.has(parent.id)) { this.expanded.add(parent.id); changed = true; }
         });
         if (changed || (id && !this.tree.contains(this.rows.get(id)))) this.render();
         this.paintSelection();
-        if (id) { this.activeId = id; this.updateTabStops(); if (scroll) this.scrollSelected(); }
+        if (id) { if(this.visibleRows.some(row=>row.id===id))this.activeId=id; this.updateTabStops(); if (scroll) this.scrollSelected(); }
     }
     scrollSelected() {
         this.scrollRow(this.selectedId);

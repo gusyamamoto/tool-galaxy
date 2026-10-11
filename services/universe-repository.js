@@ -57,6 +57,16 @@ function createUniverseRepository({persistence, canWrite = () => true}) {
         replacePlacements(snapshot, records) {
             this.save({...snapshot, portals: records}, {type: 'placements.changed', ids: [...new Set([...(snapshot.portals || []).map(record => record.id), ...records.map(record => record.id)])]});
         },
+        moveEntries(snapshot, selectedIds, destinationId) {
+            const entries=new Map(snapshot.entries.map(entry=>[entry.id,entry]));
+            const plan=galaxyModel.movePlan(entries,selectedIds,destinationId);
+            if(plan.error)throw new Error(plan.error);
+            const changed=plan.roots.filter(id=>entries.get(id).parentId!==destinationId), moved=new Set(changed);
+            const next={...snapshot,entries:snapshot.entries.map(entry=>moved.has(entry.id)?{...entry,parentId:destinationId}:entry),
+                layout:(snapshot.layout||[]).filter(record=>!moved.has(record.id))};
+            if(changed.length)this.save(next,{type:'items.moved',ids:changed});
+            return {snapshot:next,roots:plan.roots,changed};
+        },
         archive(snapshot, record) {
             this.save({...snapshot, archivedGalaxies: [...(snapshot.archivedGalaxies || []), record]}, {type: 'galaxy.archived', ids: [record.galaxyId]});
         },

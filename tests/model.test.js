@@ -8,6 +8,17 @@ vm.runInContext(fs.readFileSync(path.join(__dirname, '../model.js'), 'utf8'), co
 const model = vm.runInContext('galaxyModel', context);
 const entry = (id, parentId = null) => ({ id, parentId, name: id, description: 'Description', category: '', x: 400, y: 350 });
 const plain = value => JSON.parse(JSON.stringify(value));
+
+test('group move plans deduplicate selected descendants and reject the whole set on cycles or missing records',()=>{
+    const data=new Map([entry('g'),entry('food','g'),entry('restaurants','food'),entry('reservation','restaurants'),entry('hotel','g'),entry('transport','g')].map(e=>[e.id,e]));
+    const before=JSON.stringify([...data]);
+    assert.deepEqual(plain(model.movePlan(data,['food','restaurants','reservation','hotel'],'transport')),{roots:['food','hotel'],error:''});
+    for(const [ids,target] of [[['food'],'food'],[['food'],'reservation'],[['hotel','food'],'reservation'],[['hotel'],'missing'],[['missing','hotel'],'transport']]){
+        const plan=model.movePlan(data,ids,target);assert.ok(plan.error);assert.equal(plan.roots.length,0);assert.equal(JSON.stringify([...data]),before);
+    }
+    assert.equal(model.movePlan(data,['g'],'transport').roots.length,0,'Galaxy ancestor cycles follow the same canonical rules');
+    data.set('other',entry('other'));assert.equal(model.movePlan(data,['g'],'other').error,'','existing generic hierarchy permits moving a root under another root');
+});
 function chain(count = 8) {
     const entries = new Map(Array.from({ length: count }, (_,i) => [`e${i}`, entry(`e${i}`, i ? `e${i-1}` : null)]));
     model.normalizeHierarchy(entries); return entries;
