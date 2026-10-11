@@ -138,6 +138,9 @@ const hierarchySidebar = new HierarchySidebar({ host: galaxy, preferences: persi
     moveBlocked:()=>deletionBusy||crudActive||activeNodeDrags||!!pan||!!pinch||(!sampleMode&&!storageAvailable), onDragEnd:()=>contentDrops.finish(),
     portals, onOpenPortal: id => openPortal(id), onPortalMenu: (id, x, y) => openPortalContextMenu(id, x, y),
     onViewportChange: animate => crudActive || panelChangeActive ? updateGraphViewport() : navigationViewportChanged(animate) });
+const hierarchyClipboard=new HierarchyClipboard();
+const pasteDialog=document.getElementById('hierarchy-paste-dialog'),pasteCopy=document.getElementById('hierarchy-paste-copy'),pasteLink=document.getElementById('hierarchy-paste-link'),pasteCancel=document.getElementById('hierarchy-paste-cancel'),pasteStatus=document.getElementById('hierarchy-paste-status');
+let pasteDestination=null,pasteBusy=false,pasteReturnFocus=null,pasteCommitted=false;
 const smoothDetail = (scale, start, end) => cosmosView.smooth(scale, start, end);
 const renderBackground = createUniverseBackground(galaxy);
 const camera = new GraphCamera({
@@ -333,7 +336,10 @@ function openContextMenu(id, x, y, {surface='canvas'}={}) {
     document.getElementById('constellation-memberships').hidden = true;
     contextMenu.querySelectorAll(":scope > button").forEach(button => { button.hidden = button.hasAttribute("data-portal-action")||button.hasAttribute('data-collection-context')||(button.hasAttribute('data-galaxy-only')&&entry.depth!==0)||(surface==='canvas'&&button.dataset.action==='files')||(button.hasAttribute('data-management-only')&&(surface!=='sidebar'||entry.depth===0)); });
     closeContentMenus();
-    if (selectedNode?.dataset.entryId !== id || constellationOverview) selectEntry(entry, nodes.get(id), { openInspector: false });
+    const selectedGroup=surface==='sidebar'&&hierarchySidebar.getSelectedEntryIds().includes(id);
+    contextMenu.dataset.copySelection=String(selectedGroup);
+    if (!selectedGroup&&(selectedNode?.dataset.entryId !== id || constellationOverview)) selectEntry(entry, nodes.get(id), { openInspector: false });
+    contextMenu.querySelector('[data-action=paste]').disabled=!hierarchyClipboard.roots(entries).length||(!sampleMode&&!storageAvailable);
     contextMenu.setAttribute("aria-label", `Actions for ${entry.name}`);
     document.getElementById("context-entry-name").textContent = entry.name;
     contextMenu.querySelector('[data-action="create"]').textContent = cosmosHierarchy.childContext(entries, id).action;
@@ -387,10 +393,11 @@ contextMenu.addEventListener("click", event => {
     }
     if (!action || !entries.has(id)) return;
     if (action === 'constellation') { showConstellationMemberships(id); return; }
+    if(action==='copy'){copyHierarchyItems(contextMenu.dataset.copySelection==='true'?hierarchySidebar.getSelectedEntryIds():[id]);closeContextMenu(true);return;}
+    if(action==='paste'){closeContextMenu();openHierarchyPaste(id);return;}
     closeContextMenu(action === "delete");
     if (action === "create") createChildEntry(id);
     else if (action === "files") openEntryContentAction(id, "files");
-    else if (action === "portal") openPortalDialog(id);
     else if (action === "archive") requestGalaxyArchive(id);
     else if (action === "edit") openEntryForm(entries.get(id));
     else if (action === "delete") requestEntryDelete(id);
@@ -1469,7 +1476,7 @@ function beginCrudOperation() {
 }
 
 function finishCrudOperation() {
-    if (dialog.open || deleteDialog.open || archiveDialog.open || portalDialog.open || constellationWorkspace.isDialogOpen()) return;
+    if (dialog.open || deleteDialog.open || archiveDialog.open || portalDialog.open || pasteDialog.open || constellationWorkspace.isDialogOpen()) return;
     crudActive = false;
     if (!document.hidden) physics.resume();
 }
@@ -1506,7 +1513,7 @@ function commitCrudMutation(mutate, { selectionId, topologyChanged = true, revea
         if(preserveSidebarSelection)refreshPanelHierarchy(entry);
         updateHierarchyEmphasis();updateGraphViewport();
     }
-    else if (entry) selectEntry(entry, nodes.get(entry.id), { reframe: false, openInspector: inspectorOpen, scroll: !preserveScroll });
+    else if (entry) selectEntry(entry, nodes.get(entry.id), { reframe: false, openInspector: inspectorOpen, scroll: !preserveScroll, preserveSidebarSelection });
     else clearSelection({ reframe: false });
     rebuildOrbitGuides(); refreshSearchResults(); renderGraph();
     refreshConstellation();
@@ -1523,6 +1530,78 @@ function commitCrudMutation(mutate, { selectionId, topologyChanged = true, revea
     }
     if(animateCreation)materialized.forEach(node=>motion.materialize(node));
 }
+
+function copyHierarchyItems(ids=hierarchySidebar.getSelectedEntryIds()) {
+    const count=hierarchyClipboard.copy(entries,ids);
+    if(count){const message=`Copied ${count} ${count===1?'item':'items'}`;actionStatus.textContent=message;actionStatus.hidden=false;setTimeout(()=>{if(actionStatus.textContent===message)actionStatus.hidden=true;},2500);}
+    return count;
+}
+function openHierarchyPaste(id) {
+    const roots=hierarchyClipboard.roots(entries);
+    if(!roots.length||!entries.has(id)||(!sampleMode&&!storageAvailable)||deletionBusy||activeNodeDrags||hierarchySidebar.moveDrag||pasteBusy||document.querySelector('dialog[open]'))return;
+    pasteReturnFocus=document.activeElement;pasteDestination=id;pasteCommitted=false;
+    if(selectedNode?.dataset.entryId!==id)selectEntry(entries.get(id),nodes.get(id),{reframe:false});
+    beginCrudOperation();
+    document.getElementById('hierarchy-paste-title').textContent=roots.length===1?'Add this item here':`Add ${roots.length} items here`;
+    document.getElementById('hierarchy-paste-description').textContent=`Into ${entries.get(id).name}`;
+    document.getElementById('hierarchy-paste-copy-title').textContent=roots.length===1?'Make a copy':'Make copies';
+    document.getElementById('hierarchy-paste-link-title').textContent=roots.length===1?'Link existing item':'Link existing items';
+    document.getElementById('hierarchy-paste-copy-description').textContent=roots.length===1?'Create an independent version.':'Create independent versions.';
+    document.getElementById('hierarchy-paste-link-description').textContent=roots.length===1?'Show this same item here too. Changes made in either place stay synced.':'Show these same items here too. Changes made in either place stay synced.';
+    pasteCopy.disabled=false;pasteLink.disabled=!!hierarchyClipboard.linkError(entries,portals,id,roots);pasteCancel.disabled=false;
+    pasteStatus.hidden=true;pasteDialog.showModal();pasteCopy.focus();
+}
+async function confirmHierarchyPaste(mode) {
+    if(!pasteDialog.open||pasteBusy)return;
+    const roots=hierarchyClipboard.roots(entries),destination=pasteDestination;
+    if(!roots.length||!entries.has(destination)){pasteStatus.textContent='The copied items or destination are no longer available.';pasteStatus.hidden=false;return;}
+    pasteBusy=true;pasteCopy.disabled=pasteLink.disabled=pasteCancel.disabled=true;
+    pasteStatus.textContent=mode==='copy'?'Making copies…':'Adding linked items…';pasteStatus.hidden=false;
+    try{
+        if(mode==='copy'){
+            const result=await universeRepository.copyEntries(getGalaxySnapshot(),roots,destination,()=>`copy:${crypto.randomUUID()}`,{
+                readSnapshot:getGalaxySnapshot,validate(){if(!entries.has(destination)||roots.some(id=>!entries.has(id)))throw new Error('The copied items changed. Try Paste again.');}
+            });
+            commitCrudMutation(()=>{
+                result.copies.forEach(entry=>entries.set(entry.id,{...entry,seedLayout:true}));
+                result.links.forEach(link=>portals.set(link.id,link));
+                hierarchySidebar.expanded.add(destination);galaxyModel.ancestors(entries,destination).forEach(e=>hierarchySidebar.expanded.add(e.id));
+                hierarchySidebar.restoreMovedSelection(result.rootIds,result.rootIds[0]);
+            },{selectionId:result.rootIds[0],persisted:true,preserveSidebarSelection:true});
+        }else{
+            const error=hierarchyClipboard.linkError(entries,portals,destination,roots);if(error)throw new Error(error);
+            const next=new Map(portals);
+            roots.forEach(targetEntryId=>{const id=`portal:${crypto.randomUUID()}`;next.set(id,{id,targetEntryId,parentEntryId:destination,createdAt:new Date().toISOString()});});
+            commitPortalReferences(next);
+            hierarchySidebar.expanded.add(destination);hierarchySidebar.render();
+        }
+        storageStatus.hidden=true;pasteCommitted=true;pasteDialog.close();
+    }catch(error){pasteStatus.textContent=error.name==='QuotaExceededError'?'Nothing was added. This browser does not have enough local storage for these copies. Free some space and try again.':`Nothing was added. ${error.message}`;pasteStatus.hidden=false;}
+    finally{
+        pasteBusy=false;pasteCopy.disabled=false;pasteLink.disabled=!!hierarchyClipboard.linkError(entries,portals,destination);pasteCancel.disabled=false;
+        if(!pasteDialog.open){finishCrudOperation();hierarchySidebar.rows.get(hierarchySidebar.activeEntryId)?.focus({preventScroll:true});}
+    }
+}
+pasteCopy.addEventListener('click',()=>confirmHierarchyPaste('copy'));pasteLink.addEventListener('click',()=>confirmHierarchyPaste('link'));
+pasteCancel.addEventListener('click',()=>{if(!pasteBusy)pasteDialog.close();});
+pasteDialog.addEventListener('cancel',event=>{if(pasteBusy)event.preventDefault();});
+pasteDialog.addEventListener('close',()=>{if(!pasteBusy){finishCrudOperation();const target=pasteCommitted?hierarchySidebar.rows.get(hierarchySidebar.activeEntryId):pasteReturnFocus;
+    if(target?.isConnected&&(document.activeElement===document.body||document.activeElement===pasteReturnFocus||pasteDialog.contains(document.activeElement)))target.focus({preventScroll:true});}});
+document.addEventListener('keydown',event=>{
+    if(event.defaultPrevented||hierarchySidebar.moveDrag||!(event.ctrlKey||event.metaKey)||event.altKey||event.shiftKey||!['c','v'].includes(event.key.toLowerCase()))return;
+    if(event.target.closest('input,textarea,[contenteditable]:not([contenteditable="false"]),[role="textbox"],.tree-disclosure,.tree-add,.tree-portal-actions')||window.getSelection()?.toString()||document.querySelector('dialog[open]'))return;
+    const row=event.target.closest('.hierarchy-row[data-entry-id],.entry-node[data-entry-id]'),menu=event.target.closest('#entry-context-menu');
+    if(!row&&!menu)return;
+    if(menu&&(contextPortalId||contextCollectionId))return;
+    if(event.key.toLowerCase()==='c'){
+        const ids=menu&&contextMenu.dataset.copySelection!=='true'?[contextEntryId]:hierarchySidebar.getSelectedEntryIds();
+        if(ids.length){event.preventDefault();copyHierarchyItems(ids);}
+    }else{
+        const id=menu?contextEntryId:hierarchySidebar.activeEntryId;
+        if(!menu&&row.dataset.entryId!==id)return;
+        if(entries.has(id)&&hierarchyClipboard.roots(entries).length){event.preventDefault();if(menu)closeContextMenu();openHierarchyPaste(id);}
+    }
+});
 
 function moveSidebarEntries(payload,destinationId) {
     const plan=galaxyModel.movePlan(entries,payload.ids,destinationId);

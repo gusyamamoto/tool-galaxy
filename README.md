@@ -93,6 +93,26 @@ CRUD/persistence, canonical drops, gallery rendering and touch checklists.
   cleared through the existing layout path. IDs, descendant relationships,
   content, collection memberships and Portal references are preserved. There is
   no drag-copy, sibling-position reordering, canvas group drag or touch group drag.
+  Ctrl/Cmd+C and context-menu Copy capture normalized canonical roots in a
+  page-local clipboard; Ctrl/Cmd+V uses a currently focused active item, while
+  context-menu Paste uses the clicked destination. Inputs, Notes, inline rename,
+  search and contenteditable text keep native browser clipboard behavior.
+  Paste offers **Make copies** or **Link existing items** once for the whole set.
+  Independent copies get fresh entry, bookmark, attachment and internal-placement
+  IDs, remapped parents, deep-cloned content and separately owned file records.
+  New records receive fresh creation timestamps; user metadata and file formats,
+  dimensions/duration and immutable bytes/previews are preserved.
+  Attachment bytes/previews are saved as one IndexedDB batch with synchronous
+  metadata commit and rollback; no tree is published until the batch completes.
+  Original Constellation memberships/external appearances are not duplicated.
+  Only links whose container and target both belong to the copied forest are
+  remapped; external-target links inside that forest are conservatively omitted.
+  Link existing items uses the established leaf-placement architecture, adds no
+  canonical objects/content, and leaves the destination active. The clipboard
+  remains usable after Paste but resets on refresh; missing sources are ignored.
+  Existing Galaxy/ancestor leaf links remain supported; Paste rejects self,
+  direct-child and duplicate placements. This adds no Cut, content-free structure
+  duplication, OS clipboard serialization or storage migration (v5 is unchanged).
   The small Cosmifold title stays above Search and three independently collapsible
   sections: Universe, Constellations and Archived Galaxies. Each heading and its
   chevron toggle only that section. Universe + opens the existing New Galaxy /

@@ -1143,6 +1143,24 @@ summary:focus-visible { outline: 1px solid #b9d0e9; outline-offset: 3px; }
 .hierarchy-row.hierarchy-move-target { background: #30435b66; outline: 1px solid #91adc980; outline-offset: -1px; }
 .hierarchy-row.hierarchy-move-invalid { outline: 1px solid #c28d8d80; outline-offset: -1px; }
 .hierarchy-row.is-moving { opacity: .75; }
+#hierarchy-paste-dialog { width: min(460px, calc(100vw - 32px)); padding: 22px; border-radius: 10px; }
+#hierarchy-paste-dialog h2 { margin-bottom: 5px; font-size: 19px; }
+#hierarchy-paste-description { font-size: 12px; color: #91a5bd; overflow-wrap: anywhere; }
+#hierarchy-paste-dialog .paste-choices { display: grid; gap: 9px; margin-top: 18px; }
+#hierarchy-paste-dialog .paste-choice { display: flex; flex-direction: column; align-items: stretch; gap: 5px; width: 100%; min-height: 44px; padding: 14px 16px; border: 1px solid #50627c55; border-radius: 7px; background: #0c1623; color: #dce6f2; box-shadow: inset 0 1px #ffffff03; text-align: left; white-space: normal; }
+#hierarchy-paste-dialog .paste-choice-title { font-size: 14px; font-weight: 600; line-height: 1.4; }
+#hierarchy-paste-dialog .paste-choice-description { font-size: 12px; font-weight: 400; line-height: 1.5; color: #a3b5cc; }
+#hierarchy-paste-dialog .paste-choice:hover:not(:disabled) { background: #152236; border-color: #7b98b877; }
+#hierarchy-paste-dialog .paste-choice:active:not(:disabled) { background: #1b2b40; }
+#hierarchy-paste-dialog button:focus-visible { outline: 2px solid #91adc9; outline-offset: 3px; }
+#hierarchy-paste-dialog [role="status"] { margin-top: 12px; font-size: 12px; }
+#hierarchy-paste-dialog .form-actions { margin-top: 14px; }
+#hierarchy-paste-dialog .form-actions button { min-height: 44px; background: transparent; border-color: transparent; color: #99adc4; }
+#hierarchy-paste-dialog .form-actions button:hover { background: #26354a; color: #dce6f2; }
+@media (max-width: 480px) {
+    #hierarchy-paste-dialog { padding: 18px; }
+    #hierarchy-paste-dialog .paste-choice { padding: 12px 14px; }
+}
 .hierarchy-row.content-drop-pending .tree-disclosure { color: #c0d1df; }
 @media (max-width:760px), (pointer:coarse) {
     #galaxy-starter { min-height: 44px; font-size: 16px; }

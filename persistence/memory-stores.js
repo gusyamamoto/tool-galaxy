@@ -28,6 +28,11 @@ function createMemoryFileStore() {
             commitNow(commit); records.set(record.key, record);
         },
         async get(key) { return records.get(key) || null; },
+        async saveBatch(values,commit) {
+            const staged=new Map();
+            values.forEach(record=>{if(!record?.key||records.has(record.key)||staged.has(record.key)||!record.entryId||!(record.blob instanceof Blob))throw new Error('Invalid attachment copy.');staged.set(record.key,record);});
+            commitNow(commit);staged.forEach((record,key)=>records.set(key,record));
+        },
         async delete(key, commit) { commitNow(commit); return records.delete(key) ? 1 : 0; },
         async deleteEntries(ids, commit) {
             const set = new Set(ids), removed = [...records].filter(([,record]) => set.has(record.entryId));
