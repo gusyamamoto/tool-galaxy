@@ -630,6 +630,8 @@ button:disabled { opacity: 0.45; cursor: default; }
 .hierarchy-row:hover { background: #1b27365c; color: #c5d1df; }
 .hierarchy-row.is-selected { background: #25364b99; color: #e1e9f3; box-shadow: inset 2px 0 #7f9ab180; }
 .hierarchy-row.is-selected:hover { background: #25364bb3; }
+.hierarchy-row.is-multiselected { background: #25364b55; color: #cad8e7; box-shadow: inset 2px 0 #7f9ab140; }
+.hierarchy-row.is-multiselected:hover { background: #25364b77; }
 .hierarchy-row.is-search-match .tree-name { color: #d7be84; }
 .hierarchy-row:focus-visible { outline: 1px solid #8ca7c9; }
 .tree-name { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }

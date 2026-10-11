@@ -36,6 +36,38 @@ const cosmosHierarchy = {
     }
 };
 
+// Ephemeral selection only: active item, range anchor and activation history.
+// Keyboard focus stays in HierarchySidebar.activeId, independently of this set.
+class HierarchySelection {
+    constructor(){this.ids=new Set();this.activeEntryId=null;this.anchorId=null;this.history=[];}
+    single(id){this.ids=new Set(id?[id]:[]);this.activeEntryId=id||null;this.anchorId=id||null;this.history=id?[id]:[];}
+    activate(id){this.activeEntryId=id;this.history=this.history.filter(value=>value!==id);if(id)this.history.push(id);}
+    fallback(){this.activeEntryId=[...this.history].reverse().find(id=>this.ids.has(id))||[...this.ids].at(-1)||null;}
+    click(id,{toggle=false,range=false,visible=[]}={}){
+        if(!visible.includes(id))return;
+        if(range&&visible.includes(this.anchorId)){
+            const a=visible.indexOf(this.anchorId),b=visible.indexOf(id);
+            this.ids=new Set(visible.slice(Math.min(a,b),Math.max(a,b)+1));
+            this.history=this.history.filter(value=>this.ids.has(value));this.activate(id);
+        }else if(toggle){
+            if(this.ids.has(id)){this.ids.delete(id);this.history=this.history.filter(value=>value!==id);if(this.activeEntryId===id)this.fallback();}
+            else{this.ids.add(id);this.activate(id);}
+            this.anchorId=this.ids.size?id:null;
+        }else this.single(id);
+    }
+    retain(valid){
+        this.ids=new Set([...this.ids].filter(id=>valid.has(id)));this.history=this.history.filter(id=>this.ids.has(id));
+        if(!this.ids.has(this.activeEntryId))this.fallback();
+        if(!valid.has(this.anchorId))this.anchorId=null;
+    }
+    visibleOnly(visible){
+        // Preserve the established single active Content selection if its
+        // branch is closed, but never retain an invisible batch of secondaries.
+        if(this.activeEntryId&&!visible.has(this.activeEntryId)){this.single(this.activeEntryId);return;}
+        this.retain(visible);
+    }
+}
+
 // Section disclosure is UI-only and merges with existing navigation preferences.
 class NavigationSection {
     constructor({root,toggle,list,name,key,preferences,collapsed=false}) {
@@ -56,12 +88,13 @@ class NavigationSection {
         this.collapsed=value;this.apply();
         if(!value){this.list.scrollTop=this.scroll.top;this.list.scrollLeft=this.scroll.left;}
         this.preferences.update({[this.key]:value});
+        this.onDisclosure?.(value);
     }
 }
 
 class HierarchySidebar {
-    constructor({ host, onNavigate, onCreate, onRename, onRenameStart, onOpenPortal, onPortalMenu, portals = new Map(), onViewportChange, preferences }) {
-        Object.assign(this, { host, onNavigate, onCreate, onRename, onRenameStart, onOpenPortal, onPortalMenu, portals, onViewportChange, preferences });
+    constructor({ host, onNavigate, onSelectionEmpty, onCreate, onRename, onRenameStart, onOpenPortal, onPortalMenu, portals = new Map(), onViewportChange, preferences }) {
+        Object.assign(this, { host, onNavigate, onSelectionEmpty, onCreate, onRename, onRenameStart, onOpenPortal, onPortalMenu, portals, onViewportChange, preferences });
         this.sidebar = document.getElementById("hierarchy-sidebar");
         this.tree = document.getElementById("hierarchy-tree");
         this.toggle = document.getElementById("sidebar-toggle");
@@ -69,6 +102,8 @@ class HierarchySidebar {
         this.universeSection=new NavigationSection({root:document.getElementById('universe-section'),toggle:document.getElementById('universe-toggle'),list:this.tree,name:'Universe',key:'universeCollapsed',preferences});
         this.entries = new Map(); this.rows = new Map(); this.expanded = new Set();
         this.index = { children: new Map(), roots: [] }; this.selectedId = null; this.activeId = null; this.searchMatches = new Set();
+        this.selection=new HierarchySelection();this.tree.setAttribute('aria-multiselectable','true');
+        this.universeSection.onDisclosure=collapsed=>{if(collapsed){this.selection.single(this.selectedId);this.paintSelection();}};
         this.mobileQuery = window.matchMedia('(max-width: 760px), (pointer: coarse) and (max-width: 1024px) and (max-height: 500px)');
         this.narrow = this.mobileQuery.matches;
         const preference = preferences.load();
@@ -128,18 +163,21 @@ class HierarchySidebar {
     setCollapsed(collapsed) {
         if (this.collapsed === collapsed) return;
         if (collapsed && this.sidebar.contains(document.activeElement)) this.toggle.focus();
-        this.collapsed = collapsed; this.applyLayout(); this.savePreference(); this.onViewportChange(true);
+        this.collapsed = collapsed;
+        if(collapsed){this.selection.single(this.selectedId);this.paintSelection();}
+        this.applyLayout(); this.savePreference(); this.onViewportChange(true);
         if (!collapsed) this.scrollSelected();
     }
     setWidth(width, animate) { this.width = width; this.applyLayout(); this.onViewportChange(animate); }
     onWindowResize() {
         const narrow = this.mobileQuery.matches;
-        if (narrow !== this.narrow) { this.narrow = narrow; if (narrow) this.collapsed = true; }
+        if (narrow !== this.narrow) { this.narrow = narrow; if (narrow) {this.collapsed = true;this.selection.single(this.selectedId);this.paintSelection();} }
         this.applyLayout();
     }
     setEntries(entries) {
         const scroll = { top: this.tree.scrollTop, left: this.tree.scrollLeft };
         this.entries = entries;
+        this.selection.retain(new Set(entries.keys()));this.selectedId=this.selection.activeEntryId;
         const previousRoots = new Set(this.index.roots);
         this.index = cosmosHierarchy.index(entries, this.portals);
         this.index.roots.forEach(id => { if (!previousRoots.has(id)) this.expanded.add(id); });
@@ -160,11 +198,14 @@ class HierarchySidebar {
         const add = document.createElement("button"); add.type = "button"; add.className = "tree-add"; add.textContent = "+";
         add.setAttribute("aria-haspopup", "menu"); add.setAttribute("aria-controls", "add-menu"); add.setAttribute("aria-expanded", "false");
         row.append(disclosure, icon, name, add);
+        row.addEventListener('pointerdown',event=>{
+            if(event.button===0&&(event.ctrlKey||event.metaKey||event.shiftKey)&&!event.target.closest('button,input'))event.preventDefault();
+        });
         row.addEventListener("click", event => {
-            if (event.target.closest("button,input") || this.rename?.id === id || event.detail > 1) return;
+            if (event.button!==0 || event.target.closest("button,input") || this.rename?.id === id || event.detail > 1) return;
             this.activeId = id; row.focus({ preventScroll: true });
             if (this.narrow) this.setCollapsed(true);
-            this.onNavigate(id);
+            this.selectFromClick(id,event);
         });
         name.addEventListener('dblclick', event => { event.preventDefault(); event.stopPropagation(); this.beginRename(id); });
         row.addEventListener("focus", () => { this.activeId = id; this.updateTabStops(); });
@@ -245,6 +286,8 @@ class HierarchySidebar {
         const focused = focusedRow?.dataset.entryId || focusedRow?.dataset.portalId;
         const focusedAction = document.activeElement?.closest('.tree-add,.tree-portal-actions,.tree-disclosure')?.className;
         this.visibleRows = cosmosHierarchy.visible(this.entries, this.index, this.expanded, this.portals);
+        this.selection.visibleOnly(new Set(this.visibleRows.filter(row=>!row.kind).map(row=>row.id)));
+        this.selectedId=this.selection.activeEntryId;
         if (!this.visibleRows.some(row => row.id === this.activeId)) this.activeId = this.visibleRows.some(row => row.id === this.selectedId) ? this.selectedId : this.visibleRows[0]?.id;
         const fragment = document.createDocumentFragment();
         this.visibleRows.forEach(({ id, level, position, size, kind }) => {
@@ -259,8 +302,9 @@ class HierarchySidebar {
             row.setAttribute("aria-label", portal ? `Linked item ${entry.name}, ${location}` : `${entry.name}, ${entry.depth===0?'Galaxy':'item'}`);
             if (hasChildren) row.setAttribute("aria-expanded", String(this.expanded.has(id))); else row.removeAttribute("aria-expanded");
             row.classList.toggle("is-selected", id === this.selectedId);
+            row.classList.toggle('is-multiselected',this.selection.ids.has(id)&&id!==this.selectedId);
             row.classList.toggle("is-search-match", this.searchMatches.has(id));
-            row.setAttribute("aria-selected", String(id === this.selectedId));
+            row.setAttribute("aria-selected", String(this.selection.ids.has(id)));
             if (!portal) row.dataset.role = entry.role;
             row.title = portal ? `Linked item ${entry.name}\n${location}` : entry.name;
             if (this.rename?.id !== id) row.querySelector(".tree-name").textContent = entry.name;
@@ -296,16 +340,33 @@ class HierarchySidebar {
         if(!this.entries.has(id)||!this.index.children.get(id)?.length||this.expanded.has(id))return false;
         this.expanded.add(id);this.render();return true;
     }
-    select(id, { scroll = true } = {}) {
+    get activeEntryId(){return this.selectedId;}
+    getSelectedEntryIds(){return [...this.selection.ids].filter(id=>this.entries.has(id));}
+    paintSelection(){
+        this.rows.forEach((row,id)=>{
+            row.classList.toggle('is-selected',id===this.selectedId);
+            row.classList.toggle('is-multiselected',this.selection.ids.has(id)&&id!==this.selectedId);
+            row.setAttribute('aria-selected',String(this.selection.ids.has(id)));
+        });
+    }
+    selectFromClick(id,event){
+        const visible=this.visibleRows.filter(row=>!row.kind).map(row=>row.id);
+        if(this.universeSection.collapsed||!visible.includes(id))return;
+        const previous=this.selectedId,touch=this.narrow||event.pointerType==='touch'||event.sourceCapabilities?.firesTouchEvents;
+        this.selection.click(id,{visible,range:!touch&&event.shiftKey,toggle:!touch&&!event.shiftKey&&(event.ctrlKey||event.metaKey)});
+        this.selectedId=this.selection.activeEntryId;this.paintSelection();
+        if(!this.selectedId){this.onSelectionEmpty?.();return;}
+        if(this.selectedId!==previous||(!event.ctrlKey&&!event.metaKey))this.onNavigate(this.selectedId,{preserveSidebarSelection:true});
+    }
+    select(id, { scroll = true, preserveMulti = false } = {}) {
+        if(!preserveMulti||this.selection.activeEntryId!==id)this.selection.single(id);
         this.selectedId = id || null;
         let changed = false;
         if (id) galaxyModel.ancestors(this.entries, id).forEach(parent => {
             if (!this.expanded.has(parent.id)) { this.expanded.add(parent.id); changed = true; }
         });
         if (changed || (id && !this.tree.contains(this.rows.get(id)))) this.render();
-        this.visibleRows?.forEach(({ id: rowId }) => {
-            const row = this.rows.get(rowId); row.classList.toggle("is-selected", rowId === id); row.setAttribute("aria-selected", String(rowId === id));
-        });
+        this.paintSelection();
         if (id) { this.activeId = id; this.updateTabStops(); if (scroll) this.scrollSelected(); }
     }
     scrollSelected() {
