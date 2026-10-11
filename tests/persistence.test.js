@@ -1,7 +1,7 @@
 const assert = require('node:assert/strict'), fs = require('node:fs'), vm = require('node:vm'), path = require('node:path');
 const {test} = require('node:test');
 const context = vm.createContext({Blob, structuredClone, URL});
-for (const file of ['config.js','model.js','portals.js','constellations.js','persistence/local-metadata-store.js',
+for (const file of ['config.js','model.js','portals.js','clipboard.js','constellations.js','persistence/local-metadata-store.js',
     'persistence/local-preferences-store.js','persistence/memory-stores.js','persistence/composition.js','services/universe-repository.js'])
     vm.runInContext(fs.readFileSync(path.join(__dirname,'..',file),'utf8'),context);
 const local = vm.runInContext('createLocalMetadataStore',context), prefs = vm.runInContext('createLocalPreferencesStore',context);

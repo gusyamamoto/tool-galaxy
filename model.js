@@ -213,11 +213,15 @@ const galaxyModel = {
         });
         return layout;
     },
+    effectiveRoots(entries, selectedIds) {
+        const selected=new Set(selectedIds);
+        return [...selected].filter(id=>entries.has(id)&&!this.ancestors(entries,id).some(parent=>selected.has(parent.id)));
+    },
     movePlan(entries, selectedIds, destinationId) {
         const selected=new Set(selectedIds);
         if(!selected.size||[...selected].some(id=>!entries.has(id)))return {roots:[],error:'A dragged item is no longer available.'};
         if(!entries.has(destinationId))return {roots:[],error:'The destination is no longer available.'};
-        const roots=[...selected].filter(id=>!this.ancestors(entries,id).some(parent=>selected.has(parent.id)));
+        const roots=this.effectiveRoots(entries,selected);
         for(const id of roots){
             const entry=entries.get(id);
             const error=this.validateChange({...entry,category:entry.category||'',parentId:destinationId},entries);

@@ -22,6 +22,7 @@ function createPersistence({config = cosmosConfig, sample = false, sampleSnapsho
         }
         methods.forEach(operation => service[operation] = (...args) => {
             try {
+                if(operation==='saveBatch'&&typeof adapter.saveBatch!=='function')throw new Error('This storage provider cannot make safe file copies.');
                 const result = adapter[operation](...args);
                 if (result?.then && store === 'metadata') {
                     result.catch(() => {});
@@ -35,7 +36,7 @@ function createPersistence({config = cosmosConfig, sample = false, sampleSnapsho
     return {
         scope, sample, diagnostics,
         metadata: boundary(metadata, 'metadata', ['load','save','clear']),
-        files: Object.assign(boundary(files, 'files', ['save','get','delete','deleteEntries','hasEntries']), {temporary: !!files.temporary}),
+        files: Object.assign(boundary(files, 'files', ['save','saveBatch','get','delete','deleteEntries','hasEntries']), {temporary: !!files.temporary}),
         preferences
     };
 }

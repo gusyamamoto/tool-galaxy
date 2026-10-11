@@ -153,8 +153,9 @@
             <button type="button" role="menuitem" data-action="create">Add item</button>
             <button type="button" role="menuitem" data-action="files">Add files</button>
             <button type="button" role="menuitem" data-action="constellation">Add to Constellation</button>
-            <button type="button" role="menuitem" data-action="portal" data-management-only>Add existing item</button>
             <button type="button" role="menuitem" data-action="edit">Rename</button>
+            <button type="button" role="menuitem" data-action="copy">Copy</button>
+            <button type="button" role="menuitem" data-action="paste">Paste</button>
             <button type="button" role="menuitem" data-action="archive" data-galaxy-only hidden>Archive Galaxy</button>
             <button type="button" role="menuitem" data-action="delete">Delete item</button>
             <button type="button" role="menuitem" data-action="open-portal" data-portal-action hidden>Go to original</button>
@@ -366,6 +367,23 @@
     <script src="background.js"></script>
     <script src="camera.js"></script>
     <script src="hierarchy.js"></script>
+    <dialog id="hierarchy-paste-dialog" class="collection-dialog" aria-labelledby="hierarchy-paste-title" aria-describedby="hierarchy-paste-description">
+        <h2 id="hierarchy-paste-title">Add items here</h2>
+        <p id="hierarchy-paste-description"></p>
+        <div class="paste-choices">
+            <button id="hierarchy-paste-copy" class="paste-choice" type="button" aria-labelledby="hierarchy-paste-copy-title" aria-describedby="hierarchy-paste-copy-description">
+                <span id="hierarchy-paste-copy-title" class="paste-choice-title">Make copies</span>
+                <span id="hierarchy-paste-copy-description" class="paste-choice-description">Create independent versions.</span>
+            </button>
+            <button id="hierarchy-paste-link" class="paste-choice" type="button" aria-labelledby="hierarchy-paste-link-title" aria-describedby="hierarchy-paste-link-description">
+                <span id="hierarchy-paste-link-title" class="paste-choice-title">Link existing items</span>
+                <span id="hierarchy-paste-link-description" class="paste-choice-description">Show these same items here too. Changes made in either place stay synced.</span>
+            </button>
+        </div>
+        <p id="hierarchy-paste-status" role="status" hidden></p>
+        <div class="form-actions"><button id="hierarchy-paste-cancel" type="button">Cancel</button></div>
+    </dialog>
+    <script src="clipboard.js"></script>
     <script src="script.js"></script>
 </body>
 </html>

@@ -67,6 +67,29 @@ function createUniverseRepository({persistence, canWrite = () => true}) {
             if(changed.length)this.save(next,{type:'items.moved',ids:changed});
             return {snapshot:next,roots:plan.roots,changed};
         },
+        async copyEntries(snapshot,roots,destination,newId,{readSnapshot=()=>snapshot,validate=()=>{}}={}) {
+            const plan=hierarchyCopies.plan(snapshot,roots,destination,newId),records=[];
+            for(const file of plan.files){
+                const old=await persistence.files.get(file.source.storageKey);
+                if(!old||old.entryId!==file.source.entryId||!(old.blob instanceof Blob)||old.blob.size!==file.source.size)throw new Error('A file is unavailable. Restore it before making copies.');
+                records.push({...old,key:file.metadata.storageKey,entryId:file.metadata.entryId});
+            }
+            let previous,next;
+            const commit=()=>{
+                validate();previous=readSnapshot();
+                const current=new Map(previous.entries.map(e=>[e.id,e])),original=new Map(snapshot.entries.map(e=>[e.id,e]));
+                const liveIds=new Set(roots.flatMap(id=>[...galaxyModel.subtreeIds(current,id)]));
+                const internal=state=>(state.portals||[]).filter(p=>plan.sourceIds.includes(p.parentEntryId)&&plan.sourceIds.includes(p.targetEntryId));
+                if(!current.has(destination)||liveIds.size!==plan.sourceIds.length||plan.sourceIds.some(id=>!liveIds.has(id)||JSON.stringify(current.get(id))!==JSON.stringify(original.get(id)))||JSON.stringify(internal(previous))!==JSON.stringify(internal(snapshot)))throw new Error('The copied items changed. Try Paste again.');
+                const occupied=new Set([...current.keys(),...(previous.portals||[]).map(p=>p.id)]);
+                if([...plan.copies,...plan.links].some(e=>occupied.has(e.id)))throw new Error('Copied item IDs are no longer available.');
+                next={...previous,entries:[...previous.entries,...plan.copies],portals:[...(previous.portals||[]),...plan.links]};
+                write(next,{type:'items.copied',ids:plan.rootIds});
+            };
+            if(records.length)await persistence.files.saveBatch(records,commit,()=>write(previous,{type:'items.copy-recovered',ids:plan.rootIds}));
+            else commit();
+            publish({type:'items.copied',ids:plan.rootIds});return {...plan,snapshot:next};
+        },
         archive(snapshot, record) {
             this.save({...snapshot, archivedGalaxies: [...(snapshot.archivedGalaxies || []), record]}, {type: 'galaxy.archived', ids: [record.galaxyId]});
         },
