@@ -79,8 +79,20 @@ CRUD/persistence, canonical drops, gallery rendering and touch checklists.
   separate from keyboard focus. Canvas, Search and ordinary explicit navigation
   return to single selection. Collapsing removes hidden secondary selections;
   if the active item becomes hidden, only that ordinary active selection remains,
-  preserving Content/drafts. Touch remains single-select. No bulk actions or
-  selection state are stored in hierarchy data.
+  preserving Content/drafts. Touch remains single-select. Selection state is
+  never stored in hierarchy data.
+  Desktop hierarchy rows also support internal move-only dragging. Dragging a
+  selected row carries the current set; dragging an unselected row activates and
+  moves only that item. Selected descendants of a selected ancestor are removed
+  from the effective root payload. The entire canonical move is validated again
+  at drop time, then committed in one metadata write before UI publication.
+  Invalid cycles, missing destinations and storage failures leave every parent
+  unchanged. Collapsed destinations stay collapsed, with the moved set and active
+  Content item retained until the next ordinary selection/disclosure interaction.
+  Only root parent IDs change; obsolete parent-relative root placements are
+  cleared through the existing layout path. IDs, descendant relationships,
+  content, collection memberships and Portal references are preserved. There is
+  no drag-copy, sibling-position reordering, canvas group drag or touch group drag.
   The small Cosmifold title stays above Search and three independently collapsible
   sections: Universe, Constellations and Archived Galaxies. Each heading and its
   chevron toggle only that section. Universe + opens the existing New Galaxy /

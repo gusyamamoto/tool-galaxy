@@ -1140,6 +1140,9 @@ summary:focus-visible { outline: 1px solid #b9d0e9; outline-offset: 3px; }
 }
 #galaxy .entry-node.content-drop-target { outline: 2px solid #a6c2d4; outline-offset: 5px; }
 .hierarchy-row.content-drop-target { background: #30435b66; box-shadow: inset 2px 0 #91adc9; }
+.hierarchy-row.hierarchy-move-target { background: #30435b66; outline: 1px solid #91adc980; outline-offset: -1px; }
+.hierarchy-row.hierarchy-move-invalid { outline: 1px solid #c28d8d80; outline-offset: -1px; }
+.hierarchy-row.is-moving { opacity: .75; }
 .hierarchy-row.content-drop-pending .tree-disclosure { color: #c0d1df; }
 @media (max-width:760px), (pointer:coarse) {
     #galaxy-starter { min-height: 44px; font-size: 16px; }

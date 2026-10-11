@@ -18,6 +18,28 @@ function setup() {
     const persistence = compose({metadata,files,preferences:{load:()=>({}),update:()=>{}}});
     return {metadata,files,persistence,repo:createRepository({persistence})};
 }
+
+test('group reparent commits one snapshot, preserves metadata/references and removes only obsolete root placements',()=>{
+    const {repo,metadata}=setup(),source=snapshot();
+    source.entries.push({id:'child',name:'Child',parentId:'a',content:{notes:{text:'Keep'},attachments:[{id:'bytes'}]},location:{label:'Keep place'}});
+    source.layout.push({id:'child',parentId:'a',radius:30});
+    const before=structuredClone(source);let writes=0;repo.subscribe(()=>writes++);
+    const result=repo.moveEntries(source,['a','child'],'keep');
+    assert.deepEqual(plain(result.roots),['a']);assert.equal(writes,1);
+    assert.deepEqual(plain(source),before,'the caller remains unchanged until persistence succeeds');
+    assert.equal(result.snapshot.entries.find(e=>e.id==='a').parentId,'keep');
+    assert.deepEqual(plain(result.snapshot.entries.find(e=>e.id==='child')),before.entries.at(-1));
+    assert.deepEqual(plain(result.snapshot.portals),before.portals);assert.deepEqual(plain(result.snapshot.constellations),before.constellations);
+    assert.deepEqual(plain(result.snapshot.layout),[before.layout.at(-1)]);
+    assert.equal(metadata.load().entries.length,source.entries.length);
+});
+test('invalid groups and metadata save failures never partially reparent',()=>{
+    const {repo,metadata}=setup(),source=snapshot(),before=plain(source);
+    assert.throws(()=>repo.moveEntries(source,['keep','g'],'a'),/ancestor/);
+    assert.deepEqual(plain(source),before);assert.deepEqual(plain(metadata.load()),before);
+    const failing=createRepository({persistence:compose({metadata:{load:()=>source,save(){throw new Error('quota');},clear(){}},files:memoryFiles(),preferences:{}})});
+    assert.throws(()=>failing.moveEntries(source,['a'],'keep'),/quota/);assert.deepEqual(plain(source),before);
+});
 test('default local keys, scoped data and independent UI preferences round-trip without migration', () => {
     const browser = storage(), source = () => browser;
     const original = local({storage:source}), scoped = local({storage:source,scope:'account/workspace'}), other = local({storage:source,scope:'another'});
