@@ -27,11 +27,11 @@ test('development query is explicit and generation deterministic and isolated',(
     assert.equal(fs.readFileSync(path.join(__dirname,'../sample-data.js'),'utf8').includes('localStorage'),false);
 });
 
-test('187 entries exercise four Galaxies, eight Suns and compact Astronaut branches through depth eight',()=>{
+test('282 entries retain the original hierarchy and include dense stress families',()=>{
     const snapshot=sample.build(),entries=new Map(snapshot.entries.map(e=>[e.id,model.normalizeEntry(e)]));
-    model.normalizeHierarchy(entries);assert.equal(entries.size,187);
+    model.normalizeHierarchy(entries);assert.equal(entries.size,282);
     const counts={};entries.forEach(e=>{counts[e.role]=(counts[e.role]||0)+1;assert.equal(model.validateChange(e,entries),'');});
-    assert.deepEqual(counts,{galaxy:4,sun:8,planet:24,moon:48,satellite:96,astronaut:7});
+    assert.deepEqual(counts,{galaxy:4,sun:8,planet:49,moon:48,satellite:126,astronaut:47});
     assert.equal(entries.get('sample-deep-7').depth,7);
     assert.equal(entries.get('sample-deep-8').depth,8);
     assert.equal(model.childrenOf(entries,'sample-deep-5').length,4);
@@ -39,7 +39,20 @@ test('187 entries exercise four Galaxies, eight Suns and compact Astronaut branc
     assert.ok(galaxies.every(e=>model.childrenOf(entries,e.id).length===2));
     assert.equal(new Set(galaxies.map(e=>appearance.resolve(e).archetype)).size,4);
     assert.equal(new Set([...entries.values()].filter(e=>e.depth===2).map(e=>appearance.resolve(e).archetype)).size,6);
-    assert.equal(model.buildHierarchyEdges(entries).length,183);assert.deepEqual(plain(snapshot.layout),[]);
+    assert.equal(model.buildHierarchyEdges(entries).length,278);assert.deepEqual(plain(snapshot.layout),[]);
+});
+test('numbered Sample stress siblings have canonical parent relationships and derived roles',()=>{
+    const entries=new Map(sample.build().entries.map(e=>[e.id,model.normalizeEntry(e)]));model.normalizeHierarchy(entries);
+    for(const [kind,count,parent] of [['Planet',25,'sample-sun-0'],['Satellite',30,'sample-moon-0-0-0'],['Astronaut',40,'sample-satellite-0-0-0-0']]){
+        const siblings=model.childrenOf(entries,parent).filter(e=>e.id.startsWith(`sample-stress-${kind.toLowerCase()}-`));
+        assert.equal(siblings.length,count);
+        for(let i=1;i<=count;i++){
+            const number=String(i).padStart(2,'0'),entry=entries.get(`sample-stress-${kind.toLowerCase()}-${number}`);
+            assert.equal(entry.parentId,parent);assert.equal(entry.name,`${kind} ${number}`);assert.equal(entry.role,kind.toLowerCase());
+        }
+    }
+    assert.equal([...entries.values()].filter(e=>!e.id.startsWith('sample-stress-')).length,187);
+    assert.equal(entries.get('sample-satellite-0-0-0-0').name,'VS Code');
 });
 
 test('Sample contains hierarchy, Portals and rich content without a semantic Connection collection',()=>{

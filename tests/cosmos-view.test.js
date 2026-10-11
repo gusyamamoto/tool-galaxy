@@ -3,20 +3,50 @@ const { test } = require('node:test');
 function load() { const context = vm.createContext({}); vm.runInContext(fs.readFileSync(path.join(__dirname, '../cosmos-view.js'), 'utf8'), context); return vm.runInContext('cosmosView', context); }
 const plain = value => JSON.parse(JSON.stringify(value));
 
+test('deep label and tether disclosure is staggered, gradual and presentation-only',()=>{
+    const view=load(),ids=Array.from({length:40},(_,i)=>`sample-stress-astronaut-${String(i).padStart(2,'0')}`);
+    for(const role of ['satellite','astronaut'])for(const id of ids){
+        let last=0;
+        for(let scale=.8;scale<=12;scale+=.02){const opacity=view.labelDisclosure(role,scale,id);assert.ok(opacity>=last&&opacity<=1);assert.ok(opacity-last<.03);last=opacity;}
+        assert.equal(view.labelDisclosure(role,.9,id),0);assert.equal(view.labelDisclosure(role,12,id),1);
+    }
+    assert.equal(view.labelDisclosure('astronaut',1.8,ids[0]),0);
+    assert.ok(new Set(ids.map(id=>view.labelDisclosure('astronaut',5,id))).size>10,'individual labels do not reveal as one batch');
+    assert.equal(view.deepTetherOpacity(1.8,ids[0]),0);assert.equal(view.deepTetherOpacity(12,ids[0]),.14);
+    assert.equal(view.deepTetherOpacity(.9,ids[0],true),.25);
+    assert.deepEqual(plain(view.tiers),{galaxy:.45,system:.58,close:.78});
+    assert.equal(view.constellationVisibility(1.6,'astronaut',{member:true}).label,1,'existing Constellation label behavior is preserved');
+});
+
 test('screen diameters plateau independently by role while semantic detail keeps revealing', () => {
     const view = load(), sizes = { sun: 52, planet: 28.6, moon: 13.52, satellite: 9.88, astronaut: 7.28 };
-    const caps = { sun: 76, planet: 44, moon: 25, satellite: 18, astronaut: 14 };
+    const caps = { sun: 100, planet: 32, moon: 16, satellite: 12, astronaut: 8 };
     for (const [role, diameter] of Object.entries(sizes)) {
-        assert.equal(view.renderedDiameter(role, diameter, 1), diameter);
+        assert.equal(view.renderedDiameter(role, diameter, 1), Math.min(caps[role],diameter*(view.visualScale[role]||1)));
         assert.equal(view.renderedDiameter(role, diameter, 3), caps[role]);
-        assert.equal(view.renderedDiameter(role, diameter, 100), caps[role]);
+        assert.equal(view.renderedDiameter(role, diameter, 100), view.inspectionCaps[role]||caps[role]);
         let previous = 0;
         for (let scale = .1; scale < 3; scale += .01) {
             const size = view.renderedDiameter(role, diameter, scale, view.detail(scale)[role]);
             assert.ok(size >= previous && size <= caps[role]); previous = size;
         }
     }
-    assert.equal(view.detail(1.6).astronautLabel, 1);
+    assert.equal(view.detail(1.6).astronautLabel, 0);
+});
+
+test('detail inspection scales smoothly without changing normal caps or larger roles',()=>{
+    const view=load();
+    for(const [role,normal,close] of [['satellite',12,26],['astronaut',8,14]]){
+        for(const scale of [.1,1,1.8,2.4,3])assert.equal(view.renderCap(role,scale),normal);
+        assert.equal(view.renderCap(role,6),(normal+close)/2);assert.equal(view.renderCap(role,9),close);assert.equal(view.renderCap(role,12),close);
+        assert.ok(Math.abs(view.renderCap(role,3.0001)-normal)<.00001);
+        assert.ok(Math.abs(view.renderCap(role,8.9999)-close)<.00001);
+        let previous=normal;
+        for(let scale=3;scale<=12;scale+=.03){const cap=view.renderCap(role,scale);assert.ok(cap>=previous&&cap<=close);previous=cap;}
+        assert.equal(view.bodyCaps[role],normal,'inspection must not rewrite normal visual caps');
+    }
+    for(const role of ['sun','planet','moon'])for(const scale of [1,3,6,9,12])assert.equal(view.renderCap(role,scale),view.bodyCaps[role]);
+    for(const scale of [1.8,3,6,9,12])assert.ok(view.renderCap('satellite',scale)>view.renderCap('astronaut',scale));
 });
 
 test('Constellation lens keeps bodies distinct from labels and restores non-entry context through normal role fades', () => {
@@ -152,6 +182,6 @@ test('Astronauts and tethers extend detail fades without changing existing tier 
     assert.ok(view.detail(.8).astronaut>0 && view.detail(.8).astronaut<1);
     assert.equal(view.detail(.78).tethers,0);
     assert.equal(view.detail(.96).astronaut,1);assert.equal(view.detail(.96).astronautLabel,0);assert.equal(view.detail(.96).tethers,1);
-    assert.ok(view.detail(1.35).astronautLabel>0&&view.detail(1.35).astronautLabel<1);assert.equal(view.detail(1.52).astronautLabel,1);
+    assert.ok(view.detail(5).astronautLabel>0&&view.detail(5).astronautLabel<1);assert.equal(view.detail(8).astronautLabel,1);
     assert.deepEqual(plain(view.tiers),{galaxy:.45,system:.58,close:.78});
 });

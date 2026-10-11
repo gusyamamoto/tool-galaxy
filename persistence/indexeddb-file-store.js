@@ -15,7 +15,7 @@ function createIndexedDbFileStore({indexedDB = globalThis.indexedDB, scope = nul
                 const store = request.result.createObjectStore("files", { keyPath: "key" });
                 store.createIndex("entryId", "entryId", { unique: false });
             };
-            request.onblocked = () => { failed = true; reject(new Error("Close other Galaxy tabs and try the file action again.")); };
+            request.onblocked = () => { failed = true; reject(new Error("Close other Cosmifold tabs and try the file action again.")); };
             request.onerror = () => reject(request.error);
             request.onsuccess = () => {
                 const db = request.result;

@@ -206,8 +206,8 @@ button:disabled { opacity: 0.45; cursor: default; }
     position: absolute;
     top: 0;
     left: 0;
-    width: min(var(--body-cap, 76px), calc(var(--node-size) * var(--body-scale) * var(--body-render-scale)));
-    height: min(var(--body-cap, 76px), calc(var(--node-size) * var(--body-scale) * var(--body-render-scale)));
+    width: min(var(--body-cap, 76px), calc(var(--node-size) * var(--body-scale) * var(--body-visual-scale, 1) * var(--body-render-scale)));
+    height: min(var(--body-cap, 76px), calc(var(--node-size) * var(--body-scale) * var(--body-visual-scale, 1) * var(--body-render-scale)));
     display: flex;
     align-items: center;
     justify-content: center;
@@ -350,13 +350,13 @@ button:disabled { opacity: 0.45; cursor: default; }
     border-color: hsl(var(--body-hue) 35% 75% / 0.56);
 }
 
-.entry-node.selected {
+.entry-node.selected:not(.canvas-selection-muted) {
     border-color: #bbcee5;
     outline: 1px solid rgba(190, 209, 232, 0.65);
     outline-offset: 2px;
 }
 
-.entry-node.selected .node-label {
+.entry-node.selected:not(.canvas-selection-muted) .node-label {
     color: #fff;
     font-weight: 600;
     max-width: calc(46px * var(--body-scale) + 52px);
@@ -408,14 +408,15 @@ button:disabled { opacity: 0.45; cursor: default; }
 .entry-node[data-body="astronaut"] { --body-render-scale: var(--astronaut-render-scale, 1); opacity: calc(var(--astronaut-detail, 0)*var(--context-opacity, 1)); }
 .entry-node[data-body="planet"] .node-label { opacity: var(--planet-label-detail, 1); }
 .entry-node[data-body="moon"] .node-label { opacity: var(--moon-label-detail, 1); }
-.entry-node[data-body="satellite"] .node-label { opacity: var(--satellite-label-detail, 1); }
-.entry-node[data-body="astronaut"] .node-label { opacity: var(--astronaut-label-detail, 0); }
+.entry-node[data-body="satellite"] .node-label { opacity: var(--detail-label-opacity, var(--satellite-label-detail, 1)); }
+.entry-node[data-body="astronaut"] .node-label { opacity: var(--detail-label-opacity, var(--astronaut-label-detail, 0)); }
 .entry-node[data-body="sun"] .node-label { font-size: 10px; }
 .entry-node[data-body="sun"] .node-label { opacity: var(--sun-label-detail,1); }
 .node-hit-area { position: absolute; left: 50%; top: 50%; width: max(24px,100%); height: max(24px,100%); transform: translate(-50%,-50%); border-radius: 50%; background: transparent; }
 @media (pointer: coarse) { .node-hit-area { width: max(44px,100%); height: max(44px,100%); } }
 #galaxy .node-label[data-density-hidden="true"] { opacity: 0 !important; pointer-events: none; }
-#galaxy .entry-node:is(.selected,:hover,:focus-visible,.dragging) .node-label { opacity: 1 !important; }
+#galaxy .entry-node:not(.canvas-selection-muted):is(.selected,:hover,:focus-visible,.dragging) .node-label { opacity: 1 !important; }
+#galaxy #nodes-layer .entry-node.canvas-selection-muted { outline: none !important; }
 #galaxy .entry-node.label-priority .node-label { opacity: 1 !important; }
 #galaxy .entry-node:not([data-body="galaxy"]):is(.selected,:hover,:focus-visible,.dragging) .node-label { font-size: 10px; }
 .entry-node .node-label { pointer-events: auto; }
@@ -436,6 +437,7 @@ button:disabled { opacity: 0.45; cursor: default; }
 .orbit-guide:not([data-active="true"]) { display: none; }
 
 .galaxy-region { position: absolute; top: 0; left: 0; width: 512px; height: 512px; transform-origin: 0 0; opacity: var(--galaxy-cloud-detail, .92); pointer-events: none; }
+.galaxy-region.is-selected { filter: brightness(1.2); }
 #galaxy.is-settling .galaxy-region:not([data-culled="true"]):not([data-semantic-hidden="true"]) { will-change: transform; }
 #galaxy .entry-node[data-culled="true"], .galaxy-region[data-culled="true"] { visibility: hidden; pointer-events: none; will-change: auto; }
 #galaxy .entry-node[data-semantic-hidden="true"] { pointer-events: none; }
@@ -445,7 +447,9 @@ button:disabled { opacity: 0.45; cursor: default; }
 #galaxy .entry-node[data-body="galaxy"] { width: 140px; height: 28px; border: 0; border-radius: 8px; box-shadow: none; background: transparent; z-index: 0; }
 #galaxy .entry-node[data-body="galaxy"]::before, #galaxy .entry-node[data-body="galaxy"]::after { content: none; }
 #galaxy .entry-node[data-body="galaxy"] .node-label { top: 5px; width: max-content; max-width: 180px; font-size: var(--galaxy-label-size, 16px); line-height: 1.25; font-weight: 600; letter-spacing: .035em; opacity: 1; color: hsl(var(--body-hue) 30% 92%); text-shadow: 0 1px 4px #02040a, 0 0 10px #02040ae6; }
-#galaxy .entry-node[data-body="galaxy"].selected { outline-color: hsl(var(--body-hue) 24% 65% / .4); outline-offset: 2px; }
+#galaxy #nodes-layer .entry-node[data-body="galaxy"]:is(.selected,:focus-visible) { outline: none; }
+#galaxy #nodes-layer .entry-node[data-body="galaxy"].selected .node-label { color: hsl(var(--body-hue) 65% 98.5%); font-weight: 700; }
+#galaxy #nodes-layer .entry-node[data-body="galaxy"]:focus-visible .node-label { text-decoration: underline; text-decoration-color: #b9d0e9; text-underline-offset: 4px; }
 #nodes-layer .entry-node:is([data-body="satellite"],[data-body="astronaut"]) { background: transparent; border: 0; border-radius: 3px; box-shadow: none; }
 #nodes-layer .entry-node:is([data-body="satellite"],[data-body="astronaut"])::before, #nodes-layer .entry-node:is([data-body="satellite"],[data-body="astronaut"])::after { content: none; }
 .satellite-craft, .astronaut-figure { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
@@ -1262,11 +1266,15 @@ summary:focus-visible { outline: 1px solid #b9d0e9; outline-offset: 3px; }
 .sidebar-section-toggle[aria-expanded="true"] svg { transform: rotate(90deg); }
 .sidebar-section-toggle:is(:hover,:focus-visible) { color: #c3d3e4; }
 .sidebar-section-toggle:focus-visible { outline: 1px solid #839ab5; outline-offset: 2px; }
+.universe-heading-controls { display: flex; align-items: center; gap: 6px; }
+.universe-heading-controls #universe-toggle { flex: 0 0 32px; width: 32px; justify-content: center; }
+.universe-heading-controls #universe-home { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; }
 #archived-galaxy-list { margin: 0; padding: 0 12px 0 14px; max-height: 22dvh; }
 #sample-utility { flex: 0 0 auto; margin: 0; padding-top: 3px; max-height: 22dvh; overflow: auto; color: #73849b; scrollbar-width: thin; scrollbar-color: #344359 transparent; }
 #sample-utility summary { padding: 4px 0; font-size: 10px; cursor: pointer; }
 @media (max-width:760px), (pointer:coarse) {
     .sidebar-section-toggle { min-height: 44px; }
+    .universe-heading-controls #universe-toggle { flex-basis: 44px; width: 44px; }
     .sidebar-section-header .collection-add { width: 44px; height: 44px; opacity: 1; pointer-events: auto; }
     #sample-utility summary,#hierarchy-sidebar #sample-controls button { min-height: 44px; }
 }

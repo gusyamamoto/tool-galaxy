@@ -46,6 +46,18 @@ const galaxySample = {
         add("sample-eva-seasoning", "Seasoning balance", deep);
         add("sample-eva-crust", "Crust notes", deep);
         add("sample-eva-resting", "Resting time", deep);
+        // Deliberately crowded Sample families use ordinary canonical parents.
+        // Existing entries/content stay intact; no production entity flags.
+        for (const [kind, count, parentId] of [
+            ['Planet', 25, 'sample-sun-0'],
+            ['Satellite', 30, 'sample-moon-0-0-0'],
+            ['Astronaut', 40, 'sample-satellite-0-0-0-0']
+        ]) {
+            for (let index = 1; index <= count; index++) {
+                const number = String(index).padStart(2, '0');
+                add(`sample-stress-${kind.toLowerCase()}-${number}`, `${kind} ${number}`, parentId);
+            }
+        }
         const rename = (id, name) => {
             const entry = entries.find(entry => entry.id === id);
             entry.name = name; entry.description = `Explore ${name}.`;
