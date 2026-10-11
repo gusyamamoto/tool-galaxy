@@ -31,6 +31,9 @@ class GalaxyPhysics {
             node.radius = entry.role === "galaxy" ? 0 : this.baseNodeRadius * node.sizeScale;
             if (placements !== null) node.placement = this.copyPlacement(placements.get(entry.id));
             if (parentChanged && !fresh.has(entry.id)) node.placement = null;
+            if (parentChanged) { node.softBandIndex = null; node.bandOverflowTicks = 0; }
+            node.familyTravelAngle = null;
+            node.freshFamily = fresh.has(entry.id);
             this.releaseConstraint(node); next.set(node.id, node);
         });
         this.particles = next;
@@ -51,6 +54,7 @@ class GalaxyPhysics {
                     node.y = node.parent.y + Math.sin(angle) * node.orbitRadius; }
             }
             node.lastX = node.x; node.lastY = node.y;
+            node.freshFamily = false;
         });
         this.simulation.alphaTarget(this.dragging.size ? .1 : 0); this.reheat(reheat);
     }
@@ -91,27 +95,40 @@ class GalaxyPhysics {
             // Count, never depth: many figures need area, but a deep chain must
             // not accumulate another full orbital envelope at every level.
             const density=Math.max(1,...members.map(node=>this.children.get(node.parentId)?.length||1));
-            this.particles.get(id).clusterRadius = 54 + Math.sqrt(members.length) * 18 + Math.min(20,Math.sqrt(Math.max(0,density-3))*4);
+            const anchor = this.particles.get(id);
+            anchor.clusterRadius = (12 + Math.sqrt(members.length) * 6 + Math.sqrt(density) * 1.5) * this.baseNodeRadius / 13;
+            anchor.manualClusterRadius = Math.max(anchor.clusterRadius, ...members.map(node => node.placement?.parentId === node.parentId ? Math.min(150, node.placement.radius + 8) : 0));
         });
         [...this.ordered].reverse().forEach(parent => {
+            parent.softBands = null;
+            parent.softBandSafetyRadius = null;
             const children = this.children.get(parent.id), largest = Math.max(0, ...children.map(child => child.envelope));
+            parent.descendantCount = children.reduce((sum, child) => sum + 1 + child.descendantCount, 0);
+            parent.familyFootprint = parent.radius + this.familyGap(parent) * .5;
             if (parent.depth >= 4) {
                 const phase = this.floatAngleFor(parent.id);
                 children.forEach((child, index) => {
-                    const clearance = parent.radius + child.radius + (parent.role === "astronaut" ? 22 : 26);
-                    child.orbitRadius = clearance + this.deepSiblingBoost(parent.id) + 9 * Math.sqrt(index);
+                    const clearance = parent.radius + child.radius + (parent.role === 'astronaut' ? 2 : 3);
+                    child.orbitRadius = clearance + (parent.role === 'astronaut' ? 2.5 : 4) * Math.sqrt(index);
                     child.orbitAngle = phase + index * 2.39996323;
                 });
                 parent.childOrbit = 0; // Compact floating clusters have no orbit guide.
-                parent.envelope = parent.role === "satellite" ? Math.max(parent.radius + 14, parent.clusterRadius + 14) : parent.radius + 28;
+                // Estimate detail clusters by count rather than recursively
+                // adding a full envelope at every level of an Astronaut chain.
+                if (children.length) parent.familyFootprint = parent.role === 'satellite' ? Math.max(parent.familyFootprint, parent.manualClusterRadius + 4) : Math.max(parent.familyFootprint, 8 + Math.sqrt(parent.descendantCount) * 5);
+                parent.envelope = parent.familyFootprint;
                 return;
             }
-            // Size the local band from direct siblings, with a bounded allowance
-            // for their branches. A deep chain must not recursively inflate it.
+            // Retain the former preference only as a legacy drag safety range;
+            // the new bands below account for the full child family footprint.
             const local = Math.max(0, ...children.map(child => child.radius +
                 Math.min(parent.depth === 1 ? 28 : 14, Math.max(0, child.envelope - child.radius) * .18)));
             const clearance = parent.depth === 1 ? 82 : parent.depth === 2 ? 48 : 26;
             const minimum = parent.radius + local + clearance;
+            if (parent.depth >= 1 && children.length) {
+                this.buildSoftBands(parent, children, minimum, local, largest);
+                return;
+            }
             const spacing = children.length > 1 ? (local + 26) * this.siblingClearanceFactor(parent.depth+1) / Math.sin(Math.PI / children.length) : 0;
             const band = children.length ? Math.max(minimum, spacing) : 0;
             // Tighten only direct Moon/Satellite preferences. Keep the original
@@ -120,6 +137,7 @@ class GalaxyPhysics {
             const localFactor = parent.depth === 2 ? .82 : parent.depth === 3 ? .75 : 1;
             parent.childOrbit = band * localFactor;
             parent.envelope = children.length ? band + largest + 12 : parent.radius + 14;
+            parent.familyFootprint = parent.envelope;
             const phase = this.angleFor(parent.id);
             children.forEach((child, index) => {
                 child.orbitRadius = parent.childOrbit; child.orbitAngle = phase + index * Math.PI * 2 / children.length;
@@ -134,13 +152,39 @@ class GalaxyPhysics {
                 parent.envelope = Math.max(120, ...children.map(child => child.orbitRadius + child.envelope + 40));
             }
         });
-        // Stable ID order allocates broad Planet sectors. Slight deterministic
-        // variation avoids perfect circles; descendants use their parent's local
-        // outward direction instead of unrelated global angles.
+        // Stable ID order seeds footprint-weighted family arcs. These angles
+        // initialize fresh bodies; live band attraction remains radial only.
         this.ordered.forEach(parent => {
             const children = this.children.get(parent.id);
             if (!children.length || parent.depth === 0 || parent.depth >= 4) return;
             const siblings = [...children].sort((a, b) => a.id.localeCompare(b.id));
+            if (parent.softBands) {
+                // Angles seed new bodies only; the live force prefers radius,
+                // leaving each untouched sibling free to find its own angle.
+                parent.softBands.forEach((band, bandIndex) => {
+                    const members = siblings.filter(child => child.softBandIndex === bandIndex);
+                    const phase = this.floatAngleFor(parent.id) + bandIndex * 1.2;
+                    const span = parent.role === 'sun' ? Math.PI * 2 : 4.8;
+                    const weights = members.map(child => child.familyFootprint + this.familyGap(parent));
+                    const sum = weights.reduce((a, b) => a + b, 0);
+                    let cursor = 0;
+                    members.forEach((child, index) => {
+                        const variation = this.floatAngleFor(child.id) / (Math.PI * 2) - .5;
+                        child.orbitRadius = this.bandPreference(child, band);
+                        const step = span * weights[index] / sum;
+                        if (parent.role === 'sun') {
+                            child.orbitAngle = phase + cursor + step * .5 + variation * step * .12;
+                            child.sectorHalfAngle = Math.min(Math.PI * .85, step * .44);
+                        } else {
+                            child.localAngleOffset = members.length === 1 ? variation * .7 : -span / 2 + cursor + step * .5 + variation * .12;
+                            child.orbitAngle = parent.orbitAngle + child.localAngleOffset;
+                        }
+                        cursor += step;
+                    });
+                });
+                this.placeFamilySectors(parent);
+                return;
+            }
             const phase = this.floatAngleFor(parent.id), step = Math.PI * 2 / siblings.length;
             siblings.forEach((child, index) => {
                 const variation = this.floatAngleFor(child.id) / (Math.PI * 2) - .5;
@@ -156,6 +200,12 @@ class GalaxyPhysics {
                     child.orbitRadius = parent.childOrbit * (1 + variation * .08);
                 }
             });
+        });
+        // Descendant gap promotions can enlarge a reservation after the first
+        // radial pass. Propagate that estimate bottom-up before packing ancestors.
+        [...this.ordered].reverse().forEach(parent=>{
+            if(parent.softBands)this.placeFamilySectors(parent);
+            else if(parent.depth===0){parent.envelope=Math.max(parent.envelope,...this.children.get(parent.id).map(n=>n.orbitRadius+n.envelope+40));parent.familyFootprint=parent.envelope;}
         });
         const regions = [...this.galaxies.values()];
         const largest = Math.max(120, ...regions.map(region => region.root.envelope));
@@ -183,6 +233,124 @@ class GalaxyPhysics {
         const hash = [...id].reduce((value, char) => (Math.imul(value, 31) + char.charCodeAt(0)) >>> 0, 0);
         return hash / 4294967296 * Math.PI * 2;
     }
+    buildSoftBands(parent, children, minimum, local, largest) {
+        const sun = parent.role === 'sun';
+        const unit = this.baseNodeRadius / 13, gap = this.familyGap(parent);
+        const reference = ({sun:220, planet:80, moon:35}[parent.role] || 35) * unit;
+        // Local radial preference is separate from the full family reservation.
+        // Sparse families compress; count and the children's occupied area grow
+        // it smoothly. Full footprints still determine band/angular capacity.
+        const capacity = sun ? 8 : 6;
+        const areaDemand = Math.sqrt(children.reduce((total, child) =>
+            total + (child.familyFootprint + gap * .5) ** 2, 0) / capacity);
+        const descendantDemand = Math.sqrt(children.reduce((total, child) =>
+            total + Math.max(0, child.familyFootprint - child.radius) ** 2, 0) / capacity);
+        const base = Math.max(reference * (.5 + .5 * Math.sqrt(children.length / 8)) + descendantDemand * .2, areaDemand);
+        const required = child => Math.max(base, parent.radius + child.familyFootprint + gap);
+        const first = Math.max(base, Math.min(...children.map(required)));
+        const span = sun ? Math.PI * 2 : 4.8, bands = [];
+        const angle = (child, radius) => 2 * Math.asin(Math.min(.95, (child.familyFootprint + gap * .5) / radius));
+        const sorted = [...children].sort((a, b) => a.id.localeCompare(b.id));
+        const ordered = [...sorted.filter(n => Number.isInteger(n.softBandIndex)), ...sorted.filter(n => !Number.isInteger(n.softBandIndex))];
+        ordered.forEach(child => {
+            let assigned = false;
+            const start = Number.isInteger(child.softBandIndex) ? Math.min(2, child.softBandIndex) : 0;
+            for (let index = start; index < 3; index++) {
+                const band = bands[index] ||= {radius:first * 1.65 ** index, members:[]};
+                const capacity = index === 2 ? Infinity : sun ? (index ? 12 : 8) : (index ? 10 : 6);
+                if (index < 2 && (required(child) > band.radius * 1.16 * .94 || band.members.length >= capacity || band.members.reduce((total, n) => total + angle(n, band.radius), 0) + angle(child, band.radius) > span * .9)) continue;
+                band.members.push(child); child.softBandIndex = index; assigned = true;
+                if (index === 2) {
+                    band.radius = Math.max(band.radius, required(child));
+                    // Expand only this crowded band, in derived layout state.
+                    while (band.members.reduce((total, n) => total + angle(n, band.radius), 0) > span * .9) band.radius *= 1.08;
+                }
+                break;
+            }
+            if (!assigned) throw new Error('Unable to assign a derived orbital band');
+        });
+        // Keep indices stable even when the innermost territory is empty.
+        parent.softBands = bands.map(band => ({radius:band.radius, inner:band.radius*.84, outer:band.radius*1.16, count:band.members.length}));
+        parent.childOrbit = first;
+        // Existing v5 manual arrangements can use the former wider safety
+        // territory. Keep those legitimate preferences; new drops still use
+        // the compact band's ordinary bounded range.
+        const oldSpacing = children.length > 1 ? (local + 26) * this.siblingClearanceFactor(parent.depth + 1) / Math.sin(Math.PI / children.length) : 0;
+        parent.softBandSafetyRadius = Math.max(minimum, oldSpacing) * (sun ? 1 : .82);
+        children.forEach(child => { child.orbitRadius = this.bandPreference(child, parent.softBands[child.softBandIndex]); });
+        parent.familyFootprint = Math.max(parent.radius + gap, ...children.map(child => parent.softBands[child.softBandIndex].radius * 1.03 + child.familyFootprint + gap * .5));
+        parent.envelope = parent.familyFootprint;
+    }
+    bandPreference(child, band) {
+        const gap = this.familyGap(child.parent);
+        const demand = Math.max(0, Math.min(1, (child.familyFootprint-child.radius-gap)/(band.radius*.6)));
+        return band.inner + (band.outer-band.inner)*(.15+.7*demand);
+    }
+    familySector(child, radius=child.orbitRadius) {
+        return Math.asin(Math.min(.98,(child.familyFootprint+this.familyGap(child.parent)*.5)/Math.max(1,radius)));
+    }
+    familyAngularClearance(a, ar, b, br) {
+        const clearance=(a.familyFootprint+b.familyFootprint+this.familyGap(a.parent))*1.08;
+        if(Math.abs(ar-br)>=clearance)return 0;
+        if(ar+br<=clearance)return Math.PI;
+        return Math.acos(Math.max(-1,Math.min(1,(ar*ar+br*br-clearance*clearance)/(2*ar*br))));
+    }
+    placeFamilySectors(parent, live=false) {
+        const children=this.children.get(parent.id);
+        if(!parent.softBands||children.length<2)return;
+        const wrap=angle=>Math.atan2(Math.sin(angle),Math.cos(angle));
+        // Manual/held roots are obstacles, then larger branches reserve space
+        // first. This is a layout search across ALL bands, not a live repulsion.
+        const manual=n=>n.fx!=null||n.placement?.parentId===parent.id;
+        const ordered=[...children].sort((a,b)=>Number(manual(b))-Number(manual(a))||b.familyFootprint-a.familyFootprint||a.id.localeCompare(b.id));
+        const occupied=[];
+        for(const child of ordered){
+            const existing=manual(child)||live||!child.freshFamily||!child.seedLayout;
+            const current=existing?Math.atan2(child.y-parent.y,child.x-parent.x):child.orbitAngle;
+            let radius=manual(child)?Math.max(1,Math.hypot(child.x-parent.x,child.y-parent.y)):child.orbitRadius;
+            let desired=current, chosen=null;
+            for(let attempt=0;attempt<10;attempt++){
+                const exclusions=occupied.map(other=>({other,half:this.familyAngularClearance(child,radius,other.node,other.radius)})).filter(e=>e.half>0);
+                const candidates=[desired,...exclusions.flatMap(e=>[e.other.angle-e.half-.025,e.other.angle+e.half+.025])];
+                chosen=candidates.filter(angle=>exclusions.every(e=>Math.abs(wrap(angle-e.other.angle))>=e.half+.005))
+                    .sort((a,b)=>Math.abs(wrap(a-desired))-Math.abs(wrap(b-desired)))[0];
+                if(manual(child)){chosen=current;break;}
+                if(chosen!==undefined)break;
+                // Only exhausted gaps promote. No demotion; the outermost
+                // band can expand under the existing adaptive three-band limit.
+                if(child.softBandIndex<2)child.softBandIndex++;
+                const index=child.softBandIndex;
+                let band=parent.softBands[index];
+                if(!band){const r=parent.childOrbit*1.65**index;band=parent.softBands[index]={radius:r,inner:r*.84,outer:r*1.16,count:0};}
+                if(attempt&&index===2){band.radius*=1.15;band.inner=band.radius*.84;band.outer=band.radius*1.16;}
+                if(attempt===8&&index===2){
+                    // Last-band fallback still reserves a real gap, rather
+                    // than silently accepting an overlapping parent center.
+                    band.radius=Math.max(band.radius,...occupied.map(o=>(o.radius+(child.familyFootprint+o.node.familyFootprint+this.familyGap(parent))*1.08)/.88));
+                    band.inner=band.radius*.84;band.outer=band.radius*1.16;
+                }
+                child.orbitRadius=this.bandPreference(child,band);radius=child.orbitRadius;
+            }
+            chosen=chosen??current;
+            child.angularFamilyHalf=this.familySector(child,radius);
+            child.sectorHalfAngle=Math.max(child.sectorHalfAngle||0,Math.min(Math.PI*.85,child.angularFamilyHalf));
+            if(!manual(child)){
+                if(existing&&Math.abs(wrap(chosen-current))>.025)child.familyTravelAngle=chosen;
+                if(!existing){child.orbitAngle=chosen;if(parent.role!=='sun')child.localAngleOffset=wrap(chosen-parent.orbitAngle);}
+            }
+            occupied.push({node:child,radius,angle:chosen});
+        }
+        children.filter(n=>!manual(n)).forEach(n=>{
+            n.orbitRadius=this.bandPreference(n,parent.softBands[n.softBandIndex]);
+            n.angularFamilyHalf=this.familySector(n);
+        });
+        parent.softBands.forEach((band,index)=>{band.count=children.filter(n=>n.softBandIndex===index).length;});
+        // Promotion changes the containing reservation, not the child's local
+        // orbit or coordinates. Ancestors consume this reservation on rebuild.
+        parent.familyFootprint=Math.max(parent.familyFootprint,...children.map(n=>parent.softBands[n.softBandIndex].radius*1.03+n.familyFootprint+this.familyGap(parent)*.5));
+        parent.envelope=parent.familyFootprint;
+    }
+    familyGap(parent) { return ({sun:18,planet:12,moon:6,satellite:3,astronaut:2}[parent.role] || 12) * this.baseNodeRadius / 13; }
     floatAngleFor(id) {
         let hash=2166136261;
         for(const char of id) hash=Math.imul(hash^char.charCodeAt(0),16777619)>>>0;
@@ -228,6 +396,11 @@ class GalaxyPhysics {
     }
     attractToOrbits(alpha) {
         let returning = false;
+        const promotions = [];
+        if(this.familyPlacementParents?.size&&!this.dragging.size){
+            this.familyPlacementParents.forEach(id=>{const parent=this.particles.get(id);if(parent)this.placeFamilySectors(parent,true);});
+            this.familyPlacementParents.clear();
+        }
         this.floatPhase = (this.floatPhase || 0) + .025;
         this.ordered.forEach(child => {
             if (!child.parent || child.fx != null) return;
@@ -239,12 +412,25 @@ class GalaxyPhysics {
             const range = this.orbitalRange(child);
             const targetRadius = influence ? Math.max(range.min, Math.min(range.max, influence.radius)) : child.orbitRadius;
             const astronaut = child.role === "astronaut";
-            const slack = astronaut ? Math.max(8, targetRadius * .18) : Math.max(12, targetRadius * .12);
+            const slack = astronaut ? Math.max(2, targetRadius * .12) : Math.max(child.depth >= 4 ? 3 : 8, targetRadius * .12);
             const error = distance - targetRadius;
             const outside = Math.sign(error) * Math.max(0, Math.abs(error) - slack);
             const strength = astronaut ? .045 : child.depth === 1 ? .04 : child.depth === 2 ? .1 : .14;
-            const pull = Math.max(-5, Math.min(5, outside * strength)) * alpha;
+            const limit = influence ? 5 : Math.max(5, Math.min(18, targetRadius * .02));
+            const pull = Math.max(-limit, Math.min(limit, outside * strength)) * alpha;
             child.vx -= dx / distance * pull; child.vy -= dy / distance * pull;
+            const band = child.parent.softBands?.[child.softBandIndex];
+            // User placements remain explicit preferences. Automatic families
+            // get a soft corridor, never a coordinate clamp or angular slot.
+            if (band && !influence) {
+                const overflow = distance-band.outer;
+                const corridorError = distance<band.inner ? distance-band.inner : Math.max(0,overflow);
+                const guidance = Math.max(-2,Math.min(2,corridorError*.06))*alpha;
+                child.vx -= dx/distance*guidance; child.vy -= dy/distance*guidance;
+                const pressured = overflow>band.radius*.03 && child.descendantCount>=3 && child.familyFootprint>band.radius*.85;
+                child.bandOverflowTicks = pressured ? (child.bandOverflowTicks||0)+1 : 0;
+                if (child.bandOverflowTicks>=30 && child.softBandIndex<2) promotions.push(child);
+            } else child.bandOverflowTicks=0;
             // Distant drops need time to return after the ordinary cooling period.
             // A smooth, capped local pull sustains only that return; active drags
             // skip it, and release itself adds no velocity/heat.
@@ -256,9 +442,15 @@ class GalaxyPhysics {
             }
             const targetAngle = influence?.angle ?? this.preferredAngle(child);
             const delta = Math.atan2(Math.sin(targetAngle - Math.atan2(dy, dx)), Math.cos(targetAngle - Math.atan2(dy, dx)));
-            const angular = astronaut ? .012 : child.depth === 1 ? .012 : child.depth === 2 ? .025 : .04;
+            const angular = !influence && (child.parent.softBands || astronaut) ? 0 : astronaut ? .012 : child.depth === 1 ? .012 : child.depth === 2 ? .025 : .04;
             const tangent = delta * Math.min(targetRadius, 80) * angular * alpha;
             child.vx -= dy / distance * tangent; child.vy += dx / distance * tangent;
+            if(child.familyTravelAngle!=null&&!influence){
+                const travel=Math.atan2(Math.sin(child.familyTravelAngle-Math.atan2(dy,dx)),Math.cos(child.familyTravelAngle-Math.atan2(dy,dx)));
+                if(Math.abs(travel)<.025)child.familyTravelAngle=null;
+                else {const steer=Math.max(-8,Math.min(8,travel*distance*.08))*alpha;
+                    child.vx-=dy/distance*steer;child.vy+=dx/distance*steer;}
+            }
             if (astronaut) {
                 const phase = this.floatPhase + this.angleFor(child.id);
                 child.vx += Math.sin(phase) * .045 * alpha;
@@ -266,12 +458,19 @@ class GalaxyPhysics {
                 // A soft outer boundary around the Satellite branch prevents
                 // repeated deep nesting from walking away from the local system.
                 const anchor = child.clusterAnchor, cx = child.x-anchor.x, cy = child.y-anchor.y;
-                const distance = Math.hypot(cx,cy) || 1, excess = Math.max(0,distance-anchor.clusterRadius);
-                if (excess>Math.max(32,anchor.clusterRadius*.25)) returning=true;
+                const clusterRadius = Math.max(anchor.clusterRadius, anchor.manualClusterRadius || 0);
+                const distance = Math.hypot(cx,cy) || 1, excess = Math.max(0,distance-clusterRadius);
+                if (excess>Math.max(32,clusterRadius*.25)) returning=true;
                 const containment = Math.min(3,excess*.006);
                 child.vx -= cx/distance*containment; child.vy -= cy/distance*containment;
             }
         });
+        if (promotions.length) {
+            // Runtime membership only: rebuild reservations without reseeding
+            // coordinates. followParents carries descendants as the root drifts.
+            promotions.forEach(child=>{child.softBandIndex++;child.bandOverflowTicks=0;});
+            this.buildSystems(); returning=true;
+        }
         if (returning) this.simulation.alpha(Math.max(this.simulation.alpha(), .06));
     }
     containBranches(alpha) {
@@ -301,17 +500,27 @@ class GalaxyPhysics {
         // their sibling-sized band, with a body-collision-safe inner boundary.
         if (node.depth === 1) return { min: 0, max: node.orbitRadius + Math.max(60, node.envelope * .25) };
         if (node.role === "astronaut") {
-            const min = (node.parent?.radius || 0) + node.radius + (node.parent?.role === "astronaut" ? 22 : 26) + this.deepSiblingBoost(node.parentId);
+            const min = (node.parent?.radius || 0) + node.radius + (node.parent?.role === 'astronaut' ? 2 : 3);
             const siblings = this.children.get(node.parentId)?.length || 1;
-            return { min, max: Math.max(min+20, 62+Math.sqrt(siblings)*12) };
+            const preferred = node.parent?.role === 'satellite' ? node.parent.clusterRadius * .95 : min + 10 + Math.sqrt(siblings) * 2;
+            const legacy = node.placement?.parentId === node.parentId ? Math.min(node.placement.radius, 62 + Math.sqrt(siblings) * 12) : 0;
+            return { min, max: Math.max(min + 20, preferred * 2.4, legacy) };
         }
-        const min = (node.parent?.radius || 0) + node.radius + 24;
+        const min = (node.parent?.radius || 0) + node.radius + (node.depth >= 4 ? 6 : 24);
         const factor = node.depth <= 3 ? 2.4 : 1.9;
-        return { min, max: Math.max(min + 24, node.orbitRadius * factor) };
+        const safetyRadius = node.parent?.softBands ? Math.max(node.orbitRadius, node.parent.childOrbit / .75) : node.orbitRadius;
+        const legacyPreference = node.placement?.parentId === node.parentId && node.parent?.softBands ? Math.min(node.placement.radius, node.parent.softBandSafetyRadius * factor) : 0;
+        return { min, max: Math.max(min + 24, safetyRadius * factor, legacyPreference) };
     }
     preferredLimit(node) { return this.orbitalRange(node).max; }
     deepSiblingBoost(parentId) { return Math.min(14,Math.sqrt(Math.max(0,(this.children.get(parentId)?.length||0)-3))*5); }
-    collisionPadding(node) { return node.role==='astronaut'?10+this.deepSiblingBoost(node.parentId)*.4:12; }
+    collisionPadding(node) { return node.role === 'astronaut' ? 2 : node.role === 'satellite' ? 3 : node.role === 'moon' ? 6 : 12; }
+    familyLiveClearance(a, b, parent) {
+        // Full footprints reserve layout space; live avoidance uses a smaller
+        // core and never extends beyond its near-overlap contact region.
+        const bodyClearance = a.radius + b.radius + this.collisionPadding(a) + this.collisionPadding(b);
+        return Math.max(bodyClearance, (a.familyFootprint + b.familyFootprint) * .72 + Math.min(6, this.familyGap(parent)));
+    }
     siblingClearanceFactor(depth){return depth===2?1.45:depth===3?1.1:.95;}
     separateSiblings(alpha) {
         this.children.forEach((siblings, parentId) => {
@@ -321,14 +530,17 @@ class GalaxyPhysics {
                 for (let j = index + 1; j < siblings.length; j++) {
                     const b = siblings[j], ax = a.x + a.vx - px, ay = a.y + a.vy - py,
                         bx = b.x + b.vx - px, by = b.y + b.vy - py;
-                    if (a.role === "astronaut" && b.role === "astronaut") {
+                    const softBand = !!parent.softBands;
+                    if (softBand || (a.role === "astronaut" && b.role === "astronaut")) {
                         let dx = bx-ax, dy = by-ay, distance = Math.hypot(dx,dy);
-                        const clearance = a.radius+b.radius+24+this.deepSiblingBoost(parentId);
+                        const clearance = this.familyLiveClearance(a, b, parent);
                         if (distance>=clearance) continue;
                         if (distance<.001) { const angle=this.angleFor(`${a.id}:${b.id}`);dx=Math.cos(angle);dy=Math.sin(angle);distance=1; }
-                        const am=a.fx!=null?0:1, bm=b.fx!=null?0:1, total=am+bm;
+                        const am=a.fx!=null?0:1/(1+Math.sqrt(a.descendantCount)), bm=b.fx!=null?0:1/(1+Math.sqrt(b.descendantCount)), total=am+bm;
                         if (!total) continue;
-                        const impulse=Math.min(2,(clearance-distance)*.06)*alpha;
+                        const overlap = clearance - distance;
+                        const contact = Math.min(1, overlap / (clearance * .25));
+                        const impulse = Math.min(1.2, overlap * .02) * contact * contact * alpha;
                         a.vx-=dx/distance*impulse*am/total;a.vy-=dy/distance*impulse*am/total;
                         b.vx+=dx/distance*impulse*bm/total;b.vy+=dy/distance*impulse*bm/total;
                         continue;
@@ -382,6 +594,9 @@ class GalaxyPhysics {
         this.dragging.delete(id);
         if (moved) {
             node.placement = this.influenceFor(node);
+            node.familyTravelAngle=null;
+            if(node.parent?.softBands){this.familyPlacementParents ||= new Set();this.familyPlacementParents.add(node.parentId);}
+            if (node.clusterAnchor) node.clusterAnchor.manualClusterRadius = Math.max(node.clusterAnchor.manualClusterRadius || node.clusterAnchor.clusterRadius, Math.min(150, node.placement.radius + 8));
             if (!node.parent) this.galaxies.get(id).home = { x: node.x, y: node.y };
         }
         this.releaseConstraint(node); this.simulation.alphaTarget(this.dragging.size ? .1 : 0);

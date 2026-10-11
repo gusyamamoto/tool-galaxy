@@ -1,4 +1,4 @@
-# Galaxy
+# Cosmifold
 
 A 2.5D universe for organizing trips, recipes, photos, projects and other items. No
 install/build step: serve this directory with `python -m http.server 8000` and
@@ -67,7 +67,7 @@ CRUD/persistence, canonical drops, gallery rendering and touch checklists.
   Mobile rows use 44px height, compressed depth indentation and no horizontal
   scrolling and clean single-line truncation. Full names remain available through
   accessible labels, row titles and the selected entry's Content header.
-  The small Galaxy title stays above Search and three independently collapsible
+  The small Cosmifold title stays above Search and three independently collapsible
   sections: Universe, Constellations and Archived Galaxies. Each heading and its
   chevron toggle only that section. Universe + opens the existing New Galaxy /
   Starter flow; Constellations + creates a collection. Both reveal on hover/focus
@@ -856,25 +856,88 @@ held drags bypass these forces. No snapping, walls or orbital animation is added
 Territory preferences cool with ordinary motion; the existing extreme radial
 return force remains the only local reason to prolong settling.
 
-The base diameter is 26px desktop / 24px mobile. At 100% desktop zoom the body
-boxes are Sun 52px, Planet 28.6px, Moon 13.52px, Satellite 9.88px and Astronaut
-7.28px, using role scales 2 / 1.1 / .52 / .38 / .28. CSS caps rendered diameters
-at 76 / 44 / 25 / 18 / 14px respectively, including selected, hovered, focused,
+The base diameter is 26px desktop / 24px mobile. Presentation-only factors keep
+the Sun prominent without changing its physical radius. At 100% desktop zoom
+the body boxes are Sun 78px, Planet 32px, Moon 13.52px, Satellite 9.88px and
+Astronaut 6px. Normal-view caps are 100 / 32 / 16 / 10 / 6px respectively,
+including selected, hovered, focused,
 Search-revealed and Constellation bodies. Centers keep projecting at the actual
 camera scale: zoom expands local structure after a body reaches its cap. Texture
 tiers use the capped diameter too. Collision radii remain in world coordinates;
 body hit areas are independent (24px desktop, 44px touch). Proportional rings
 and the close 2px selection outline preserve the role hierarchy.
 
+Local child-orbit preferences use reference scales of 220 / 80 / 35 world units
+for Sun / Planet / Moon, scaled with the existing responsive physical unit and
+multiplied by `0.5 + 0.5 * sqrt(childCount / 8)`, plus a small RMS contribution
+from the children's descendant territory beyond their bodies. Child-footprint area demand and
+parent/child clearance provide additional floors: small families compress while
+dense or deep families retain room. These local radii are distinct from the full
+family footprint used for sibling reservation and live avoidance. Adaptive
+bands account for each child's descendant footprint, reserve unequal angular
+space, and expand when a substantial branch needs more room. Count-based detail
+clusters avoid inflating every level of a deep Astronaut chain. Full footprints
+remain layout reservations; live avoidance uses a 72% footprint contribution with
+body-collision clearance as a floor. Contact ramps quadratically near overlap,
+with impulse capped at 1.2 times alpha rather than 3. Outside that smaller contact
+region there is no extra family impulse. These invisible
+territories have no rendered containers or mandatory coordinates. Angles seed
+new bodies only; manual parent-relative angle/radius preferences remain meaningful.
+
+Orbital bands guide automatic bodies through radial corridors, from 84% to 116%
+of each band's reference radius. Small family roots prefer the inner portion;
+larger footprints prefer the outer portion. Footprint/clearance and weighted
+capacity decide initial fit with a 6% margin. A substantial family (at least
+three descendants and a footprint over 85% of its band radius) that remains
+over 3% of a band radius beyond its outer edge for 30 physics ticks promotes
+outward (up to the existing third-band limit). Membership never automatically
+demotes. Promotion rebuilds derived reservations without changing coordinates;
+the existing parent-following force carries descendants as their root settles.
+Corridor guidance is capped velocity attraction, with no angular slots or hard
+walls. Held drags and explicit saved manual placements retain their preferences.
+
+Whole-family angular sectors use `asin((footprint + gap/2) / radialDistance)`.
+Gap placement checks the full footprint against families in every neighboring
+band, using the cosine rule for radial/angular clearance and an 8% layout margin.
+Manual roots reserve their existing positions first, then larger families claim
+space before smaller ones. The nearest clear gap wins; only an exhausted gap
+search promotes outward or expands the final adaptive band. Existing roots move
+through temporary capped tangential guidance, carrying descendants through parent
+following; arriving clears the target. Fresh roots use these angles only as seeds.
+Drag release can replan the affected sibling family, with manual preferences
+preserved. Full angular reservation does not strengthen live family repulsion.
+
+Close camera inspection near a selected Moon or its descendants can reach 12x
+through the existing wheel/pinch paths. The semantic tiers remain unchanged;
+Satellite/Astronaut selections do not create another semantic world or anchor.
+Leaving that Moon's territory removes the extra range without jumping the view.
+Sun/Planet/Moon caps and all world geometry remain unchanged. Satellite/Astronaut
+normal caps are 12/8px through 3x zoom, then rise smoothly to 26/14px at 9x and
+above. This inspection scale affects the same SVG artwork and projection metrics
+only: no physics heat, footprint changes, band rebuilds or new semantic level.
+
+Outside the existing Constellation lens, detail labels disclose gradually:
+Satellite labels fade in over approximately 1.1–3.25x and Astronaut labels over
+2.7–8.5x, with stable per-item staggering. Existing collision suppression and
+restoration hysteresis still govern available screen space. Active selection,
+hover, keyboard focus, dragging, search and temporary navigation reveals retain
+protected labels. Ordinary deep tethers fade in over approximately 2.5–7.2x;
+direct relationships of an active Satellite/Astronaut remain clear at lower zoom.
+Unrelated deep families stay quiet. These are presentation changes only; body
+geometry, hit targets, orbital organization and persistence remain unchanged.
+
 A drag chooses a relative angle **and radius**: `clamp(releasedRadius, min, max)`.
 The former 65% default / 35% released blend is removed. The same clamped preference
 is used directly by the force after release and reload. For Planets and Moons,
 the maximum is 2.4 × their adaptive default band; Satellites use 1.9 × their band.
-The minimum is parent body radius + child body radius + 24px collision clearance;
-the maximum is at least minimum + 24px. Suns retain their existing Galaxy packing
+The minimum is parent body radius + child body radius plus role-sensitive
+clearance: 24 world units for Planets/Moons, 6 for Satellites, and 2–3 for
+Astronaut detail. Wider legitimate saved preferences retain a legacy safety
+allowance. Suns retain their existing Galaxy packing
 range, maximum default band + max(60px, 25% of system envelope), minimum zero.
 These are soft preferred limits, with a free-floating
-dead zone of max(12px, 12% of preferred radius), not rigid coordinate constraints.
+dead zone proportional to preferred radius, with smaller minima for detail,
+not rigid coordinate constraints.
 Saved oversized preferences are bounded by the force; new preferences are bounded
 before saving. A reasonable outward drag remains in its new region; only extreme
 drops return toward the outer boundary. Bodies drift and yield to collisions.
@@ -1031,11 +1094,13 @@ independent of subscription/features. No customization UI is added yet.
 
 ## Development sample and tests
 
-**Load Sample** opens 187 temporary entries: four Galaxies (Work, Food,
-Travel, Personal), eight Suns, 24 Planets, 48 Moons, 96 Satellites and seven
+**Load Sample** opens 282 temporary entries: four Galaxies (Work, Food,
+Travel, Personal), eight Suns, 49 Planets, 48 Moons, 126 Satellites and 47
 Astronauts, including a depth-eight recipe branch with several Astronaut siblings
 and three useful Portal references. Normal interactions use the same model/renderer/
-physics. Sample mode neither reads nor writes real saved data. Leave Sample or
+physics. Numbered stress families add 25 Planets under Development, 30 Satellites
+under Editors, and 40 Astronauts under VS Code, preserving all original content.
+Sample mode neither reads nor writes real saved data. Leave Sample or
 refresh returns to it; the activation query is removed immediately.
 
 Run unit tests in PowerShell: `node --test (rg --files tests -g '*.test.js')`.

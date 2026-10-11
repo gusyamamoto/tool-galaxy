@@ -153,6 +153,8 @@ const camera = new GraphCamera({
         graphViewport.style.setProperty("--camera-scale", scale);
         graphViewport.style.setProperty("--native-label-scale", Math.min(1, scale / 0.62));
         const detail = semanticDetail = cosmosView.detail(scale);
+        updateCameraInspectionLimit(scale);
+        for (const role of ['satellite', 'astronaut']) graphViewport.style.setProperty(`--${role}-inspection-cap`, `${cosmosView.renderCap(role, scale)}px`);
         for (const role of ["sun", "planet", "moon", "satellite", "astronaut"]) {
             graphViewport.style.setProperty(`--${role}-detail`, detail[role]);
             graphViewport.style.setProperty(`--${role}-render-scale`, scale * (.72 + detail[role] * .28));
@@ -173,6 +175,17 @@ const camera = new GraphCamera({
         requestLabelLayout();
     }
 });
+
+function updateCameraInspectionLimit(scale = camera.view.scale) {
+    const entry = entries.get(selectedNode?.dataset.entryId);
+    const moon = entry && (entry.role === 'moon' ? entry : galaxyModel.ancestors(entries, entry.id).find(parent => parent.role === 'moon'));
+    const particle = moon && physics.particles.get(moon.id);
+    const b = physics.bounds, center = camera.screenToWorld((b.left+b.right)/2, (b.top+b.bottom)/2);
+    const moonContext = particle && Math.hypot(center.x-particle.x, center.y-particle.y) <= Math.max(90, particle.familyFootprint * 1.75);
+    // Extra projection range inside existing close Moon ancestry only. There is
+    // no new world/anchor, and changing selection never jumps the current view.
+    camera.maxScale = moonContext && cosmosView.detail(scale).tier === 'close' ? 12 : Math.max(3, scale);
+}
 let pan = null;
 let activeNodeDrags = 0;
 const canvasTouches=new Map();let pinch=null,pinchFrame=null,suppressTouchClick=false,lastCanvasPointerType='mouse';
@@ -419,6 +432,7 @@ function fitCurrentView(){
 }
 
 document.getElementById('canvas-fit').addEventListener('click',fitCurrentView);
+document.getElementById('universe-home').addEventListener('click',fitCurrentView);
 for(const [id,factor] of [['canvas-zoom-in',1.35],['canvas-zoom-out',1/1.35]])document.getElementById(id).addEventListener('click',()=>{
     cancelPendingBodyFocus();cancelCanvasTouches();lastBodyTap=null;autoFitPending=false;closeContextMenu();
     const b=physics.bounds;camera.zoomAt((b.left+b.right)/2,(b.top+b.bottom)/2,factor);
@@ -495,9 +509,10 @@ function requestLabelLayout(force=false) {
         const candidates=[],labels=[],offsets=[],rank={galaxy:4,sun:5,planet:6,moon:7,satellite:8,astronaut:9};
         nodes.forEach((node,id)=>{
             const entry=entries.get(id),label=node.querySelector('.node-label');
-            const selected=selectedNode===node,interactive=hoveredEntryId===id||document.activeElement===node||node.classList.contains('dragging');
+            const muted=node.classList.contains('canvas-selection-muted');
+            const selected=selectedNode===node&&!muted,interactive=(!muted&&(hoveredEntryId===id||document.activeElement===node))||node.classList.contains('dragging');
             const search=searchFocusId===id,context=activeConstellationGalaxyIds.has(id)&&entry.depth===0;
-            const protectedLabel=selected||interactive||search||context;
+            const protectedLabel=selected||interactive||search||context||node.matches('.temporarily-revealed,.constellation-inspected');
             const eligible=node.dataset.culled!=='true'&&node.dataset.semanticHidden!=='true'&&(protectedLabel||node.labelOpacity>.18);
             labels.push({id,label,eligible});if(!eligible)return;
             const fontSize=entry.role==='galaxy'?14+2*(1-smoothDetail(camera.view.scale,.18,.50)):
@@ -774,6 +789,7 @@ function selectEntry(entry, node, { openInspector = true, reframe = false, scrol
     }
 
     selectedNode = node;
+    updateCameraInspectionLimit();
     document.getElementById('archive-galaxy-button').hidden=entry.depth!==0;
     node.classList.add("selected");
     node.setAttribute("aria-pressed", "true");
@@ -840,6 +856,7 @@ document.getElementById("close-inspector-button").addEventListener("click", () =
 
 function updateHierarchyEmphasis() {
     const id = selectedNode?.dataset.entryId, selected = physics.particles.get(id);
+    regions.forEach((region, galaxyId) => region.classList.toggle('is-selected', galaxyId === id && selectedNode?.dataset.body === 'galaxy'));
     galaxy.classList.toggle("has-selection", !!selected);
     const ancestorIds = new Set(selected ? galaxyModel.ancestors(entries, id).map(entry => entry.id) : []);
     const relatedIds = new Set(ancestorIds);
@@ -903,14 +920,16 @@ function createEntryNode(entry) {
         // Browsers can restore old focus when a window receives pointer input.
         // Only intentional keyboard navigation should move the camera on focus.
         if (!crudActive && !activeNodeDrags && keyboardNavigation) focusEntry(entry.id);
+        renderNode(entry,node);requestLabelLayout(true);updateHierarchyPaths();
     });
+    node.addEventListener('blur',()=>{renderNode(entry,node);requestLabelLayout(true);updateHierarchyPaths();});
     node.addEventListener("pointerenter", () => {
-        hoveredEntryId=entry.id;renderNode(entry,node);requestLabelLayout(true);
+        hoveredEntryId=entry.id;renderNode(entry,node);requestLabelLayout(true);updateHierarchyPaths();
         hoveredSystemId = physics.particles.get(entry.id)?.systemId || null;
         updateOrbitGuides();
     });
     node.addEventListener("pointerleave", () => {
-        if(hoveredEntryId===entry.id)hoveredEntryId=null;renderNode(entry,node);requestLabelLayout(true);
+        if(hoveredEntryId===entry.id)hoveredEntryId=null;renderNode(entry,node);requestLabelLayout(true);updateHierarchyPaths();
         hoveredSystemId = null;
         updateOrbitGuides();
     });
@@ -990,7 +1009,9 @@ function updateEntryNode(entry, node) {
     node.dataset.role = entry.role; node.dataset.depth = entry.depth;
     node.dataset.body = entryRoles[entry.role].body;
     node.style.setProperty("--body-scale", entryRoles[entry.role].scale);
-    node.style.setProperty("--body-cap", `${cosmosView.bodyCaps[entry.role] || 76}px`);
+    node.style.setProperty("--body-visual-scale", cosmosView.visualScale[entry.role] || 1);
+    const cap = `${cosmosView.bodyCaps[entry.role] || 76}px`;
+    node.style.setProperty("--body-cap", cosmosView.inspectionCaps[entry.role] ? `var(--${entry.role}-inspection-cap, ${cap})` : cap);
     const style = galaxyAppearance.resolve(entry), hash = style.seed;
     node.dataset.archetype = style.archetype;
     node.dataset.surface = style.archetype === "gas-giant" ? "gaseous" : style.archetype;
@@ -1181,12 +1202,17 @@ function renderNode(entry, node) {
     // for imperceptible motion. Quarter-pixel projection keeps the live SVG
     // endpoints aligned within .18px without changing world/camera coordinates.
     point.x = Math.round(point.x * 4) / 4; point.y = Math.round(point.y * 4) / 4;
-    const revealed = selectedNode===node || hoveredEntryId===entry.id || document.activeElement===node || searchFocusId===entry.id || focusRevealIds.has(entry.id) || node.classList.contains("dragging") ||
+    // Selection belongs to Content/sidebar; canvas emphasis follows the existing
+    // semantic tier and the selected body's ordinary role visibility.
+    const selectionRelevant = entry.depth === 0 || (semanticDetail.tier !== 'universe' && semanticDetail.tier !== 'galaxy' && semanticDetail[entry.role] >= .02);
+    const muted = selectedNode === node && !selectionRelevant;
+    node.classList.toggle('canvas-selection-muted', muted);
+    const revealed = (!muted && (selectedNode===node || hoveredEntryId===entry.id || document.activeElement===node)) || searchFocusId===entry.id || focusRevealIds.has(entry.id) || node.classList.contains("dragging") ||
         (searchOpen && node.matches(".search-match,.search-ancestor"));
     node.classList.toggle("temporarily-revealed", revealed);
-    node.classList.toggle('label-priority',selectedNode===node||hoveredEntryId===entry.id||document.activeElement===node||searchFocusId===entry.id||node.classList.contains('dragging'));
+    node.classList.toggle('label-priority',(!muted&&(selectedNode===node||hoveredEntryId===entry.id||document.activeElement===node))||searchFocusId===entry.id||node.classList.contains('dragging'));
     const lens = activeConstellationMembers.size > 0;
-    const priority = selectedNode === node || node.classList.contains('dragging') || revealed;
+    const priority = (selectedNode === node && !muted) || node.classList.contains('dragging') || revealed;
     const visibility = lens ? cosmosView.constellationVisibility(camera.view.scale, entry.role,
         { member: activeConstellationMembers.has(entry.id), priority }, semanticDetail) : null;
     const galaxyContext = lens && entry.depth === 0 && activeConstellationGalaxyIds.has(entry.id);
@@ -1195,7 +1221,8 @@ function renderNode(entry, node) {
         visibility.body = priority || activeConstellationMembers.has(entry.id) ? 1 : .68;
         visibility.label = 1;
     }
-    node.labelOpacity=visibility?visibility.label:revealed?1:entry.depth===0?1:semanticDetail[`${entry.role}Label`];
+    node.labelOpacity=visibility?visibility.label:revealed?1:entry.depth===0?1:cosmosView.labelDisclosure(entry.role,camera.view.scale,entry.id);
+    node.style.setProperty('--detail-label-opacity',node.labelOpacity);
     node.classList.toggle('constellation-inspected', lens && priority);
     node.classList.toggle('constellation-label-hidden', lens && visibility.label < .02);
     if (visibility) {
@@ -1345,10 +1372,16 @@ function updateHierarchyPaths() {
         if (element.classList.contains("astronaut-tether")) {
             const parentNode = nodes.get(from), childNode = nodes.get(to);
             const endpointsVisible = [parentNode, childNode].every(node => node.dataset.semanticHidden !== "true");
-            const revealed = [parentNode, childNode].every(node => node.classList.contains("temporarily-revealed"));
-            const opacity = endpointsVisible ? (revealed ? .23 : semanticDetail.tethers * .18) : 0;
+            const protectedRelationship=[from,to].some(id=>{
+                const node=nodes.get(id),role=entries.get(id).role;
+                return ['satellite','astronaut'].includes(role)&&
+                    ((selectedNode===node&&!node.classList.contains('canvas-selection-muted'))||hoveredEntryId===id||searchFocusId===id||(searchOpen&&node.classList.contains('search-match'))||document.activeElement===node||node.classList.contains('dragging'));
+            });
+            const lens=activeConstellationMembers.size>0;
+            const revealed=[parentNode,childNode].every(node=>node.classList.contains('temporarily-revealed'));
+            const opacity = endpointsVisible ? (lens?(revealed?.23:semanticDetail.tethers*.18):cosmosView.deepTetherOpacity(camera.view.scale,to,protectedRelationship)) : 0;
             element.style.opacity = opacity;
-            element.style.display = opacity ? "" : "none";
+            element.style.display = endpointsVisible ? "" : "none";
             element.style.strokeWidth = .65 / camera.view.scale;
         } else {
             const child = physics.particles.get(to);
@@ -1720,6 +1753,7 @@ function renameEntry(id, value) {
 function clearSelection({ reframe = false } = {}) {
     focusRevealIds.clear();
     selectedNode = null;
+    updateCameraInspectionLimit();
     contentInspector.select(null, false);
     setInspectorOpen(false, { reframe });
     hierarchySidebar.select(null);
@@ -2075,8 +2109,8 @@ function refreshSearchResults() {
         const name = document.createElement('span'), location = document.createElement('small');
         name.textContent = entry.name; location.textContent = path; button.append(name, location); button.title = `${entry.name}\n${path}`;
         button.addEventListener("click", () => focusEntry(entry.id));
-        const reveal=()=>{searchFocusId=entry.id;const node=nodes.get(entry.id);if(node)renderNode(entry,node);requestLabelLayout(true);};
-        const dismiss=()=>{if(searchFocusId===entry.id)searchFocusId=null;const node=nodes.get(entry.id);if(node)renderNode(entry,node);requestLabelLayout(true);};
+        const reveal=()=>{searchFocusId=entry.id;const node=nodes.get(entry.id);if(node)renderNode(entry,node);requestLabelLayout(true);updateHierarchyPaths();};
+        const dismiss=()=>{if(searchFocusId===entry.id)searchFocusId=null;const node=nodes.get(entry.id);if(node)renderNode(entry,node);requestLabelLayout(true);updateHierarchyPaths();};
         button.addEventListener('focus',reveal);button.addEventListener('pointerenter',reveal);button.addEventListener('blur',dismiss);button.addEventListener('pointerleave',dismiss);
         item.appendChild(button);
         searchResultList.appendChild(item);

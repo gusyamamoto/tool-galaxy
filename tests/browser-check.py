@@ -143,6 +143,15 @@ def main():
     args.add_argument("--compatibility-only", action="store_true", help="Check legitimate broad-file v5 data and unchanged corruption protection")
     args.add_argument("--saved-snapshot", type=Path, help="Read a saved snapshot into an isolated test profile; never change the original browser data")
     args.add_argument("--sidebar-sections-only", action="store_true", help="Check independent navigation sections, heading creation, Archive restore and Sample utility")
+    args.add_argument("--selection-emphasis-only", action="store_true", help="Check semantic canvas emphasis without changing Content or sidebar selection")
+    args.add_argument("--soft-bands-only", action="store_true", help="Review compact Sun/Planet bands, real pointer dragging and zoom stability")
+    args.add_argument("--planet-cap-review-only", action="store_true", help="Quick visual review of the Planet cap with 4, 14 and 24 siblings")
+    args.add_argument("--sample-stress-only", action="store_true", help="Check dense Sample relationships and enter/leave isolation of real data and files")
+    args.add_argument("--body-size-review-only", action="store_true", help="Review descendant size caps and mouse/touch targets in dense and ordinary Sample families")
+    args.add_argument("--territory-review-only", action="store_true", help="Review subtree-aware family scales, dragging and deep Moon camera inspection")
+    args.add_argument("--close-tuning-only", action="store_true", help="Review softer family contact and progressive close-inspection artwork scaling")
+    args.add_argument("--band-corridors-only", action="store_true", help="Review Software and compact Sample families inside soft orbital corridors")
+    args.add_argument("--deep-readability-only", action="store_true", help="Review dense detail label/tether disclosure and protected interactions")
     args.add_argument("--archive-only", action="store_true", help="Check Galaxy archive/restore, references, file preservation, persistence and motion")
     args.add_argument("--body-hierarchy-only", action="store_true", help="Inspect restrained bodies, screen caps, nebula territories, radial branches, deep focus and mobile")
     args.add_argument("--body-hierarchy-baseline", action="store_true", help="Capture current body hierarchy at the same fixed scales before visual tuning")
@@ -727,6 +736,372 @@ def main():
             check(not cdp.errors,f'no Help browser exceptions: {cdp.errors}')
             print(f'{count} Help checks passed',flush=True);return
 
+        if options.deep_readability_only:
+            original=evaluate("localStorage.getItem('galaxy:user-data')")
+            evaluate("document.getElementById('sample-utility').open=true");click_selector('#load-sample-button')
+            wait_for("typeof sampleMode!=='undefined'&&sampleMode&&entries.size===282")
+            evaluate('physics.pause();physics.simulation.tick(450);physics.onTick(physics.particles)')
+            geometry=evaluate('JSON.stringify([...physics.particles].map(([id,n])=>[id,n.x,n.y,n.radius,n.orbitRadius,n.familyFootprint,n.softBandIndex]))')
+            reports=[]
+            def position(scale):
+                evaluate(f"selectEntry(entries.get('sample-moon-0-0-0'),nodes.get('sample-moon-0-0-0'),{{reframe:false}});(()=>{{const n=physics.particles.get('sample-satellite-0-0-0-0'),b=physics.bounds,s={scale};camera.setView({{x:(b.left+b.right)/2-n.x*s,y:(b.top+b.bottom)/2-n.y*s,scale:s}},false)}})();requestLabelLayout(true)")
+                wait_camera();time.sleep(.55)
+            for scale in [.9,1.8,4,12]:
+                position(scale)
+                report=evaluate("(()=>{const detail=[...nodes.values()].filter(n=>['satellite','astronaut'].includes(n.dataset.body)),shown=role=>detail.filter(n=>n.dataset.body===role&&n.dataset.culled==='false'&&+getComputedStyle(n.querySelector('.node-label')).opacity>.18).length;return {scale:camera.view.scale,satelliteLabels:shown('satellite'),astronautLabels:shown('astronaut'),tethers:lines.filter(l=>l.element.classList.contains('astronaut-tether')&&+l.element.style.opacity>.01).length,satCap:cosmosView.renderCap('satellite',camera.view.scale),astCap:cosmosView.renderCap('astronaut',camera.view.scale)}})()")
+                reports.append(report)
+                check(evaluate('JSON.stringify([...physics.particles].map(([id,n])=>[id,n.x,n.y,n.radius,n.orbitRadius,n.familyFootprint,n.softBandIndex]))')==geometry,f'{scale}x disclosure changes no geometry or physics')
+                if scale<2:check(report['astronautLabels']==0 and report['tethers']==0,f'{scale}x keeps ordinary Astronaut labels and tethers quiet')
+                if scale==1.8:check(report['satelliteLabels']>0,'medium view progressively reveals some Satellite labels')
+                if scale==.9:check(report['satelliteLabels']==0,'far view keeps ordinary Satellite labels hidden')
+                if scale==12:check(report['satCap']==26 and report['astCap']==14,'maximum inspection preserves 26/14px shape hierarchy')
+                if screenshot_dir:
+                    result=cdp.call('Page.captureScreenshot',format='png',captureBeyondViewport=False);(screenshot_dir/f'deep-readability-{scale}x.png').write_bytes(base64.b64decode(result['data']))
+            for scale in [.9,1.8]:
+                for target in ['sample-satellite-0-0-0-0','sample-stress-astronaut-01']:
+                    for interaction in ['select','hover','search']:
+                        position(scale)
+                        evaluate(f"(()=>{{const n=physics.particles.get({json.dumps(target)}),b=physics.bounds,s=camera.view.scale;camera.panTo((b.left+b.right)/2-n.x*s,(b.top+b.bottom)/2-n.y*s)}})()")
+                        wait_camera()
+                        if interaction=='select':evaluate(f"selectEntry(entries.get({json.dumps(target)}),nodes.get({json.dumps(target)}),{{reframe:false}})")
+                        elif interaction=='hover':evaluate(f"nodes.get({json.dumps(target)}).dispatchEvent(new PointerEvent('pointerenter'))")
+                        else:evaluate(f"searchFocusId={json.dumps(target)};renderNode(entries.get(searchFocusId),nodes.get(searchFocusId));updateHierarchyPaths();requestLabelLayout(true)")
+                        time.sleep(.3)
+                        check(evaluate(f"+getComputedStyle(nodes.get({json.dumps(target)}).querySelector('.node-label')).opacity>.95"),f'{scale}x {interaction}: protected detail label stays readable')
+                        check(evaluate(f"lines.some(l=>l.to==='sample-stress-astronaut-01'&&+l.element.style.opacity>=.24)"),f'{scale}x {interaction}: relevant direct relationship is revealed')
+                        check(evaluate("lines.filter(l=>l.element.classList.contains('astronaut-tether')&&l.from!=='sample-satellite-0-0-0-0'&&l.to!=='sample-stress-astronaut-01').every(l=>+l.element.style.opacity===0)"),f'{scale}x {interaction}: unrelated deep families stay quiet')
+                        evaluate(f"nodes.get({json.dumps(target)}).dispatchEvent(new PointerEvent('pointerleave'));searchFocusId=null;renderGraph();updateHierarchyPaths()")
+            check(evaluate('JSON.stringify([...physics.particles].map(([id,n])=>[id,n.x,n.y,n.radius,n.orbitRadius,n.familyFootprint,n.softBandIndex]))')==geometry,'all protected interactions leave world geometry unchanged')
+            if screenshot_dir:(screenshot_dir/'deep-readability.json').write_text(json.dumps(reports,indent=2),encoding='utf-8')
+            evaluate('removeSampleButton.click()');wait_for("typeof sampleMode!=='undefined'&&!sampleMode")
+            check(evaluate("localStorage.getItem('galaxy:user-data')")==original,'readability review preserves real saved data')
+            check(not cdp.errors,f'no detail readability exceptions: {cdp.errors}')
+            print(f'{count} deep-readability checks passed: '+json.dumps(reports),flush=True);return
+
+        if options.territory_review_only or options.close_tuning_only or options.band_corridors_only:
+            baseline=options.capture_baseline
+            real_raw=evaluate("localStorage.getItem('galaxy:user-data')")
+            evaluate("document.getElementById('sample-utility').open=true");click_selector('#load-sample-button')
+            wait_for("document.readyState==='complete'&&typeof sampleMode!=='undefined'&&sampleMode&&entries.size===282")
+            evaluate('physics.pause();physics.simulation.tick(450);physics.onTick(physics.particles)')
+            def shot(name):
+                if screenshot_dir:
+                    result=cdp.call('Page.captureScreenshot',format='png',captureBeyondViewport=False);(screenshot_dir/(name+'.png')).write_bytes(base64.b64decode(result['data']))
+            scenes=[('ordinary-sun','sample-sun-1',.82),('ordinary-planet','sample-planet-1-0',1.4),('small-ai','sample-planet-0-1',1.8),('small-hardware','sample-planet-0-2',1.8),('dense-sun','sample-sun-0',.82),('dense-moon','sample-moon-0-0-0',1.8),('dense-satellite','sample-satellite-0-0-0-0',2.4)]
+            reports=[]
+            for label,parent_id,scale in scenes:
+                evaluate(f"selectEntry(entries.get({json.dumps(parent_id)}),nodes.get({json.dumps(parent_id)}),{{reframe:false}});(()=>{{const n=physics.particles.get({json.dumps(parent_id)}),b=physics.bounds;camera.setView({{x:(b.left+b.right)/2-n.x*{scale},y:(b.top+b.bottom)/2-n.y*{scale},scale:{scale}}},false)}})()")
+                wait_camera()
+                report=evaluate(f"(()=>{{const p=physics.particles.get({json.dumps(parent_id)}),children=physics.children.get(p.id);return {{scene:{json.dumps(label)},role:p.role,childOrbit:p.childOrbit,footprint:p.familyFootprint||p.envelope,bands:p.softBands,cluster:p.clusterRadius,children:children.map(n=>({{id:n.id,role:n.role,orbit:n.orbitRadius,footprint:n.familyFootprint||n.envelope,descendants:n.descendantCount,actual:Math.hypot(n.x-p.x,n.y-p.y)}}))}}}})()")
+                if not baseline:
+                    check(all(n['footprint']<report['footprint'] for n in report['children']),label+' owns a larger territory than each child family')
+                    check(evaluate("Object.values(cosmosView.bodyCaps).join(',')==='100,32,16,12,8'"),label+' preserves the body-size experiment')
+                    if label in ['small-ai','small-hardware']:
+                        check(len(report['children'])==2 and report['childOrbit']<80.888*.85,label+' has a noticeably tighter local orbit while retaining both canonical children')
+                shot(label);reports.append(report)
+            if options.close_tuning_only or options.band_corridors_only:
+                if not baseline:
+                    corridor=evaluate("(()=>{const p=physics.particles.get('sample-sun-0');return {bands:p.softBands,families:['sample-planet-0-0','sample-planet-0-1','sample-planet-0-2','sample-stress-planet-01'].map(id=>{const n=physics.particles.get(id),b=p.softBands[n.softBandIndex];return {id,band:n.softBandIndex,inner:b.inner,outer:b.outer,preferred:n.orbitRadius,actual:Math.hypot(n.x-p.x,n.y-p.y),local:n.childOrbit,footprint:n.familyFootprint}})}})()")
+                    reports.append({'corridors':corridor})
+                    check(all(b['outer']<corridor['bands'][i+1]['inner'] for i,b in enumerate(corridor['bands'][:-1])),'Development orbital corridors retain clear gaps')
+                    software=corridor['families'][0]
+                    check(software['inner']<=software['actual']<=software['outer'],'Software settles inside its assigned orbital corridor rather than between bands')
+                    check(all(f['local']<65 for f in corridor['families'][1:3]),'AI and Hardware retain their compact local child orbits')
+                    angular=evaluate("(()=>{const s=physics.particles.get('sample-planet-0-0'),leaf=physics.particles.get('sample-stress-planet-01');return {sector:s.angularFamilyHalf,leafSector:leaf.angularFamilyHalf,neighbors:physics.children.get(s.parentId).filter(n=>n!==s).map(n=>({id:n.id,distance:Math.hypot(n.x-s.x,n.y-s.y),required:s.familyFootprint+n.familyFootprint})).sort((a,b)=>a.distance/a.required-b.distance/b.required)}})()")
+                    reports.append({'angularFamilies':angular})
+                    check(angular['sector']>angular['leafSector']*5,'Software reserves a wider angular sector than a leaf family')
+                    check(all(n['distance']>=n['required']*.95 for n in angular['neighbors']),'Software whole-family footprint clears all neighboring Planet-family footprints across bands')
+                    check(evaluate("physics.familyLiveClearance(physics.particles.get('sample-planet-0-0'),physics.particles.get('sample-stress-planet-01'),physics.particles.get('sample-sun-0'))<(physics.particles.get('sample-planet-0-0').familyFootprint+physics.particles.get('sample-stress-planet-01').familyFootprint)*.8"),'angular reservation does not restore long-range family repulsion')
+                    evaluate("selectEntry(entries.get('sample-planet-0-0'),nodes.get('sample-planet-0-0'),{reframe:false});(()=>{const n=physics.particles.get('sample-sun-0'),b=physics.bounds,s=.82;camera.setView({x:(b.left+b.right)/2-n.x*s,y:(b.top+b.bottom)/2-350-n.y*s,scale:s},false)})()")
+                    wait_camera();shot('software-band-corridor')
+                if options.band_corridors_only:
+                    if screenshot_dir:(screenshot_dir/'band-corridor-review.json').write_text(json.dumps(reports,indent=2),encoding='utf-8')
+                    evaluate('removeSampleButton.click()');wait_for("document.readyState==='complete'&&typeof sampleMode!=='undefined'&&!sampleMode")
+                    check(evaluate("localStorage.getItem('galaxy:user-data')")==real_raw,'corridor visual review leaves real data untouched')
+                    check(not cdp.errors,f'no corridor browser exceptions: {cdp.errors}')
+                    print(f'{count} band-corridor checks passed',flush=True);return
+                pair=evaluate("(()=>{const a=physics.particles.get('sample-planet-0-0'),b=physics.particles.get('sample-stress-planet-01'),p=a.parent;return {reservation:a.familyFootprint+b.familyFootprint+physics.familyGap(p),live:physics.familyLiveClearance?physics.familyLiveClearance(a,b,p):a.familyFootprint+b.familyFootprint+physics.familyGap(p),rich:a.familyFootprint,leaf:b.familyFootprint,closestLeaf:Math.min(...physics.children.get(p.id).filter(n=>n.id.startsWith('sample-stress-planet-')).map(n=>Math.hypot(n.x-a.x,n.y-a.y)))}})()")
+                reports.append({'liveContact':pair})
+                if not baseline:check(pair['rich']>pair['leaf']*5 and pair['live']<pair['reservation']*.8,'large Software subtree retains its full reservation with a smaller live contact region')
+                evaluate("focusEntry('sample-moon-0-0-0')");wait_camera()
+                identity=evaluate("JSON.stringify(['sample-satellite-0-0-0-0','sample-stress-astronaut-01'].map(id=>{const n=nodes.get(id);return [id,entries.get(id).parentId,n.dataset.archetype,n.style.getPropertyValue('--body-hue'),n.style.getPropertyValue('--surface-angle'),n.querySelector('svg').outerHTML]}))")
+                geometry=evaluate('JSON.stringify([...physics.particles].map(([id,n])=>[id,n.x,n.y,n.radius,n.orbitRadius,n.softBandIndex,n.familyFootprint]))')
+                alpha=evaluate('physics.simulation.alpha()');sizes=[]
+                for scale in [1.8,3,4.5,6,9,12]:
+                    evaluate(f"(()=>{{const n=physics.particles.get('sample-satellite-0-0-0-0'),b=physics.bounds;camera.setView({{x:(b.left+b.right)/2-n.x*{scale},y:(b.top+b.bottom)/2-n.y*{scale},scale:{scale}}},false)}})()")
+                    evaluate('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))')
+                    result=evaluate("(()=>{const sat=nodes.get('sample-satellite-0-0-0-0'),ast=nodes.get('sample-stress-astronaut-01');return {scale:camera.view.scale,satellite:sat.getBoundingClientRect().width,astronaut:ast.getBoundingClientRect().width,satProjection:sat.renderDiameter,astProjection:ast.renderDiameter,satHit:sat.querySelector('.node-hit-area').getBoundingClientRect().width,astHit:ast.querySelector('.node-hit-area').getBoundingClientRect().width}})()")
+                    sizes.append(result)
+                    if not baseline:
+                        check(abs(result['satellite']-evaluate('cosmosView.renderCap("satellite",camera.view.scale)'))<.03 and abs(result['astronaut']-evaluate('cosmosView.renderCap("astronaut",camera.view.scale)'))<.03,f'{scale}x: actual detail artwork matches progressive render caps')
+                        check(abs(result['satellite']-result['satProjection'])<.03 and abs(result['astronaut']-result['astProjection'])<.03,f'{scale}x: projected labels/tether endpoints use the same visual diameters')
+                        check(evaluate('JSON.stringify([...physics.particles].map(([id,n])=>[id,n.x,n.y,n.radius,n.orbitRadius,n.softBandIndex,n.familyFootprint]))')==geometry and evaluate('physics.simulation.alpha()')==alpha,f'{scale}x: visual inspection changes no world geometry, reservation or physics heat')
+                        check(evaluate("JSON.stringify(['sample-satellite-0-0-0-0','sample-stress-astronaut-01'].map(id=>{const n=nodes.get(id);return [id,entries.get(id).parentId,n.dataset.archetype,n.style.getPropertyValue('--body-hue'),n.style.getPropertyValue('--surface-angle'),n.querySelector('svg').outerHTML]}))")==identity,f'{scale}x: exact artwork, hue, orientation and parent identity remain intact')
+                    if scale in [1.8,6,12]:shot(f'detail-scaling-{scale}x')
+                reports.append({'inspectionSizes':sizes})
+                if not baseline:
+                    check(sizes[0]['satellite']==12 and sizes[0]['astronaut']==8 and sizes[-1]['satellite']==26 and sizes[-1]['astronaut']==14,'normal 12/8px and maximum 26/14px preserve Satellite > Astronaut')
+                    check(all(r['satHit']>=24 and r['astHit']>=24 for r in sizes),'inspection artwork stays independent of existing mouse hit areas')
+                # Apply the same approach in before/after captures, including
+                # the old code which has no separate live-clearance helper.
+                evaluate("focusEntry('sample-planet-0-0')");wait_camera()
+                approached=evaluate("(()=>{const a=physics.particles.get('sample-planet-0-0'),b=physics.particles.get('sample-stress-planet-01'),body=a.radius+b.radius+physics.collisionPadding(a)+physics.collisionPadding(b),d=Math.max(body,(a.familyFootprint+b.familyFootprint)*.72+Math.min(6,physics.familyGap(a.parent)))*1.04,angle=Math.atan2(b.y-a.y,b.x-a.x);physics.beginDrag(b.id);physics.moveDrag(b.id,a.x+Math.cos(angle)*d,a.y+Math.sin(angle)*d);physics.endDrag(b.id,true);return d})()")
+                evaluate('physics.resume()');wait_for('physics.settled',timeout=45);evaluate('physics.pause()')
+                after=evaluate("(()=>{const a=physics.particles.get('sample-planet-0-0'),b=physics.particles.get('sample-stress-planet-01');return Math.hypot(a.x-b.x,a.y-b.y)})()")
+                reports.append({'approachedLeaf':{'requestedDistance':approached,'settledDistance':after}})
+                evaluate("(()=>{const p=physics.particles.get('sample-planet-0-0'),b=physics.bounds,s=.82;camera.setView({x:(b.left+b.right)/2-p.x*s,y:(b.top+b.bottom)/2-p.y*s,scale:s},false)})()")
+                shot('dense-family-contact-after-drag')
+                if not baseline:check(after<pair['reservation'],'manually approached leaf can remain inside the full reservation without being expelled to its old outer boundary')
+            if not baseline:
+                check(evaluate("physics.particles.get('sample-planet-0-0').familyFootprint>physics.particles.get('sample-stress-planet-01').familyFootprint*5&&physics.particles.get('sample-planet-0-0').orbitRadius>physics.particles.get('sample-stress-planet-01').orbitRadius"),'mixed Sun siblings reserve more territory and a wider band for the substantial Software subtree')
+                check(evaluate("physics.particles.get('sample-satellite-0-0-0-0').familyFootprint>physics.particles.get('sample-stress-satellite-01').familyFootprint*5"),'VS Code reserves more family area than a leaf Satellite')
+                evaluate("focusEntry('sample-moon-0-0-0')");wait_camera()
+                evaluate("contentInspector.editNotes();contentInspector.notes.value='Preserve Moon inspection draft'")
+                owner=evaluate("JSON.stringify({id:selectedNode.dataset.entryId,sidebar:hierarchySidebar.selectedId,draft:contentInspector.notes.value})")
+                geometry=evaluate('JSON.stringify([...physics.particles].map(([id,n])=>[id,n.x,n.y,n.orbitRadius,n.softBandIndex,n.familyFootprint]))')
+                evaluate('window.territoryRebuilds=0;window.territoryBuilder=physics.buildSystems;physics.buildSystems=function(){territoryRebuilds++;return territoryBuilder.call(this)}')
+                for _ in range(12):
+                    current=evaluate('camera.target.scale')
+                    if current>=6:break
+                    point=evaluate('({x:(physics.bounds.left+physics.bounds.right)/2,y:(physics.bounds.top+physics.bounds.bottom)/2})')
+                    mouse('mouseWheel',**point,deltaX=0,deltaY=-min(240,zoom_math.log(6/current)/.0018));wait_camera()
+                check(evaluate("camera.view.scale>=5.99&&semanticDetail.tier==='close'&&camera.maxScale===12"),'native wheel reaches 6x in unchanged close Moon ancestry')
+                check(evaluate("JSON.stringify({id:selectedNode.dataset.entryId,sidebar:hierarchySidebar.selectedId,draft:contentInspector.notes.value})")==owner,'deep camera zoom preserves Moon selection, sidebar and notes draft')
+                check(evaluate('territoryRebuilds')==0 and evaluate('JSON.stringify([...physics.particles].map(([id,n])=>[id,n.x,n.y,n.orbitRadius,n.softBandIndex,n.familyFootprint]))')==geometry,'deep zoom changes projection only, with no rebuilt bands or world geometry')
+                evaluate("(()=>{const p=physics.particles.get('sample-satellite-0-0-0-0'),b=physics.bounds,s=camera.view.scale;camera.panTo((b.left+b.right)/2-p.x*s,(b.top+b.bottom)/2-p.y*s)})()")
+                shot('moon-inspection-6x')
+                check(evaluate("physics.children.get('sample-satellite-0-0-0-0').filter(n=>n.id.startsWith('sample-stress-astronaut-')).length===40&&entries.get('sample-stress-astronaut-01').parentId==='sample-satellite-0-0-0-0'"),'Astronauts remain attached to their actual Satellite rather than the Moon ring')
+                evaluate('camera.zoomAt((physics.bounds.left+physics.bounds.right)/2,(physics.bounds.top+physics.bounds.bottom)/2,10)');wait_camera()
+                check(evaluate('camera.view.scale')==12,'Moon inspection respects the provisional 12x ceiling')
+                shot('moon-inspection-12x')
+                evaluate('camera.setView({...camera.view,scale:.1},false)')
+                check_rendered("selectedNode.classList.contains('canvas-selection-muted')&&selectedNode.inert",'zooming out preserves contextual deep-selection suppression')
+                evaluate('camera.setView({...camera.view,scale:1.8},false)')
+                check(evaluate('JSON.stringify([...physics.particles].map(([id,n])=>[id,n.x,n.y,n.orbitRadius,n.softBandIndex,n.familyFootprint]))')==geometry,'out/back inspection keeps exactly the same arrangement')
+                evaluate("(()=>{const p=physics.particles.get('sample-sun-1'),b=physics.bounds,s=1.8;camera.setView({x:(b.left+b.right)/2-p.x*s,y:(b.top+b.bottom)/2-p.y*s,scale:s},false)})()")
+                check(evaluate("camera.maxScale===3&&selectedNode.dataset.entryId==='sample-moon-0-0-0'"),'stale Moon Content selection does not extend the camera limit in another system')
+                evaluate("(()=>{const p=physics.particles.get('sample-moon-0-0-0'),b=physics.bounds,s=1.8;camera.setView({x:(b.left+b.right)/2-p.x*s,y:(b.top+b.bottom)/2-p.y*s,scale:s},false)})()")
+                check(evaluate('camera.maxScale')==12,'returning to the same Moon family restores inspection range without reselection')
+                evaluate('physics.buildSystems=territoryBuilder;delete window.territoryBuilder;document.getElementById("content-cancel-notes").click()')
+                for entry_id in ['sample-stress-planet-01','sample-stress-satellite-01','sample-stress-astronaut-01']:
+                    evaluate(f"focusEntry({json.dumps(entry_id)})");wait_camera();evaluate('physics.pause()')
+                    before=evaluate("(()=>{const n=physics.particles.get(selectedNode.dataset.entryId);return {radius:Math.hypot(n.x-n.parent.x,n.y-n.parent.y),angle:Math.atan2(n.y-n.parent.y,n.x-n.parent.x)+.25}})()")
+                    requested=before['radius']*1.15
+                    point=evaluate('(()=>{const r=selectedNode.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()')
+                    target=evaluate(f"(()=>{{const n=physics.particles.get(selectedNode.dataset.entryId);return camera.worldToScreen(n.parent.x+Math.cos({before['angle']})*{requested},n.parent.y+Math.sin({before['angle']})*{requested})}})()")
+                    mouse('mousePressed',**point,button='left',clickCount=1);mouse('mouseMoved',**target,button='left',buttons=1);mouse('mouseReleased',**target,button='left',clickCount=1)
+                    check(evaluate('physics.particles.get(selectedNode.dataset.entryId).fx===null&&!!physics.particles.get(selectedNode.dataset.entryId).placement'),entry_id+' releases without a pin or coordinate snap')
+                    evaluate('physics.resume()');wait_for('physics.settled',timeout=45);evaluate('physics.pause()')
+                    radius=evaluate('(()=>{const n=physics.particles.get(selectedNode.dataset.entryId);return Math.hypot(n.x-n.parent.x,n.y-n.parent.y)})()')
+                    check(abs(radius-requested)<max(12,requested*.3),entry_id+' retains its manually chosen radial neighborhood after settling')
+                for entry_id,expected in [('sample-satellite-0-0-0-0',2.2),('sample-stress-astronaut-01',2.4)]:
+                    evaluate(f"(()=>{{const n=physics.particles.get({json.dumps(entry_id)}),b=physics.bounds,s=camera.view.scale;camera.panTo((b.left+b.right)/2-n.x*s,(b.top+b.bottom)/2-n.y*s)}})()")
+                    point=evaluate(f"(()=>{{const r=nodes.get({json.dumps(entry_id)}).getBoundingClientRect();return {{x:r.x+r.width/2,y:r.y+r.height/2}}}})()")
+                    mouse('mousePressed',**point,button='left',clickCount=2);mouse('mouseReleased',**point,button='left',clickCount=2);wait_camera()
+                    check(evaluate(f"selectedNode.dataset.entryId==={json.dumps(entry_id)}&&Math.abs(camera.view.scale-{expected})<.001&&semanticDetail.tier==='close'&&camera.maxScale===12"),entry_id+' preserves double-click framing without a deeper semantic level')
+            # Profile active physics at identical camera scale, not an idle frame loop.
+            evaluate("focusEntry('sample-moon-0-0-0')");wait_camera();evaluate('physics.resume()')
+            metrics=motion_metrics();evaluate('physics.pause()');reports.append({'motion':metrics})
+            check(metrics['renderP95']<16,'active 282-item projection stays within the frame budget')
+            if options.close_tuning_only:
+                evaluate("(()=>{const p=physics.particles.get('sample-satellite-0-0-0-0'),b=physics.bounds,s=12;camera.setView({x:(b.left+b.right)/2-p.x*s,y:(b.top+b.bottom)/2-p.y*s,scale:s},false)})()")
+                evaluate('physics.resume()');deep_metrics=motion_metrics();evaluate('physics.pause()')
+                reports.append({'deepMotion':deep_metrics});check(deep_metrics['renderP95']<16,'maximum close-inspection projection stays within the frame budget')
+            if not baseline:
+                cdp.call('Emulation.setDeviceMetricsOverride',width=390,height=844,deviceScaleFactor=1,mobile=True);cdp.call('Emulation.setTouchEmulationEnabled',enabled=True,maxTouchPoints=2)
+                evaluate("window.dispatchEvent(new Event('resize'));physics.pause();focusEntry('sample-moon-0-0-0')");wait_camera()
+                points=evaluate("(()=>{for(let y=60;y<260;y+=20)for(let x=70;x<210;x+=20){const empty=(a,b)=>{const e=document.elementFromPoint(a,b);return e?.closest('#graph-viewport')&&!e.closest('.entry-node')};if(empty(x,y)&&empty(x+60,y))return [{id:1,x,y},{id:2,x:x+60,y}]}})()")
+                assert points,'need two empty canvas points for native pinch'
+                mobile_geometry=evaluate('JSON.stringify([...physics.particles].map(([id,n])=>[id,n.x,n.y,n.orbitRadius,n.softBandIndex,n.familyFootprint]))')
+                cdp.call('Input.dispatchTouchEvent',type='touchStart',touchPoints=points)
+                expanded=[dict(points[0]),dict(points[1],x=points[1]['x']+100)]
+                cdp.call('Input.dispatchTouchEvent',type='touchMove',touchPoints=expanded);cdp.call('Input.dispatchTouchEvent',type='touchEnd',touchPoints=[]);wait_camera()
+                check(evaluate("camera.view.scale>3&&semanticDetail.tier==='close'&&selectedNode.dataset.entryId==='sample-moon-0-0-0'&&camera.maxScale===12"),'native mobile pinch reaches deeper inspection while staying in Moon ancestry')
+                check(evaluate('JSON.stringify([...physics.particles].map(([id,n])=>[id,n.x,n.y,n.orbitRadius,n.softBandIndex,n.familyFootprint]))')==mobile_geometry,'pinch does not change family geometry')
+                evaluate("(()=>{const p=physics.particles.get('sample-satellite-0-0-0-0'),b=physics.bounds,s=camera.view.scale;camera.panTo((b.left+b.right)/2-p.x*s,(b.top+b.bottom)/2-p.y*s)})()")
+                shot('moon-inspection-mobile')
+                evaluate('camera.setReducedMotion(true);camera.zoomAt(200,150,1.4)')
+                check(evaluate("camera.frame===null&&camera.view.scale<=12&&selectedNode.dataset.entryId==='sample-moon-0-0-0'"),'reduced-motion deep inspection remains immediate and bounded')
+                evaluate('removeSampleButton.click()');wait_for("document.readyState==='complete'&&typeof sampleMode!=='undefined'&&!sampleMode")
+                check(evaluate("![...entries.keys()].some(id=>id.startsWith('sample-'))"),'leaving inspection Sample restores personal entries')
+            print('Territory review summary: '+json.dumps([{'scene':r['scene'],'footprint':r['footprint'],'childOrbit':r['childOrbit'],'bands':r['bands']} for r in reports if 'scene' in r])+', motion: '+json.dumps(metrics),flush=True)
+            if options.close_tuning_only:print('Close tuning summary: '+json.dumps([r for r in reports if any(k in r for k in ['liveContact','inspectionSizes','approachedLeaf','deepMotion'])]),flush=True)
+            if screenshot_dir:(screenshot_dir/'territory-review.json').write_text(json.dumps(reports,indent=2),encoding='utf-8')
+            check(evaluate("localStorage.getItem('galaxy:user-data')")==real_raw,'territory review preserves real saved data')
+            check(not cdp.errors,f'no territory browser exceptions: {cdp.errors}')
+            print(f'{count} territory browser checks passed',flush=True);return
+
+        if options.body_size_review_only:
+            real_raw=evaluate("localStorage.getItem('galaxy:user-data')")
+            evaluate("document.getElementById('sample-utility').open=true");click_selector('#load-sample-button')
+            wait_for("document.readyState==='complete'&&typeof sampleMode!=='undefined'&&sampleMode&&entries.size===282")
+            evaluate('physics.pause();physics.simulation.tick(250);physics.onTick(physics.particles)')
+            frozen=evaluate('JSON.stringify([...physics.particles].map(([id,n])=>[id,n.x,n.y,n.orbitRadius,n.softBandIndex]))')
+            reports=[]
+            cases=[('dense-planets','sample-sun-0',25),('dense-satellites','sample-moon-0-0-0',30),('dense-astronauts','sample-satellite-0-0-0-0',40),('ordinary-planets','sample-sun-1',None),('ordinary-moons','sample-planet-0-1',None),('ordinary-satellites','sample-moon-1-0-0',None)]
+            for label,parent_id,total in cases:
+                evaluate(f"selectEntry(entries.get({json.dumps(parent_id)}),nodes.get({json.dumps(parent_id)}),{{reframe:false}});(()=>{{const p=physics.particles.get({json.dumps(parent_id)}),b=physics.bounds;camera.setView({{x:(b.left+b.right)/2-p.x*1.4,y:(b.top+b.bottom)/2-p.y*1.4,scale:1.4}},false)}})()")
+                wait_camera();evaluate('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))')
+                report=evaluate(f"(()=>{{const p=physics.particles.get({json.dumps(parent_id)}),kids=physics.children.get(p.id),measure=n=>{{const el=nodes.get(n.id),hit=el.querySelector('.node-hit-area');return {{id:n.id,role:n.role,width:el.getBoundingClientRect().width,hit:hit?.getBoundingClientRect().width,cap:cosmosView.bodyCaps[n.role]}}}};return {{case:{json.dumps(label)},parent:measure(p),children:kids.map(measure),bands:p.softBands}}}})()")
+                check(all(abs(n['width']-n['cap'])<.05 for n in [report['parent'],*report['children']]),label+' uses the intended visual role caps at the common reference scale')
+                check(all(n['hit']>=24 for n in report['children']),label+' retains at least 24px mouse targets independently of artwork')
+                if total:check(evaluate(f"physics.children.get({json.dumps(parent_id)}).filter(n=>n.id.startsWith('sample-stress-')).length==={total}"),label+' preserves the existing numbered stress family')
+                check(evaluate('JSON.stringify([...physics.particles].map(([id,n])=>[id,n.x,n.y,n.orbitRadius,n.softBandIndex]))')==frozen,label+' changes no positions, orbit preferences or band assignments')
+                if screenshot_dir:
+                    result=cdp.call('Page.captureScreenshot',format='png',captureBeyondViewport=False);(screenshot_dir/(label+'.png')).write_bytes(base64.b64decode(result['data']))
+                reports.append(report)
+            for entry_id in ['sample-moon-1-0-0','sample-stress-satellite-01','sample-stress-astronaut-01']:
+                point=evaluate(f"(()=>{{const p=physics.particles.get({json.dumps(entry_id)}),b=physics.bounds;camera.setView({{x:(b.left+b.right)/2-p.x*1.4,y:(b.top+b.bottom)/2-p.y*1.4,scale:1.4}},false);return {{x:(b.left+b.right)/2,y:(b.top+b.bottom)/2}}}})()")
+                mouse('mousePressed',**point,button='left',clickCount=1);mouse('mouseReleased',**point,button='left',clickCount=1);wait_camera()
+                check(evaluate(f"selectedNode?.dataset.entryId==={json.dumps(entry_id)}"),entry_id+' remains selectable through a native mouse click')
+            # At touch widths, keep native responsive scaling and the existing
+            # coarse-pointer target enlargement rather than enlarging artwork.
+            cdp.call('Emulation.setDeviceMetricsOverride',width=390,height=844,deviceScaleFactor=1,mobile=True)
+            cdp.call('Emulation.setTouchEmulationEnabled',enabled=True,maxTouchPoints=2)
+            evaluate("window.dispatchEvent(new Event('resize'));physics.pause();selectEntry(entries.get('sample-satellite-0-0-0-0'),nodes.get('sample-satellite-0-0-0-0'),{reframe:false});(()=>{const p=physics.particles.get('sample-satellite-0-0-0-0'),b=physics.bounds;camera.setView({x:(b.left+b.right)/2-p.x*1.4,y:(b.top+b.bottom)/2-p.y*1.4,scale:1.4},false)})()")
+            wait_camera()
+            check(evaluate("matchMedia('(pointer:coarse)').matches&&[...nodes.values()].filter(n=>['moon','satellite','astronaut'].includes(n.dataset.body)).every(n=>n.querySelector('.node-hit-area').getBoundingClientRect().width>=44)"),'Moon/Satellite/Astronaut retain 44px touch targets with smaller visual artwork')
+            point=evaluate("(()=>{const p=physics.particles.get('sample-stress-astronaut-01'),b=physics.bounds;camera.setView({x:(b.left+b.right)/2-p.x*1.4,y:(b.top+b.bottom)/2-p.y*1.4,scale:1.4},false);return {x:(b.left+b.right)/2,y:(b.top+b.bottom)/2}})()")
+            check(evaluate(f"(()=>{{const el=document.elementFromPoint({point['x']},{point['y']})?.closest('.entry-node');return !!el&&el.dataset.body==='astronaut'}})()"),'tiny Astronaut artwork remains reachable through the enlarged touch target')
+            cdp.call('Input.dispatchTouchEvent',type='touchStart',touchPoints=[point]);cdp.call('Input.dispatchTouchEvent',type='touchEnd',touchPoints=[]);wait_camera()
+            check(evaluate("selectedNode?.dataset.entryId==='sample-stress-astronaut-01'"),'6px Astronaut remains selectable through a native touch tap')
+            if screenshot_dir:
+                result=cdp.call('Page.captureScreenshot',format='png',captureBeyondViewport=False);(screenshot_dir/'dense-astronauts-mobile.png').write_bytes(base64.b64decode(result['data']))
+                (screenshot_dir/'body-size-review.json').write_text(json.dumps(reports,indent=2),encoding='utf-8')
+            check(evaluate("localStorage.getItem('galaxy:user-data')")==real_raw,'size review leaves real saved data untouched')
+            check(not cdp.errors,f'no body size review browser exceptions: {cdp.errors}')
+            print(f'{count} body-size review checks passed',flush=True);return
+
+        if options.sample_stress_only:
+            marker=add('Personal Sample isolation marker');wait_for('physics.settled');wait_camera()
+            evaluate("contentInspector.upload([new File(['Personal attachment marker'],'personal-marker.txt',{type:'text/plain'})])");wait_for('contentInspector.jobs.size===0')
+            personal_key=evaluate('contentInspector.content().attachments[0].storageKey')
+            evaluate('saveGalaxy()');real_raw=evaluate("localStorage.getItem('galaxy:user-data')")
+            evaluate("document.getElementById('sample-utility').open=true");click_selector('#load-sample-button')
+            wait_for("document.readyState==='complete'&&typeof sampleMode!=='undefined'&&sampleMode&&entries.size===282")
+            check(evaluate(f"!entries.has({json.dumps(marker)})&&entries.size===282"),'Sample enters cleanly with 282 temporary canonical items')
+            for kind,total,parent in [('planet',25,'sample-sun-0'),('satellite',30,'sample-moon-0-0-0'),('astronaut',40,'sample-satellite-0-0-0-0')]:
+                check(evaluate(f"galaxyModel.childrenOf(entries,{json.dumps(parent)}).filter(e=>e.id.startsWith('sample-stress-{kind}-')).length==={total}&&Array.from({{length:{total}}},(_,i)=>String(i+1).padStart(2,'0')).every(n=>{{const e=entries.get('sample-stress-{kind}-'+n);return e.parentId==={json.dumps(parent)}&&e.role==={json.dumps(kind)}&&e.name==={json.dumps(kind.capitalize()+' ')}+n}})"),f'{total} numbered {kind} siblings share their canonical parent and derived role')
+            check(evaluate("entries.get('sample-satellite-2-0-0-0').content.attachments.length===1&&portals.size===3&&constellations.size===3&&entries.get('sample-deep-8').depth===8"),'original Sample content, Portal references, Constellations and deep branch remain intact')
+            evaluate("selectEntry(entries.get('sample-stress-planet-01'),nodes.get('sample-stress-planet-01'),{reframe:false});contentInspector.editNotes();contentInspector.notes.value='Temporary stress Sample note';contentInspector.notesForm.requestSubmit();contentInspector.upload([new File(['Temporary Sample bytes'],'sample-marker.txt',{type:'text/plain'})])");wait_for('contentInspector.jobs.size===0')
+            sample_key=evaluate('contentInspector.content().attachments[0].storageKey')
+            check(evaluate("localStorage.getItem('galaxy:user-data')")==real_raw,'Sample edits and attachment upload leave real saved metadata byte-for-byte untouched')
+            if screenshot_dir:
+                result=cdp.call('Page.captureScreenshot',format='png',captureBeyondViewport=False);(screenshot_dir/'dense-sample-isolation.png').write_bytes(base64.b64decode(result['data']))
+            evaluate('removeSampleButton.click()')
+            wait_for(f"document.readyState==='complete'&&typeof sampleMode!=='undefined'&&!sampleMode&&entries.has({json.dumps(marker)})")
+            check(evaluate("localStorage.getItem('galaxy:user-data')")==real_raw and evaluate("![...entries.keys()].some(id=>id.startsWith('sample-'))"),'leaving Sample restores personal items without stress entries or rewritten metadata')
+            check(evaluate(f"(async()=>{{const record=await attachmentStore.get({json.dumps(personal_key)});return !!record&&await record.blob.text()==='Personal attachment marker'&&await attachmentStore.get({json.dumps(sample_key)})===null}})()"),'real attachment bytes survive; temporary Sample bytes never enter the real file store')
+            check(not cdp.errors,f'no Sample stress browser exceptions: {cdp.errors}')
+            print(f'{count} Sample stress checks passed',flush=True);return
+
+        if options.soft_bands_only or options.planet_cap_review_only:
+            reports=[]
+            cases=[('sun',4),('sun',14),('sun',24)] if options.planet_cap_review_only else [('sun',4),('sun',8),('sun',14),('sun',24),('planet',2),('planet',3),('planet',5),('planet',8),('planet',16)]
+            for role,total in cases:
+                evaluate(f"""(()=>{{clearSelection();physics.pause();entries.clear();nodes.forEach(n=>n.remove());nodes.clear();regions.forEach(r=>r.remove());regions.clear();layout.clear();portals.clear();constellations.clear();
+                    const path=[{{id:'band-g',name:'Orbital review'}},{{id:'band-s',name:'Sun',parentId:'band-g'}}];
+                    if({json.dumps(role)}==='planet')path.push({{id:'band-p',name:'Planet',parentId:'band-s'}});
+                    const parent={json.dumps(role)}==='sun'?'band-s':'band-p';
+                    const records=[...path,...Array.from({{length:{total}}},(_,i)=>({{id:'band-child-'+String(i).padStart(2,'0'),parentId:parent,name:({json.dumps(role)}==='sun'?'Planet ':'Moon ')+(i+1)}}))];
+                    records.forEach(r=>entries.set(r.id,{{description:'',category:'',content:galaxyModel.emptyContent(),createdAt:new Date().toISOString(),updatedAt:new Date().toISOString(),x:650,y:500,seedLayout:true,...r}}));
+                    galaxyModel.normalizeHierarchy(entries);entries.forEach(createEntryNode);syncPhysicsGraph();physics.resume();}})()""")
+                wait_for('physics.settled',timeout=40);evaluate('physics.pause()')
+                parent_id='band-s' if role=='sun' else 'band-p'
+                scale=1.4 if options.planet_cap_review_only else .95 if role=='sun' else 1.2
+                evaluate(f"selectEntry(entries.get('{parent_id}'),nodes.get('{parent_id}'),{{reframe:false,openInspector:false}});(()=>{{const n=physics.particles.get('{parent_id}'),b=physics.bounds;camera.setView({{x:(b.left+b.right)/2-n.x*{scale},y:(b.top+b.bottom)/2-n.y*{scale},scale:{scale}}},false)}})()")
+                report=evaluate(f"""(()=>{{const p=physics.particles.get('{parent_id}'),kids=physics.children.get(p.id),local=Math.max(...kids.map(n=>n.radius+Math.min(p.depth===1?28:14,Math.max(0,n.envelope-n.radius)*.18)));return {{role:p.role,count:kids.length,bands:p.softBands,first:p.childOrbit,old:Math.max(p.radius+local+(p.depth===1?82:48),(local+26)*physics.siblingClearanceFactor(p.depth+1)/Math.sin(Math.PI/kids.length))*(p.depth===2?.82:1),parentWidth:nodes.get(p.id).getBoundingClientRect().width,children:kids.map(n=>({{id:n.id,band:n.softBandIndex,radius:Math.hypot(n.x-p.x,n.y-p.y),width:nodes.get(n.id).getBoundingClientRect().width}}))}}}})()""")
+                check(report['first']>=(110 if role=='sun' else 40),f'{role} {total}: demand-responsive first orbit')
+                check(1<=len(report['bands'])<=3,f'{role} {total}: adaptive band count')
+                check(report['parentWidth']/max(n['width'] for n in report['children'])>(2 if role=='sun' else 1.95),f'{role} {total}: parent visually dominates its children')
+                def no_overlap():return evaluate(f"(()=>{{const list=[physics.particles.get('{parent_id}'),...physics.children.get('{parent_id}')];return list.every((a,i)=>list.slice(i+1).every(b=>{{const ar=nodes.get(a.id).getBoundingClientRect().width/2,br=nodes.get(b.id).getBoundingClientRect().width/2;return Math.hypot(a.x-b.x,a.y-b.y)*camera.view.scale>=ar+br-1}}))}})()")
+                check(no_overlap(),f'{role} {total}: visible bodies do not overlap after settling')
+                frozen=evaluate('JSON.stringify([...physics.particles].map(([id,n])=>[id,n.x,n.y,n.orbitRadius,n.softBandIndex]))')
+                evaluate('window.bandRebuilds=0;window.originalBandBuilder=physics.buildSystems;physics.buildSystems=function(){bandRebuilds++;return originalBandBuilder.call(this)}')
+                point=evaluate('({x:(physics.bounds.left+physics.bounds.right)/2,y:(physics.bounds.top+physics.bounds.bottom)/2})')
+                for delta in [-90,90]:mouse('mouseWheel',**point,deltaX=0,deltaY=delta);wait_camera()
+                check(evaluate('bandRebuilds')==0 and evaluate('JSON.stringify([...physics.particles].map(([id,n])=>[id,n.x,n.y,n.orbitRadius,n.softBandIndex]))')==frozen,f'{role} {total}: real wheel zoom never rebuilds bands or moves bodies')
+                evaluate('physics.buildSystems=originalBandBuilder;delete window.originalBandBuilder')
+                if screenshot_dir:
+                    result=cdp.call('Page.captureScreenshot',format='png',captureBeyondViewport=False);(screenshot_dir/f'soft-bands-{role}-{total}.png').write_bytes(base64.b64decode(result['data']))
+                if not options.planet_cap_review_only and (role,total) in [('sun',24),('planet',16)]:
+                    report['drags']=[]
+                    for index,angle in [(0,.4),(8,2.1),(total-1,-1.6)]:
+                        entry_id=f'band-child-{index:02d}'
+                        evaluate(f"(()=>{{const n=physics.particles.get('{entry_id}'),b=physics.bounds,s=camera.view.scale;camera.panTo((b.left+b.right)/2-n.x*s,(b.top+b.bottom)/2-n.y*s)}})()")
+                        requested=evaluate(f"(()=>{{const n=physics.particles.get('{entry_id}');return n.orbitRadius*1.3}})()")
+                        target=evaluate(f"(()=>{{const p=physics.particles.get('{parent_id}');return camera.worldToScreen(p.x+Math.cos({angle})*{requested},p.y+Math.sin({angle})*{requested})}})()")
+                        point=evaluate(f"(()=>{{const r=nodes.get('{entry_id}').getBoundingClientRect();return {{x:r.x+r.width/2,y:r.y+r.height/2}}}})()")
+                        mouse('mousePressed',**point,button='left',clickCount=1)
+                        for step in range(1,7):mouse('mouseMoved',x=point['x']+(target['x']-point['x'])*step/6,y=point['y']+(target['y']-point['y'])*step/6,button='left',buttons=1)
+                        mouse('mouseReleased',**target,button='left',clickCount=1)
+                        release=evaluate(f"(()=>{{const n=physics.particles.get('{entry_id}');return {{radius:Math.hypot(n.x-n.parent.x,n.y-n.parent.y),placement:n.placement,fx:n.fx}}}})()")
+                        check(release['placement'] is not None and release['fx'] is None and abs(release['radius']-requested)<2,f'{role} {total}: pointer release keeps chosen coordinates without snapping')
+                        evaluate('physics.resume()');wait_for('physics.settled',timeout=40);evaluate('physics.pause()')
+                        settled=evaluate(f"(()=>{{const n=physics.particles.get('{entry_id}');return {{radius:Math.hypot(n.x-n.parent.x,n.y-n.parent.y),angle:Math.atan2(n.y-n.parent.y,n.x-n.parent.x)}}}})()")
+                        angular=abs(zoom_math.atan2(zoom_math.sin(settled['angle']-angle),zoom_math.cos(settled['angle']-angle)))
+                        check(abs(settled['radius']-requested)<requested*.25 and angular<.5,f'{role} {total}: manual radius and angle remain meaningful after settling')
+                        check(no_overlap(),f'{role} {total}: siblings gently resolve collisions after drag')
+                        report['drags'].append({'requested':requested,'released':release,'settled':settled})
+                    if screenshot_dir:
+                        result=cdp.call('Page.captureScreenshot',format='png',captureBeyondViewport=False);(screenshot_dir/f'soft-bands-{role}-{total}-dragged.png').write_bytes(base64.b64decode(result['data']))
+                reports.append(report);print('Soft band review: '+json.dumps(report),flush=True)
+            if screenshot_dir:(screenshot_dir/'soft-band-report.json').write_text(json.dumps(reports,indent=2),encoding='utf-8')
+            if options.planet_cap_review_only:
+                check(not cdp.errors,f'no Planet cap browser exceptions: {cdp.errors}')
+                print(f'{count} Planet cap review checks passed',flush=True);return
+            evaluate('saveGalaxy()');saved_placements=evaluate('JSON.stringify([...layout])')
+            check(evaluate("JSON.parse(localStorage.getItem('galaxy:user-data')).version===5&&layout.size===3"),'manual soft-band arrangements use the existing three v5 parent-relative placements')
+            cdp.call('Page.reload');load();wait_camera();evaluate('physics.pause()')
+            check(evaluate('JSON.stringify([...layout])')==saved_placements,'refresh preserves exact saved manual angle/radius preferences')
+            check(evaluate("physics.children.get('band-p').length===16&&physics.particles.get('band-p').softBands.length>=2&&physics.particles.get('band-p').softBands.length<=3"),'refresh rebuilds derived bands without a schema or navigation state')
+            check(not cdp.errors,f'no soft-band browser exceptions: {cdp.errors}')
+            print(f'{count} soft-band browser checks passed',flush=True);return
+
+        if options.selection_emphasis_only:
+            chain=[]
+            for name in ['Context Galaxy','Context Sun','Context Planet','Context Moon','Context Satellite','Context Astronaut']:
+                chain.append(add(name,chain[-1] if chain else None))
+            wait_for('physics.settled');wait_camera();evaluate('physics.pause()')
+            def shot(name):
+                if screenshot_dir:
+                    result=cdp.call('Page.captureScreenshot',format='png',captureBeyondViewport=False);(screenshot_dir/(name+'.png')).write_bytes(base64.b64decode(result['data']))
+            for entry_id in chain[1:]:
+                evaluate(f"camera.setView({{...camera.view,scale:1.6}},false);selectEntry(entries.get({json.dumps(entry_id)}),nodes.get({json.dumps(entry_id)}),{{reframe:false}});contentInspector.editNotes();contentInspector.notes.value='Preserve zoom draft';selectedNode.focus({{preventScroll:true}})")
+                owner=evaluate("JSON.stringify({id:selectedNode.dataset.entryId,sidebar:hierarchySidebar.selectedId,owner:contentInspector.entryId,panel:panel.hidden,editing:contentInspector.notesForm.hidden,draft:contentInspector.notes.value})")
+                for scale in [.1,.5]:
+                    evaluate(f"camera.setView({{...camera.view,scale:{scale}}},false)")
+                    check_rendered("selectedNode.classList.contains('canvas-selection-muted')&&!selectedNode.classList.contains('temporarily-revealed')&&!selectedNode.classList.contains('label-priority')&&getComputedStyle(selectedNode).outlineStyle==='none'",entry_id+f' suppresses canvas selection at {scale}')
+                    check(evaluate("JSON.stringify({id:selectedNode.dataset.entryId,sidebar:hierarchySidebar.selectedId,owner:contentInspector.entryId,panel:panel.hidden,editing:contentInspector.notesForm.hidden,draft:contentInspector.notes.value})")==owner,entry_id+' keeps Content, sidebar selection and draft')
+                    check_rendered("(()=>{const e=entries.get(selectedNode.dataset.entryId);return semanticDetail[e.role]<.02?selectedNode.inert&&selectedNode.dataset.semanticHidden==='true'&&getComputedStyle(selectedNode).opacity==='0':!selectedNode.inert&&Math.abs(parseFloat(getComputedStyle(selectedNode).opacity)-semanticDetail[e.role])<.01})()",entry_id+' follows ordinary role visibility')
+                evaluate('fitGalaxy(false);camera.zoomAt((physics.bounds.left+physics.bounds.right)/2,(physics.bounds.top+physics.bounds.bottom)/2,.1/camera.view.scale)');wait_camera()
+                check_rendered("getComputedStyle(selectedNode.querySelector('.node-label')).opacity==='0'",entry_id+' does not force its label at Universe scale')
+                shot('universe-'+evaluate('entries.get(selectedNode.dataset.entryId).role'))
+                if evaluate('entries.get(selectedNode.dataset.entryId).role')!='sun':
+                    evaluate('camera.setView({...camera.view,scale:.58},false)')
+                    check_rendered("selectedNode.classList.contains('canvas-selection-muted')&&selectedNode.inert",entry_id+' stays hidden until its ordinary role fade begins')
+                relevant_scale=evaluate("Math.max(cosmosView.tiers.system+.01,cosmosView.fades[entries.get(selectedNode.dataset.entryId).role][0]+.04)")
+                evaluate(f'camera.setView({{...camera.view,scale:{relevant_scale}}},false)')
+                check_rendered("!selectedNode.classList.contains('canvas-selection-muted')&&!selectedNode.inert&&getComputedStyle(selectedNode).outlineStyle==='solid'",entry_id+' regains emphasis at its existing relevant semantic level')
+                evaluate('camera.setView({...camera.view,scale:1.6},false)')
+                check_rendered("!selectedNode.classList.contains('canvas-selection-muted')&&selectedNode.classList.contains('selected')&&!selectedNode.inert&&getComputedStyle(selectedNode).outlineStyle==='solid'&&getComputedStyle(selectedNode.querySelector('.node-label')).opacity==='1'",entry_id+' restores selection emphasis on zooming back in')
+                check(evaluate("contentInspector.notes.value==='Preserve zoom draft'"),entry_id+' retains draft across zoom round trip')
+                evaluate("document.getElementById('content-cancel-notes').click()")
+            evaluate(f"selectEntry(entries.get({json.dumps(chain[2])}),nodes.get({json.dumps(chain[2])}),{{reframe:false}});camera.setView({{...camera.view,scale:1.6}},false)")
+            for _ in range(12):
+                current=evaluate('camera.target.scale')
+                if abs(current-.1)<.001:break
+                point=evaluate('({x:(physics.bounds.left+physics.bounds.right)/2,y:(physics.bounds.top+physics.bounds.bottom)/2})')
+                mouse('mouseWheel',**point,deltaX=0,deltaY=min(240,zoom_math.log(current/.1)/.0018));wait_camera()
+            check_rendered("semanticDetail.tier==='universe'&&selectedNode.classList.contains('canvas-selection-muted')&&selectedNode.inert",'real wheel zoom suppresses the selected Planet at Universe level')
+            evaluate(f"selectEntry(entries.get({json.dumps(chain[0])}),nodes.get({json.dumps(chain[0])}),{{reframe:false}});fitGalaxy(false);camera.setView({{...camera.view,scale:.1}},false)")
+            wait_for('selectedNode.getAnimations().length===0')
+            check_rendered("!selectedNode.classList.contains('canvas-selection-muted')&&getComputedStyle(selectedNode.querySelector('.node-label')).fontWeight==='700'&&getComputedStyle(regions.get(selectedNode.dataset.entryId)).filter==='brightness(1.2)'",'Universe retains selected Galaxy title and cloud treatment')
+            check_rendered("[...entries.values()].filter(e=>e.depth>0).every(e=>nodes.get(e.id).inert&&getComputedStyle(nodes.get(e.id)).opacity==='0')&&[...regions.values()].every(r=>parseFloat(getComputedStyle(r).opacity)>.8)",'Galaxy clouds dominate the Universe with all routine descendants hidden')
+            shot('selected-galaxy-universe')
+            check(not cdp.errors,f'no selection emphasis browser exceptions: {cdp.errors}')
+            print(f'{count} selection-emphasis checks passed',flush=True);return
+
         if options.sidebar_sections_only:
             g=add('Navigation Work');sun=add('Projects',g);planet=add('Planning',sun);leaf=add('Checklist',planet);other=add('Navigation Travel')
             wait_for('physics.settled');wait_camera();evaluate('physics.pause()')
@@ -773,12 +1148,41 @@ def main():
             check(evaluate(f"entries.has({json.dumps(other)})&&hierarchySidebar.universeSection.collapsed&&archivedSection.root.hidden&&document.activeElement===hierarchySidebar.universeSection.toggle") and evaluate('JSON.stringify(camera.view)')==before,'last restore hides Archive while preserving collapsed Universe and stable camera with accessible focus')
             evaluate('hierarchySidebar.universeSection.setCollapsed(false);fitGalaxy(false)');scale=evaluate('camera.view.scale');evaluate('camera.setView({...camera.view,scale:1.6},false)');click_selector('#canvas-fit');wait_camera()
             check(evaluate('camera.view.scale')<1.6,'canvas Fit retains the existing fit handler')
+            evaluate(f"selectEntry(entries.get({json.dumps(g)}),nodes.get({json.dumps(g)}),{{reframe:false}})")
+            wait_for('selectedNode.getAnimations().length===0')
+            evaluate('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))')
+            check(evaluate("getComputedStyle(selectedNode).outlineStyle==='none'&&getComputedStyle(selectedNode.querySelector('.node-label')).fontWeight==='700'"),'selected Galaxy uses stronger text without a selection rectangle')
+            check(evaluate(f"getComputedStyle(regions.get({json.dumps(g)})).filter==='brightness(1.2)'&&[...regions].filter(([id])=>id!=={json.dumps(g)}).every(([,r])=>getComputedStyle(r).filter==='none')"),'only the selected Galaxy cloud receives a restrained 20 percent brightness lift')
+            shot('galaxy-selected')
+            evaluate(f"selectEntry(entries.get({json.dumps(leaf)}),nodes.get({json.dumps(leaf)}),{{reframe:false}})")
+            check(evaluate(f"getComputedStyle(nodes.get({json.dumps(g)}).querySelector('.node-label')).fontWeight==='600'"),'deselected Galaxy retains its normal title weight')
+            check(evaluate("[...regions.values()].every(r=>getComputedStyle(r).filter==='none')"),'selecting a descendant restores normal cloud brightness')
+            shot('galaxy-deselected')
+            evaluate("contentInspector.editNotes();contentInspector.notes.value='Keep Universe draft';camera.setView({...camera.view,scale:1.6},false)")
+            owner=evaluate("JSON.stringify({selected:selectedNode.dataset.entryId,panel:panel.hidden,owner:contentInspector.entryId,draft:contentInspector.notes.value,editing:contentInspector.notesForm.hidden,lens:activeConstellationId})")
+            click_selector('#universe-home');wait_camera()
+            check(evaluate('camera.view.scale')<1.6 and evaluate('!hierarchySidebar.universeSection.collapsed'),'Universe label returns to overview without collapsing the tree')
+            check(evaluate("JSON.stringify({selected:selectedNode.dataset.entryId,panel:panel.hidden,owner:contentInspector.entryId,draft:contentInspector.notes.value,editing:contentInspector.notesForm.hidden,lens:activeConstellationId})")==owner,'Universe overview preserves Content selection, draft and Constellation state')
+            home_view=evaluate('JSON.stringify(camera.view)');click_selector('#canvas-fit');wait_camera()
+            check(evaluate('JSON.stringify(camera.view)')==home_view,'sidebar Universe and canvas Fit converge on the same overview')
+            for key_value,key_code,vk in [('Enter','Enter',13),(' ','Space',32)]:
+                evaluate("camera.setView({...camera.view,scale:1.6},false);document.getElementById('universe-home').focus()")
+                cdp.call('Input.dispatchKeyEvent',type='keyDown',key=key_value,code=key_code,windowsVirtualKeyCode=vk,text='\r' if vk==13 else ' ')
+                cdp.call('Input.dispatchKeyEvent',type='keyUp',key=key_value,code=key_code,windowsVirtualKeyCode=vk);wait_camera()
+                check(evaluate('camera.view.scale')<1.6 and evaluate('!hierarchySidebar.universeSection.collapsed'),key_code+' activates Universe overview independently')
+            evaluate("document.getElementById('content-cancel-notes').click()")
             cdp.call('Emulation.setDeviceMetricsOverride',width=390,height=844,deviceScaleFactor=1,mobile=False);cdp.call('Emulation.setTouchEmulationEnabled',enabled=True,maxTouchPoints=2);time.sleep(.2)
             evaluate("window.dispatchEvent(new Event('resize'));hierarchySidebar.setCollapsed(false)");wait_camera()
             check(evaluate("[document.getElementById('universe-toggle'),document.getElementById('constellations-toggle'),addEntryButton,document.getElementById('new-constellation-button')].every(b=>b.getBoundingClientRect().height>=44)&&getComputedStyle(addEntryButton).opacity==='1'&&getComputedStyle(document.getElementById('new-constellation-button')).opacity==='1'"),'mobile section headings and both creation actions have discoverable 44px targets')
             view=evaluate('JSON.stringify(camera.view)');evaluate('hierarchySidebar.universeSection.toggle.click();constellationWorkspace.sectionToggle.click()')
             check(evaluate('JSON.stringify(camera.view)')==view,'mobile section taps cannot reframe the canvas')
             shot('sections-mobile')
+            check(evaluate("['universe-home','universe-toggle'].every(id=>{const r=document.getElementById(id).getBoundingClientRect();return r.width>=44&&r.height>=44})"),'mobile Universe navigation and disclosure have separate 44px touch targets')
+            evaluate('camera.setView({...camera.view,scale:1.6},false)')
+            point=evaluate("(()=>{const r=document.getElementById('universe-home').getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()")
+            cdp.call('Input.dispatchTouchEvent',type='touchStart',touchPoints=[point]);cdp.call('Input.dispatchTouchEvent',type='touchEnd',touchPoints=[]);wait_camera()
+            check(evaluate('camera.view.scale')<1.6 and evaluate('hierarchySidebar.universeSection.collapsed'),'touch Universe returns to overview without changing disclosure state')
+            evaluate('hierarchySidebar.setCollapsed(false)');shot('universe-mobile')
             evaluate('addEntryButton.click()');check(evaluate('dialog.open'),'mobile Universe + remains available while the section is collapsed');evaluate('cancelEntryForm()')
             wait_for('physics.settled');wait_camera();evaluate('physics.pause();saveGalaxy()');raw=evaluate("localStorage.getItem('galaxy:user-data')");pref_raw=evaluate("localStorage.getItem('galaxy:navigation-ui')")
             evaluate("document.getElementById('sample-utility').open=true;loadSampleButton.click()");wait_for("typeof sampleMode!=='undefined'&&sampleMode&&document.readyState==='complete'");load();wait_camera()
@@ -926,7 +1330,7 @@ def main():
             request('sample-galaxy-0');confirm();idle()
             check(evaluate("localStorage.getItem('galaxy:user-data')")==real,'Sample archiving cannot change real saved data')
             evaluate("restoreGalaxy('sample-galaxy-0')");idle()
-            check(evaluate("entries.size===187&&localStorage.getItem('galaxy:user-data')===archiveSampleReal".replace('archiveSampleReal',json.dumps(real))),'Sample restoration keeps every ordinary entry isolated')
+            check(evaluate("entries.size===282&&localStorage.getItem('galaxy:user-data')===archiveSampleReal".replace('archiveSampleReal',json.dumps(real))),'Sample restoration keeps every ordinary entry isolated')
             check(not cdp.errors,f'no archive browser exceptions: {cdp.errors}')
             print(f'{count} archive browser checks passed',flush=True);return
 
@@ -954,7 +1358,7 @@ def main():
             report['desktop100']=sizes
             print(prefix+' 100% rendered sizes: '+json.dumps(sizes),flush=True)
             if not baseline:
-                expected={'sun':52,'planet':28.6,'moon':13.52,'satellite':9.88,'astronaut':7.28}
+                expected={'sun':78,'planet':32,'moon':13.52,'satellite':9.88,'astronaut':7.28}
                 check(all(abs(sizes[role]-diameter)<.08 for role,diameter in expected.items()),'moderate 100% role sizes respect the visual guardrails')
                 check(sizes['planet']/sizes['moon']>2 and sizes['sun']>sizes['planet']>sizes['moon']>sizes['satellite']>sizes['astronaut'],'hierarchy retains moderate distinct size steps')
                 check(evaluate("parseFloat(getComputedStyle(nodes.get('sample-moon-2-0-0')).getPropertyValue('--texture-opacity'))<.3&&parseFloat(getComputedStyle(nodes.get('sample-planet-2-0')).getPropertyValue('--texture-opacity'))>=.4&&getComputedStyle(nodes.get('sample-moon-2-0-0'),'::before').backgroundImage.includes('radial-gradient')"),'muted cratered Moons differ from expressive Planets')
@@ -994,14 +1398,14 @@ def main():
                 before=evaluate('camera.view.scale');click_selector('#canvas-zoom-out');wait_camera();check(evaluate('camera.view.scale')<before,'zoom-out stays responsive after deep focus')
                 click_selector('#canvas-zoom-in');wait_camera();check(evaluate('camera.view.scale<=camera.maxScale'),'zoom-in remains smoothly clamped')
                 click_selector('#canvas-fit');wait_camera();check(evaluate('camera.view.scale<.7'),'Fit returns to Galaxy territories')
-                check(evaluate("[...nodes].every(([id,n])=>entries.get(id).depth===0||n.getBoundingClientRect().width<=cosmosView.bodyCaps[entries.get(id).role]+.02)"),'interaction and temporary reveal styles cannot bypass size caps')
+                check(evaluate("[...nodes].every(([id,n])=>entries.get(id).depth===0||n.getBoundingClientRect().width<=cosmosView.renderCap(entries.get(id).role,camera.view.scale)+.02)"),'interaction and temporary reveal styles cannot bypass size caps')
             cdp.call('Emulation.setDeviceMetricsOverride',width=390,height=844,deviceScaleFactor=1,mobile=False);cdp.call('Emulation.setTouchEmulationEnabled',enabled=True,maxTouchPoints=2)
             evaluate("window.dispatchEvent(new Event('resize'));hierarchySidebar.setCollapsed(true);setInspectorOpen(false,{reframe:false});clearSelection();fitGalaxy(false)");time.sleep(.2)
             shot('mobile-overview');scale_at('sample-sun-2',.82);shot('mobile-medium');scale_at('sample-planet-2-0',1.6);shot('mobile-planet-moons');scale_at('sample-deep-7',2.4);shot('mobile-deep-close')
             if not baseline:
                 check(evaluate("nodes.get('sample-deep-7').querySelector('.node-hit-area').getBoundingClientRect().width>=36&&getComputedStyle(document.getElementById('canvas-zoom-controls')).display==='none'"),'phone keeps generous deep hit areas and clean canvas controls')
                 scale_at('sample-deep-7',3)
-                check(evaluate("[...nodes].every(([id,n])=>entries.get(id).depth===0||n.getBoundingClientRect().width<=cosmosView.bodyCaps[entries.get(id).role]+.02)"),'mobile maximum zoom respects caps for all roles')
+                check(evaluate("[...nodes].every(([id,n])=>entries.get(id).depth===0||n.getBoundingClientRect().width<=cosmosView.renderCap(entries.get(id).role,camera.view.scale)+.02)"),'mobile maximum zoom respects caps for all roles')
                 evaluate("focusEntry('sample-moon-2-0-0',{closeFocus:true})");wait_camera();check(evaluate("camera.view.scale===1.8"),'Moon focus shows its local family at a useful scale')
                 view=evaluate('JSON.stringify(camera.view)');evaluate('contentInspector.editNotes();document.getElementById("content-cancel-notes").click()');check(evaluate('JSON.stringify(camera.view)')==view,'content editing preserves camera stability')
                 cdp.call('Emulation.setEmulatedMedia',features=[{'name':'prefers-reduced-motion','value':'reduce'}]);wait_for('camera.reducedMotion');evaluate("focusEntry('sample-deep-7',{closeFocus:true})")
@@ -1558,7 +1962,7 @@ def main():
         if options.constellation_ux_only:
             evaluate('saveGalaxy()');raw=evaluate("localStorage.getItem('galaxy:user-data')")
             evaluate('loadSampleButton.click()');wait_for("typeof sampleMode!=='undefined'&&sampleMode&&document.readyState==='complete'");load();wait_camera();evaluate('physics.pause()')
-            check(evaluate('entries.size===187'),'picker exercises the complete 187-entry Sample Cosmos')
+            check(evaluate('entries.size===282'),'picker exercises the complete 282-entry Sample Cosmos')
             evaluate("constellationWorkspace.openName();document.getElementById('constellation-name').value='Picker UX';document.getElementById('constellation-name-form').requestSubmit();physics.pause()")
             collection=evaluate('[...constellations.keys()].at(-1)')
             parm='sample-satellite-2-0-0-0';other='sample-satellite-2-0-0-1';codex='sample-moon-0-1-0';deep='sample-deep-7'
@@ -1992,14 +2396,14 @@ def main():
             for name in ['Sauce preparation','Texture observation','Resting time','Slow simmer','Crust notes','Seasoning balance']:add(name,owner)
             wait_for('physics.settled');evaluate('physics.pause();clearSelection()')
             def view(scale):
-                evaluate(f"(()=>{{const p=entries.get({json.dumps(owner)}),b=physics.bounds;camera.setView({{scale:{scale},x:(b.left+b.right)/2-p.x*{scale},y:(b.top+b.bottom)/2-p.y*{scale}}},false);requestLabelLayout(true)}})()")
+                evaluate(f"(()=>{{const p=entries.get({json.dumps(owner)}),b=physics.bounds;camera.maxScale=Math.max(3,{scale});camera.setView({{scale:{scale},x:(b.left+b.right)/2-p.x*{scale},y:(b.top+b.bottom)/2-p.y*{scale}}},false);requestLabelLayout(true)}})()")
                 wait_for('labelDensity.frame===null');time.sleep(.3)
             def visible_labels():return evaluate("[...nodes.values()].filter(n=>n.dataset.body==='astronaut'&&n.dataset.culled!=='true'&&n.dataset.semanticHidden!=='true'&&parseFloat(getComputedStyle(n.querySelector('.node-label')).opacity)>.18).length")
             view(1.15)
             check(evaluate("[...nodes].filter(([id,n])=>entries.get(id).role==='astronaut'&&n.dataset.culled==='false').some(([id,n])=>!n.inert&&getComputedStyle(n.querySelector('.node-label')).opacity==='0')"),'deep bodies remain visible while their labels wait for closer zoom')
-            medium=visible_labels();view(2.4);close=visible_labels()
+            medium=visible_labels();view(6.5);close=visible_labels()
             check(close>medium,'close zoom reveals more local Astronaut labels than medium zoom')
-            evaluate(f"(()=>{{const [a,b]=galaxyModel.childrenOf(entries,{json.dumps(owner)});window.densityMoved=b.id;window.densityPosition={{x:b.x,y:b.y}};const p=physics.particles.get(b.id);b.x=p.x=a.x+8;b.y=p.y=a.y;document.getElementById('entry-search').focus();renderGraph();requestLabelLayout(true)}})()")
+            evaluate(f"(()=>{{const [a,b]=galaxyModel.childrenOf(entries,{json.dumps(owner)});window.densityMoved=b.id;window.densityPosition={{x:b.x,y:b.y}};const p=physics.particles.get(b.id);b.x=p.x=a.x+2;b.y=p.y=a.y;const bounds=physics.bounds,s=camera.view.scale;camera.panTo((bounds.left+bounds.right)/2-(a.x+1)*s,(bounds.top+bounds.bottom)/2-a.y*s);document.getElementById('entry-search').focus();renderGraph();requestLabelLayout(true)}})()")
             wait_for('labelDensity.frame===null');time.sleep(.3)
             check(evaluate('labelDensity.hiddenIds.size>0'),'screen-space density suppresses overlapping lower-priority labels')
             check(evaluate("(()=>{const list=[...nodes.values()].filter(n=>n.dataset.culled==='false'&&n.dataset.semanticHidden==='false'&&parseFloat(getComputedStyle(n.querySelector('.node-label')).opacity)>.8&&!n.classList.contains('selected'));return list.every((a,i)=>list.slice(i+1).every(b=>{const x=a.querySelector('.node-label').getBoundingClientRect(),y=b.querySelector('.node-label').getBoundingClientRect(),area=Math.max(0,Math.min(x.right,y.right)-Math.max(x.left,y.left)-2)*Math.max(0,Math.min(x.bottom,y.bottom)-Math.max(x.top,y.top)-2);return area<=Math.min(x.width*x.height,y.width*y.height)*.26;}));})()"),'visible ordinary labels avoid substantial rectangle overlap')
@@ -2018,6 +2422,8 @@ def main():
             check_rendered(f"selectedNode.dataset.entryId==={json.dumps(deep)}&&getComputedStyle(nodes.get({json.dumps(deep)}).querySelector('.node-label')).opacity==='1'",'keyboard focus navigates and reveals the entry label')
             evaluate(f"searchField.value=entries.get({json.dumps(deep)}).name;searchField.dispatchEvent(new Event('input'));searchResultList.querySelector('[data-entry-id=\"{deep}\"]').focus({{preventScroll:true}})")
             check(evaluate(f"searchFocusId==={json.dumps(deep)}"),'current Search focus receives a protected density priority')
+            evaluate(f"searchResultList.querySelector('[data-entry-id=\"{deep}\"]').click()");wait_camera()
+            check(evaluate(f"selectedNode.dataset.entryId==={json.dumps(deep)}&&contentInspector.entryId==={json.dumps(deep)}"),'real Search result navigation preserves selected detail and Content behavior')
             evaluate('dismissTemporaryReveal();searchFocusId=null')
             check(evaluate(f"physics.deepSiblingBoost({json.dumps(owner)})>=10&&physics.deepSiblingBoost('sample-deep-7')===0&&physics.particles.get('sample-deep-7').clusterAnchor.clusterRadius<145"),'dense direct siblings gain local clearance while sparse chains and cluster footprint stay bounded')
             check(evaluate(f"nodes.get({json.dumps(deep)}).querySelector('.node-hit-area').getBoundingClientRect().width>=24&&galaxyModel.roles.sun.scale>=1.75&&galaxyModel.roles.planet.scale>=1"),'deep bodies keep accessible hit areas while Suns and Planets remain prominent')
@@ -2098,7 +2504,7 @@ def main():
             shot('consolidated-mobile-sidebar')
             evaluate('physics.resume()');wait_for('physics.settled');evaluate('physics.pause();saveGalaxy()');raw=evaluate("localStorage.getItem('galaxy:user-data')")
             evaluate('loadSampleButton.click()');wait_for("typeof sampleMode!=='undefined'&&sampleMode&&document.readyState==='complete'");load();wait_camera();evaluate('physics.pause()')
-            check(evaluate("entries.size===187&&physics.particles.size===187&&portals.size===3&&constellations.size===3&&constellationOverlay.edges.length===0&&contentInspector.previewLoads===0"),'Sample stays bounded: canonical particles only, no inactive collection geometry or preloaded file previews')
+            check(evaluate("entries.size===282&&physics.particles.size===282&&portals.size===3&&constellations.size===3&&constellationOverlay.edges.length===0&&contentInspector.previewLoads===0"),'Sample stays bounded: canonical particles only, no inactive collection geometry or preloaded file previews')
             check(evaluate("!document.querySelector('#connection-picker,#panel-connections,[data-action=connect],[data-action=pin]')&&[...document.querySelectorAll('button,[aria-label]')].filter(n=>n.getClientRects().length).every(n=>!(/\\bMembers?\\b|Semantic Connections|Tool Galaxy|\\bUnpin\\b/i.test(n.textContent+' '+(n.ariaLabel||''))))&&JSON.parse(localStorage.getItem('galaxy:user-data')).version===5"),'visible product copy is consolidated without returning obsolete Connections/Pin UI or changing schema')
             check(evaluate("localStorage.getItem('galaxy:user-data')")==raw,'Sample inspection preserves real data after consolidation')
             check(not cdp.errors,f'no consolidation browser exceptions: {cdp.errors}')
@@ -2334,7 +2740,7 @@ def main():
             check(evaluate(f"!entries.has({json.dumps(planet)})&&constellations.get({json.dumps(empty)}).memberEntryIds.length===0"),'subtree deletion and empty collection persistence survive refresh')
             evaluate('saveGalaxy()');raw=evaluate("localStorage.getItem('galaxy:user-data')")
             evaluate('loadSampleButton.click()');wait_for("document.readyState==='complete'&&typeof sampleMode!=='undefined'&&sampleMode");load();wait_camera();evaluate('physics.pause()')
-            check(evaluate("entries.size===187&&portals.size===3&&constellations.size===3&&!constellations.has("+json.dumps(c1)+")"),'Sample has three isolated local/cross-Galaxy/deep collections and unchanged canonical bodies/Portals')
+            check(evaluate("entries.size===282&&portals.size===3&&constellations.size===3&&!constellations.has("+json.dumps(c1)+")"),'Sample has three isolated local/cross-Galaxy/deep collections and unchanged canonical bodies/Portals')
             for group in ['sample-constellation-meals','sample-constellation-trip','sample-constellation-techniques']:
                 evaluate(f"activateConstellation({json.dumps(group)})");wait_camera();evaluate('physics.pause()')
                 check(overlay_aligned() and evaluate("constellationOverlay.edges.length===activeConstellationMembers.size-1"),f'Sample {group} frames and renders live sparse geometry')
@@ -2482,7 +2888,7 @@ def main():
             check(evaluate("storageAvailable&&JSON.parse(localStorage.getItem('galaxy:user-data')).connections.length===0"),'malformed obsolete collections are ignored without blocking valid saved hierarchy')
             evaluate('physics.pause();if(graphNeedsSave)saveGalaxy()');raw=evaluate("localStorage.getItem('galaxy:user-data')")
             evaluate('loadSampleButton.click()');wait_for("document.readyState==='complete'&&typeof sampleMode!=='undefined'&&sampleMode");load();wait_camera()
-            check(evaluate("entries.size===187&&portals.size===3&&lines.length===183&&!('connections' in galaxySample.build())&&lines.every(l=>l.kind==='hierarchy')"),'Sample keeps hierarchy/Portals/content with no semantic data or lines')
+            check(evaluate("entries.size===282&&portals.size===3&&lines.length===278&&!('connections' in galaxySample.build())&&lines.every(l=>l.kind==='hierarchy')"),'Sample keeps hierarchy/Portals/content with no semantic data or lines')
             cdp.call('Emulation.setDeviceMetricsOverride',width=390,height=844,deviceScaleFactor=1,mobile=False);time.sleep(.2)
             evaluate("openPortal('sample-portal-recipe')");wait_camera()
             check(evaluate("!panel.hidden&&contentInspector.entryId==='sample-satellite-2-0-0-0'&&document.documentElement.scrollWidth<=innerWidth&&!document.querySelector('#panel-connections,#connection-picker')"),'mobile Portal and Content sheet remain usable with the simplified header')
@@ -2601,7 +3007,7 @@ def main():
             evaluate('physics.resume()');wait_for('physics.settled');evaluate('physics.pause();if(graphNeedsSave)saveGalaxy()')
             raw=evaluate("localStorage.getItem('galaxy:user-data')")
             evaluate('loadSampleButton.click()');wait_for("document.readyState==='complete'&&typeof sampleMode!=='undefined'&&sampleMode");load();wait_camera();evaluate('physics.pause()')
-            check(evaluate('entries.size===187&&nodes.size===187&&portals.size===3&&hierarchySidebar.tree.querySelectorAll(".portal-row").length===3'),'Sample adds three useful references without adding Cosmos bodies')
+            check(evaluate('entries.size===282&&nodes.size===282&&portals.size===3&&hierarchySidebar.tree.querySelectorAll(".portal-row").length===3'),'Sample adds three useful references without adding Cosmos bodies')
             check(evaluate("portals.get('sample-portal-deep').targetEntryId==='sample-deep-7'&&entries.get('sample-deep-7').role==='astronaut'"),'Sample includes a deep Astronaut Portal independent of its placement role')
             evaluate("hierarchySidebar.setCollapsed(false)")
             shot('portals-sample-desktop')
@@ -3217,7 +3623,7 @@ def main():
             raw=evaluate("localStorage.getItem('galaxy:user-data')")
             evaluate('loadSampleButton.click()');wait_for("document.readyState==='complete' && typeof sampleMode!=='undefined' && sampleMode");load();wait_camera()
             evaluate("focusEntry('sample-deep-8')");wait_camera()
-            check(evaluate("entries.size===187 && [...entries.values()].filter(e=>e.role==='astronaut').length===7 && entries.get('sample-deep-8').depth===8 && galaxyModel.childrenOf(entries,'sample-deep-5').length===4"),'restrained Sample demonstrates deep chains and several Astronaut siblings')
+            check(evaluate("entries.size===282 && [...entries.values()].filter(e=>e.role==='astronaut').length===47 && entries.get('sample-deep-8').depth===8 && galaxyModel.childrenOf(entries,'sample-deep-5').length===4"),'restrained Sample demonstrates deep chains and several Astronaut siblings')
             preview('astronaut-sample-close')
             metrics=motion_metrics();print('Astronaut sample motion: '+json.dumps(metrics),flush=True)
             check(metrics['renderP95']<16,'Astronaut figures and tethers keep projection within the frame budget')
@@ -3306,10 +3712,10 @@ def main():
             # Restore the sample before exercising real pointer drags.
             evaluate("sizePositions.forEach(([id,x,y])=>Object.assign(physics.particles.get(id),{x,y,lastX:x,lastY:y,vx:0,vy:0}));[...nodes.values()].forEach(n=>n.hidden=false);[...regions.values()].forEach(r=>r.style.visibility='');hierarchyLayer.style.visibility='';clearSelection();physics.onTick(physics.particles)")
             sizes={s['role']:s['width'] for s in report['sizes']}
-            check(51<=sizes['sun']<=53 and 28<=sizes['planet']<=30 and 13<=sizes['moon']<=15 and 9<=sizes['satellite']<=11,'100% native body diameters meet the restrained hierarchy targets')
+            check(77<=sizes['sun']<=79 and 31<=sizes['planet']<=33 and 13<=sizes['moon']<=15 and 9<=sizes['satellite']<=11,'100% native body diameters meet the restrained hierarchy targets')
             check(sizes['planet']/sizes['moon']>2,'Planet diameter is more than twice the Moon diameter')
             check(report['selected']['outlineOffset']<=3 and report['selected']['width']==sizes['planet'],'selection halo stays close to the smaller body without changing its dimensions')
-            check(all(abs(actual-expected)<.03 for actual,expected in zip(report['mobileSizes'],[48,26.4,12.48,9.12])),'mobile native diameters retain the same hierarchy with readable body silhouettes')
+            check(all(abs(actual-expected)<.03 for actual,expected in zip(report['mobileSizes'],[72,32,12.48,9.12])),'mobile native diameters retain the same hierarchy with readable body silhouettes')
             if options.sizes_only:
                 check(not cdp.errors,f"no sizing browser exceptions: {cdp.errors}")
                 print(f'{count} sizing browser checks passed',flush=True)
@@ -3369,7 +3775,7 @@ def main():
             click_selector('#load-sample-button')
             wait_for("document.readyState==='complete' && typeof sampleMode!=='undefined' && sampleMode");load();wait_camera()
             evaluate('physics.pause()')
-            check(evaluate('panel.hidden && entries.size===187'),'Sample opens into a clean canvas without a permanent inspector')
+            check(evaluate('panel.hidden && entries.size===282'),'Sample opens into a clean canvas without a permanent inspector')
             preview('desktop-clean')
             evaluate("focusEntry('sample-deep-7')");wait_camera()
             check(evaluate("!panel.hidden && panelName.textContent==='Slow simmer notes' && hierarchySidebar.selectedId==='sample-deep-7'"),'selecting a deep item opens matching Details and keeps the tree synchronized')
@@ -3604,7 +4010,7 @@ def main():
             real_snapshot=evaluate("localStorage.getItem('galaxy:user-data')")
             preference=evaluate("localStorage.getItem('galaxy:navigation-ui')")
             evaluate('loadSampleButton.click()');wait_for("document.readyState==='complete' && typeof sampleMode!=='undefined' && sampleMode");load();wait_camera()
-            check(evaluate('entries.size===187 && hierarchySidebar.tree.querySelectorAll(".hierarchy-row[data-entry-id]").length===12 && hierarchySidebar.tree.querySelectorAll(".portal-row").length===3'),'large sample starts with Galaxy roots/Suns and three lightweight Portal leaves')
+            check(evaluate('entries.size===282 && hierarchySidebar.tree.querySelectorAll(".hierarchy-row[data-entry-id]").length===12 && hierarchySidebar.tree.querySelectorAll(".portal-row").length===3'),'large sample starts with Galaxy roots/Suns and three lightweight Portal leaves')
             evaluate("hierarchySidebar.select('sample-deep-7')")
             check(evaluate("hierarchySidebar.tree.querySelectorAll('.hierarchy-row').length<50 && galaxyModel.ancestors(entries,'sample-deep-7').every(e=>hierarchySidebar.expanded.has(e.id))"),'deep sample selection opens its path while keeping other branches compact')
             evaluate("focusEntry('sample-deep-7')");wait_camera()
@@ -3646,7 +4052,7 @@ def main():
             def view_at(scale, entry_id='sample-galaxy-0'):
                 evaluate(f"(()=>{{clearSelection();searchField.value='';refreshSearchResults();const e=entries.get({json.dumps(entry_id)});camera.setView({{x:(physics.bounds.left+physics.bounds.right)/2-e.x*{scale},y:(physics.bounds.top+physics.bounds.bottom)/2-e.y*{scale},scale:{scale}}},false);}})()")
                 time.sleep(.25)
-            check(evaluate("entries.size===187 && regions.size===4 && galaxyAppearance.cloudCache.size===4"), "large sample reuses four cached nebula images")
+            check(evaluate("entries.size===282 && regions.size===4 && galaxyAppearance.cloudCache.size===4"), "large sample reuses four cached nebula images")
             check(evaluate("[...regions.values()].every(r=>r.tagName==='CANVAS' && r.width===512 && r.height===512 && r.cloudDraws===1)"), "nebula pixels use fixed cached canvases rather than full-resolution frame redraws")
             check(evaluate("[...entries.values()].filter(e=>e.depth>0).every(e=>nodes.get(e.id).dataset.semanticHidden==='true')"), "fitted Universe hides all routine lower bodies")
             check(evaluate("[...entries.values()].filter(e=>e.depth===0).every(e=>{const n=nodes.get(e.id),r=n.getBoundingClientRect();return parseFloat(getComputedStyle(n.querySelector('.node-label')).fontSize)>=15&&r.left>=0&&r.right<=innerWidth&&r.top>=0&&r.bottom<=innerHeight;})"), "Universe Galaxy names are authoritative and fit in view")
@@ -3995,7 +4401,7 @@ def main():
 
         wait_for('physics.settled');evaluate('physics.pause();saveGalaxy()');real_snapshot=evaluate("localStorage.getItem('galaxy:user-data')")
         evaluate('loadSampleButton.click()');wait_for("document.readyState==='complete' && typeof physics!=='undefined' && sampleMode");wait_for('physics.settled',timeout=25);wait_camera()
-        check(evaluate('entries.size===187 && physics.galaxies.size===4 && physics.systems.size===8'), "stress sample contains 187 entries across four Galaxies and eight Suns")
+        check(evaluate('entries.size===282 && physics.galaxies.size===4 && physics.systems.size===8'), "stress sample contains 282 entries across four Galaxies and eight Suns")
         check(evaluate("new Set([...entries.values()].filter(e=>e.depth===0).map(e=>galaxyAppearance.resolve(e).archetype)).size===4"), "sample shows four stable Galaxy archetypes")
         check(evaluate("new Set([...entries.values()].filter(e=>e.depth===2).map(e=>galaxyAppearance.resolve(e).archetype)).size===6 && [...nodes.values()].filter(n=>n.dataset.rings==='true').length>0 && [...nodes.values()].filter(n=>n.dataset.rings==='true').length<12"), "sample shows six Planet archetypes with occasional rings")
         check(evaluate("localStorage.getItem('galaxy:user-data')")==real_snapshot, "sample loading never modifies real saved data")
@@ -4007,7 +4413,7 @@ def main():
         check(evaluate("selectedNode.dataset.entryId==='sample-deep-7' && panelAncestry.querySelectorAll('button').length===7 && galaxyModel.ancestors(entries,'sample-deep-7').every(e=>nodes.get(e.id).classList.contains('related'))"), "depth-seven sample search reveals Galaxy, Sun and every intermediate ancestor")
         baseline=motion_metrics()
         baseline_responsive=baseline['renderP95']<20 and baseline['frameMedian']<55 and baseline['frameP95']<120
-        baseline_title=f"187-body baseline motion responsive: render p95 {baseline['renderP95']:.1f}ms, frame median/p95 {baseline['frameMedian']:.1f}/{baseline['frameP95']:.1f}ms"
+        baseline_title=f"282-body baseline motion responsive: render p95 {baseline['renderP95']:.1f}ms, frame median/p95 {baseline['frameMedian']:.1f}/{baseline['frameP95']:.1f}ms"
         # Finish drag/sample-isolation checks before reporting a paint-budget
         # failure. Keep the same threshold and failing exit status.
         if not baseline_responsive: print('FAIL '+baseline_title+' (deferred until functional checks finish)',flush=True)
@@ -4020,7 +4426,7 @@ def main():
             check(evaluate("physics.particles.get(selectedNode.dataset.entryId).fx===null && !document.getElementById('panel-placement')"), 'stress sample '+body+' dragging remains flowing')
         check(evaluate("localStorage.getItem('galaxy:user-data')")==real_snapshot, "sample search, drag and layout remain isolated")
         stress=motion_metrics()
-        check(stress['renderP95']<20, f"187-body projection stays within budget after DPR switching ({stress['renderP95']:.1f}ms p95)")
+        check(stress['renderP95']<20, f"282-body projection stays within budget after DPR switching ({stress['renderP95']:.1f}ms p95)")
         print(f"DPR-switch paint stress: frame median/p95 {stress['frameMedian']:.1f}/{stress['frameP95']:.1f}ms (reported separately; verify on a native display)",flush=True)
         wait_for('physics.settled',timeout=60);evaluate('removeSampleButton.click()');wait_for("document.readyState==='complete' && typeof physics!=='undefined' && !sampleMode");load()
         check(evaluate(f"entries.has({json.dumps(g1)}) && !entries.has('sample-galaxy-0') && !JSON.parse(localStorage.getItem('galaxy:user-data')).entries.some(e=>e.id.startsWith('sample-'))"), "Remove Sample returns to real data without mixing entries")

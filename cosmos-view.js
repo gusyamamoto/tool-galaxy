@@ -1,18 +1,45 @@
 // Presentation only. These values never modify particles, ancestry or saved data.
 const cosmosView = {
-    bodyCaps: { sun: 76, planet: 44, moon: 25, satellite: 18, astronaut: 14 },
+    bodyCaps: { sun: 100, planet: 32, moon: 16, satellite: 12, astronaut: 8 },
+    inspectionCaps: { satellite: 26, astronaut: 14 },
+    visualScale: { sun: 1.5, planet: 1.3 },
+    renderCap(role, scale) {
+        const normal = this.bodyCaps[role] || Infinity;
+        const close = this.inspectionCaps[role];
+        if (!close || scale <= 3) return normal;
+        if (scale >= 9) return close;
+        return normal + (close - normal) * this.smooth(scale, 3, 9);
+    },
     renderedDiameter(role, diameter, scale, detail = 1) {
-        return Math.min(this.bodyCaps[role] || Infinity, diameter * scale * (.72 + detail * .28));
+        return Math.min(this.renderCap(role, scale), diameter * (this.visualScale[role] || 1) * scale * (.72 + detail * .28));
     },
     tiers: { galaxy: .45, system: .58, close: .78 },
     fades: {
         sun: [.43, .58], planet: [.58, .68], moon: [.68, .76], satellite: [.70, .79], astronaut: [.74, .86],
-        sunLabel: [.44, .58], planetLabel: [.66, .82], moonLabel: [.90, 1.12], satelliteLabel: [1.02, 1.30],
-        astronautLabel: [1.20, 1.52], tethers: [.78, .96], guides: [.58, .78], clouds: [.38, .72]
+        sunLabel: [.44, .58], planetLabel: [.66, .82], moonLabel: [.90, 1.12], satelliteLabel: [1.1, 2.7],
+        astronautLabel: [2.7, 7], tethers: [.78, .96], guides: [.58, .78], clouds: [.38, .72]
     },
     smooth(scale, start, end) {
         const t = Math.max(0, Math.min(1, (scale - start) / (end - start)));
         return t * t * (3 - 2 * t);
+    },
+    disclosureOffset(id) {
+        let hash=2166136261;
+        for(const char of id)hash=Math.imul(hash^char.charCodeAt(0),16777619)>>>0;
+        hash=Math.imul(hash^(hash>>>16),2246822507)>>>0;
+        hash=(hash^(hash>>>13))>>>0;
+        return hash/4294967296;
+    },
+    labelDisclosure(role, scale, id) {
+        const range=this.fades[`${role}Label`];
+        if(!range)return 1;
+        const offset=this.disclosureOffset(id)*(role==='satellite'?.55:role==='astronaut'?1.5:0);
+        return this.smooth(scale,range[0]+offset,range[1]+offset);
+    },
+    deepTetherOpacity(scale, id, protectedRelationship=false) {
+        if(protectedRelationship)return .25;
+        const offset=this.disclosureOffset(id)*1.2;
+        return .14*this.smooth(scale,2.5+offset,6+offset);
     },
     detail(scale) {
         const result = { tier: scale < this.tiers.galaxy ? "universe" : scale < this.tiers.system ? "galaxy" : scale < this.tiers.close ? "system" : "close" };
@@ -24,7 +51,9 @@ const cosmosView = {
     constellationVisibility(scale, role, { member = false, priority = false } = {}, detail = this.detail(scale)) {
         const context = .78 * this.smooth(scale, .34, .84);
         const body = role === 'galaxy' ? 1 : detail[role];
-        const label = role === 'galaxy' ? this.smooth(scale, .48, .68) : detail[`${role}Label`];
+        // Preserve the established Constellation lens disclosure separately.
+        const lensRange={satellite:[1.02,1.30],astronaut:[1.20,1.52]}[role];
+        const label = role === 'galaxy' ? this.smooth(scale, .48, .68) : lensRange?this.smooth(scale,...lensRange):detail[`${role}Label`];
         return { body: member || priority ? 1 : body * context,
             label: priority ? 1 : member ? label : label * context };
     },
