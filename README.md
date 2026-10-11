@@ -11,13 +11,17 @@ editable; changing the starter preserves a name you have already typed. A starte
 creates ordinary canonical items in one existing CRUD operation, with no saved
 template flag, protected content or new storage structure:
 
-| Starter | Initial child items |
-| --- | --- |
-| Trip | Places, Accommodation, Transportation, Food, Packing, Documents |
-| Home project | Ideas, Tasks, Materials, Budget, Photos |
-| Class / course | Notes, Assignments, Resources, Exams |
-| Recipes | Favorites, To Try, Weeknight, Baking |
-| Photos / inspiration | Favorites, Ideas, Collections |
+Each non-Blank starter has one Sun, five useful Planets and selected deeper
+branches reaching an Astronaut. Most branches stay shallow. Blank creates only
+the user-named Galaxy. Roles come from depth; all items remain freely editable.
+
+| Starter | Primary Sun | Planets | Total items, including Galaxy |
+| --- | --- | --- | --- |
+| Trip | Trip Plan | Stay, Food, Transport, Things to do, Documents | 16 |
+| Home project | Project Plan | Tasks, Budget, Materials, Ideas, Photos | 13 |
+| Class / course | Course | Lessons, Assignments, Notes, Resources, Exams | 14 |
+| Recipes | Recipe Box | Breakfast, Lunch, Dinner, Desserts, To try | 11 |
+| Photos / inspiration | Inspiration | Travel, Home, Style, Food, Other ideas | 11 |
 
 On desktop, supported files or web addresses can be dropped onto a body, Galaxy
 cloud or canonical sidebar row. A quiet outline marks the target. Files reuse
