@@ -131,6 +131,7 @@ def main():
     args.add_argument("--navigation-refinement-only", action="store_true", help="Check Universe copy, compact touch collection actions, quick bookmarks and accessible zoom shortcuts")
     args.add_argument("--sheet-sizing-only", action="store_true", help="Check natural mobile Content sheet height, scrolling, active lens and keyboard bounds")
     args.add_argument("--everyday-only", action="store_true", help="Check item copy, ordinary starter Galaxies, canonical file/link drops, visual images and plain-text checklists")
+    args.add_argument("--starter-galaxies-only", action="store_true", help="Create and inspect all nested canonical Starter Galaxies")
     args.add_argument("--spring-drop-only", action="store_true", help="Check external drag hover expansion, deep destinations, timer cleanup, internal-drag exclusion and sidebar scrolling")
     args.add_argument("--linked-items-only", action="store_true", help="Check destination-first existing-item picker, plain linked-item language, Name-only rename and legacy metadata compatibility")
     args.add_argument("--persistence-only", action="store_true", help="Check adapter composition, scoped real IndexedDB operations, metadata recovery and Sample isolation")
@@ -1132,7 +1133,7 @@ def main():
             check(evaluate("dialog.open&&document.getElementById('add-entry-title').textContent==='New Galaxy'&&!document.getElementById('galaxy-starter-field').hidden"),'Universe + opens the existing New Galaxy and Starter flow')
             evaluate("galaxyStarter.value='trip';galaxyStarter.dispatchEvent(new Event('change'));fields[0].value='Section Trip';form.requestSubmit()")
             starter=evaluate('selectedNode.dataset.entryId')
-            check(evaluate(f"entries.get({json.dumps(starter)}).depth===0&&galaxyModel.childrenOf(entries,{json.dumps(starter)}).length===6"),'Universe + creates an ordinary Starter Galaxy through the shared CRUD path')
+            check(evaluate(f"entries.get({json.dumps(starter)}).depth===0&&galaxyModel.childrenOf(entries,{json.dumps(starter)}).length===1&&galaxyModel.subtreeIds(entries,{json.dumps(starter)}).size===16"),'Universe + creates an ordinary nested Trip Starter Galaxy through the shared CRUD path')
             evaluate('physics.pause()');before=state();evaluate(f"requestGalaxyArchive({json.dumps(other)});document.getElementById('archive-galaxy-form').requestSubmit();physics.pause()")
             check(evaluate("!archivedSection.root.hidden&&archivedSection.collapsed&&document.getElementById('archived-galaxy-count').textContent==='(1)'"),'archiving reveals the dedicated collapsed Archive section with a count')
             wait_for('archiveMotion.transitions.size===0');wait_for('physics.settled');evaluate('physics.pause()')
@@ -1594,6 +1595,45 @@ def main():
             check(not cdp.errors,f'no spring-drop browser exceptions: {cdp.errors}')
             print(f'{count} spring-drop browser checks passed',flush=True);return
 
+        if options.starter_galaxies_only:
+            reports=[]
+            for starter,total,sun_name in [('blank',1,None),('trip',16,'Trip Plan'),('home',13,'Project Plan'),('class',14,'Course'),('recipes',11,'Recipe Box'),('photos',11,'Inspiration')]:
+                typed='Japan' if starter=='trip' else 'My '+starter
+                evaluate(f"openEntryForm();fields[0].value={json.dumps(typed)};galaxyStarter.value={json.dumps(starter)};galaxyStarter.dispatchEvent(new Event('change'));form.requestSubmit();physics.pause()")
+                root=evaluate('selectedNode.dataset.entryId')
+                evaluate('physics.simulation.tick(450);physics.onTick(physics.particles)')
+                report=evaluate(f"(()=>{{const root=entries.get({json.dumps(root)}),branch=[...galaxyModel.subtreeIds(entries,root.id)].map(id=>entries.get(id)),suns=galaxyModel.childrenOf(entries,root.id);return {{starter:{json.dumps(starter)},name:root.name,count:branch.length,maxDepth:Math.max(...branch.map(e=>e.depth)),suns:suns.map(e=>e.name),planets:suns.length?galaxyModel.childrenOf(entries,suns[0].id).map(e=>e.name):[],canonical:branch.every(e=>(!e.parentId||entries.has(e.parentId))&&e.role===galaxyModel.roleAtDepth(galaxyModel.ancestors(entries,e.id).length)&&!e.template&&!e.protected),deep:branch.find(e=>e.depth===5)?.id}}}})()")
+                reports.append(report)
+                check(report['name']==typed and report['count']==total,starter+' preserves the entered Galaxy name and expected small item count')
+                check(report['canonical'],starter+' contains only ordinary valid canonical parent relationships')
+                check(report['suns']==([] if starter=='blank' else [sun_name]) and report['maxDepth']==(0 if starter=='blank' else 5),starter+' has the expected Sun and full-depth demonstration')
+                check(len(report['planets'])==(0 if starter=='blank' else 5),starter+' remains a compact five-Planet family')
+                stages=[root] if starter=='blank' else evaluate(f"[...[...galaxyModel.ancestors(entries,{json.dumps(report['deep'])})].reverse().map(e=>e.id),{json.dumps(report['deep'])}]")
+                world=evaluate('JSON.stringify([...physics.particles].map(([id,n])=>[id,n.x,n.y,n.orbitRadius,n.familyFootprint,n.softBandIndex]))')
+                for depth,target in enumerate(stages):
+                    evaluate(f"focusEntry({json.dumps(target)})");wait_camera();time.sleep(.2)
+                    check(evaluate(f"selectedNode.dataset.entryId==={json.dumps(target)}&&contentInspector.entryId==={json.dumps(target)}&&hierarchySidebar.selectedId==={json.dumps(target)}"),f'{starter}: normal hierarchy travel selects depth {depth}')
+                    if screenshot_dir:
+                        result=cdp.call('Page.captureScreenshot',format='png',captureBeyondViewport=False);(screenshot_dir/f'starter-{starter}-depth-{depth}.png').write_bytes(base64.b64decode(result['data']))
+                if starter!='blank':
+                    evaluate('camera.zoomAt(700,450,2)');wait_camera()
+                    check(evaluate('JSON.stringify([...physics.particles].map(([id,n])=>[id,n.x,n.y,n.orbitRadius,n.familyFootprint,n.softBandIndex]))')==world,starter+' hierarchy travel and inspection zoom preserve layout')
+            evaluate('saveGalaxy()');raw=evaluate("localStorage.getItem('galaxy:user-data')")
+            hierarchy_before=evaluate('JSON.stringify([...entries.values()].map(e=>[e.id,e.parentId,e.name]))')
+            check(evaluate("JSON.parse(localStorage.getItem('galaxy:user-data')).version===5"),'nested starters use unchanged storage v5')
+            cdp.call('Page.reload');load();evaluate('physics.pause()')
+            check(evaluate("[...entries.values()].filter(e=>e.depth===0&&['Japan','My blank','My home','My class','My recipes','My photos'].includes(e.name)).length===6"),'all six created Galaxy names survive refresh')
+            check(evaluate('JSON.stringify([...entries.values()].map(e=>[e.id,e.parentId,e.name]))')==hierarchy_before,'all starter parent relationships and names survive refresh')
+            evaluate('saveGalaxy()');raw=evaluate("localStorage.getItem('galaxy:user-data')")
+            evaluate('loadSampleButton.click()');wait_for("typeof sampleMode!=='undefined'&&sampleMode&&entries.size===282")
+            check(evaluate("entries.has('sample-sun-0')&&galaxyModel.childrenOf(entries,'sample-sun-0').filter(e=>e.id.startsWith('sample-stress-planet-')).length===25"),'existing Sample and stress hierarchy remain unchanged')
+            check(evaluate("localStorage.getItem('galaxy:user-data')")==raw,'Sample enters without changing saved starters')
+            evaluate('removeSampleButton.click()');wait_for("typeof sampleMode!=='undefined'&&!sampleMode")
+            check(evaluate("localStorage.getItem('galaxy:user-data')")==raw,'leaving Sample restores starters without rewriting user data')
+            if screenshot_dir:(screenshot_dir/'starter-review.json').write_text(json.dumps(reports,indent=2),encoding='utf-8')
+            check(not cdp.errors,f'no starter browser exceptions: {cdp.errors}')
+            print(f'{count} starter-galaxy checks passed: '+json.dumps(reports),flush=True);return
+
         if options.everyday_only:
             evaluate('physics.pause()')
             def media_key(value, code, text=''):
@@ -1604,23 +1644,23 @@ def main():
                     result=cdp.call('Page.captureScreenshot',format='png',captureBeyondViewport=False);(screenshot_dir/(name+'.png')).write_bytes(base64.b64decode(result['data']))
             roots={}
             for starter in ['blank','trip','home','class','recipes','photos']:
-                evaluate(f"openEntryForm();galaxyStarter.value={json.dumps(starter)};galaxyStarter.dispatchEvent(new Event('change'))")
+                entered_name='Japan' if starter=='trip' else 'My '+starter
+                evaluate(f"openEntryForm();fields[0].value={json.dumps(entered_name)};galaxyStarter.value={json.dumps(starter)};galaxyStarter.dispatchEvent(new Event('change'))")
                 check(evaluate("document.getElementById('add-entry-title').textContent==='New Galaxy'&&!document.getElementById('galaxy-starter-field').hidden&&galaxyStarter.options.length===6&&roleField.hidden"),'compact New Galaxy offers Blank and five keyboard-accessible starters: '+starter)
                 shot('everyday-starter-'+starter)
-                if starter=='blank':evaluate("fields[0].value='Blank area'")
                 evaluate('form.requestSubmit();physics.pause()');root=evaluate('selectedNode.dataset.entryId');roots[starter]=root
-                check(evaluate(f"(()=>{{const root=entries.get({json.dumps(root)}),starter=cosmosEveryday.starters.find(s=>s.id==={json.dumps(starter)}),children=[...entries.values()].filter(e=>e.parentId===root.id);return root.role==='galaxy'&&JSON.stringify(children.map(e=>e.name))===JSON.stringify(starter.children)&&children.every(e=>e.role==='sun'&&e.depth===1&&!e.protected&&!e.template)}})()"),'starter produces ordinary Galaxy and correctly derived items: '+starter)
-            root=roots['trip'];children=evaluate(f"[...entries.values()].filter(e=>e.parentId==={json.dumps(root)}).map(e=>e.id)");owner=children[0];other=children[1]
+                check(evaluate(f"(()=>{{const root=entries.get({json.dumps(root)}),starter=cosmosEveryday.starters.find(s=>s.id==={json.dumps(starter)}),children=galaxyModel.childrenOf(entries,root.id),branch=[...galaxyModel.subtreeIds(entries,root.id)].map(id=>entries.get(id));return root.role==='galaxy'&&root.name==={json.dumps(entered_name)}&&JSON.stringify(children.map(e=>e.name))===JSON.stringify(starter.children.map(e=>e.name))&&branch.every(e=>(!e.parentId||entries.has(e.parentId))&&e.depth===galaxyModel.ancestors(entries,e.id).length&&e.role===galaxyModel.roleAtDepth(e.depth)&&!e.protected&&!e.template)&&({json.dumps(starter)}==='blank'?branch.length===1:children.length===1&&Math.max(...branch.map(e=>e.depth))===5)}})()"),'starter preserves entered name and creates a canonical nested hierarchy: '+starter)
+            root=roots['trip'];children=evaluate(f"galaxyModel.childrenOf(entries,galaxyModel.childrenOf(entries,{json.dumps(root)})[0].id).map(e=>e.id)");owner=children[0];other=children[1]
             child=add('Hotel details',owner);evaluate('physics.pause()')
-            check(evaluate("document.getElementById('add-entry-title').textContent==='Add item'&&submitButton.textContent==='Create item'&&document.getElementById('galaxy-starter-field').hidden&&entries.get(selectedNode.dataset.entryId).role==='planet'"),'child creation says item and automatically renders the correct role')
+            check(evaluate("document.getElementById('add-entry-title').textContent==='Add item'&&submitButton.textContent==='Create item'&&document.getElementById('galaxy-starter-field').hidden&&entries.get(selectedNode.dataset.entryId).role==='moon'"),'child creation says item and automatically renders the correct role')
             edit(child,name='Renamed hotel',parent=other);evaluate('physics.pause()')
-            check(evaluate(f"entries.get({json.dumps(child)}).name==='Renamed hotel'&&entries.get({json.dumps(child)}).parentId==={json.dumps(other)}&&entries.get({json.dumps(child)}).role==='planet'"),'starter descendants use existing rename/reparent handlers')
+            check(evaluate(f"entries.get({json.dumps(child)}).name==='Renamed hotel'&&entries.get({json.dumps(child)}).parentId==={json.dumps(other)}&&entries.get({json.dumps(child)}).role==='moon'"),'starter descendants use existing rename/reparent handlers')
             evaluate(f"requestEntryDelete({json.dumps(child)});document.getElementById('delete-entry-form').requestSubmit()")
             wait_for('!deletionBusy&&!deleteDialog.open');evaluate('physics.pause()')
             check(evaluate(f"!entries.has({json.dumps(child)})&&entries.has({json.dumps(owner)})&&entries.has({json.dumps(other)})"),'starter items delete normally without harming siblings')
             photo_root=roots['photos'];photo_ids=evaluate(f"[...galaxyModel.subtreeIds(entries,{json.dumps(photo_root)})]")
             evaluate(f"requestEntryDelete({json.dumps(photo_root)})")
-            check(evaluate('deleteConfirmationIds.size===4'),'starter Galaxy uses the existing counted subtree confirmation')
+            check(evaluate('deleteConfirmationIds.size')==len(photo_ids),'starter Galaxy uses the existing counted subtree confirmation')
             evaluate("document.getElementById('delete-entry-form').requestSubmit()");wait_for('!deletionBusy&&!deleteDialog.open');evaluate('physics.pause()')
             check(evaluate(f"{json.dumps(photo_ids)}.every(id=>!entries.has(id))&&entries.has({json.dumps(root)})"),'deleting a starter Galaxy removes its entire ordinary subtree')
             evaluate(f"focusEntry({json.dumps(owner)})");wait_camera();evaluate('physics.pause()')

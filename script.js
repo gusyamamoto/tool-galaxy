@@ -1716,12 +1716,13 @@ form.addEventListener("submit", (event) => {
         entries.set(entry.id, entry);
         if (oldParentId !== data.parentId) layout.delete(entry.id);
         if(creating&&!data.parentId){
-            const starter=cosmosEveryday.starters.find(item=>item.id===galaxyStarter.value);
             galaxyModel.normalizeHierarchy(entries);
-            for(const name of starter?.children||[]){
-                const child={id:getNewEntryId(),name,description:'',category:'',createdAt:now,updatedAt:now,parentId:data.id,role:galaxyModel.roleAtDepth(1),depth:1,
-                    ...getNewEntryPosition([data.id],galaxyModel.roleAtDepth(1)),seedLayout:true};
+            for(const item of cosmosEveryday.starterItems(galaxyStarter.value,data.id,getNewEntryId)){
+                const role=galaxyModel.roleAtDepth(galaxyModel.ancestors(entries,item.parentId).length+1);
+                const child={...item,description:'',category:'',createdAt:now,updatedAt:now,
+                    ...getNewEntryPosition([item.parentId],role),seedLayout:true};
                 entries.set(child.id,child);
+                galaxyModel.normalizeHierarchy(entries);
                 changedIds.push(child.id);
             }
         }

@@ -2,12 +2,47 @@
 const cosmosEveryday = {
     starters: [
         {id:'blank',label:'Blank',name:'',children:[]},
-        {id:'trip',label:'✈ Trip',name:'Trip',children:['Places','Accommodation','Transportation','Food','Packing','Documents']},
-        {id:'home',label:'🏠 Home project',name:'Home Project',children:['Ideas','Tasks','Materials','Budget','Photos']},
-        {id:'class',label:'🎓 Class / course',name:'Class',children:['Notes','Assignments','Resources','Exams']},
-        {id:'recipes',label:'🍝 Recipes',name:'Recipes',children:['Favorites','To Try','Weeknight','Baking']},
-        {id:'photos',label:'📷 Photos / inspiration',name:'Photos',children:['Favorites','Ideas','Collections']}
+        {id:'trip',label:'✈ Trip',name:'Trip',children:[{name:'Trip Plan',children:[
+            {name:'Stay',children:[{name:'Hotel',children:[{name:'Booking'}]}]},
+            {name:'Food',children:[{name:'Restaurants',children:[{name:'Reservations',children:[{name:'Confirmation'}]}]}]},
+            {name:'Transport',children:[{name:'Flights'},{name:'Local transport'}]},
+            {name:'Things to do',children:[{name:'Places'}]},
+            {name:'Documents',children:[{name:'Tickets'}]}
+        ]}]},
+        {id:'home',label:'🏠 Home project',name:'Home Project',children:[{name:'Project Plan',children:[
+            {name:'Tasks',children:[{name:'To do',children:[{name:'Next up',children:[{name:'First task'}]}]}]},
+            {name:'Budget',children:[{name:'Costs'}]},
+            {name:'Materials',children:[{name:'Shopping list'}]},
+            {name:'Ideas',children:[{name:'Inspiration'}]},
+            {name:'Photos'}
+        ]}]},
+        {id:'class',label:'🎓 Class / course',name:'Class',children:[{name:'Course',children:[
+            {name:'Lessons',children:[{name:'Module 1',children:[{name:'Topics',children:[{name:'Topic 1'}]}]}]},
+            {name:'Assignments',children:[{name:'Upcoming'}]},
+            {name:'Notes',children:[{name:'Study notes'}]},
+            {name:'Resources',children:[{name:'Readings'}]},
+            {name:'Exams',children:[{name:'Study plan'}]}
+        ]}]},
+        {id:'recipes',label:'🍝 Recipes',name:'Recipes',children:[{name:'Recipe Box',children:[
+            {name:'Breakfast'},{name:'Lunch'},
+            {name:'Dinner',children:[{name:'Favorites',children:[{name:'Weeknight meals',children:[{name:'Recipe idea'}]}]}]},
+            {name:'Desserts'},{name:'To try',children:[{name:'Saved ideas'}]}
+        ]}]},
+        {id:'photos',label:'📷 Photos / inspiration',name:'Photos',children:[{name:'Inspiration',children:[
+            {name:'Travel',children:[{name:'Places',children:[{name:'Favorites',children:[{name:'Idea'}]}]}]},
+            {name:'Home',children:[{name:'Interiors'}]},
+            {name:'Style'},{name:'Food'},{name:'Other ideas'}
+        ]}]}
     ],
+    starterItems(starterId, galaxyId, newId) {
+        const records=[];
+        const visit=(items,parentId)=>items.forEach(item=>{
+            const id=newId();records.push({id,name:item.name,parentId});
+            visit(item.children||[],id);
+        });
+        visit(this.starters.find(starter=>starter.id===starterId)?.children||[],galaxyId);
+        return records;
+    },
     checklistLine(line) {
         const match=/^(\s*-\s+\[)([ xX])(\]\s+)([\s\S]*)$/.exec(line);
         return match ? {checked:match[2].toLowerCase()==='x',label:match[4],prefix:match[1],suffix:match[3]} : null;
