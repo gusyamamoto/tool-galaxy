@@ -156,6 +156,7 @@
             <button type="button" role="menuitem" data-action="edit">Rename</button>
             <button type="button" role="menuitem" data-action="copy">Copy</button>
             <button type="button" role="menuitem" data-action="paste">Paste</button>
+            <button type="button" role="menuitem" data-action="duplicate-structure">Duplicate structure</button>
             <button type="button" role="menuitem" data-action="archive" data-galaxy-only hidden>Archive Galaxy</button>
             <button type="button" role="menuitem" data-action="delete">Delete item</button>
             <button type="button" role="menuitem" data-action="open-portal" data-portal-action hidden>Go to original</button>
@@ -382,6 +383,16 @@
         </div>
         <p id="hierarchy-paste-status" role="status" hidden></p>
         <div class="form-actions"><button id="hierarchy-paste-cancel" type="button">Cancel</button></div>
+    </dialog>
+    <dialog id="duplicate-structure-dialog" class="collection-dialog" aria-labelledby="duplicate-structure-title" aria-describedby="duplicate-structure-description">
+        <form id="duplicate-structure-form">
+            <h2 id="duplicate-structure-title">Duplicate structure</h2>
+            <p id="duplicate-structure-description"></p>
+            <label for="duplicate-structure-name">Name</label>
+            <input id="duplicate-structure-name" type="text" required maxlength="60" autofocus>
+            <p id="duplicate-structure-error" role="status" hidden></p>
+            <div class="form-actions"><button id="duplicate-structure-cancel" type="button">Cancel</button><button type="submit">Duplicate</button></div>
+        </form>
     </dialog>
     <script src="clipboard.js"></script>
     <script src="script.js"></script>
