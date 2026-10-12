@@ -27,7 +27,9 @@ const initialEntries = [
 
 const entryRoles = galaxyModel.roles;
 const sampleMode = galaxySample.isRequested(window.location.search);
-const persistence = createPersistence({sample: sampleMode, sampleSnapshot: sampleMode ? galaxySample.build() : null});
+const persistence = globalThis.cosmifoldStartupPersistence || createPersistence({sample: sampleMode, sampleSnapshot: sampleMode ? galaxySample.build() : null});
+let localRestoreInProgress=false;
+let restorePhysicsWasPaused=false;
 const universeRepository = createUniverseRepository({persistence, canWrite: () => sampleMode || storageAvailable});
 if (sampleMode) {
     // The query activates this page load only. Keeping it out of the address bar
@@ -508,6 +510,9 @@ const contentInspector = new EntryContentInspector({ store: attachmentStore, mot
     onAction() { cancelPendingBodyFocus();autoFitPending = false; keyboardNavigation = false; camera.stopAnimation(); },
     onLayout() { if (cameraViewReady) updateGraphViewport(); } });
 const backupUI=new CosmifoldBackupUI({repository:universeRepository,sample:sampleMode,
+    session:globalThis.cosmifoldRestoreSession,
+    onRestoreStart:()=>{localRestoreInProgress=true;restorePhysicsWasPaused=physics.paused;physics.pause();},
+    onRestoreEnd:(success,recoveryRequired=false)=>{if(!success&&!recoveryRequired){localRestoreInProgress=false;if(!restorePhysicsWasPaused)physics.resume();}},
     blocked:()=>contentInspector.jobs.size>0||deletionBusy||pasteBusy});
 const contentDrops=new CosmosContentDrops({host:galaxy,getEntry:id=>entries.get(id),
     tree:hierarchySidebar.tree,expandRow:id=>hierarchySidebar.expandForContentDrag(id),
@@ -714,6 +719,7 @@ function getGalaxySnapshot() {
 }
 
 function saveGalaxy(intent = {type:'layout.saved'}) {
+    if(localRestoreInProgress)return;
     if (sampleMode) {
         graphNeedsSave = false;
         return;
@@ -2371,7 +2377,7 @@ document.addEventListener("visibilitychange", () => {
         if (graphNeedsSave) {
             saveGalaxy();
         }
-    } else if (!dialog.open && !deleteDialog.open && !archiveDialog.open && !portalDialog.open && !constellationWorkspace.isDialogOpen()) {
+    } else if (!localRestoreInProgress && !dialog.open && !deleteDialog.open && !archiveDialog.open && !portalDialog.open && !constellationWorkspace.isDialogOpen()) {
         physics.resume();
     }
 });

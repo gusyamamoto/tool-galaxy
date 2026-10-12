@@ -5,6 +5,7 @@ class PersistenceError extends Error {
         // Preserve quota classification used by the current friendly recovery UI.
         this.name = error?.name || 'PersistenceError';
         this.store = store; this.operation = operation; this.scope = scope;
+        this.recoveryRequired = !!error?.recoveryRequired;
     }
 }
 function createPersistence({config = cosmosConfig, sample = false, sampleSnapshot = null, metadata, files, preferences} = {}) {
@@ -35,8 +36,8 @@ function createPersistence({config = cosmosConfig, sample = false, sampleSnapsho
     }
     return {
         scope, sample, diagnostics,
-        metadata: boundary(metadata, 'metadata', ['load','save','clear','readForBackup']),
-        files: Object.assign(boundary(files, 'files', ['save','saveBatch','get','readAll','delete','deleteEntries','hasEntries']), {temporary: !!files.temporary}),
+        metadata: boundary(metadata, 'metadata', ['load','save','clear','readForBackup','readRestoreJournal','beginRestore','endRestore','captureRestoreState','replaceRaw','recoverRaw']),
+        files: Object.assign(boundary(files, 'files', ['save','saveBatch','get','readAll','delete','deleteEntries','hasEntries','replaceAll','restoreMarker']), {temporary: !!files.temporary}),
         preferences
     };
 }

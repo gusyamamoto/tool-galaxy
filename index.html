@@ -6,6 +6,7 @@
     <title>Cosmifold</title>
 
     <link rel="stylesheet" href="style.css">
+    <link rel="preload" href="script.js" as="script">
 </head>
 
 <body>
@@ -278,9 +279,24 @@
     <dialog id="backup-dialog" class="collection-dialog" aria-labelledby="backup-title" aria-describedby="backup-description backup-privacy">
         <h2 id="backup-title">Back up Cosmifold</h2>
         <p id="backup-description">Download a copy of your saved Cosmifold data and files.</p>
-        <p id="backup-privacy">This backup is not encrypted. Keep it somewhere you trust. Restore will be available in a separate upcoming feature.</p>
+        <p id="backup-privacy">This backup is not encrypted. Keep it somewhere you trust.</p>
+        <div class="backup-section-action"><button id="download-backup" type="button">Download backup</button></div>
+        <section id="backup-restore-options" aria-labelledby="backup-restore-label">
+            <h3 id="backup-restore-label">Restore</h3>
+            <p>Replace this browser's current Cosmifold data with a backup.</p>
+            <button id="choose-restore-backup" type="button">Restore backup…</button>
+            <input id="restore-backup-file" type="file" accept=".cosmifold" hidden>
+        </section>
+        <section id="restore-backup-preview" hidden aria-labelledby="restore-backup-title">
+            <h3 id="restore-backup-title">Restore Cosmifold</h3>
+            <p id="restore-backup-date"></p>
+            <p id="restore-backup-summary"></p>
+            <p>This will replace the Cosmifold data currently stored in this browser.</p>
+            <p id="restore-backup-suggestion">Want to keep your current Cosmos? Download a backup before restoring.</p>
+            <button id="confirm-restore-backup" type="button">Restore</button>
+        </section>
         <p id="backup-status" role="status" aria-live="polite" hidden></p>
-        <div class="form-actions"><button id="cancel-backup" type="button">Cancel</button><button id="download-backup" type="button">Download backup</button></div>
+        <div class="form-actions"><button id="cancel-backup" type="button">Cancel</button></div>
     </dialog>
     <dialog id="help-dialog" aria-labelledby="help-title" aria-describedby="help-intro">
         <header class="help-header"><h2 id="help-title">Help</h2><button id="close-help-button" type="button" aria-label="Close Help" title="Close Help" autofocus>&times;</button></header>
@@ -394,6 +410,8 @@
     <script src="persistence/composition.js"></script>
     <script src="services/universe-repository.js"></script>
     <script src="services/local-backup.js"></script>
+    <script src="services/local-restore.js"></script>
+    <script src="services/local-restore-session.js"></script>
     <script src="backup-ui.js"></script>
     <script src="vendor/d3-force.bundle.min.js"></script>
     <script src="physics.js"></script>
@@ -427,6 +445,6 @@
         </form>
     </dialog>
     <script src="clipboard.js"></script>
-    <script src="script.js"></script>
+    <script src="startup.js"></script>
 </body>
 </html>

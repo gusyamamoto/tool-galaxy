@@ -19,6 +19,19 @@ function createLocalMetadataStore({storage = () => globalThis.localStorage, scop
         backupKey: prefix + ":pre-hierarchy",
         layoutBackupKey: prefix + ":pre-layout",
         treeBackupKey: prefix + ":pre-cosmic-tree",
+        restoreKey: prefix + ":restore-pending",
+        readRestoreJournal() { const text=storage().getItem(this.restoreKey);return text===null?null:JSON.parse(text); },
+        beginRestore(journal) { storage().setItem(this.restoreKey,JSON.stringify(journal)); },
+        endRestore() { storage().removeItem(this.restoreKey); },
+        captureRestoreState() { const disk=storage();return {current:disk.getItem(this.key),legacy:this.legacyKey===this.key?null:disk.getItem(this.legacyKey)}; },
+        replaceRaw(text) {
+            const disk=storage();if(text===null)disk.removeItem(this.key);else disk.setItem(this.key,text);
+            if(this.legacyKey!==this.key)disk.removeItem(this.legacyKey);
+        },
+        recoverRaw(previous) {
+            const disk=storage(),put=(key,text)=>text===null?disk.removeItem(key):disk.setItem(key,text);
+            put(this.key,previous.current);if(this.legacyKey!==this.key)put(this.legacyKey,previous.legacy);
+        },
 
         readForBackup() {
             const localStorage = storage();

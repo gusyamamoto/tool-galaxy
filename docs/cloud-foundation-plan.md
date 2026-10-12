@@ -412,7 +412,7 @@ Separate development/staging/production projects and origins when cloud work is 
 Build export/restore **before public account migration**, and run the exporting code on the user's original browser origin. A hosted page cannot reach a localhost/file-origin store. Explain this explicitly; do not clear or "move" browser storage on login.
 
 1. Inventory exact source metadata, active+archived entries, references, file keys/ownership, optional Location/appearance and layout. Retain the original raw snapshot/recovery backups as recovery material if normalization detects corruption. Do not seed starter data into an import after a failed read.
-2. Export a portable manifest plus original bytes and thumbnails; verify counts, file sizes and digests. Local export v1 now uses one `.cosmifold` binary container: a versioned fixed header, UTF-8 JSON manifest and raw Blob payloads, with SHA-256 checks. It avoids base64 expansion and ZIP dependencies, includes current archived data but excludes internal recovery snapshots and orphan file records and caps the complete file at 512 MiB. See [the implemented local-backup contract](local-backup.md); Restore remains separate.
+2. Export a portable manifest plus original bytes and thumbnails; verify counts, file sizes and digests. Local export v1 now uses one `.cosmifold` binary container: a versioned fixed header, UTF-8 JSON manifest and raw Blob payloads, with SHA-256 checks. It avoids base64 expansion and ZIP dependencies, includes current archived data but excludes internal recovery snapshots and orphan file records and caps the complete file at 512 MiB. See [the implemented local-backup contract](local-backup.md); Local Restore is now implemented separately with strict validation, replacement confirmation and crash recovery; there is no merge.
 3. After login, explicitly offer import. Stage into a new private universe/import job; preserve textual IDs under that namespace. Object paths are remapped to owned cloud paths, while runtime `storageKey` remains an opaque adapter reference.
 4. Upload/verify files first; validate the full canonical/reference projection and source file ownership. Missing bytes are a visible failure or an explicitly chosen omission, never a silent empty record. Keep upload checkpoints for resumable imports.
 5. Finalize the imported universe and select it only after every required ready file and metadata row validates. Import identity/digest prevents duplicate imports after retry.
@@ -472,13 +472,13 @@ The order differs from the initial hypothesis: portability comes early; identity
 
 ### Phase 3 — staged local restore
 
-- **Goal/scope:** `feature/local-backup-restore`; validate and preview import into isolated staging, recover safely before optional replacement. No cloud.
+- **Goal/scope:** `feature/local-backup-restore`; implemented strict backupVersion 1/storageVersion 5 validation and preview, followed by explicit replacement confirmation. One abortable file/commit-marker transaction, local write-ahead journal, verified metadata/preferences rollback and pre-application startup recovery. Exclusive workspace Web Lock; reload after success. No merge or cloud.
 - **Dependencies:** Phase 2 format.
-- **Files:** export/import service, local/memory stores, narrowly scoped confirmation UI and tests.
+- **Files:** `services/local-restore.js`, `services/local-restore-session.js`, shared backup constants/hashes, repository and local/memory adapters, `startup.js`, `backup-ui.js`, dialog markup and tests. IndexedDB adds an internal version-2 `restoreState` marker store; metadata stays v5.
 - **Risks:** cross-store failure, ID/reference collisions, quota, overwriting the only good copy.
 - **Tests:** export/restore parity, invalid/missing bytes, late abort, recovery failure and preserved original data. Use disposable browser profiles.
 - **Still local:** all persistence, including restored data.
-- **Stop:** original retained and restored dataset validated; usable origin-to-origin transfer exists.
+- **Stop:** validated Export ? Restore ? Export parity and origin-to-origin transfer. The old dataset survives failure; successful confirmed Restore replaces it. A portable backup is the way to keep the old Cosmos afterward.
 
 ### Phase 4 — awaitable application commands, local backend only
 

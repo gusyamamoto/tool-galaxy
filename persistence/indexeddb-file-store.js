@@ -9,11 +9,14 @@ function createIndexedDbFileStore({indexedDB = globalThis.indexedDB, scope = nul
         if (opening) return opening;
         opening = new Promise((resolve, reject) => {
             if (!indexedDB) { reject(new Error("File storage is unavailable in this browser.")); return; }
-            const request = indexedDB.open(databaseName, 1);
+            const request = indexedDB.open(databaseName, 2);
             let failed = false;
             request.onupgradeneeded = () => {
-                const store = request.result.createObjectStore("files", { keyPath: "key" });
-                store.createIndex("entryId", "entryId", { unique: false });
+                if(!request.result.objectStoreNames.contains('files')) {
+                    const store = request.result.createObjectStore("files", { keyPath: "key" });
+                    store.createIndex("entryId", "entryId", { unique: false });
+                }
+                if(!request.result.objectStoreNames.contains('restoreState'))request.result.createObjectStore('restoreState');
             };
             request.onblocked = () => { failed = true; reject(new Error("Close other Cosmifold tabs and try the file action again.")); };
             request.onerror = () => reject(request.error);
@@ -77,6 +80,34 @@ function createIndexedDbFileStore({indexedDB = globalThis.indexedDB, scope = nul
         return result;
     }
     return {
+        async restoreMarker() {
+            const db=await open();return new Promise((resolve,reject)=>{
+                const tx=db.transaction('restoreState','readonly'),request=tx.objectStore('restoreState').get('committed');
+                tx.oncomplete=()=>resolve(request.result||null);tx.onabort=()=>reject(tx.error||new Error('Restore status unavailable.'));
+            });
+        },
+        async replaceAll(records,id,commit,rollback) {
+            const db=await open();
+            await new Promise((resolve,reject)=>{
+                // All old rows, including orphans, remain intact until this transaction completes.
+                const tx=db.transaction(['files','restoreState'],'readwrite'),store=tx.objectStore('files');
+                let failure,attempted=false;
+                tx.oncomplete=resolve;
+                tx.onabort=()=>{
+                    if(attempted)try{rollback();}catch(error){failure=new Error('Restore recovery needs a reload before continuing.',{cause:error});failure.recoveryRequired=true;}
+                    reject(failure||tx.error||new Error('Could not prepare restored files.'));
+                };
+                try {
+                    store.clear();records.forEach(record=>store.add(record));
+                    const marker=tx.objectStore('restoreState').put(id,'committed');
+                    marker.onsuccess=()=>{try{attempted=true;if(commit()?.then)throw new Error('Restore metadata must commit synchronously.');}catch(error){failure=error;tx.abort();}};
+                }catch(error){failure=error;tx.abort();}
+            });
+            // Cache maintenance must not reject an already committed replacement.
+            ownership.clear();
+            try{records.forEach(record=>ownership.set(record.key,record.entryId));discovered=true;}
+            catch{ownership.clear();discovered=false;}
+        },
         temporary: false,
         hasEntries(ids) { const set = new Set(ids); return !discovered || [...ownership.values()].some(id => set.has(id)); },
         async save(record, commit, rollback) {

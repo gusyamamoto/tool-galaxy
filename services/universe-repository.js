@@ -2,7 +2,9 @@
 // Metadata commit is synchronous; files are async with commit/rollback callbacks.
 function createUniverseRepository({persistence, canWrite = () => true}) {
     const listeners = new Set();
+    let restoring=false;
     function write(snapshot, intent) {
+        if(restoring)throw new Error('Restore is in progress.');
         if (!canWrite()) throw new Error('Saved data is unavailable. The original data is being preserved.');
         try { persistence.metadata.save(snapshot, intent); }
         catch (error) { repository.lastError = error; throw error; }
@@ -13,6 +15,47 @@ function createUniverseRepository({persistence, canWrite = () => true}) {
         listeners.forEach(listener => { try { listener({...intent, ...(intent.ids ? {ids:[...intent.ids]} : {}), scope: persistence.scope}); } catch (error) { repository.lastObserverError = error; } });
     }
     const repository = {
+        restoreRevision:()=>persistence.files.restoreMarker(),
+        async recoverPendingRestore() {
+            if(persistence.sample)return false;
+            const journal=persistence.metadata.readRestoreJournal();if(!journal)return false;
+            const text=value=>value===null||typeof value==='string';
+            if(journal.version!==1||typeof journal.id!=='string'||!text(journal.metadataText)||!text(journal.preferencesText)||
+                !text(journal.previous?.current)||!text(journal.previous?.legacy)||!text(journal.previousPreferences))throw new Error('Restore recovery record is unreadable.');
+            if(await persistence.files.restoreMarker()===journal.id){
+                persistence.metadata.replaceRaw(journal.metadataText);persistence.preferences.replaceRaw(journal.preferencesText);
+            }else{
+                persistence.metadata.recoverRaw(journal.previous);persistence.preferences.replaceRaw(journal.previousPreferences);
+            }
+            persistence.metadata.endRestore();return true;
+        },
+        async replaceLocalBackup(source) {
+            if(persistence.sample)throw new Error('Leave Sample mode to restore your Cosmos.');
+            if(restoring||persistence.metadata.readRestoreJournal())throw new Error('Finish Restore recovery before continuing.');
+            const journal={version:1,id:crypto.randomUUID(),metadataText:source.metadataText,preferencesText:source.preferencesText,
+                previous:persistence.metadata.captureRestoreState(),previousPreferences:persistence.preferences.readForBackup()};
+            restoring=true;
+            const rollback=()=>{
+                persistence.metadata.recoverRaw(journal.previous);persistence.preferences.replaceRaw(journal.previousPreferences);
+                if(JSON.stringify(persistence.metadata.captureRestoreState())!==JSON.stringify(journal.previous)||persistence.preferences.readForBackup()!==journal.previousPreferences)
+                    throw new Error('Restore rollback could not be verified.');
+            };
+            try{
+                persistence.metadata.beginRestore(journal);
+                await persistence.files.replaceAll(source.records,journal.id,()=>{
+                    persistence.metadata.replaceRaw(source.metadataText);persistence.preferences.replaceRaw(source.preferencesText);
+                },rollback);
+            }catch(error){
+                if(!error.recoveryRequired){
+                    try{rollback();persistence.metadata.endRestore();}catch(cause){const failure=new Error('Restore recovery needs a reload before continuing.',{cause});failure.recoveryRequired=true;throw failure;}
+                }
+                throw error;
+            }finally{restoring=false;}
+            // A failed journal cleanup does not undo a completed dataset. Startup
+            // sees the durable commit marker and idempotently finishes the new state.
+            try{persistence.metadata.endRestore();}catch(error){repository.lastError=error;}
+            publish({type:'universe.restored'});
+        },
         load: () => persistence.metadata.load(),
         async readBackup() {
             if(persistence.sample)throw new Error('Leave Sample mode to back up your saved Cosmos.');

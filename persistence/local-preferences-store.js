@@ -2,6 +2,7 @@
 function createLocalPreferencesStore({storage = () => globalThis.localStorage, scope = null} = {}) {
     const key = scope == null ? 'galaxy:navigation-ui' : `galaxy:workspace:${encodeURIComponent(scope)}:navigation-ui`;
     return {
+        replaceRaw(text) { if(text===null)storage().removeItem(key);else storage().setItem(key,text); },
         readForBackup() { return storage().getItem(key); },
         load() {
             try {
