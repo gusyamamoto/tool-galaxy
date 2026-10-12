@@ -18,7 +18,7 @@ The first cloud release should save ordinary actions automatically, use a server
 
 Protect existing local data before accounts become a default. Build portable backup/restore early, stage local imports with their files, and keep the original local Cosmos untouched. Cloud metadata alone is not a finished product when its attachments still exist only on one laptop.
 
-**Next implementation branch: `chore/static-hosting-foundation`.** Prepare a tested static hosting artifact and deployment instructions, retaining local persistence. Deployment itself is a separately authorized step. Section 14 gives its exact boundaries.
+**Next implementation branch: `chore/static-hosting-foundation`.** Prepare static-root checks and a staged Cloudflare Pages GitHub-integration plan using `main`, retaining local persistence. Connecting/deploying and later enabling automatic production pushes are separately authorized steps. Section 14 gives its exact boundaries.
 
 ## 2. Current architecture
 
@@ -239,7 +239,9 @@ Firebase is viable, but its document/collection model would require different in
 
 Hosting milestone: choose **A, host the current local-storage version first**, as an honest local-data preview. A production website URL must not be advertised as cross-device/cloud saving until later gates pass. Use one durable origin; do not silently redirect existing local users and imply that their Cosmos moved. Browser storage is origin-specific ([MDN](https://developer.mozilla.org/en-US/docs/Web/API/Window/localStorage)). Ship portability on the original origin before directing existing users to move their data.
 
-Publish only an allowlisted static artifact: HTML/CSS/runtime JS, `persistence/`, `services/`, required vendor assets/licenses. Exclude `.git`, local backups, attachments, test fixtures, generated screenshots and credentials. Retain script order and relative paths. Avoid long immutable caching of today's unhashed JS filenames; prevent mixed-version deployments. Test headers with media/PDF Blob previews. Cloudflare supports a static `_headers` file ([official reference](https://developers.cloudflare.com/pages/configuration/headers/)). No deployment configuration is created in this audit.
+Use Cloudflare Pages GitHub integration from the beginning, explicitly select `main`, and make the initial deployment a reviewed action. Pause automatic production deployments and previews during validation; enable normal `main → production` later only by explicit decision. Do not choose a Direct Upload production project and assume it can be converted to Git integration. See [the staged hosting guide](static-hosting.md) and [Cloudflare's deployment controls](https://developers.cloudflare.com/pages/configuration/git-integration/).
+
+Audit the selected commit's public files before publishing the static root. A root-directory deployment can expose committed documentation/tests as well as runtime assets; a private repository does not make those HTTP responses private. Never commit credentials, local backups, user attachments or private screenshots there. Retain script order, relative paths and vendor notices/licenses. Avoid long immutable caching of today's unhashed JS filenames; prevent mixed-version deployments. Test headers with media/PDF Blob previews. Cloudflare supports a static `_headers` file ([official reference](https://developers.cloudflare.com/pages/configuration/headers/)). This audit does not connect or deploy anything.
 
 Cost/limits gate: retain the current 100 MiB video behavior only with a provider plan/bucket/global limit that actually supports it. Supabase's current Free maximum is 50 MB, which is insufficient; validate storage/egress/backups and set spending alerts before production. This recommendation assumes an appropriate production plan, not indefinitely free hosting of all media ([current pricing](https://supabase.com/pricing)). Do not add paid image transformation when the app already creates thumbnails.
 
@@ -450,13 +452,13 @@ The order differs from the initial hypothesis: portability comes early; identity
 
 ### Phase 1 — static hosting foundation
 
-- **Goal/scope:** `chore/static-hosting-foundation`; reproducible allowlisted static artifact, safe cache/header configuration, HTTPS preview instructions and a truthful local-data notice. Publish only in a separately approved deployment step.
+- **Goal/scope:** `chore/static-hosting-foundation`; reviewed static root, safe cache/header configuration and a staged GitHub/Pages plan with `main` production. Initial deployment and later automatic production deployment are separate explicit decisions; pause production/previews during validation.
 - **Dependencies:** Phase 0; choose a durable origin. No Supabase prerequisite.
-- **Files:** proposed `scripts/prepare-static-site.*`, hosting header/config template, hosting notes, minimal `index.html` notice if needed; existing assets copied unchanged.
+- **Files:** hosting headers/404 handling, `docs/static-hosting.md`, README link and test-only static asset checks; no source-only ZIP packaging is needed. Preserve runtime assets unchanged.
 - **Risks:** origin-specific data mistaken for loss/sync, stale mixed assets, exposure of developer files, CSP breaking Blob previews.
-- **Tests:** artifact exclusion/link checks and the existing browser suite against the artifact; hosted preview checks only when deployment is authorized. Test reload/file ownership and UUID support over HTTPS.
+- **Tests:** static-root asset/link checks and browser regressions; review published Git content. Hosted deployment/control verification only when authorized. Test reload/file ownership and UUID support over HTTPS.
 - **Still local:** all metadata/files/preferences; no account or remote user data.
-- **Stop:** deployable reviewed artifact; local preview is explicitly not cross-device storage. Do not force existing users onto a new origin before portability.
+- **Stop:** reviewed static root and staged Git-integration instructions; no provider connection/deployment/automatic workflow in this branch. Local hosting is explicitly not cross-device storage. Do not force existing users onto a new origin before portability.
 
 ### Phase 2 — portable local export
 
@@ -564,7 +566,7 @@ Read-only sharing is a separate post-release feature using section 11's narrow g
 
 The architectural blockers are documented rather than fixed here: synchronous public metadata, local-only file compensation, inconsistent CRUD publication order, missing cross-tab revisions, mixed physics/domain persistence, and absent ownership. There is no evidence that a framework rewrite solves those problems. It would replace working UI while leaving the distributed consistency problem to be designed anyway.
 
-Do not introduce React, Next.js, Redux, GraphQL, Docker, Kubernetes, microservices, Redis or SSR merely because data becomes online. The concrete new tools eventually justified are an official auth/data SDK, PostgreSQL constraints/transactions/RLS, private object access, small file-cleanup coordination and later an optional archive/large-upload helper. An isolated static packaging/build step is a deployment tool, not a new UI architecture.
+Do not introduce React, Next.js, Redux, GraphQL, Docker, Kubernetes, microservices, Redis or SSR merely because data becomes online. The concrete new tools eventually justified are an official auth/data SDK, PostgreSQL constraints/transactions/RLS, private object access, small file-cleanup coordination and later an optional user-data archive/large-upload helper. Publishing the existing static root through provider Git integration does not require a new UI architecture or a source ZIP tool.
 
 Keep local v5 readable and local mode tested while adding cloud projection/contracts. Cloud DB migration versions must not be confused with bumping the saved browser format. Preserve Sample as memory-only even when a user is signed in; provider selection must prioritize Sample isolation. Avoid pushing the entire `script.js` into a new component tree; extract only command/bootstrap/projection seams needed to make remote operations safe.
 
@@ -576,8 +578,8 @@ Audit verification: inspected entry/composition, all store implementations, meta
 
 **`chore/static-hosting-foundation`**
 
-Implement an allowlisted, reproducible static artifact for Cloudflare Pages, cache/security-header configuration validated against current Blob/media/PDF use, a truthful device-local-data notice, and preview/deployment instructions including stable-origin and old-local-data caveats. Use the existing frontend/assets unchanged beyond that minimal notice. Test against the packaged artifact with the existing isolated browser harness; preserve all relative script/module/vendor paths and notices/licenses.
+Prepare the existing static root for Cloudflare Pages GitHub integration, cache/security-header configuration validated against current Blob/media/PDF use, and staged deployment instructions including stable-origin and old-local-data caveats. Explicitly choose `main`, deliberately verify its initial deployment, pause production/previews during validation, then enable normal automatic production pushes only when separately decided. Preserve the existing frontend/assets and test the actual root with the isolated browser harness; retain all relative script/module/vendor paths and notices/licenses. Source-only ZIP packaging is not user-data export and is unnecessary for this path.
 
-Do **not** add Supabase, signup, cloud adapters, remote files, migrations, sync, PWA, credentials, dependency/framework rewrites or automatic local-data transfer. Do not change v5, hierarchy, rendering, physics or navigation. The branch stops at a concrete reviewed hosting artifact. Connecting a hosting account and publishing a preview/production URL are separately authorized actions; nothing is deployed by this audit.
+Do **not** add Supabase, signup, cloud adapters, remote files, migrations, sync, PWA, credentials, dependency/framework rewrites or automatic local-data transfer. Do not change v5, hierarchy, rendering, physics or navigation. The branch stops at a reviewed static root and staged hosting plan. Connecting Cloudflare/GitHub, publishing an initial deployment and enabling automatic production pushes are separately authorized actions; none is performed by this audit.
 
 After that bounded step, prioritize portable local export/restore and the awaitable command foundation before account-backed persistence. Keep the working product and replace its infrastructure deliberately.
