@@ -120,10 +120,10 @@ def run_media_checks(*, cdp, evaluate, check, wait_for, load, add, select, click
     evaluate("window.mediaStoreSave=attachmentStore.save;attachmentStore.save=async()=>{throw new DOMException('Full','QuotaExceededError')}")
     upload('[mediaMp4]')
     check(evaluate('JSON.stringify(contentInspector.content())')==saved and evaluate("contentInspector.status.dataset.error==='true'&&contentInspector.status.textContent.includes('local browser storage')"),'video quota failure preserves item metadata and gives a friendly local-storage explanation')
-    evaluate("attachmentStore.save=mediaStoreSave;window.mediaInspectorSave=contentInspector.save;window.mediaFailedKey=null;attachmentStore.save=(record,...args)=>{mediaFailedKey=record.key;return mediaStoreSave(record,...args)};contentInspector.save=()=>{throw new Error('Metadata write failed')}")
+    evaluate("attachmentStore.save=mediaStoreSave;window.mediaInspectorSave=persistence.metadata.save;window.mediaFailedKey=null;attachmentStore.save=(record,...args)=>{mediaFailedKey=record.key;return mediaStoreSave(record,...args)};persistence.metadata.save=()=>{throw new Error('Metadata write failed')}")
     upload('[mediaWebm]')
     check(evaluate('JSON.stringify(contentInspector.content())')==saved and evaluate("(async()=>await attachmentStore.get(mediaFailedKey)===null)()"),'failed video metadata commit aborts the real IndexedDB write without orphaned bytes')
-    evaluate('attachmentStore.save=mediaStoreSave;contentInspector.save=mediaInspectorSave')
+    evaluate('attachmentStore.save=mediaStoreSave;persistence.metadata.save=mediaInspectorSave')
     upload("[Object.defineProperty(new File(['tiny'],'too-large.mp4',{type:'video/mp4'}),'size',{value:100*1024*1024+1})]")
     check(evaluate('JSON.stringify(contentInspector.content())')==saved and evaluate("contentInspector.status.textContent.includes('100 MiB')"),'oversized video rejects before storage without raising other file limits')
 

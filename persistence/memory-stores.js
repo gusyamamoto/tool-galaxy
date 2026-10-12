@@ -7,6 +7,7 @@ function createMemoryMetadataStore(initial = null) {
         replaceRaw(text){snapshot=text===null?null:JSON.parse(text);raw=text;},recoverRaw(previous){this.replaceRaw(previous.current);},
         load: () => snapshot == null ? null : structuredClone(snapshot),
         readForBackup: () => ({metadataText: raw ?? (snapshot == null ? null : JSON.stringify({version:5,connections:[],layout:[],...snapshot}))}),
+        async commit(value,intent) { this.save(value,intent); },
         save(value) { snapshot = structuredClone(value);raw=null; },
         clear() { snapshot = null;raw=null; }
     };
@@ -17,8 +18,8 @@ function createMemoryPreferencesStore() {
         replaceRaw(text){preferences=text===null?{}:JSON.parse(text);raw=text;},
         load: () => ({...preferences}),
         readForBackup: () => raw === undefined ? JSON.stringify(preferences) : raw,
-        update(patch) { preferences = {...preferences, ...patch};raw=undefined; },
-        clear() { preferences = {};raw=undefined; }
+        update(patch) { preferences = {...preferences, ...patch};raw=undefined;return Promise.resolve(); },
+        clear() { preferences = {};raw=undefined;return Promise.resolve(); }
     };
 }
 function createMemoryFileStore() {

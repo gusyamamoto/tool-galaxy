@@ -87,7 +87,7 @@ class NavigationSection {
         if(value)this.scroll={top:this.list.scrollTop,left:this.list.scrollLeft};
         this.collapsed=value;this.apply();
         if(!value){this.list.scrollTop=this.scroll.top;this.list.scrollLeft=this.scroll.left;}
-        this.preferences.update({[this.key]:value});
+        Promise.resolve(this.preferences.update({[this.key]:value})).catch(error=>{this.preferenceError=error;});
         this.onDisclosure?.(value);
     }
 }
@@ -121,11 +121,11 @@ class HierarchySidebar {
         },true);
         this.tree.addEventListener("keydown", event => this.onKey(event));
         this.tree.addEventListener('dragover',event=>this.moveOver(event));
-        this.tree.addEventListener('drop',event=>{
+        this.tree.addEventListener('drop',async event=>{
             if(!this.moveDrag)return;
             event.preventDefault();event.stopPropagation();
             const target=event.target.closest('.hierarchy-row[data-entry-id]')?.dataset.entryId;
-            try{if(!this.moveBlocked()&&!galaxyModel.movePlan(this.entries,this.moveDrag.ids,target).error)this.onMove(this.moveDrag,target);}
+            try{if(!this.moveBlocked()&&!galaxyModel.movePlan(this.entries,this.moveDrag.ids,target).error)await this.onMove(this.moveDrag,target);}
             finally{this.endMoveDrag();}
         });
         this.tree.addEventListener('dragleave',event=>{if(this.moveTarget&&!this.moveTarget.contains(event.relatedTarget))this.clearMoveTarget();});
@@ -169,7 +169,7 @@ class HierarchySidebar {
         this.resize.setAttribute("aria-valuenow", String(Math.round(this.width)));
     }
     savePreference() {
-        this.preferences.update({collapsed: this.collapsed, width: this.width});
+        Promise.resolve(this.preferences.update({collapsed: this.collapsed, width: this.width})).catch(error=>{this.preferenceError=error;});
     }
     setCollapsed(collapsed) {
         if (this.collapsed === collapsed) return;
@@ -260,18 +260,18 @@ class HierarchySidebar {
         input.addEventListener('contextmenu', event => event.stopPropagation());
         input.focus({preventScroll:true}); input.select();
     }
-    endRename(save) {
-        const edit = this.rename; if (!edit) return;
+    async endRename(save) {
+        const edit = this.rename; if (!edit||edit.pending) return;
         if (save) {
             const value = edit.input.value.trim();
             try {
                 if (!value) throw new Error('Please enter a name.');
                 // Keep the editor intact on validation/storage errors.
-                this.rendering = true; this.onRename(edit.id,value);
+                this.rendering = true;edit.pending=true;edit.input.disabled=true;await this.onRename(edit.id,value);
             } catch (error) {
-                edit.input.setCustomValidity(error.message); edit.input.setAttribute('aria-invalid','true');
+                edit.input.disabled=false;edit.input.setCustomValidity(error.message); edit.input.setAttribute('aria-invalid','true');
                 edit.input.reportValidity(); edit.input.focus(); return;
-            } finally { this.rendering = false; }
+            } finally { this.rendering = false;edit.pending=false;edit.input.disabled=false; }
         }
         this.rename = null; edit.row.classList.remove('is-renaming');
         edit.name.textContent = this.entries.get(edit.id)?.name || '';

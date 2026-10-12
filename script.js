@@ -31,6 +31,14 @@ const persistence = globalThis.cosmifoldStartupPersistence || createPersistence(
 let localRestoreInProgress=false;
 let restorePhysicsWasPaused=false;
 const universeRepository = createUniverseRepository({persistence, canWrite: () => sampleMode || storageAvailable});
+let applicationCommandTail=Promise.resolve(),applicationCommandsPending=0;
+function orderedCommand(action){
+    applicationCommandsPending++;
+    const result=applicationCommandTail.then(action);
+    applicationCommandTail=result.catch(()=>{}).finally(()=>applicationCommandsPending--);
+    result.catch(()=>{});return result;
+}
+
 if (sampleMode) {
     // The query activates this page load only. Keeping it out of the address bar
     // means a normal refresh always returns to the user's persisted Galaxy.
@@ -479,41 +487,42 @@ const physics = new GalaxyPhysics({
 });
 
 const attachmentStore = persistence.files;
-if (sampleMode) galaxySample.files().forEach(record => attachmentStore.save(record));
-function saveEntryContent(id, value) {
-    const entry = entries.get(id);
-    if (!entry || deletingContentIds.has(id)) throw new Error("This item is being deleted or no longer exists.");
-    const updated = universeRepository.updateContent(getGalaxySnapshot(), id, value);
-    entry.content = updated.content; entry.updatedAt = updated.updatedAt;
-    graphNeedsSave = false;
+if (sampleMode) galaxySample.files().forEach(record => attachmentStore.save(record).catch(error=>console.error('Sample file unavailable:',error)));
+function publishContent(id,updated){
+    const entry=entries.get(id);if(!entry)return;
+    if(updated.content)entry.content=updated.content;else delete entry.content;
+    if(updated.updatedAt)entry.updatedAt=updated.updatedAt;else delete entry.updatedAt;
+    graphNeedsSave=false;
 }
-function saveEntryLocation(id,value) {
-    const entry=entries.get(id);
-    if(!entry||deletingContentIds.has(id))throw new Error('This item is being deleted or no longer exists.');
-    const updated=universeRepository.updateLocation(getGalaxySnapshot(),id,value);
-    if(updated.location)entry.location=updated.location;else delete entry.location;
-    entry.updatedAt=updated.updatedAt;graphNeedsSave=false;
-}
-function rollbackEntryContent(id, previous) {
-    const entry = entries.get(id);
-    if (!entry) return;
-    const updated = universeRepository.updateContent(getGalaxySnapshot(), id, previous.content, previous);
-    if (updated.content) entry.content = updated.content; else delete entry.content;
-    if (updated.updatedAt) entry.updatedAt = updated.updatedAt; else delete entry.updatedAt;
-    graphNeedsSave = false;
-}
+function saveEntryContent(id,value){return orderedCommand(async()=>{
+    const entry=entries.get(id);if(!entry||deletingContentIds.has(id))throw new Error('This item is being deleted or no longer exists.');
+    const updated=await universeRepository.updateContent(getGalaxySnapshot,id,typeof value==='function'?value(entry.content||galaxyModel.emptyContent()):value);
+    publishContent(id,updated);return updated;
+});}
+function saveEntryLocation(id,value){return orderedCommand(async()=>{
+    const entry=entries.get(id);if(!entry||deletingContentIds.has(id))throw new Error('This item is being deleted or no longer exists.');
+    const updated=await universeRepository.updateLocation(getGalaxySnapshot,id,value);
+    if(updated.location)entry.location=updated.location;else delete entry.location;entry.updatedAt=updated.updatedAt;graphNeedsSave=false;return updated;
+});}
+function addEntryAttachment(id,record,metadata){return orderedCommand(async()=>{
+    if(!entries.has(id)||deletingContentIds.has(id))throw new Error('This item is being deleted or no longer exists.');
+    const updated=await universeRepository.addAttachment(getGalaxySnapshot,id,record,metadata);publishContent(id,updated);return updated;
+});}
+function removeEntryAttachment(id,key){return orderedCommand(async()=>{
+    const updated=await universeRepository.removeAttachment(getGalaxySnapshot,id,key);publishContent(id,updated);return updated;
+});}
 const motion = new CosmosMotion({wake:()=>renderRegions()});
 const imageViewer = new CosmifoldImageViewer({store:attachmentStore,getEntry:id=>entries.get(id)});
 const contentInspector = new EntryContentInspector({ store: attachmentStore, motion, getEntry: id => entries.get(id),
     imageViewer,
-    save: saveEntryContent, saveLocation:saveEntryLocation, rollback: rollbackEntryContent,
+    save: saveEntryContent, saveLocation:saveEntryLocation, addAttachment:addEntryAttachment,removeAttachment:removeEntryAttachment,
     onAction() { cancelPendingBodyFocus();autoFitPending = false; keyboardNavigation = false; camera.stopAnimation(); },
     onLayout() { if (cameraViewReady) updateGraphViewport(); } });
 const backupUI=new CosmifoldBackupUI({repository:universeRepository,sample:sampleMode,
     session:globalThis.cosmifoldRestoreSession,
     onRestoreStart:()=>{localRestoreInProgress=true;restorePhysicsWasPaused=physics.paused;physics.pause();},
     onRestoreEnd:(success,recoveryRequired=false)=>{if(!success&&!recoveryRequired){localRestoreInProgress=false;if(!restorePhysicsWasPaused)physics.resume();}},
-    blocked:()=>contentInspector.jobs.size>0||deletionBusy||pasteBusy});
+    blocked:()=>applicationCommandsPending>0||contentInspector.jobs.size>0||deletionBusy||pasteBusy});
 const contentDrops=new CosmosContentDrops({host:galaxy,getEntry:id=>entries.get(id),
     tree:hierarchySidebar.tree,expandRow:id=>hierarchySidebar.expandForContentDrag(id),
     blocked:()=>!!document.querySelector('dialog[open]')||activeNodeDrags>0||!!pan||!!pinch||deletionBusy,
@@ -522,13 +531,13 @@ const contentDrops=new CosmosContentDrops({host:galaxy,getEntry:id=>entries.get(
         const r=graphViewport.getBoundingClientRect(),id=galaxyAtScreen({x:event.clientX-r.left,y:event.clientY-r.top});
         return id?nodes.get(id):null;
     },
-    onDrop(id,transfer){
+    async onDrop(id,transfer){
         if(contentInspector.hasJobs([id])){reportAction('Wait for the current file action to finish.',{reframe:false});return;}
         cancelPendingBodyFocus();autoFitPending=false;camera.stopAnimation();
         if(selectedNode?.dataset.entryId!==id||constellationOverview||panel.hidden)selectEntry(entries.get(id),nodes.get(id),{reframe:false});
         const files=[...transfer.files];
-        if(files.length)contentInspector.upload(files);
-        else if(contentInspector.saveBookmark(cosmosEveryday.droppedAddress(transfer)))contentInspector.renderLists();
+        if(files.length)await contentInspector.upload(files);
+        else if(await contentInspector.saveBookmark(cosmosEveryday.droppedAddress(transfer)))contentInspector.renderLists();
     }});
 const labelDensity = new LabelDensity();
 function requestLabelLayout(force=false) {
@@ -616,19 +625,20 @@ function showConstellationMemberships(id) {
     positionContextMenu(rect.left, rect.top);
 }
 
-function commitConstellations(next) {
+function commitConstellations(next) {return orderedCommand(async()=>{
+    next=typeof next==='function'?next():next;
     if (deletionBusy) throw new Error('Wait for item deletion to finish.');
     autoFitPending = false; keyboardNavigation = false; camera.stopAnimation();
     let records = galaxyConstellations.normalizeAll([...next.values()], allCanonicalEntries());
     if (records.length !== next.size) throw new Error('Choose a valid Constellation name and items.');
     // Publish only after persistence succeeds. Collection edits never rebuild or
     // reheat the graph and never frame the camera.
-    records = universeRepository.replaceConstellations(getGalaxySnapshot(), records);
+    records = await universeRepository.replaceConstellations(getGalaxySnapshot, records);
     constellations.clear(); records.forEach(record => constellations.set(record.id, record));
     graphNeedsSave = false;
     if (activeConstellationId && !constellations.has(activeConstellationId)) exitConstellation();
     else refreshConstellation();
-}
+});}
 
 function entityPanelMode() {
     constellationOverview = false;
@@ -718,23 +728,25 @@ function getGalaxySnapshot() {
     return universeRepository.snapshot({entries: allCanonicalEntries(), portals, constellations, layout, archivedGalaxies});
 }
 
-function saveGalaxy(intent = {type:'layout.saved'}) {
-    if(localRestoreInProgress)return;
-    if (sampleMode) {
-        graphNeedsSave = false;
-        return;
-    }
-    if (!storageAvailable) {
-        return;
-    }
-    try {
-        universeRepository.save(getGalaxySnapshot(), intent);
-        graphNeedsSave = false;
-        storageStatus.hidden = true;
-    } catch (error) {
-        graphNeedsSave = true;
-        reportStorageFailure("Changes could not be saved in this browser. They may be lost on refresh.");
-    }
+let layoutSavePending=null,layoutSaveAgain=false;
+function saveGalaxy(){
+    if(localRestoreInProgress||sampleMode||!storageAvailable)return Promise.resolve();
+    if(layoutSavePending){layoutSaveAgain=true;graphNeedsSave=true;return layoutSavePending;}
+    const result=(async()=>{
+        do{
+            layoutSaveAgain=false;
+            await orderedCommand(async()=>{
+                try{await universeRepository.saveLayout(getGalaxySnapshot);graphNeedsSave=layoutSaveAgain;storageStatus.hidden=true;}
+                catch(error){graphNeedsSave=true;reportStorageFailure('Changes could not be saved in this browser. They may be lost on refresh.');throw error;}
+            });
+        }while(layoutSaveAgain);
+    })();
+    layoutSavePending=result;result.finally(()=>{layoutSavePending=null;}).catch(()=>{});return result;
+}
+
+function checkpointGalaxy(){
+    if(localRestoreInProgress||applicationCommandsPending||sampleMode||!storageAvailable)return;
+    try{universeRepository.checkpointLayout(getGalaxySnapshot);graphNeedsSave=false;}catch{graphNeedsSave=true;reportStorageFailure('Changes could not be saved in this browser. They may be lost on refresh.');}
 }
 
 function initializeGalaxy() {
@@ -793,11 +805,11 @@ function initializeGalaxy() {
     constellationWorkspace.renderSidebar();
 }
 
-loadSampleButton.addEventListener("click", () => {
+loadSampleButton.addEventListener("click", async () => {
     if (sampleMode) return;
     // Finish the real graph's pending layout save before leaving it behind.
     physics.pause();
-    if (graphNeedsSave) saveGalaxy();
+    try{await applicationCommandTail;if(graphNeedsSave)await saveGalaxy();}catch{return;}
     const url = new URL(window.location.href);
     url.searchParams.set("sample", galaxySample.queryValue);
     window.location.assign(url.href);
@@ -1070,8 +1082,8 @@ function updateEntryNode(entry, node) {
     node.querySelector(".node-label").textContent = entry.name; node.title = entry.name;
 }
 
-function getNewEntryPosition(targetIds, role) {
-    const targets = targetIds.map((id) => entries.get(id));
+function getNewEntryPosition(targetIds, role, sourceEntries=entries) {
+    const targets = targetIds.map((id) => sourceEntries.get(id));
     const bounds = physics.bounds;
     const center = targets.length ? {
         x: targets.reduce((sum, entry) => sum + entry.x, 0) / targets.length,
@@ -1081,10 +1093,10 @@ function getNewEntryPosition(targetIds, role) {
     const spacing = radius * 2 + 24;
     for (let ring = 1; ring <= 3; ring++) {
         for (let step = 0; step < 12; step++) {
-            const angle = entries.size * 2.4 + step * Math.PI / 6;
+            const angle = sourceEntries.size * 2.4 + step * Math.PI / 6;
             const point = { x: center.x + Math.cos(angle) * spacing * ring,
                 y: center.y + Math.sin(angle) * spacing * ring };
-            if ([...entries.values()].every((entry) =>
+            if ([...sourceEntries.values()].every((entry) =>
                 Math.hypot(point.x - entry.x, point.y - entry.y) >= radius + getNodeRadius(entry) + 24
             )) {
                 return point;
@@ -1500,10 +1512,11 @@ function finishCrudOperation() {
     if (!document.hidden) physics.resume();
 }
 
-// One synchronous mutation: model/derived particles -> save -> DOM/tree ->
+// Publish an acknowledged command: model/derived particles -> DOM/tree ->
 // selection/inspector. No navigation helpers or global Fit participate.
 function commitCrudMutation(mutate, { selectionId, topologyChanged = true, reveal = false,
     preserveScroll = true, inspectorOpen = !panel.hidden, persisted = false, animateCreation = true, preserveInspector = false, preserveSidebarSelection = false, changeIntent } = {}) {
+    if(!persisted)throw new Error('CRUD publication requires a persisted command.');
     beginCrudOperation();
     const scroll = { top: hierarchySidebar.tree.scrollTop, left: hierarchySidebar.tree.scrollLeft };
     const previousSelection = selectedNode?.dataset.entryId;
@@ -1513,7 +1526,7 @@ function commitCrudMutation(mutate, { selectionId, topologyChanged = true, revea
     if (!entries.has(selectedNode?.dataset.entryId)) selectedNode = null;
     galaxyModel.normalizeHierarchy(entries);
     if (topologyChanged) syncPhysicsGraph({ updateUI: false, reheat: .12 });
-    if (!persisted) saveGalaxy(changeIntent || {type:'items.changed', ids:selectionId ? [selectionId] : []}); else graphNeedsSave = false;
+    graphNeedsSave=false;
     nodes.forEach((node, id) => {
         if (entries.has(id)) return;
         node.remove(); nodes.delete(id); regions.get(id)?.remove(); regions.delete(id);
@@ -1558,25 +1571,28 @@ function openDuplicateStructure(id) {
     structureError.hidden=true;structureName.removeAttribute('aria-invalid');
     beginCrudOperation();structureDialog.showModal();structureName.focus();structureName.select();
 }
-structureForm.addEventListener('submit',event=>{
+let structureBusy=false;
+structureForm.addEventListener('submit',async event=>{
     event.preventDefault();
-    if(!structureDialog.open)return;
-    try{
+    if(!structureDialog.open||structureBusy)return;
+    structureBusy=true;structureName.disabled=true;structureForm.querySelector('button[type="submit"]').disabled=true;
+    try{await orderedCommand(async()=>{
         const source=entries.get(structureSourceId);
         if(!source)throw new Error('This item no longer exists.');
-        const result=universeRepository.duplicateStructure(getGalaxySnapshot(),source.id,structureName.value,
+        const result=await universeRepository.duplicateStructure(getGalaxySnapshot,source.id,structureName.value,
             ()=>`structure:${crypto.randomUUID()}`,getNewEntryPosition(source.parentId?[source.parentId]:[],source.role));
         commitCrudMutation(()=>{
             result.copies.forEach(entry=>entries.set(entry.id,{...entry,seedLayout:true}));
         },{selectionId:result.rootIds[0],persisted:true,inspectorOpen:true,preserveScroll:false});
         storageStatus.hidden=true;structureCommitted=true;structureDialog.close();
-    }catch(error){
+    });}catch(error){
         structureError.textContent=`Nothing was added. ${error.message}`;structureError.hidden=false;
         structureName.setAttribute('aria-invalid','true');structureName.focus();
-    }
+    }finally{structureBusy=false;structureName.disabled=false;structureForm.querySelector('button[type="submit"]').disabled=false;if(structureDialog.open&&!structureError.hidden)structureName.focus();}
 });
 structureName.addEventListener('input',()=>{structureError.hidden=true;structureName.removeAttribute('aria-invalid');});
-document.getElementById('duplicate-structure-cancel').addEventListener('click',()=>structureDialog.close());
+document.getElementById('duplicate-structure-cancel').addEventListener('click',()=>{if(!structureBusy)structureDialog.close();});
+structureDialog.addEventListener('cancel',event=>{if(structureBusy)event.preventDefault();});
 structureDialog.addEventListener('close',()=>{
     finishCrudOperation();
     const target=structureCommitted?hierarchySidebar.rows.get(hierarchySidebar.activeEntryId):structureReturnFocus;
@@ -1611,8 +1627,8 @@ async function confirmHierarchyPaste(mode) {
     pasteBusy=true;pasteCopy.disabled=pasteLink.disabled=pasteCancel.disabled=true;
     pasteStatus.textContent=mode==='copy'?'Making copies…':'Adding linked items…';pasteStatus.hidden=false;
     try{
-        if(mode==='copy'){
-            const result=await universeRepository.copyEntries(getGalaxySnapshot(),roots,destination,()=>`copy:${crypto.randomUUID()}`,{
+        if(mode==='copy'){await orderedCommand(async()=>{
+            const result=await universeRepository.copyEntries(getGalaxySnapshot,roots,destination,()=>`copy:${crypto.randomUUID()}`,{
                 readSnapshot:getGalaxySnapshot,validate(){if(!entries.has(destination)||roots.some(id=>!entries.has(id)))throw new Error('The copied items changed. Try Paste again.');}
             });
             commitCrudMutation(()=>{
@@ -1621,11 +1637,12 @@ async function confirmHierarchyPaste(mode) {
                 hierarchySidebar.expanded.add(destination);galaxyModel.ancestors(entries,destination).forEach(e=>hierarchySidebar.expanded.add(e.id));
                 hierarchySidebar.restoreMovedSelection(result.rootIds,result.rootIds[0]);
             },{selectionId:result.rootIds[0],persisted:true,preserveSidebarSelection:true});
+            });
         }else{
             const error=hierarchyClipboard.linkError(entries,portals,destination,roots);if(error)throw new Error(error);
             const next=new Map(portals);
             roots.forEach(targetEntryId=>{const id=`portal:${crypto.randomUUID()}`;next.set(id,{id,targetEntryId,parentEntryId:destination,createdAt:new Date().toISOString()});});
-            commitPortalReferences(next);
+            await commitPortalReferences(()=>{const current=new Map(portals);next.forEach((p,id)=>{if(!portals.has(id))current.set(id,p);});return current;});
             hierarchySidebar.expanded.add(destination);hierarchySidebar.render();
         }
         storageStatus.hidden=true;pasteCommitted=true;pasteDialog.close();
@@ -1656,11 +1673,11 @@ document.addEventListener('keydown',event=>{
     }
 });
 
-function moveSidebarEntries(payload,destinationId) {
+function moveSidebarEntries(payload,destinationId) {return orderedCommand(async()=>{
     const plan=galaxyModel.movePlan(entries,payload.ids,destinationId);
     if(plan.error)return false;
     let result;
-    try{result=universeRepository.moveEntries(getGalaxySnapshot(),payload.ids,destinationId);}
+    try{result=await universeRepository.moveEntries(getGalaxySnapshot,payload.ids,destinationId);}
     catch(error){reportStorageFailure(`Items could not be moved. Their original parents are unchanged. ${error.message}`);return false;}
     if(result.changed.length)storageStatus.hidden=true;
     hierarchySidebar.restoreMovedSelection(payload.ids,payload.activeId);
@@ -1670,7 +1687,7 @@ function moveSidebarEntries(payload,destinationId) {
     },{selectionId:payload.activeId,persisted:true,preserveInspector:true,preserveSidebarSelection:true,animateCreation:false});
     hierarchySidebar.activeId=destinationId;hierarchySidebar.updateTabStops();hierarchySidebar.rows.get(destinationId)?.focus({preventScroll:true});
     finishCrudOperation();return true;
-}
+});}
 
 function restoreCrudFocus() {
     keyboardNavigation = false;
@@ -1816,6 +1833,7 @@ dialog.addEventListener("close", () => {
 });
 
 function cancelEntryForm() {
+    if(formSaveBusy)return;
     dialog.close();
     restoreCrudFocus();
 }
@@ -1833,8 +1851,15 @@ fields.forEach((field) => {
     field.addEventListener("input", () => { field.setCustomValidity(""); clearFormError(); });
 });
 
-form.addEventListener("submit", (event) => {
+let formSaveBusy=false,formControlState=[];
+function setFormBusy(value){
+    formSaveBusy=value;
+    if(value){formControlState=[...form.querySelectorAll('input,textarea,select,button')].map(control=>[control,control.disabled]);formControlState.forEach(([control])=>control.disabled=true);}
+    else{formControlState.forEach(([control,disabled])=>control.disabled=disabled);formControlState=[];}
+}
+form.addEventListener("submit", async (event) => {
     event.preventDefault();
+    if(formSaveBusy)return;
     clearFormError();
     fields.forEach((field, index) => {
         field.setCustomValidity(index !== 0 || field.value.trim() ? "" : "Please enter a value.");
@@ -1854,42 +1879,43 @@ form.addEventListener("submit", (event) => {
     }
     if (!form.reportValidity()) return;
     if (editingId && document.getElementById('entry-name-field').hidden === false) {
-        try { renameEntry(editingId,data.name); }
+        setFormBusy(true);
+        try { await renameEntry(editingId,data.name); }
         catch (error) { formError.textContent=error.message;formError.hidden=false;return; }
+        finally{setFormBusy(false);if(dialog.open&&!formError.hidden)(fields[0].getClientRects().length?fields[0]:parentField).focus();}
         dialog.close();restoreCrudFocus();finishCrudOperation();return;
     }
-    const creating = !editingId;
-    const entry = editingId ? entries.get(editingId) : {
-        ...getNewEntryPosition(data.parentId ? [data.parentId] : [], roleField.dataset.role), seedLayout: true
-    };
-    const oldParentId = entry.parentId;
-    const changedIds = [data.id];
-    commitCrudMutation(() => {
-        const now = new Date().toISOString();
-        Object.assign(entry, data, {updatedAt:now}, creating ? {createdAt:now} : {});
-        entries.set(entry.id, entry);
-        if (oldParentId !== data.parentId) layout.delete(entry.id);
+    setFormBusy(true);
+    try{await orderedCommand(async()=>{
+        const creating=!editingId,staged=new Map([...entries].map(([id,record])=>[id,{...record}]));
+        const entry=creating?{...getNewEntryPosition(data.parentId?[data.parentId]:[],roleField.dataset.role),seedLayout:true}:staged.get(data.id);
+        if(!entry)throw new Error('This item no longer exists.');
+        const requested=creating?data:{...entry,parentId:data.parentId};
+        const error=galaxyModel.validateChange(requested,staged);if(error)throw new Error(error);
+        const oldParentId=entry.parentId,now=new Date().toISOString(),changedIds=[data.id];
+        Object.assign(entry,requested,{updatedAt:now},creating?{createdAt:now}:{});staged.set(entry.id,entry);
+        const stagedLayout=new Map(layout);if(oldParentId!==data.parentId)stagedLayout.delete(entry.id);
         if(creating&&!data.parentId){
-            galaxyModel.normalizeHierarchy(entries);
+            galaxyModel.normalizeHierarchy(staged);
             for(const item of cosmosEveryday.starterItems(galaxyStarter.value,data.id,getNewEntryId)){
-                const role=galaxyModel.roleAtDepth(galaxyModel.ancestors(entries,item.parentId).length+1);
-                const child={...item,description:'',category:'',createdAt:now,updatedAt:now,
-                    ...getNewEntryPosition([item.parentId],role),seedLayout:true};
-                entries.set(child.id,child);
-                galaxyModel.normalizeHierarchy(entries);
-                changedIds.push(child.id);
+                const role=galaxyModel.roleAtDepth(galaxyModel.ancestors(staged,item.parentId).length+1);
+                staged.set(item.id,{...item,description:'',category:'',createdAt:now,updatedAt:now,...getNewEntryPosition([item.parentId],role,staged),seedLayout:true});
+                galaxyModel.normalizeHierarchy(staged);changedIds.push(item.id);
             }
         }
-    }, { selectionId: data.id, topologyChanged: creating || oldParentId !== data.parentId,
-        reveal: creating || oldParentId !== data.parentId, preserveScroll: !creating,
-        inspectorOpen: creating || !panel.hidden,
-        changeIntent:{type:creating ? 'items.created' : oldParentId !== data.parentId ? 'items.moved' : 'items.renamed',ids:changedIds} });
-    dialog.close();
-    restoreCrudFocus(); finishCrudOperation();
+        const all=galaxyArchives.join(staged,archivedEntries);
+        await universeRepository.save(universeRepository.snapshot({entries:all,portals,constellations,layout:stagedLayout,archivedGalaxies}),
+            {type:creating?'items.created':oldParentId!==data.parentId?'items.moved':'items.renamed',ids:changedIds});
+        commitCrudMutation(()=>{changedIds.forEach(id=>entries.set(id,staged.get(id)));if(oldParentId!==data.parentId)layout.delete(data.id);},
+            {selectionId:data.id,topologyChanged:creating||oldParentId!==data.parentId,reveal:creating||oldParentId!==data.parentId,preserveScroll:!creating,inspectorOpen:creating||!panel.hidden,persisted:true});
+        dialog.close();restoreCrudFocus();finishCrudOperation();
+    });}catch(error){formError.textContent=error.message;formError.hidden=false;}
+    finally{setFormBusy(false);if(dialog.open&&!formError.hidden)(fields[0].getClientRects().length?fields[0]:parentField).focus();}
+
 });
 
 // Menu and inline Rename share validation, staged persistence and UI publication.
-function renameEntry(id, value) {
+function renameEntry(id, value) {return orderedCommand(async()=>{
     const entry = entries.get(id);
     if (!entry || deletionBusy) throw new Error('This item is unavailable.');
     const name = value.trim();
@@ -1897,13 +1923,13 @@ function renameEntry(id, value) {
     if (error) throw new Error(error);
     if (name === entry.name) return;
     const updatedAt = new Date().toISOString(), snapshot = getGalaxySnapshot();
-    try { universeRepository.save({...snapshot,entries:snapshot.entries.map(record=>record.id===id?{...record,name,updatedAt}:record)}, {type:'items.renamed',ids:[id]}); }
+    try { await universeRepository.save({...snapshot,entries:snapshot.entries.map(record=>record.id===id?{...record,name,updatedAt}:record)}, {type:'items.renamed',ids:[id]}); }
     catch (error) { throw new Error('The name could not be saved. Please try again.', {cause:error}); }
     commitCrudMutation(()=>Object.assign(entry,{name,updatedAt}), {selectionId:id,
         topologyChanged:false,persisted:true,preserveInspector:true,animateCreation:false});
     if (selectedNode?.dataset.entryId === id && !constellationOverview) panelName.textContent = name;
     finishCrudOperation();
-}
+});}
 
 function clearSelection({ reframe = false } = {}) {
     focusRevealIds.clear();
@@ -1984,6 +2010,7 @@ document.getElementById("delete-entry-form").addEventListener("submit", async (e
     plan.ids.forEach(id => deletingContentIds.add(id));
     const confirm = document.getElementById("confirm-delete-entry"), cancel = document.getElementById("cancel-delete-entry");
     confirm.disabled = cancel.disabled = true;
+    await orderedCommand(async()=>{
     let deletionSnapshot;
     try {
         deletionSnapshot = await universeRepository.deleteSubtree(getGalaxySnapshot(), plan.ids, {deleteFiles:hasFiles, readSnapshot:getGalaxySnapshot, validate() {
@@ -2007,6 +2034,7 @@ document.getElementById("delete-entry-form").addEventListener("submit", async (e
     motion.implode(deletionGhost);
     deleteDialog.close();
     restoreCrudFocus(); finishCrudOperation();
+    });
 });
 
 function renderArchivedGalaxies() {
@@ -2037,6 +2065,7 @@ function requestGalaxyArchive(id) {
     archiveDialog.showModal();document.getElementById('cancel-archive-galaxy').focus({preventScroll:true});
 }
 function cancelGalaxyArchive() {
+    if(archiveBusy)return;
     archiveDialog.close();keyboardNavigation=false;
     if(archiveReturnFocus?.isConnected&&archiveReturnFocus.getClientRects().length)archiveReturnFocus.focus({preventScroll:true});
     else restoreCrudFocus();
@@ -2045,8 +2074,10 @@ document.getElementById('archive-galaxy-button').addEventListener('click',()=>re
 document.getElementById('cancel-archive-galaxy').addEventListener('click',cancelGalaxyArchive);
 archiveDialog.addEventListener('cancel',event=>{event.preventDefault();cancelGalaxyArchive();});
 archiveDialog.addEventListener('close',()=>{if(!archiveDialog.open){archivingGalaxyId=null;archiveConfirmationIds=null;finishCrudOperation();}});
-document.getElementById('archive-galaxy-form').addEventListener('submit',event=>{
-    event.preventDefault();const root=entries.get(archivingGalaxyId);
+let archiveBusy=false;
+document.getElementById('archive-galaxy-form').addEventListener('submit',async event=>{
+    event.preventDefault();if(archiveBusy)return;archiveBusy=true;
+    try{await orderedCommand(async()=>{const root=entries.get(archivingGalaxyId);
     if(!root||root.depth!==0||root.parentId){showArchiveError('This Galaxy is no longer available.');return;}
     const ids=galaxyModel.subtreeIds(entries,root.id);
     if(ids.size!==archiveConfirmationIds?.size||[...ids].some(id=>!archiveConfirmationIds.has(id))){
@@ -2059,7 +2090,7 @@ document.getElementById('archive-galaxy-form').addEventListener('submit',event=>
     const record={galaxyId:root.id,archivedAt:new Date().toISOString(),expandedIds:[...hierarchySidebar.expanded].filter(id=>ids.has(id))};
     const snapshot=getGalaxySnapshot();
     try {
-        universeRepository.archive(snapshot,record);
+        await universeRepository.archive(snapshot,record);
     } catch(error){showArchiveError(`Could not archive this Galaxy. Its items are unchanged. ${error.message}`);return;}
     let echo=null;
     try {echo=archiveMotion.capture(regions.get(root.id),[...ids].map(id=>nodes.get(id)),camera.worldToScreen(root.x,root.y));} catch { /* Data is safe even if presentation fails. */ }
@@ -2076,13 +2107,14 @@ document.getElementById('archive-galaxy-form').addEventListener('submit',event=>
     else restoreCrudFocus();
     finishCrudOperation();
     archiveMotion.implode(echo);archiveFeedback(`${root.name} archived. Restore it from Archived Galaxies in the sidebar.`);
+    });}finally{archiveBusy=false;}
 });
-function restoreGalaxy(id) {
+function restoreGalaxy(id) {return orderedCommand(async()=>{
     const record=archivedGalaxies.get(id),root=archivedEntries.get(id);
     if(!record||!root||deletionBusy||activeNodeDrags||pan||pinch||document.querySelector('dialog[open]'))return;
     const ids=galaxyModel.subtreeIds(archivedEntries,id),snapshot=getGalaxySnapshot();
     try {
-        universeRepository.restore(snapshot,id);
+        await universeRepository.restore(snapshot,id);
     } catch(error){archiveFeedback(`Could not restore ${root.name}. It remains archived. ${error.message}`);return;}
     const overview=activeConstellationId&&constellationOverview&&!panel.hidden;
     commitCrudMutation(()=>{
@@ -2098,7 +2130,7 @@ function restoreGalaxy(id) {
     }
     else hierarchySidebar.toggle.focus({preventScroll:true});
     finishCrudOperation();archiveFeedback(`${root.name} restored to the Universe.`);
-}
+});}
 
 function openPortal(id) {
     const portal = portals.get(id), targetId = portal?.targetEntryId;
@@ -2112,20 +2144,22 @@ function openPortal(id) {
 
 // Reference-only writes publish the sidebar after a successful metadata save.
 // They never rebuild/reheat physics or invoke camera navigation.
-function commitPortalReferences(next) {
+function commitPortalReferences(next) {return orderedCommand(async()=>{
+    next=typeof next==='function'?next():next;
     autoFitPending = false; keyboardNavigation = false; camera.stopAnimation();
-    universeRepository.replacePlacements(getGalaxySnapshot(), [...next.values()]);
+    await universeRepository.replacePlacements(getGalaxySnapshot, [...next.values()]);
     storageStatus.hidden = true;
     portals.clear(); next.forEach((portal, id) => portals.set(id, portal));
     graphNeedsSave = false;
     hierarchySidebar.setEntries(entries);
-}
-function removePortal(id) {
+});}
+
+async function removePortal(id) {
     const portal = portals.get(id);
     if (!portal) return;
     const next = new Map(portals); next.delete(id);
     try {
-        commitPortalReferences(next);
+        await commitPortalReferences(()=>{const current=new Map(portals);current.delete(id);return current;});
         const parentRow = hierarchySidebar.rows.get(portal.parentEntryId);
         if (!hierarchySidebar.collapsed && hierarchySidebar.tree.contains(parentRow)) {
             hierarchySidebar.activeId = portal.parentEntryId; hierarchySidebar.updateTabStops(); parentRow.focus({ preventScroll: true });
@@ -2158,6 +2192,7 @@ function openPortalDialog(parentId) {
 }
 let portalReturnFocus=null;
 function cancelPortalDialog() {
+    if(portalSaveBusy)return;
     portalDialog.close();keyboardNavigation=false;
     if(portalReturnFocus?.isConnected&&portalReturnFocus.getClientRects().length){
         // Touch Add controls reveal on row focus, including an unselected row.
@@ -2172,14 +2207,16 @@ portalDialog.addEventListener("close", () => {
     if (portalDialog.open) return;
     portalTargetId = portalParentId = null; finishCrudOperation();
 });
-document.getElementById("portal-form").addEventListener("submit", event => {
-    event.preventDefault();
+let portalSaveBusy=false;
+document.getElementById("portal-form").addEventListener("submit", async event => {
+    event.preventDefault();if(portalSaveBusy)return;portalSaveBusy=true;
+    try{
     const error = portalPicker.included(portalTargetId)?'This item is already shown here.':galaxyPortals.placementError(entries, portals, portalTargetId, portalParentId);
     if (error) { document.getElementById("portal-form-error").textContent = error; document.getElementById("portal-form-error").hidden = false; return; }
     const portal = { id: `portal:${crypto.randomUUID()}`, targetEntryId: portalTargetId, parentEntryId: portalParentId, createdAt: new Date().toISOString() };
     const next = new Map(portals); next.set(portal.id, portal);
     try {
-        commitPortalReferences(next);
+        await commitPortalReferences(()=>{const current=new Map(portals);current.set(portal.id,portal);return current;});
         // Reveal the alternate location in the tree, preserving canonical selection.
         galaxyModel.ancestors(entries, portal.parentEntryId).forEach(parent => hierarchySidebar.expanded.add(parent.id));
         hierarchySidebar.expanded.add(portal.parentEntryId); hierarchySidebar.render();
@@ -2190,6 +2227,8 @@ document.getElementById("portal-form").addEventListener("submit", event => {
         document.getElementById("portal-form-error").textContent = `Item could not be added here. ${failure.message}`;
         document.getElementById("portal-form-error").hidden = false;
     }
+
+    }finally{portalSaveBusy=false;}
 });
 
 function focusEntry(id, { travel = false, closeFocus=false, sourceId = selectedNode?.dataset.entryId, preserveSidebarSelection = false } = {}) {
@@ -2366,7 +2405,7 @@ window.addEventListener("pagehide", () => {
     labelDensity.destroy();
     motion.destroy();archiveMotion.clear();clearTimeout(archiveFeedbackTimer);ambient.destroy();
     if (graphNeedsSave) {
-        saveGalaxy();
+        checkpointGalaxy();
     }
 });
 document.addEventListener("visibilitychange", () => {
@@ -2375,7 +2414,7 @@ document.addEventListener("visibilitychange", () => {
         archiveMotion.clear();
         physics.pause();
         if (graphNeedsSave) {
-            saveGalaxy();
+            checkpointGalaxy();
         }
     } else if (!localRestoreInProgress && !dialog.open && !deleteDialog.open && !archiveDialog.open && !portalDialog.open && !constellationWorkspace.isDialogOpen()) {
         physics.resume();

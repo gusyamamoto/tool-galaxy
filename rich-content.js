@@ -46,8 +46,8 @@ function createPanelItemMenu(actions, label, root) {
 
 // Content presentation over canonical entry content and a replaceable file store.
 class EntryContentInspector {
-    constructor({ store, getEntry, save, saveLocation, rollback, onAction, onLayout, motion=null, imageViewer }) {
-        Object.assign(this, { store, getEntry, save, saveLocation, rollback, onAction, onLayout, motion, imageViewer });
+    constructor({ store, getEntry, save, saveLocation, rollback, onAction, onLayout, motion=null, imageViewer, addAttachment,removeAttachment }) {
+        Object.assign(this, { store, getEntry, save, saveLocation, rollback, onAction, onLayout, motion, imageViewer,addAttachment,removeAttachment });
         this.root = document.getElementById("panel-rich-content");
         this.notes = document.getElementById("content-notes");
         this.notesForm = document.getElementById("content-notes-form");
@@ -58,30 +58,32 @@ class EntryContentInspector {
         this.files = document.getElementById("content-files");
         this.status = document.getElementById("content-status");
         this.jobs = new Map(); this.urls = new Set(); this.generation = 0; this.entryId = null; this.previewLoads = 0;
-        this.downloadUrls = new Map();
+        this.downloadUrls = new Map();this.pendingDrafts=new Map();
         this.setupFileDetails();
         this.setupLocation();
         this.notes.maxLength = galaxyModel.contentLimits.notes;
         document.getElementById("content-file-limit").textContent = `Photos and files · up to ${galaxyModel.contentLimits.fileBytes / 1024 / 1024} MiB each. Videos · up to ${galaxyModel.contentLimits.videoBytes / 1024 / 1024} MiB each in local browser storage.`;
         this.root.addEventListener("input", () => this.onAction());
         this.root.addEventListener("click", () => this.onAction());
-        this.notesForm.addEventListener("submit", event => {
+        this.notesForm.addEventListener("submit", async event => {
             event.preventDefault();
-            this.onAction();
+            this.onAction();const id=this.entryId;
             try {
-                this.save(this.entryId, { ...this.content(), notes: { format: "plain", text: this.notes.value } });
-                this.notesForm.hidden = true; this.renderNotes(); this.message("Note saved.");
+                const text=this.notes.value;this.pendingDrafts.set(id,{...this.pendingDrafts.get(id),notes:text});
+                await this.semantic(id,()=>this.save(id,content=>({...content,notes:{format:'plain',text}})));
+                const draft=this.pendingDrafts.get(id);if(draft)delete draft.notes;
+                if(id===this.entryId){this.notesForm.hidden = true; this.renderNotes(); this.message("Note saved.");}
             }
-            catch (error) { this.error(error); }
+            catch (error) { if(id===this.entryId)this.error(error); }
         });
-        this.notesView.addEventListener('change',event=>{
+        this.notesView.addEventListener('change',async event=>{
             const checkbox=event.target.closest('input[data-note-line]');
             if(!checkbox||this.jobs.get(this.entryId))return;
             this.onAction();
             try{
                 const text=cosmosEveryday.toggleChecklist(this.content().notes.text,Number(checkbox.dataset.noteLine),checkbox.checked);
-                this.save(this.entryId,{...this.content(),notes:{format:'plain',text}});
-                this.notes.value=text;this.onLayout();
+                const id=this.entryId;await this.semantic(id,()=>this.save(id,content=>({...content,notes:{format:'plain',text}})));
+                if(id===this.entryId){this.notes.value=text;this.onLayout();}
             }catch(error){checkbox.checked=!checkbox.checked;this.error(error);}
         });
         document.getElementById("content-edit-notes").addEventListener("click", () => this.editNotes());
@@ -89,12 +91,12 @@ class EntryContentInspector {
         document.getElementById("content-add-media").addEventListener("click", () => this.chooseFiles({media:true}));
         document.getElementById("content-notes-empty").addEventListener("click", () => this.editNotes());
         document.getElementById("content-add-bookmark").addEventListener("click", () => this.editLink());
-        document.getElementById("content-cancel-notes").addEventListener("click", () => { this.notesForm.hidden = true; this.renderNotes(); this.onLayout(); });
-        document.getElementById("content-cancel-link").addEventListener("click", () => { this.linkForm.hidden = true; this.renderBookmarkState(); this.onLayout(); });
-        this.linkForm.addEventListener("submit", event => {
+        document.getElementById("content-cancel-notes").addEventListener("click", () => { if(this.pendingDrafts.get(this.entryId))delete this.pendingDrafts.get(this.entryId).notes;this.notesForm.hidden = true; this.renderNotes(); this.onLayout(); });
+        document.getElementById("content-cancel-link").addEventListener("click", () => { if(this.pendingDrafts.get(this.entryId))delete this.pendingDrafts.get(this.entryId).bookmark;this.linkForm.hidden = true; this.renderBookmarkState(); this.onLayout(); });
+        this.linkForm.addEventListener("submit", async event => {
             event.preventDefault();
             this.onAction();
-            if(this.saveBookmark(document.getElementById('content-link-url').value,document.getElementById('content-link-title').value.trim(),this.editingLinkId)){
+            if(await this.saveBookmark(document.getElementById('content-link-url').value,document.getElementById('content-link-title').value.trim(),this.editingLinkId)){
                 this.linkForm.hidden=true;this.renderLists();
             }
         });
@@ -102,9 +104,9 @@ class EntryContentInspector {
         this.quickBookmark.addEventListener('focusin',()=>this.onLayout());
         // The compact mobile field retains a padded tap area around its silhouette.
         this.quickBookmark.addEventListener('click',event=>{if(event.target===this.quickBookmark)this.quickUrl.focus();});
-        this.quickBookmark.addEventListener('submit',event=>{event.preventDefault();
-            if(this.saveBookmark(this.quickUrl.value)){this.quickUrl.value='';this.quickSave.hidden=true;this.quickUrl.blur();this.renderLists();}
-            else this.quickUrl.setAttribute('aria-invalid','true');
+        this.quickBookmark.addEventListener('submit',async event=>{event.preventDefault();const id=this.entryId;
+            if(await this.saveBookmark(this.quickUrl.value)){this.quickUrl.value='';this.quickSave.hidden=true;this.quickUrl.blur();this.renderLists();}
+            else if(id===this.entryId)this.quickUrl.setAttribute('aria-invalid','true');
         });
         this.files.addEventListener("change", () => {
             const files = [...this.files.files]; this.files.value = "";
@@ -138,6 +140,10 @@ class EntryContentInspector {
         this.quickUrl.value='';this.quickUrl.removeAttribute('aria-invalid');this.quickSave.hidden=true;
         document.getElementById("content-file-limit").hidden = true;
         this.notes.value = this.content().notes.text;
+        const draft=this.pendingDrafts.get(this.entryId);
+        if(draft?.notes!==undefined){this.notes.value=draft.notes;this.notesForm.hidden=false;}
+        if(draft?.location!==undefined){this.locationInput.value=draft.location;this.locationForm.hidden=false;}
+        if(draft?.bookmark){document.getElementById('content-link-url').value=draft.bookmark.value;document.getElementById('content-link-title').value=draft.bookmark.title;this.editingLinkId=draft.bookmark.editingId;this.linkForm.hidden=false;}
         this.renderNotes(); this.renderLists(); this.renderLocation(); this.busy();
     }
     hide() { this.visible = false; clearTimeout(this.statusTimer); this.clearPreviews(); }
@@ -154,22 +160,25 @@ class EntryContentInspector {
         this.locationForm.addEventListener('keydown',event=>{
             if(event.key==='Escape'){event.preventDefault();event.stopPropagation();this.cancelLocation();}
         });
-        this.locationForm.addEventListener('submit',event=>{
+        this.locationForm.addEventListener('submit',async event=>{
             event.preventDefault();this.onAction();
-            if(!this.entryId||this.jobs.get(this.entryId))return;
+            if(!this.entryId||this.jobs.get(this.entryId))return;const id=this.entryId;
             try{
-                this.saveLocation(this.entryId,{text:this.locationInput.value});
+                const text=this.locationInput.value;this.pendingDrafts.set(id,{...this.pendingDrafts.get(id),location:text});
+                await this.semantic(id,()=>this.saveLocation(id,{text}));delete this.pendingDrafts.get(id).location;
+                if(id!==this.entryId)return;
                 this.locationForm.hidden=true;this.renderLocation();this.message('Location saved.');
                 document.getElementById('content-edit-location').focus({preventScroll:true});
             }catch(error){
+                if(id!==this.entryId)return;
                 this.locationError.textContent=error.message;this.locationError.hidden=false;
                 this.locationInput.setAttribute('aria-invalid','true');this.locationInput.focus({preventScroll:true});this.onLayout();
             }
         });
-        document.getElementById('content-remove-location').addEventListener('click',()=>{
+        document.getElementById('content-remove-location').addEventListener('click',async()=>{
             if(!this.entryId||this.jobs.get(this.entryId))return;
             this.onAction();
-            try{this.saveLocation(this.entryId,null);this.renderLocation();this.message('Location removed.');document.getElementById('content-add-location').focus({preventScroll:true});}
+            try{const id=this.entryId;await this.semantic(id,()=>this.saveLocation(id,null));if(id!==this.entryId)return;this.renderLocation();this.message('Location removed.');document.getElementById('content-add-location').focus({preventScroll:true});}
             catch(error){this.message(error.message,true);}
         });
     }
@@ -190,6 +199,7 @@ class EntryContentInspector {
         this.locationForm.hidden=false;this.renderLocation();this.locationInput.focus({preventScroll:true});
     }
     cancelLocation() {
+        if(this.pendingDrafts.get(this.entryId))delete this.pendingDrafts.get(this.entryId).location;
         this.onAction();this.locationForm.hidden=true;this.locationInput.value='';this.locationError.hidden=true;
         this.locationInput.removeAttribute('aria-invalid');this.renderLocation();
         document.getElementById(this.getEntry(this.entryId)?.location?'content-edit-location':'content-add-location').focus({preventScroll:true});
@@ -198,6 +208,11 @@ class EntryContentInspector {
         const busy = !!this.jobs.get(this.entryId);
         this.root.querySelectorAll("button,input,textarea").forEach(field => { field.disabled = busy; });
         this.root.setAttribute("aria-busy", String(busy));
+    }
+    async semantic(id,operation){
+        if(this.jobs.get(id))throw new Error('Wait for the current content action to finish.');
+        this.jobs.set(id,1);this.busy();
+        try{return await operation();}finally{this.jobs.delete(id);this.busy();}
     }
     hasJobs(ids) { return [...ids].some(id => this.jobs.get(id)); }
     async job(id, operation) {
@@ -249,13 +264,13 @@ class EntryContentInspector {
         document.getElementById("content-notes-empty").hidden = !!text || !this.notesForm.hidden;
     }
     renderBookmarkState() { const empty=!this.content().links.length&&this.linkForm.hidden;this.quickBookmark.hidden=!empty;document.getElementById('content-add-bookmark').hidden=empty; }
-    saveBookmark(value,title='',editingId=null){
+    async saveBookmark(value,title='',editingId=null){
         this.onAction();const url=galaxyModel.webUrl(value);
         if(!url){this.message('Enter a valid website address, such as google.com or an HTTPS URL.',true);return false;}
-        const link={id:editingId||crypto.randomUUID(),url,...(title?{title}:{})},content=this.content();
-        const links=editingId?content.links.map(old=>old.id===link.id?link:old):[...content.links,link];
-        try{this.save(this.entryId,{...content,links});this.message('Bookmark saved.');return true;}
-        catch(error){this.error(error);return false;}
+        const link={id:editingId||crypto.randomUUID(),url,...(title?{title}:{})};
+        const id=this.entryId;this.pendingDrafts.set(id,{...this.pendingDrafts.get(id),bookmark:{value,title,editingId}});
+        try{await this.semantic(id,()=>this.save(id,current=>({...current,links:editingId?current.links.map(old=>old.id===link.id?link:old):[...current.links,link]})));delete this.pendingDrafts.get(id).bookmark;if(id===this.entryId)this.message('Bookmark saved.');return id===this.entryId;}
+        catch(error){if(id===this.entryId)this.error(error);return false;}
     }
     button(text, action, label = text) {
         const button = document.createElement("button"); button.type = "button"; button.textContent = text; button.ariaLabel = label;
@@ -286,8 +301,8 @@ class EntryContentInspector {
             url.textContent = `${address.hostname}${address.pathname === "/" ? "" : address.pathname}${address.search}`;
             url.title = link.url;
             actions.className = "content-row-actions";
-            actions.append(this.button("Edit", () => this.editLink(link), `Edit bookmark ${link.title || link.url}`), this.button("Remove", () => {
-                try { this.save(this.entryId, { ...this.content(), links: this.content().links.filter(old => old.id !== link.id) }); this.renderLists(); this.message("Bookmark removed."); }
+            actions.append(this.button("Edit", () => this.editLink(link), `Edit bookmark ${link.title || link.url}`), this.button("Remove", async () => {
+                try { const id=this.entryId;await this.semantic(id,()=>this.save(id,content=>({...content,links:content.links.filter(old=>old.id!==link.id)})));if(id!==this.entryId)return;this.renderLists(); this.message("Bookmark removed."); }
                 catch (error) { this.error(error); }
             }, `Remove bookmark ${link.title || link.url}`));
             info.className = "bookmark-info"; info.append(anchor, url);
@@ -318,10 +333,7 @@ class EntryContentInspector {
                 if (button.dataset.confirm !== "true") { button.dataset.confirm = "true"; button.textContent = "Confirm remove"; button.ariaLabel = `Confirm remove attachment ${metadata.filename}`; return; }
                 const id = metadata.entryId;
                 this.job(id, async () => {
-                    const previous = {content:this.getEntry(id)?.content, updatedAt:this.getEntry(id)?.updatedAt};
-                    await this.store.delete(metadata.storageKey,
-                        () => this.save(id, { ...this.content(id), attachments: this.content(id).attachments.filter(file => file.id !== metadata.id) }),
-                        () => this.rollback(id, previous));
+                    await this.removeAttachment(id,metadata.storageKey);
                 });
             }, `Remove attachment ${metadata.filename}`));
             if (isMedia) {
@@ -380,11 +392,7 @@ class EntryContentInspector {
         return this.job(id, async () => {
             for (const file of files) {
                 const { metadata, record } = await galaxyAttachmentFiles.prepare(file,id);
-                let previous;
-                await this.store.save(record, () => {
-                    previous = {content:this.getEntry(id)?.content, updatedAt:this.getEntry(id)?.updatedAt};
-                    this.save(id, { ...this.content(id), attachments: [...this.content(id).attachments, metadata] });
-                }, () => this.rollback(id, previous));
+                await this.addAttachment(id,record,metadata);
             }
         });
     }
