@@ -130,6 +130,24 @@
                     <div class="content-row-actions"><button type="submit">Save bookmark</button><button id="content-cancel-link" type="button">Cancel</button></div>
                 </form>
                 </section>
+                <section id="content-location-section" aria-labelledby="location-heading">
+                    <header class="content-heading"><h3 id="location-heading">Location</h3><button id="content-add-location" class="quiet-icon content-section-add" type="button" aria-label="Add location" title="Add location">+</button></header>
+                    <p id="content-location-empty" class="content-empty">No location</p>
+                    <div id="content-location-view" hidden>
+                        <p id="content-location-text"></p>
+                        <div class="content-row-actions location-actions">
+                            <a id="content-location-maps" target="_blank" rel="noopener noreferrer">Open in Google Maps</a>
+                            <button id="content-edit-location" type="button">Edit</button>
+                            <button id="content-remove-location" type="button">Remove</button>
+                        </div>
+                    </div>
+                    <form id="content-location-form" hidden>
+                        <label for="content-location-input">Place or address</label>
+                        <input id="content-location-input" type="text" required maxlength="1000" autocomplete="off">
+                        <div class="content-row-actions"><button type="submit">Save location</button><button id="content-cancel-location" type="button">Cancel</button></div>
+                        <p id="content-location-error" role="status" hidden></p>
+                    </form>
+                </section>
                 <p id="content-status" role="status" aria-live="polite" hidden></p>
             </section>
             <section id="constellation-content" hidden aria-label="Items in this Constellation">

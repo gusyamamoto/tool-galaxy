@@ -4,6 +4,24 @@ A 2.5D universe for organizing trips, recipes, photos, projects and other items.
 install/build step: serve this directory with `python -m http.server 8000` and
 open `http://localhost:8000`. Use the same browser, address and port for saved data.
 
+Each canonical item can have one optional **Location**, shown after Bookmarks
+in the Content panel. Use the section's + to enter a place name or address;
+Enter/Save stores trimmed text, and Escape/Cancel keeps the previous value.
+Edit and Remove stay beside the saved location. Removal follows the same
+immediate pattern as bookmarks and affects only Location.
+
+Location is optional canonical metadata, `location: {text: "Frida Kahlo Museum"}`,
+saved additively in storage v5. Old items without Location remain valid. Linked
+appearances share it; normal Copy deep-clones it independently; Duplicate
+structure excludes it. Moves preserve it, and global Search still searches names.
+Open in Google Maps opens an encoded search URL in a new tab with safe link
+attributes. No mapping API, API key, geocoding, embedded map or remote resources
+are loaded. Location uses one plain text field, limited to 1,000 characters.
+
+Run `node --test tests/locations.test.js` and
+`python tests/browser-check.py --locations-only --screenshots` to check Location
+editing, persistence, linked/copy behavior, failure recovery and narrow layouts.
+
 ## Creating and navigating
 
 **New Galaxy** offers Blank (default) and five small starters. The name stays

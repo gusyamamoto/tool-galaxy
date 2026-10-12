@@ -485,6 +485,13 @@ function saveEntryContent(id, value) {
     entry.content = updated.content; entry.updatedAt = updated.updatedAt;
     graphNeedsSave = false;
 }
+function saveEntryLocation(id,value) {
+    const entry=entries.get(id);
+    if(!entry||deletingContentIds.has(id))throw new Error('This item is being deleted or no longer exists.');
+    const updated=universeRepository.updateLocation(getGalaxySnapshot(),id,value);
+    if(updated.location)entry.location=updated.location;else delete entry.location;
+    entry.updatedAt=updated.updatedAt;graphNeedsSave=false;
+}
 function rollbackEntryContent(id, previous) {
     const entry = entries.get(id);
     if (!entry) return;
@@ -497,7 +504,7 @@ const motion = new CosmosMotion({wake:()=>renderRegions()});
 const imageViewer = new CosmifoldImageViewer({store:attachmentStore,getEntry:id=>entries.get(id)});
 const contentInspector = new EntryContentInspector({ store: attachmentStore, motion, getEntry: id => entries.get(id),
     imageViewer,
-    save: saveEntryContent, rollback: rollbackEntryContent,
+    save: saveEntryContent, saveLocation:saveEntryLocation, rollback: rollbackEntryContent,
     onAction() { cancelPendingBodyFocus();autoFitPending = false; keyboardNavigation = false; camera.stopAnimation(); },
     onLayout() { if (cameraViewReady) updateGraphViewport(); } });
 const contentDrops=new CosmosContentDrops({host:galaxy,getEntry:id=>entries.get(id),
@@ -2038,8 +2045,8 @@ document.getElementById('archive-galaxy-form').addEventListener('submit',event=>
         archiveConfirmationIds=ids;showArchiveError('The Galaxy changed. Review it and choose Archive Galaxy again.');return;
     }
     if(contentInspector.hasJobs(ids)){showArchiveError('Wait for the current file action to finish before archiving.');return;}
-    if(ids.has(contentInspector.entryId)&&(!contentInspector.notesForm.hidden||!contentInspector.linkForm.hidden)){
-        showArchiveError('Save or cancel the open note or bookmark before archiving.');return;
+    if(ids.has(contentInspector.entryId)&&(!contentInspector.notesForm.hidden||!contentInspector.linkForm.hidden||!contentInspector.locationForm.hidden)){
+        showArchiveError('Save or cancel the open note, bookmark or location before archiving.');return;
     }
     const record={galaxyId:root.id,archivedAt:new Date().toISOString(),expandedIds:[...hierarchySidebar.expanded].filter(id=>ids.has(id))};
     const snapshot=getGalaxySnapshot();
@@ -2307,7 +2314,7 @@ camera.setReducedMotion(motionPreference.matches);
 motion.setReducedMotion(motionPreference.matches);
 archiveMotion.setReducedMotion(motionPreference.matches);
 const ambient=new CosmosAmbient({root:document.querySelector('.universe-background'),reduced:motionPreference.matches,
-    busy:()=>!!document.querySelector('dialog[open]')||(!panel.hidden&&!contentInspector.root.hidden&&(!contentInspector.notesForm.hidden||!contentInspector.linkForm.hidden))||
+    busy:()=>!!document.querySelector('dialog[open]')||(!panel.hidden&&!contentInspector.root.hidden&&(!contentInspector.notesForm.hidden||!contentInspector.linkForm.hidden||!contentInspector.locationForm.hidden))||
         !!camera.frame||!!pan||!!pinch||activeNodeDrags>0||contentInspector.quickBookmark.contains(document.activeElement)||motion.constellationAnimating||motion.animations.size>0||contentInspector.jobs.size>0||archiveMotion.transitions.size>0});
 // Deterministic console previews share rendering, with independent production timing/state.
 window.debugComet=()=>ambient.debug('comet');

@@ -23,6 +23,14 @@ test('copy planning defensively normalizes redundant roots and creates normal fr
  assert.equal(plan.rootIds.length,1);assert.equal(plan.copies.length,2);assert.equal(plan.copies[1].parentId,plan.copies[0].id);
  assert.ok(Number.isFinite(Date.parse(plan.copies[0].createdAt)));assert.equal(plan.copies[0].createdAt,plan.copies[0].updatedAt);
 });
+
+test('normal copy deep-clones canonical Locations and structure-only duplication excludes them',()=>{
+ const source=fixture();source.entries[1].location={text:'Frida Kahlo Museum'};
+ const plan=copies.plan(source,['a'],'d',ids());
+ assert.deepEqual(plain(plan.copies[0].location),source.entries[1].location);
+ plan.copies[0].location.text='Independent place';assert.equal(source.entries[1].location.text,'Frida Kahlo Museum');
+ const structure=copies.structure(source,'a','Japan Food',ids());assert.ok(structure.copies.every(entry=>!Object.hasOwn(entry,'location')));
+});
 test('independent attachment batches commit once and survive original/copy deletion independently',async()=>{
  const source=fixture(),files=filesFactory(),meta=metaFactory(source);await files.save({key:'file',entryId:'a',blob:new Blob(['data']),thumbnail:new Blob(['thumb'])});
  const repo=repoFactory({persistence:{metadata:meta,files}});let published=0;repo.subscribe(()=>published++);

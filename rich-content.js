@@ -46,8 +46,8 @@ function createPanelItemMenu(actions, label, root) {
 
 // Content presentation over canonical entry content and a replaceable file store.
 class EntryContentInspector {
-    constructor({ store, getEntry, save, rollback, onAction, onLayout, motion=null, imageViewer }) {
-        Object.assign(this, { store, getEntry, save, rollback, onAction, onLayout, motion, imageViewer });
+    constructor({ store, getEntry, save, saveLocation, rollback, onAction, onLayout, motion=null, imageViewer }) {
+        Object.assign(this, { store, getEntry, save, saveLocation, rollback, onAction, onLayout, motion, imageViewer });
         this.root = document.getElementById("panel-rich-content");
         this.notes = document.getElementById("content-notes");
         this.notesForm = document.getElementById("content-notes-form");
@@ -60,6 +60,7 @@ class EntryContentInspector {
         this.jobs = new Map(); this.urls = new Set(); this.generation = 0; this.entryId = null; this.previewLoads = 0;
         this.downloadUrls = new Map();
         this.setupFileDetails();
+        this.setupLocation();
         this.notes.maxLength = galaxyModel.contentLimits.notes;
         document.getElementById("content-file-limit").textContent = `Photos and files · up to ${galaxyModel.contentLimits.fileBytes / 1024 / 1024} MiB each. Videos · up to ${galaxyModel.contentLimits.videoBytes / 1024 / 1024} MiB each in local browser storage.`;
         this.root.addEventListener("input", () => this.onAction());
@@ -132,14 +133,67 @@ class EntryContentInspector {
     select(entry, visible) {
         clearTimeout(this.statusTimer);
         this.entryId = entry?.id || null; this.visible = visible;
-        this.linkForm.hidden = this.notesForm.hidden = true; this.status.hidden = true;
+        this.linkForm.hidden = this.notesForm.hidden = this.locationForm.hidden = true; this.status.hidden = true;
+        this.locationInput.value='';this.locationInput.removeAttribute('aria-invalid');this.locationError.hidden=true;
         this.quickUrl.value='';this.quickUrl.removeAttribute('aria-invalid');this.quickSave.hidden=true;
         document.getElementById("content-file-limit").hidden = true;
         this.notes.value = this.content().notes.text;
-        this.renderNotes(); this.renderLists(); this.busy();
+        this.renderNotes(); this.renderLists(); this.renderLocation(); this.busy();
     }
     hide() { this.visible = false; clearTimeout(this.statusTimer); this.clearPreviews(); }
-    render() { if (this.entryId) { this.renderLists(); this.busy(); } }
+    render() { if (this.entryId) { this.renderLists(); this.renderLocation(); this.busy(); } }
+    setupLocation() {
+        this.locationForm=document.getElementById('content-location-form');
+        this.locationInput=document.getElementById('content-location-input');
+        this.locationError=document.getElementById('content-location-error');
+        this.locationInput.maxLength=galaxyModel.locationTextLimit;
+        document.getElementById('content-add-location').addEventListener('click',()=>this.editLocation());
+        document.getElementById('content-edit-location').addEventListener('click',()=>this.editLocation());
+        document.getElementById('content-cancel-location').addEventListener('click',()=>this.cancelLocation());
+        this.locationInput.addEventListener('input',()=>{this.locationInput.removeAttribute('aria-invalid');this.locationError.hidden=true;});
+        this.locationForm.addEventListener('keydown',event=>{
+            if(event.key==='Escape'){event.preventDefault();event.stopPropagation();this.cancelLocation();}
+        });
+        this.locationForm.addEventListener('submit',event=>{
+            event.preventDefault();this.onAction();
+            if(!this.entryId||this.jobs.get(this.entryId))return;
+            try{
+                this.saveLocation(this.entryId,{text:this.locationInput.value});
+                this.locationForm.hidden=true;this.renderLocation();this.message('Location saved.');
+                document.getElementById('content-edit-location').focus({preventScroll:true});
+            }catch(error){
+                this.locationError.textContent=error.message;this.locationError.hidden=false;
+                this.locationInput.setAttribute('aria-invalid','true');this.locationInput.focus({preventScroll:true});this.onLayout();
+            }
+        });
+        document.getElementById('content-remove-location').addEventListener('click',()=>{
+            if(!this.entryId||this.jobs.get(this.entryId))return;
+            this.onAction();
+            try{this.saveLocation(this.entryId,null);this.renderLocation();this.message('Location removed.');document.getElementById('content-add-location').focus({preventScroll:true});}
+            catch(error){this.message(error.message,true);}
+        });
+    }
+    renderLocation() {
+        const location=this.getEntry(this.entryId)?.location,editing=!this.locationForm.hidden;
+        document.getElementById('content-location-empty').hidden=!!location||editing;
+        document.getElementById('content-add-location').hidden=!!location||editing;
+        document.getElementById('content-location-view').hidden=!location||editing;
+        document.getElementById('content-location-text').textContent=location?.text||'';
+        const maps=document.getElementById('content-location-maps'),href=galaxyModel.locationMapsUrl(location);
+        if(href)maps.href=href;else maps.removeAttribute('href');
+        this.onLayout();
+    }
+    editLocation() {
+        if(!this.entryId||this.jobs.get(this.entryId))return;
+        this.onAction();this.locationInput.value=this.getEntry(this.entryId)?.location?.text||'';
+        this.locationInput.removeAttribute('aria-invalid');this.locationError.hidden=true;
+        this.locationForm.hidden=false;this.renderLocation();this.locationInput.focus({preventScroll:true});
+    }
+    cancelLocation() {
+        this.onAction();this.locationForm.hidden=true;this.locationInput.value='';this.locationError.hidden=true;
+        this.locationInput.removeAttribute('aria-invalid');this.renderLocation();
+        document.getElementById(this.getEntry(this.entryId)?.location?'content-edit-location':'content-add-location').focus({preventScroll:true});
+    }
     busy() {
         const busy = !!this.jobs.get(this.entryId);
         this.root.querySelectorAll("button,input,textarea").forEach(field => { field.disabled = busy; });

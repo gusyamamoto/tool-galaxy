@@ -770,6 +770,17 @@ summary:focus-visible { outline: 1px solid #b9d0e9; outline-offset: 3px; }
 #panel-rich-content .content-file small { margin-top: 3px; }
 #panel-rich-content .content-row-actions { gap: 8px; }
 #panel-rich-content .content-row-actions button { padding: 2px 0; margin: 3px 0; border: 0; color: #8ea6bf; }
+#content-location-text { margin: 0; line-height: 1.6; color: #c3d1e1; overflow-wrap: anywhere; }
+#panel-rich-content .location-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+#panel-rich-content .location-actions a { font-size: 11px; line-height: 1.5; text-underline-offset: 3px; }
+#panel-rich-content #content-remove-location { color: #71839a; }
+#content-location-form { min-width: 0; }
+#panel-rich-content #content-location-input[aria-invalid='true'] { border-color: #bd9292; }
+#content-location-error { margin: 5px 0 0; color: #dbb59d; line-height: 1.5; }
+@media (max-width: 760px), (pointer: coarse) {
+    #panel-rich-content .location-actions :is(a,button) { min-height: 44px; display: inline-flex; align-items: center; }
+    #panel-rich-content #content-location-input { min-height: 44px; font-size: 16px; }
+}
 #panel-rich-content .content-text-preview { grid-column: 1 / -1; max-height: 60px; margin: 6px 0 0; }
 #entry-more-button { display: grid; place-items: center; flex: 0 0 28px; width: 28px; height: 28px; border: 0; border-radius: 4px; box-shadow: none; color: #8a9eb6; padding: 0; margin-left: auto; letter-spacing: 1px; align-self: center; }
 #entry-more-button:is(:hover,:focus-visible) { background: #30435b66; color: #d5e4f2; }

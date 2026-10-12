@@ -19,8 +19,9 @@ function createUniverseRepository({persistence, canWrite = () => true}) {
         },
         snapshot({entries, portals, constellations, layout, archivedGalaxies}) {
             return {
-                entries: [...entries.values()].map(({id,name,description,category,parentId,x,y,appearance,content,createdAt,updatedAt}) =>
+                entries: [...entries.values()].map(({id,name,description,category,parentId,x,y,appearance,content,location,createdAt,updatedAt}) =>
                     ({id,name,description,category,parentId,x,y, ...(appearance ? {appearance} : {}), ...(content ? {content} : {}),
+                        ...(location ? {location} : {}),
                         ...(createdAt ? {createdAt} : {}), ...(updatedAt ? {updatedAt} : {})})),
                 portals: [...portals.values()].map(record => ({...record})),
                 constellations: [...constellations.values()].map(record => ({...record,memberEntryIds:[...record.memberEntryIds]})),
@@ -42,6 +43,17 @@ function createUniverseRepository({persistence, canWrite = () => true}) {
             } else updated.updatedAt = new Date().toISOString();
             this.save({...snapshot, entries: snapshot.entries.map(record => record.id === id ? updated : record)},
                 {type: recovery ? 'content.recovered' : 'content.changed', ids: [id]});
+            return updated;
+        },
+        updateLocation(snapshot,id,value) {
+            const entry=snapshot.entries.find(entry=>entry.id===id);
+            if(!entry)throw new Error('This item no longer exists.');
+            const location=value===null?null:galaxyModel.normalizeLocation(value);
+            if(value!==null&&!location)throw new Error('Enter a place or address of up to 1,000 characters.');
+            const updated={...entry,updatedAt:new Date().toISOString()};
+            if(location)updated.location=location;else delete updated.location;
+            this.save({...snapshot,entries:snapshot.entries.map(record=>record.id===id?updated:record)},
+                {type:'location.changed',ids:[id]});
             return updated;
         },
         replaceConstellations(snapshot, records) {
