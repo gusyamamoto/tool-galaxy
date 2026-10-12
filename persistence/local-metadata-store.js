@@ -66,6 +66,7 @@ function createLocalMetadataStore({storage = () => globalThis.localStorage, scop
             };
         },
 
+        async commit(snapshot,intent) { this.save(snapshot,intent); },
         save(snapshot) {
             const localStorage = storage();
             const previous = localStorage.getItem(this.key) ?? localStorage.getItem(this.legacyKey);

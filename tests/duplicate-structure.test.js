@@ -16,9 +16,9 @@ function fixture(){return {entries:[
  archivedGalaxies:[{galaxyId:'g',archivedAt:'2026-01-01T00:00:00Z'}]};}
 function repository(source){const meta=metaFactory(source);return {meta,repo:repoFactory({persistence:{metadata:meta,files:forbiddenFiles}})};}
 
-test('a Galaxy structure receives fresh IDs, correct parents and stable canonical sibling order',()=>{
+test('a Galaxy structure receives fresh IDs, correct parents and stable canonical sibling order',async ()=>{
  const source=fixture(),before=structuredClone(source),{repo,meta}=repository(source);
- const result=repo.duplicateStructure(source,'g',' Japan ',ids(),{x:0,y:0}),[root,food,stay,restaurants]=result.copies;
+ const result=(await repo.duplicateStructure(source,'g',' Japan ',ids(),{x:0,y:0})),[root,food,stay,restaurants]=result.copies;
  assert.equal(root.name,'Japan');assert.equal(root.parentId,null);
  assert.equal(food.parentId,root.id);assert.equal(stay.parentId,root.id);assert.equal(restaurants.parentId,food.id);
  assert.equal(restaurants.name,'Restaurants in Mexico');
@@ -30,7 +30,7 @@ test('a Galaxy structure receives fresh IDs, correct parents and stable canonica
  assert.deepEqual(plain(source),before);assert.deepEqual(plain(meta.load().entries.slice(0,source.entries.length)),before.entries);
 });
 
-test('all six hierarchy depths are reconstructed and roles derive from depth',()=>{
+test('all six hierarchy depths are reconstructed and roles derive from depth',async ()=>{
  const source=fixture();source.entries=Array.from({length:6},(_,i)=>({id:`depth-${i}`,name:model.roleAtDepth(i),parentId:i?`depth-${i-1}`:null}));
  const result=copies.structure(source,'depth-0','New Galaxy',ids()),entries=new Map(result.copies.map(e=>[e.id,e]));
  assert.equal(result.copies.length,6);assert.ok(result.copies.every(e=>!Object.hasOwn(e,'role')&&!Object.hasOwn(e,'depth')));
@@ -38,16 +38,16 @@ test('all six hierarchy depths are reconstructed and roles derive from depth',()
  result.copies.forEach((entry,i)=>{assert.equal(entry.depth,i);assert.equal(entry.role,model.roleAtDepth(i));assert.equal(entry.parentId,i?result.copies[i-1].id:null);});
 });
 
-test('Sun and Planet structures become siblings under the same canonical parent',()=>{
+test('Sun and Planet structures become siblings under the same canonical parent',async ()=>{
  for(const rootId of ['a','b']){
-  const source=fixture(),{repo}=repository(source),result=repo.duplicateStructure(source,rootId,'Another branch',ids());
+  const source=fixture(),{repo}=repository(source),result=(await repo.duplicateStructure(source,rootId,'Another branch',ids()));
   assert.equal(result.copies[0].parentId,source.entries.find(e=>e.id===rootId).parentId);
   assert.equal(result.copies.length,rootId==='a'?2:1);
   assert.equal(result.copies[0].name,'Another branch');
  }
 });
 
-test('only names and hierarchy are reused; content, memberships, placements and incidental metadata are excluded',()=>{
+test('only names and hierarchy are reused; content, memberships, placements and incidental metadata are excluded',async ()=>{
  const source=fixture();
  source.entries.forEach(entry=>Object.assign(entry,{
   content:{version:1,notes:{format:'plain',text:'Private notes'},links:[{id:`link-${entry.id}`,url:'https://example.com/'}],attachments:[
@@ -55,7 +55,7 @@ test('only names and hierarchy are reused; content, memberships, placements and 
    {id:`media-${entry.id}`,kind:'upload',entryId:entry.id,storageKey:`media-${entry.id}`,filename:'trip.png',mimeType:'image/png',size:4}]},
   thumbnail:'old',draft:'old',location:{text:'Frida Kahlo Museum'},selected:true,archived:true,createdAt:'2020-01-01T00:00:00Z',updatedAt:'2020-01-01T00:00:00Z'
  }));
- const {repo}=repository(source),result=repo.duplicateStructure(source,'g','Japan',ids());
+ const {repo}=repository(source),result=(await repo.duplicateStructure(source,'g','Japan',ids()));
  for(const entry of result.copies){
   assert.deepEqual(Object.keys(entry).sort(),['id','name','parentId','description','category','x','y','createdAt','updatedAt'].sort());
   assert.equal(entry.description,'');assert.equal(entry.category,'');assert.equal(entry.x,0);assert.equal(entry.y,0);
@@ -66,8 +66,8 @@ test('only names and hierarchy are reused; content, memberships, placements and 
  assert.ok(result.snapshot.constellations.every(c=>c.memberEntryIds.every(id=>!result.rootIds.includes(id))));
 });
 
-test('duplicate and original remain independent through names, content, additions and deletion',()=>{
- const source=fixture(),before=structuredClone(source),{repo}=repository(source),result=repo.duplicateStructure(source,'g','Japan',ids());
+test('duplicate and original remain independent through names, content, additions and deletion',async ()=>{
+ const source=fixture(),before=structuredClone(source),{repo}=repository(source),result=(await repo.duplicateStructure(source,'g','Japan',ids()));
  const [root,food,stay,restaurants]=result.copies,entries=new Map(result.snapshot.entries.map(e=>[e.id,e]));
  root.name='Japan changed';food.content=model.emptyContent();food.content.notes.text='New notes';
  entries.set('added',{id:'added',name:'New child',parentId:food.id});entries.delete(stay.id);
@@ -76,32 +76,32 @@ test('duplicate and original remain independent through names, content, addition
  assert.equal(food.name,'Food');assert.equal(restaurants.name,'Restaurants in Mexico');assert.equal(food.content.notes.text,'New notes');assert.equal(restaurants.content,undefined);
 });
 
-test('one metadata commit publishes once; persistence failure leaves no partial hierarchy or event',()=>{
+test('one metadata commit publishes once; persistence failure leaves no partial hierarchy or event',async ()=>{
  const source=fixture(),{repo,meta}=repository(source);let writes=0,published=[];
  const save=meta.save;meta.save=value=>{writes++;save(value);};repo.subscribe(event=>published.push(event));
- repo.duplicateStructure(source,'g','Japan',ids());assert.equal(writes,1);assert.equal(published.length,1);assert.equal(published[0].type,'items.structure-duplicated');
+ (await repo.duplicateStructure(source,'g','Japan',ids()));assert.equal(writes,1);assert.equal(published.length,1);assert.equal(published[0].type,'items.structure-duplicated');
  const failed=repository(source);let failedEvents=0;failed.repo.subscribe(()=>failedEvents++);
  failed.meta.save=()=>{throw new Error('Quota exceeded');};
- assert.throws(()=>failed.repo.duplicateStructure(source,'g','Japan',ids()),/Quota/);
+ await assert.rejects(()=>failed.repo.duplicateStructure(source,'g','Japan',ids()),/Quota/);
  assert.deepEqual(plain(failed.meta.load()),source);assert.equal(failedEvents,0);
 });
 
-test('invalid names, multiple targets, missing parents and ID collisions cannot publish a duplicate',()=>{
+test('invalid names, multiple targets, missing parents and ID collisions cannot publish a duplicate',async ()=>{
  for(const name of ['', '   ', 'x'.repeat(61),null]){
-  const source=fixture(),{repo,meta}=repository(source);assert.throws(()=>repo.duplicateStructure(source,'g',name,ids()));assert.deepEqual(plain(meta.load()),source);
+  const source=fixture(),{repo,meta}=repository(source);await assert.rejects(()=>repo.duplicateStructure(source,'g',name,ids()));assert.deepEqual(plain(meta.load()),source);
  }
  const source=fixture(),{repo,meta}=repository(source);
- assert.throws(()=>repo.duplicateStructure(source,['g','a'],'Japan',ids()),/one item/);
- assert.throws(()=>repo.duplicateStructure(source,'gone','Japan',ids()),/no longer/);
- for(const id of ['g','internal','same'])assert.throws(()=>repo.duplicateStructure(source,'g','Japan',()=>id),/IDs/);
- const broken=structuredClone(source);broken.entries[1].parentId='gone';assert.throws(()=>repo.duplicateStructure(broken,'a','Japan',ids()),/destination/);
+ await assert.rejects(()=>repo.duplicateStructure(source,['g','a'],'Japan',ids()),/one item/);
+ await assert.rejects(()=>repo.duplicateStructure(source,'gone','Japan',ids()),/no longer/);
+ for(const id of ['g','internal','same'])await assert.rejects(()=>repo.duplicateStructure(source,'g','Japan',()=>id),/IDs/);
+ const broken=structuredClone(source);broken.entries[1].parentId='gone';await assert.rejects(()=>repo.duplicateStructure(broken,'a','Japan',ids()),/destination/);
  assert.deepEqual(plain(meta.load()),source);
 });
 
-test('structure persists through the v5 adapter and reloads as valid canonical entries',()=>{
+test('structure persists through the v5 adapter and reloads as valid canonical entries',async ()=>{
  const values=new Map(),storage={getItem:key=>values.get(key)??null,setItem:(key,value)=>values.set(key,value),removeItem:key=>values.delete(key)};
  const metadata=localFactory({storage:()=>storage}),source=fixture(),repo=repoFactory({persistence:{metadata,files:forbiddenFiles}});
- const result=repo.duplicateStructure(source,'g','Japan',ids());
+ const result=(await repo.duplicateStructure(source,'g','Japan',ids()));
  assert.equal(JSON.parse(storage.getItem(metadata.key)).version,5);
  const loaded=localFactory({storage:()=>storage}).load(),entries=new Map(loaded.entries.map(e=>model.normalizeEntry(e)).map(e=>[e.id,e]));model.normalizeHierarchy(entries);
  assert.equal(entries.get(result.rootIds[0]).name,'Japan');assert.equal(model.subtreeIds(entries,result.rootIds[0]).size,4);

@@ -14,10 +14,10 @@ class ConstellationWorkspace {
         document.getElementById('panel-add-member').addEventListener('click',()=>this.openPicker(this.getActive()));
         document.getElementById('rename-constellation-button').addEventListener('click',()=>this.openName(this.getActive()));
         document.getElementById('delete-constellation-button').addEventListener('click',()=>this.openDelete(this.getActive()));
-        document.getElementById('constellation-name-form').addEventListener('submit',event=>{event.preventDefault();this.saveName();});
+        document.getElementById('constellation-name-form').addEventListener('submit',async event=>{event.preventDefault();await this.saveName();});
         this.pickerInput=document.getElementById('constellation-member-search');this.pickerList=document.getElementById('constellation-picker-results');
         this.pickerAdd=document.getElementById('confirm-constellation-entries');this.pickerSelection=new Set();
-        document.getElementById('constellation-picker-form').addEventListener('submit',event=>{event.preventDefault();this.addPickerEntries();});
+        document.getElementById('constellation-picker-form').addEventListener('submit',async event=>{event.preventDefault();await this.addPickerEntries();});
         this.pickerInput.addEventListener('input',()=>{this.limit=100;this.renderPicker();});
         this.pickerInput.addEventListener('keydown',event=>{if(event.key==='ArrowDown'||event.key==='Enter'){event.preventDefault();this.pickerList.querySelector('button[data-entry-id]')?.focus();}});
         this.pickerList.addEventListener('click',event=>{
@@ -29,12 +29,12 @@ class ConstellationWorkspace {
         this.pickerList.addEventListener('keydown',event=>this.pickerKey(event));
         this.pickerList.addEventListener('focusin',event=>{const id=event.target.closest('button[data-entry-id]')?.dataset.entryId;if(!id)return;
             this.pickerRows.get(this.pickerFocusId)?.choice.setAttribute('tabindex','-1');this.pickerFocusId=id;event.target.tabIndex=0;});
-        document.getElementById('delete-constellation-form').addEventListener('submit',event=>{event.preventDefault();
-            try {const next=new Map(this.collections);next.delete(this.deletingId);this.commit(next);this.deleteDialog.close();this.restoreFocus();}
-            catch(error){this.error('delete-constellation-error',error);}
+        document.getElementById('delete-constellation-form').addEventListener('submit',async event=>{event.preventDefault();if(this.savingDelete)return;this.savingDelete=true;const id=this.deletingId;
+            try {await this.commit(()=>{const next=new Map(this.collections);next.delete(id);return next;});this.deleteDialog.close();this.restoreFocus();}
+            catch(error){this.error('delete-constellation-error',error);}finally{this.savingDelete=false;}
         });
         for(const [dialog,button] of [[this.nameDialog,'cancel-constellation-name'],[this.picker,'close-constellation-picker'],[this.deleteDialog,'cancel-delete-constellation']]) {
-            const close=()=>{if(dialog===this.picker)this.pickerSelection.clear();dialog.close();this.restoreFocus();};document.getElementById(button).addEventListener('click',close);
+            const close=()=>{if(this.savingName||this.savingPicker||this.savingDelete)return;if(dialog===this.picker)this.pickerSelection.clear();dialog.close();this.restoreFocus();};document.getElementById(button).addEventListener('click',close);
             dialog.addEventListener('cancel',event=>{event.preventDefault();close();});
             dialog.addEventListener('close',()=>{if(!dialog.open)this.onModalClose();});
         }
@@ -51,7 +51,7 @@ class ConstellationWorkspace {
         if(!element.getBoundingClientRect().width)element=document.getElementById('sidebar-toggle');element.focus({preventScroll:true});}
     button(text,action,label=text){const button=document.createElement('button');button.type='button';button.textContent=text;button.ariaLabel=label;button.addEventListener('click',action);return button;}
     saveSectionPreference(){
-        this.preferences.update({constellationsCollapsed:this.collapsed,constellationsSeen:this.hasHadCollections});
+        Promise.resolve(this.preferences.update({constellationsCollapsed:this.collapsed,constellationsSeen:this.hasHadCollections})).catch(error=>{this.preferenceError=error;});
     }
     applySectionState(){
         if(this.collapsed&&this.list.contains(document.activeElement))this.sectionToggle.focus({preventScroll:true});
@@ -100,7 +100,7 @@ class ConstellationWorkspace {
             const row=document.createElement('li'),open=this.button(entry.name,()=>this.inspect(id));row.dataset.entryId=id;open.className='constellation-member-name';
             open.title=this.path(id);
             const actions=document.createElement('div');actions.className='content-row-actions';
-            actions.append(this.button('Remove from Constellation',()=>{try{this.setMember(collection.id,id,false);}catch(error){this.error('entry-action-status',error);}}));
+            actions.append(this.button('Remove from Constellation',async()=>{try{await this.setMember(collection.id,id,false);}catch(error){this.error('entry-action-status',error);}}));
             const menu=createPanelItemMenu(actions,entry.name,document.getElementById('constellation-content'));menu.classList.add('constellation-member-menu');
             row.append(open,menu);list.append(row);
         });
@@ -111,12 +111,12 @@ class ConstellationWorkspace {
         this.onLayout();
     }
     path(id){return [...galaxyModel.ancestors(this.entries,id)].reverse().map(entry=>entry.name).join(' › ')||'Universe';}
-    setMember(collectionId,entryId,present){
+    async setMember(collectionId,entryId,present){
         const id=galaxyConstellations.canonicalId(entryId,this.entries,this.portals),collection=this.collections.get(collectionId);
         if(!collection||!id)throw new Error('Choose an existing item.');
         const ids=new Set(collection.memberEntryIds);present?ids.add(id):ids.delete(id);
         if(ids.size===collection.memberEntryIds.length&&ids.has(id)===collection.memberEntryIds.includes(id))return;
-        const next=new Map(this.collections);next.set(collectionId,{...collection,memberEntryIds:[...ids]});this.commit(next);
+        await this.commit(()=>{const current=this.collections.get(collectionId);if(!current)throw new Error('This Constellation no longer exists.');const members=new Set(current.memberEntryIds);present?members.add(id):members.delete(id);const next=new Map(this.collections);next.set(collectionId,{...current,memberEntryIds:[...members]});return next;});
     }
     openName(id=null,entryId=null){
         if(this.isDialogOpen()||(id&&!this.collections.has(id)))return;
@@ -125,16 +125,17 @@ class ConstellationWorkspace {
         document.getElementById('constellation-name-error').hidden=true;document.getElementById('save-constellation-name').textContent=id?'Save':'Create';
         if(this.modal(this.nameDialog))document.getElementById('constellation-name').focus({preventScroll:true});
     }
-    saveName(){
+    async saveName(){
+        if(this.savingName)return;
         const name=document.getElementById('constellation-name').value.trim();if(!name||name.length>60){this.error('constellation-name-error','Enter a name of up to 60 characters.');return;}
         const old=this.collections.get(this.editingId);if(this.editingId&&!old){this.error('constellation-name-error','This Constellation no longer exists.');return;}
         const collection=old?{...old,name}:{id:`constellation:${crypto.randomUUID()}`,name,memberEntryIds:[],createdAt:new Date().toISOString()};
-        const next=new Map(this.collections);next.set(collection.id,collection);
-        try {this.commit(next);this.nameDialog.close();this.restoreFocus();
+        const nameInput=document.getElementById('constellation-name'),saveButton=document.getElementById('save-constellation-name');nameInput.disabled=saveButton.disabled=true;
+        this.savingName=true;try {await this.commit(()=>{const current=this.collections.get(collection.id);const next=new Map(this.collections);next.set(collection.id,current?{...current,name}:collection);return next;});this.nameDialog.close();this.restoreFocus();
             // Creation is empty; the originating entity can then be added through
             // the same checked membership menu, with a separate explicit click.
             if(this.pendingEntryId)this.showMembershipMenu(this.pendingEntryId);
-        }catch(error){this.error('constellation-name-error',error);}
+        }catch(error){this.error('constellation-name-error',error);}finally{this.savingName=false;nameInput.disabled=saveButton.disabled=false;if(!document.getElementById('constellation-name-error').hidden)nameInput.focus();}
     }
     openPicker(id){
         if(this.isDialogOpen()||!this.collections.has(id))return;this.pickerId=id;this.limit=100;
@@ -204,20 +205,21 @@ class ConstellationWorkspace {
         }else return;
         event.preventDefault();target?.focus({preventScroll:true});target?.scrollIntoView({block:'nearest'});
     }
-    addPickerEntries(){
+    async addPickerEntries(){
+        if(this.savingPicker)return;
         const collection=this.collections.get(this.pickerId);if(!collection){this.error('constellation-picker-status','This Constellation no longer exists.');return;}
         const ids=new Set(collection.memberEntryIds);
         this.pickerSelection.forEach(id=>{const canonical=galaxyConstellations.canonicalId(id,this.entries,this.portals);if(canonical)ids.add(canonical);});
         if(ids.size===collection.memberEntryIds.length)return;
         const next=new Map(this.collections);next.set(collection.id,{...collection,memberEntryIds:[...ids]});
-        try{this.commit(next);this.pickerSelection.clear();this.picker.close();this.restoreFocus();}
-        catch(error){this.error('constellation-picker-status',error);}
+        const additions=[...ids];this.savingPicker=true;try{await this.commit(()=>{const current=this.collections.get(collection.id);if(!current)throw new Error('This Constellation no longer exists.');const next=new Map(this.collections);next.set(collection.id,{...current,memberEntryIds:[...new Set([...current.memberEntryIds,...additions])]});return next;});this.pickerSelection.clear();this.picker.close();this.restoreFocus();}
+        catch(error){this.error('constellation-picker-status',error);}finally{this.savingPicker=false;}
     }
     renderMemberships(container,entryId){
         const canonical=galaxyConstellations.canonicalId(entryId,this.entries,this.portals);if(!canonical)return;
         container.replaceChildren();this.collections.forEach(collection=>{const member=collection.memberEntryIds.includes(canonical);
-            const button=this.button(`${member?'✓ ':''}${collection.name}`,()=>{
-                try{this.setMember(collection.id,canonical,!member);this.renderMemberships(container,canonical);container.querySelector(`[data-collection-id="${CSS.escape(collection.id)}"]`)?.focus({preventScroll:true});}
+            const button=this.button(`${member?'✓ ':''}${collection.name}`,async()=>{
+                try{await this.setMember(collection.id,canonical,!member);this.renderMemberships(container,canonical);container.querySelector(`[data-collection-id="${CSS.escape(collection.id)}"]`)?.focus({preventScroll:true});}
                 catch(error){this.errorMembership(container,error);}
             });button.dataset.collectionId=collection.id;button.setAttribute('role','menuitemcheckbox');button.setAttribute('aria-checked',String(member));container.append(button);
         });

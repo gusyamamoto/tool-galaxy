@@ -185,7 +185,7 @@ Normal copy allocates fresh attachment IDs/storage keys, reads source Blob/thumb
 
 ### Concrete risk register
 
-Risk here means migration/data-integrity risk, not a judgment that a local feature is defective.
+Risk here means migration/data-integrity risk, not a judgment that a local feature is defective. This table records the original pre-refactor audit. Phase 4 now implements awaited semantic commands and safe publication; see [the current persistence contract](persistence-contract.md) for the resolved command-boundary risks and intentional local-only exceptions.
 
 | Rank | Assumption / code reference | Cloud implication and required response |
 | --- | --- | --- |
@@ -482,13 +482,13 @@ The order differs from the initial hypothesis: portability comes early; identity
 
 ### Phase 4 — awaitable application commands, local backend only
 
-- **Goal/scope:** `refactor/awaitable-universe-commands`; stage semantic changes and await public results; retain private synchronous metadata callbacks for local IDB transactions. Separate user edits/layout intent from automatic coordinate checkpoints.
+- **Goal/scope:** `refactor/awaitable-persistence`; implemented ordered Promise-returning semantic commands, staged Create/reparent, acknowledgement-aware content/collection/link/archive/CRUD publication, and repository-owned attachment add/remove. Private local metadata/Restore callbacks remain synchronous; layout saves/checkpoints have distinct APIs and intents. See [the persistence contract and write-path audit](persistence-contract.md).
 - **Dependencies:** audit; portability lowers refactor recovery risk. Split bootstrap/metadata consumers and file-coordinator seam into separate PRs if needed.
 - **Files:** `script.js`, repository/facade, `rich-content.js`, collection callbacks/composition and tests. Leave force/navigation/render algorithms unchanged.
 - **Risks:** publishing before acknowledgement, passing an async callback into IDB, stale completion applied to the wrong item, changed CRUD focus/selection.
 - **Tests:** delayed/failing fake public repositories; unchanged local metadata v5/IDB transaction tests; all current product/browser regressions; physics ticks create no semantic remote-ready commands.
 - **Still local:** every store; delays/failures are injected tests only.
-- **Stop:** all affected public workflows await completion, while existing local file atomicity/recovery contracts still pass. No SDK/provider.
+- **Stop:** implemented: public user-data workflows await acknowledgement; deferred rejection/ordering and current local file atomicity/Backup/Restore regressions pass. Device preferences are awaited-capable best-effort local writes; reads and fenced closing checkpoints retain documented synchronous local capabilities. No SDK/provider, authentication, networking, revisions or sync. Remote bootstrap/account scope and cloud file lifecycle remain subsequent gates.
 
 ### Phase 5 — identity and cache isolation
 

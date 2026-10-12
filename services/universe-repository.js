@@ -1,8 +1,15 @@
 // Snapshot-level product boundary. Keep stable IDs and compound intent together.
-// Metadata commit is synchronous; files are async with commit/rollback callbacks.
+// Public writes are ordered Promises; local file callbacks use a private synchronous writer.
 function createUniverseRepository({persistence, canWrite = () => true}) {
     const listeners = new Set();
-    let restoring=false;
+    let restoring=false,tail=Promise.resolve(),pending=0;
+    const read=value=>typeof value==='function'?value():value;
+    const enqueue=action=>{pending++;const result=tail.then(action);tail=result.catch(()=>{}).finally(()=>pending--);return result;};
+    async function commit(snapshot,intent){
+        if(restoring||!canWrite())throw new Error('Saved data is unavailable. The original data is being preserved.');
+        try{await persistence.metadata.commit(snapshot,intent);}catch(error){repository.lastError=error;throw error;}
+        publish(intent);
+    }
     function write(snapshot, intent) {
         if(restoring)throw new Error('Restore is in progress.');
         if (!canWrite()) throw new Error('Saved data is unavailable. The original data is being preserved.');
@@ -80,9 +87,12 @@ function createUniverseRepository({persistence, canWrite = () => true}) {
                 ...(archivedGalaxies.size ? {archivedGalaxies:[...archivedGalaxies.values()]} : {})
             };
         },
-        save(snapshot, intent = {type: 'layout.saved'}) { write(snapshot, intent); publish(intent); },
+        async save(snapshot, intent = {type: 'items.changed'}) { await commit(read(snapshot),intent); },
+        async saveLayout(snapshot){await commit(read(snapshot),{type:'layout.saved'});},
+        checkpointLayout(snapshot){if(pending||restoring)return;write(read(snapshot),{type:'layout.checkpoint'});},
         subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); },
-        updateContent(snapshot, id, value, recovery = null) {
+        async updateContent(snapshot, id, value, recovery = null) {
+            snapshot=read(snapshot);
             const entry = snapshot.entries.find(entry => entry.id === id);
             if (!entry) throw new Error('This item no longer exists.');
             const content = value == null && recovery ? null : galaxyModel.normalizeContent(value, id);
@@ -92,52 +102,58 @@ function createUniverseRepository({persistence, canWrite = () => true}) {
             if (recovery) {
                 if (recovery.updatedAt) updated.updatedAt = recovery.updatedAt; else delete updated.updatedAt;
             } else updated.updatedAt = new Date().toISOString();
-            this.save({...snapshot, entries: snapshot.entries.map(record => record.id === id ? updated : record)},
+            await commit({...snapshot, entries: snapshot.entries.map(record => record.id === id ? updated : record)},
                 {type: recovery ? 'content.recovered' : 'content.changed', ids: [id]});
             return updated;
         },
-        updateLocation(snapshot,id,value) {
+        async updateLocation(snapshot,id,value) {
+            snapshot=read(snapshot);
             const entry=snapshot.entries.find(entry=>entry.id===id);
             if(!entry)throw new Error('This item no longer exists.');
             const location=value===null?null:galaxyModel.normalizeLocation(value);
             if(value!==null&&!location)throw new Error('Enter a place or address of up to 1,000 characters.');
             const updated={...entry,updatedAt:new Date().toISOString()};
             if(location)updated.location=location;else delete updated.location;
-            this.save({...snapshot,entries:snapshot.entries.map(record=>record.id===id?updated:record)},
+            await commit({...snapshot,entries:snapshot.entries.map(record=>record.id===id?updated:record)},
                 {type:'location.changed',ids:[id]});
             return updated;
         },
-        replaceConstellations(snapshot, records) {
+        async replaceConstellations(snapshot, records) {
+            snapshot=read(snapshot);
             const previous = new Map((snapshot.constellations || []).map(record => [record.id, record]));
             const next = records.map(record => {
                 const old = previous.get(record.id);
                 return !old || old.name !== record.name || JSON.stringify(old.memberEntryIds) !== JSON.stringify(record.memberEntryIds)
                     ? {...record, updatedAt: new Date().toISOString()} : record;
             });
-            this.save({...snapshot, constellations: next}, {type: 'constellations.changed', ids: [...new Set([...previous.keys(), ...next.map(record => record.id)])]});
+            await commit({...snapshot, constellations: next}, {type: 'constellations.changed', ids: [...new Set([...previous.keys(), ...next.map(record => record.id)])]});
             return next;
         },
-        replacePlacements(snapshot, records) {
-            this.save({...snapshot, portals: records}, {type: 'placements.changed', ids: [...new Set([...(snapshot.portals || []).map(record => record.id), ...records.map(record => record.id)])]});
+        async replacePlacements(snapshot, records) {
+            snapshot=read(snapshot);
+            await commit({...snapshot, portals: records}, {type: 'placements.changed', ids: [...new Set([...(snapshot.portals || []).map(record => record.id), ...records.map(record => record.id)])]});
         },
-        moveEntries(snapshot, selectedIds, destinationId) {
+        async moveEntries(snapshot, selectedIds, destinationId) {
+            snapshot=read(snapshot);
             const entries=new Map(snapshot.entries.map(entry=>[entry.id,entry]));
             const plan=galaxyModel.movePlan(entries,selectedIds,destinationId);
             if(plan.error)throw new Error(plan.error);
             const changed=plan.roots.filter(id=>entries.get(id).parentId!==destinationId), moved=new Set(changed);
             const next={...snapshot,entries:snapshot.entries.map(entry=>moved.has(entry.id)?{...entry,parentId:destinationId}:entry),
                 layout:(snapshot.layout||[]).filter(record=>!moved.has(record.id))};
-            if(changed.length)this.save(next,{type:'items.moved',ids:changed});
+            if(changed.length)await commit(next,{type:'items.moved',ids:changed});
             return {snapshot:next,roots:plan.roots,changed};
         },
-        duplicateStructure(snapshot,rootId,name,newId,position) {
+        async duplicateStructure(snapshot,rootId,name,newId,position) {
+            snapshot=read(snapshot);
             const plan=hierarchyCopies.structure(snapshot,rootId,name,newId,position);
             const next={...snapshot,entries:[...snapshot.entries,...plan.copies]};
             // One synchronous metadata write; no files or UI are touched before success.
-            this.save(next,{type:'items.structure-duplicated',ids:plan.rootIds});
+            await commit(next,{type:'items.structure-duplicated',ids:plan.rootIds});
             return {...plan,snapshot:next};
         },
         async copyEntries(snapshot,roots,destination,newId,{readSnapshot=()=>snapshot,validate=()=>{}}={}) {
+            snapshot=read(snapshot);
             const plan=hierarchyCopies.plan(snapshot,roots,destination,newId),records=[];
             for(const file of plan.files){
                 const old=await persistence.files.get(file.source.storageKey);
@@ -145,7 +161,7 @@ function createUniverseRepository({persistence, canWrite = () => true}) {
                 records.push({...old,key:file.metadata.storageKey,entryId:file.metadata.entryId});
             }
             let previous,next;
-            const commit=()=>{
+            const prepare=()=>{
                 validate();previous=readSnapshot();
                 const current=new Map(previous.entries.map(e=>[e.id,e])),original=new Map(snapshot.entries.map(e=>[e.id,e]));
                 const liveIds=new Set(roots.flatMap(id=>[...galaxyModel.subtreeIds(current,id)]));
@@ -154,22 +170,26 @@ function createUniverseRepository({persistence, canWrite = () => true}) {
                 const occupied=new Set([...current.keys(),...(previous.portals||[]).map(p=>p.id)]);
                 if([...plan.copies,...plan.links].some(e=>occupied.has(e.id)))throw new Error('Copied item IDs are no longer available.');
                 next={...previous,entries:[...previous.entries,...plan.copies],portals:[...(previous.portals||[]),...plan.links]};
-                write(next,{type:'items.copied',ids:plan.rootIds});
+
             };
-            if(records.length)await persistence.files.saveBatch(records,commit,()=>write(previous,{type:'items.copy-recovered',ids:plan.rootIds}));
-            else commit();
+            const commitLocal=()=>{prepare();write(next,{type:'items.copied',ids:plan.rootIds});};
+            if(records.length)await persistence.files.saveBatch(records,commitLocal,()=>write(previous,{type:'items.copy-recovered',ids:plan.rootIds}));
+            else {prepare();if(!canWrite()||restoring)throw new Error('Saved data is unavailable.');await persistence.metadata.commit(next,{type:'items.copied',ids:plan.rootIds});}
             publish({type:'items.copied',ids:plan.rootIds});return {...plan,snapshot:next};
         },
-        archive(snapshot, record) {
-            this.save({...snapshot, archivedGalaxies: [...(snapshot.archivedGalaxies || []), record]}, {type: 'galaxy.archived', ids: [record.galaxyId]});
+        async archive(snapshot, record) {
+            snapshot=read(snapshot);
+            await commit({...snapshot, archivedGalaxies: [...(snapshot.archivedGalaxies || []), record]}, {type: 'galaxy.archived', ids: [record.galaxyId]});
         },
-        restore(snapshot, id) {
-            this.save({...snapshot, archivedGalaxies: (snapshot.archivedGalaxies || []).filter(record => record.galaxyId !== id)}, {type: 'galaxy.restored', ids: [id]});
+        async restore(snapshot, id) {
+            snapshot=read(snapshot);
+            await commit({...snapshot, archivedGalaxies: (snapshot.archivedGalaxies || []).filter(record => record.galaxyId !== id)}, {type: 'galaxy.restored', ids: [id]});
         },
         async deleteSubtree(snapshot, ids, {deleteFiles = true, validate = () => {}, readSnapshot = () => snapshot} = {}) {
+            snapshot=read(snapshot);
             const removed = new Set(ids), intent = {type: 'items.deleted', ids: [...removed]};
             let committed = false, previous, next;
-            const commit = () => {
+            const prepare = () => {
                 validate(); previous = readSnapshot();
                 const collections = galaxyConstellations.withoutEntries(previous.constellations || [], removed);
                 const original = new Map((previous.constellations || []).map(record => [record.id,record]));
@@ -179,15 +199,47 @@ function createUniverseRepository({persistence, canWrite = () => true}) {
                     constellations: collections.map(record => record.memberEntryIds.length !== original.get(record.id).memberEntryIds.length ? {...record,updatedAt:new Date().toISOString()} : record),
                     archivedGalaxies: (previous.archivedGalaxies || []).filter(record => !removed.has(record.galaxyId)),
                     layout: (previous.layout || []).filter(record => !removed.has(record.id))};
-                write(next, intent); committed = true;
+
             };
-            if (deleteFiles) await persistence.files.deleteEntries(removed, commit, () => {
+            const commitLocal=()=>{prepare();write(next,intent);committed=true;};
+            if (deleteFiles) await persistence.files.deleteEntries(removed, commitLocal, () => {
                 if (committed) write(previous, {type: 'items.delete-recovered', ids: [...removed]});
             });
-            else commit();
+            else {prepare();if(!canWrite()||restoring)throw new Error('Saved data is unavailable.');await persistence.metadata.commit(next,intent);}
             publish(intent);
             return next;
         }
     };
+    const localContentCommit=(snapshot,id,value,recovery=null)=>{
+        const previous=read(snapshot),entry=previous.entries.find(e=>e.id===id);
+        if(!entry)throw new Error('This item no longer exists.');
+        const content=value==null&&recovery?null:galaxyModel.normalizeContent(value,id);
+        if(value!=null&&!content)throw new Error('Content is invalid or exceeds its text limits.');
+        const updated={...entry};if(content)updated.content=content;else delete updated.content;
+        if(recovery){if(recovery.updatedAt)updated.updatedAt=recovery.updatedAt;else delete updated.updatedAt;}else updated.updatedAt=new Date().toISOString();
+        const intent={type:recovery?'content.recovered':'content.changed',ids:[id]};
+        write({...previous,entries:previous.entries.map(e=>e.id===id?updated:e)},intent);return updated;
+    };
+    repository.addAttachment=async(snapshot,id,record,metadata)=>{
+        let previous,updated;
+        await persistence.files.save(record,()=>{
+            previous=read(snapshot);const entry=previous.entries.find(e=>e.id===id);if(!entry)throw new Error('This item no longer exists.');
+            const content=entry.content||galaxyModel.emptyContent();updated=localContentCommit(previous,id,{...content,attachments:[...content.attachments,metadata]});
+        },()=>write(previous,{type:'attachment.recovered',ids:[id]}));
+        publish({type:'attachment.added',ids:[id]});return updated;
+    };
+    repository.removeAttachment=async(snapshot,id,key)=>{
+        let previous,updated;
+        await persistence.files.delete(key,()=>{
+            previous=read(snapshot);const entry=previous.entries.find(e=>e.id===id);
+            if(!entry?.content?.attachments.some(file=>file.storageKey===key))throw new Error('This file no longer exists.');
+            updated=localContentCommit(previous,id,{...entry.content,attachments:entry.content.attachments.filter(file=>file.storageKey!==key)});
+        },()=>write(previous,{type:'attachment.recovered',ids:[id]}));
+        publish({type:'attachment.removed',ids:[id]});return updated;
+    };
+    for(const name of ['save','saveLayout','updateContent','updateLocation','replaceConstellations','replacePlacements','moveEntries','duplicateStructure','archive','restore','copyEntries','deleteSubtree','addAttachment','removeAttachment','replaceLocalBackup','recoverPendingRestore']){
+        const operation=repository[name];repository[name]=(...args)=>enqueue(()=>operation.apply(repository,args));
+    }
+    repository.whenIdle=()=>tail;
     return repository;
 }

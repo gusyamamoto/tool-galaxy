@@ -11,8 +11,8 @@ function createLocalPreferencesStore({storage = () => globalThis.localStorage, s
             } catch { return {}; }
         },
         update(patch) {
-            try { storage().setItem(key, JSON.stringify({...this.load(), ...patch})); } catch { /* Optional UI state. */ }
+            try { storage().setItem(key, JSON.stringify({...this.load(), ...patch}));return Promise.resolve(); } catch(error) {return Promise.reject(error);}
         },
-        clear() { try { storage().removeItem(key); } catch { /* Optional UI state. */ } }
+        clear() { try { storage().removeItem(key);return Promise.resolve(); } catch(error) {return Promise.reject(error);} }
     };
 }

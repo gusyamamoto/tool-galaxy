@@ -24,8 +24,8 @@ function createPersistence({config = cosmosConfig, sample = false, sampleSnapsho
         methods.forEach(operation => service[operation] = (...args) => {
             try {
                 if(operation==='saveBatch'&&typeof adapter.saveBatch!=='function')throw new Error('This storage provider cannot make safe file copies.');
-                const result = adapter[operation](...args);
-                if (result?.then && store === 'metadata') {
+                const result = operation==='commit' && !adapter.commit ? Promise.resolve(adapter.save(...args)) : adapter[operation](...args);
+                if (result?.then && store === 'metadata' && operation!=='commit') {
                     result.catch(() => {});
                     throw new Error('Metadata adapters must provide synchronous local commits; remote sync belongs behind that boundary.');
                 }
@@ -36,7 +36,7 @@ function createPersistence({config = cosmosConfig, sample = false, sampleSnapsho
     }
     return {
         scope, sample, diagnostics,
-        metadata: boundary(metadata, 'metadata', ['load','save','clear','readForBackup','readRestoreJournal','beginRestore','endRestore','captureRestoreState','replaceRaw','recoverRaw']),
+        metadata: boundary(metadata, 'metadata', ['load','save','commit','clear','readForBackup','readRestoreJournal','beginRestore','endRestore','captureRestoreState','replaceRaw','recoverRaw']),
         files: Object.assign(boundary(files, 'files', ['save','saveBatch','get','readAll','delete','deleteEntries','hasEntries','replaceAll','restoreMarker']), {temporary: !!files.temporary}),
         preferences
     };
