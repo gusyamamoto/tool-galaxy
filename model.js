@@ -95,6 +95,19 @@ const galaxyModel = {
         }
         return { version: 1, notes: { format: "plain", text: value.notes.text }, links, attachments };
     },
+    locationTextLimit: 1000,
+    normalizeLocation(value) {
+        if(!value||typeof value.text!=='string')return null;
+        const text=value.text.trim();
+        return text&&text.length<=this.locationTextLimit&&!/[\u0000-\u001f\u007f]/.test(text)?{text}:null;
+    },
+    locationMapsUrl(value) {
+        const location=this.normalizeLocation(value);
+        if(!location)return null;
+        const url=new URL('https://www.google.com/maps/search/');
+        url.searchParams.set('api','1');url.searchParams.set('query',location.text);
+        return url.href;
+    },
     normalizeEntry(record) {
         // Canonical entries are user-owned. This allowlist intentionally drops
         // legacy protected/isProtected/builtIn flags while preserving content.
@@ -103,8 +116,10 @@ const galaxyModel = {
         if (!record || typeof record.id !== "string" || !record.id.trim() || record.id.length > 100 ||
             typeof record.name !== "string" || !record.name.trim() || record.name.length > 60 ||
             (record.description != null && (typeof record.description !== "string" || record.description.length > 1000))) return null;
+        const location=this.normalizeLocation(record.location);
         return {
             id: record.id, name: record.name, description: record.description ?? "", ...(content ? { content } : {}),
+            ...(location?{location}:{}),
             category: typeof record.category === "string" ? record.category : "",
             parentId: typeof record.parentId === "string" && record.parentId ? record.parentId : null,
             x: Number.isFinite(record.x) ? record.x : 400,

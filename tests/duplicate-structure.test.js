@@ -53,7 +53,7 @@ test('only names and hierarchy are reused; content, memberships, placements and 
   content:{version:1,notes:{format:'plain',text:'Private notes'},links:[{id:`link-${entry.id}`,url:'https://example.com/'}],attachments:[
    {id:`file-${entry.id}`,kind:'upload',entryId:entry.id,storageKey:`file-${entry.id}`,filename:'trip.pdf',mimeType:'application/pdf',size:4},
    {id:`media-${entry.id}`,kind:'upload',entryId:entry.id,storageKey:`media-${entry.id}`,filename:'trip.png',mimeType:'image/png',size:4}]},
-  thumbnail:'old',draft:'old',location:{latitude:1},selected:true,archived:true,createdAt:'2020-01-01T00:00:00Z',updatedAt:'2020-01-01T00:00:00Z'
+  thumbnail:'old',draft:'old',location:{text:'Frida Kahlo Museum'},selected:true,archived:true,createdAt:'2020-01-01T00:00:00Z',updatedAt:'2020-01-01T00:00:00Z'
  }));
  const {repo}=repository(source),result=repo.duplicateStructure(source,'g','Japan',ids());
  for(const entry of result.copies){
