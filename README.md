@@ -1296,12 +1296,14 @@ content drafts/camera/lenses/physics, Universe + and Starter creation, Archive
 appearance/restore/last-row removal, hidden diagnostics, existing canvas Fit,
 mobile targets, preference reloads and the isolated Sample utility.
 
-### Quick help
+### Help
 
-The quiet **? Help** beside Sample data at the bottom of the sidebar opens local Quick help. Seven short,
-collapsible topics cover getting started, moving around, adding content,
-Constellations, archiving, useful tricks, and using the same item in two places.
-The last topic stays secondary and closed initially. There is no startup tour,
+The quiet **? Help** beside Sample data at the bottom of the sidebar opens local Help.
+Five short, collapsible topics cover Getting around, Organizing things,
+Moving & copying, Constellations, and Locations. All begin closed, so the first
+screen shows only the short intro and topic list. Small examples explain nested
+items and trip structure duplication. Copy, Link existing item and Duplicate
+structure have separate explanations. There is no startup tour,
 external documentation, dependency, or storage change.
 
 Help uses a compact dark modal on desktop and responsive sizing on phones, with
