@@ -20,6 +20,13 @@ function createLocalMetadataStore({storage = () => globalThis.localStorage, scop
         layoutBackupKey: prefix + ":pre-layout",
         treeBackupKey: prefix + ":pre-cosmic-tree",
 
+        readForBackup() {
+            const localStorage = storage();
+            return {
+                metadataText: localStorage.getItem(this.key) ?? localStorage.getItem(this.legacyKey)
+            };
+        },
+
         load() {
             const localStorage = storage();
             const stored = localStorage.getItem(this.key) ?? localStorage.getItem(this.legacyKey);

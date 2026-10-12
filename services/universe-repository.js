@@ -14,6 +14,14 @@ function createUniverseRepository({persistence, canWrite = () => true}) {
     }
     const repository = {
         load: () => persistence.metadata.load(),
+        async readBackup() {
+            if(persistence.sample)throw new Error('Leave Sample mode to back up your saved Cosmos.');
+            const saved=persistence.metadata.readForBackup(),preferencesText=persistence.preferences.readForBackup();
+            const records=await persistence.files.readAll();
+            if(JSON.stringify(saved)!==JSON.stringify(persistence.metadata.readForBackup())||preferencesText!==persistence.preferences.readForBackup())
+                throw new Error('Saved data changed while reading it. Try the backup again.');
+            return {...saved,preferencesText,records};
+        },
         needsCanonicalSave(saved, normalized) {
             return ['portals','constellations'].some(key => JSON.stringify(saved?.[key] || []) !== JSON.stringify(normalized[key]));
         },

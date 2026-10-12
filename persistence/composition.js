@@ -35,8 +35,8 @@ function createPersistence({config = cosmosConfig, sample = false, sampleSnapsho
     }
     return {
         scope, sample, diagnostics,
-        metadata: boundary(metadata, 'metadata', ['load','save','clear']),
-        files: Object.assign(boundary(files, 'files', ['save','saveBatch','get','delete','deleteEntries','hasEntries']), {temporary: !!files.temporary}),
+        metadata: boundary(metadata, 'metadata', ['load','save','clear','readForBackup']),
+        files: Object.assign(boundary(files, 'files', ['save','saveBatch','get','readAll','delete','deleteEntries','hasEntries']), {temporary: !!files.temporary}),
         preferences
     };
 }

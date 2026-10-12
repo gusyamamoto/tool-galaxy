@@ -412,7 +412,7 @@ Separate development/staging/production projects and origins when cloud work is 
 Build export/restore **before public account migration**, and run the exporting code on the user's original browser origin. A hosted page cannot reach a localhost/file-origin store. Explain this explicitly; do not clear or "move" browser storage on login.
 
 1. Inventory exact source metadata, active+archived entries, references, file keys/ownership, optional Location/appearance and layout. Retain the original raw snapshot/recovery backups as recovery material if normalization detects corruption. Do not seed starter data into an import after a failed read.
-2. Export a portable manifest plus original bytes and thumbnails; verify counts, file sizes and digests. Avoid embedding all 100 MiB videos as base64 in one giant JSON document. Use a bounded/streamed archive or manifest-and-files format, with a narrowly justified archive library only if necessary in that later branch.
+2. Export a portable manifest plus original bytes and thumbnails; verify counts, file sizes and digests. Local export v1 now uses one `.cosmifold` binary container: a versioned fixed header, UTF-8 JSON manifest and raw Blob payloads, with SHA-256 checks. It avoids base64 expansion and ZIP dependencies, includes current archived data but excludes internal recovery snapshots and orphan file records and caps the complete file at 512 MiB. See [the implemented local-backup contract](local-backup.md); Restore remains separate.
 3. After login, explicitly offer import. Stage into a new private universe/import job; preserve textual IDs under that namespace. Object paths are remapped to owned cloud paths, while runtime `storageKey` remains an opaque adapter reference.
 4. Upload/verify files first; validate the full canonical/reference projection and source file ownership. Missing bytes are a visible failure or an explicitly chosen omission, never a silent empty record. Keep upload checkpoints for resumable imports.
 5. Finalize the imported universe and select it only after every required ready file and metadata row validates. Import identity/digest prevents duplicate imports after retry.
@@ -462,9 +462,9 @@ The order differs from the initial hypothesis: portability comes early; identity
 
 ### Phase 2 — portable local export
 
-- **Goal/scope:** `feature/local-backup-export`; read-only export of full canonical+archived v5 data and binaries/previews, format version/digests and missing-file diagnostics.
+- **Goal/scope:** `feature/local-backup-export`; implemented as read-only `.cosmifold` backupVersion 1 with full saved v5 metadata, persisted sidebar preferences and every referenced original/thumbnail record (including archived items; excluding orphan records and internal recovery snapshots). Native Blob framing, manifest/payload SHA-256, no ZIP/base64 dependency; fail closed for missing/corrupt referenced bytes.
 - **Dependencies:** Phase 0; can run alongside Phase 1 on the old origin.
-- **Files:** proposed export service/UI plus read-only enumeration seam in repository/file adapter; tests.
+- **Files:** `services/local-backup.js`, `backup-ui.js`, read-only repository/adapter enumeration, sidebar/dialog markup/styles, tests and `docs/local-backup.md`.
 - **Risks:** memory exhaustion, incomplete metadata-only backups, exporting repaired corrupt state as complete, accidental auth/private-key export later.
 - **Tests:** decode exported manifest/bytes, large bounded media, duplicate filenames, archives, legacy IDs, missing bytes, interruption; prove source unchanged.
 - **Still local:** entire application/data; exported file is the first portable copy.

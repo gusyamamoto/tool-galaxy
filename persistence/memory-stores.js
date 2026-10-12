@@ -3,6 +3,7 @@ function createMemoryMetadataStore(initial = null) {
     let snapshot = initial;
     return {
         load: () => snapshot == null ? null : structuredClone(snapshot),
+        readForBackup: () => ({metadataText: snapshot == null ? null : JSON.stringify({version:5,connections:[],layout:[],...snapshot})}),
         save(value) { snapshot = structuredClone(value); },
         clear() { snapshot = null; }
     };
@@ -11,6 +12,7 @@ function createMemoryPreferencesStore() {
     let preferences = {};
     return {
         load: () => ({...preferences}),
+        readForBackup: () => JSON.stringify(preferences),
         update(patch) { preferences = {...preferences, ...patch}; },
         clear() { preferences = {}; }
     };
@@ -28,6 +30,7 @@ function createMemoryFileStore() {
             commitNow(commit); records.set(record.key, record);
         },
         async get(key) { return records.get(key) || null; },
+        async readAll() { return structuredClone([...records.values()]); },
         async saveBatch(values,commit) {
             const staged=new Map();
             values.forEach(record=>{if(!record?.key||records.has(record.key)||staged.has(record.key)||!record.entryId||!(record.blob instanceof Blob))throw new Error('Invalid attachment copy.');staged.set(record.key,record);});

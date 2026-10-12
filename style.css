@@ -1260,6 +1260,19 @@ summary:focus-visible { outline: 1px solid #b9d0e9; outline-offset: 3px; }
 @media (max-width:760px), (pointer:coarse) { #sidebar-utilities #help-button { min-height: 44px; } }
 #help-button { flex: 0 0 28px; width: 28px; height: 28px; margin-left: auto; padding: 0; border: 1px solid transparent; border-radius: 4px; background: transparent; box-shadow: none; color: #8195ad; font-family: inherit; font-size: 13px; line-height: 1; }
 #help-button:hover { color: #c3d3e4; background: #ffffff04; }
+#sidebar-utilities #backup-button { display: block; width: auto; min-height: 28px; margin: 0; padding: 0; border: 0; background: transparent; box-shadow: none; color: #73849b; font-size: 10px; }
+#sidebar-utilities #backup-button:is(:hover,:focus-visible) { color: #c3d3e4; }
+#backup-button:focus-visible,#backup-dialog button:focus-visible { outline: 1px solid #91adc9; outline-offset: 2px; }
+#backup-dialog { width: min(390px,calc(100vw - 32px)); padding: 20px; border-radius: 7px; background: #0e1621; border-color: #50627c55; box-shadow: 0 8px 28px #0007; }
+#backup-dialog::backdrop { background: #02060bb3; backdrop-filter: none; }
+#backup-dialog h2 { margin-bottom: 10px; font-size: 18px; }
+#backup-dialog p { margin: 10px 0; font-size: 12px; }
+#backup-dialog #backup-privacy { color: #8195ad; }
+#backup-dialog #backup-status[data-error='true'] { color: #dbb59d; }
+#backup-dialog #backup-status[data-error='false'] { color: #a3b5cc; }
+#backup-dialog .form-actions { display: flex; flex-wrap: wrap; }
+#backup-dialog button { min-height: 44px; }
+@media (max-width:760px), (pointer:coarse) { #sidebar-utilities #backup-button { min-height: 44px; } }
 #help-button:focus-visible,#close-help-button:focus-visible,#help-dialog summary:focus-visible { outline: 1px solid #91adc9; outline-offset: 2px; }
 
 #help-dialog { width: min(440px,calc(100vw - 32px)); max-height: min(620px,calc(var(--mobile-visible-height,100dvh) - 32px)); padding: 0; overflow: hidden; border: 1px solid #50627c55; border-radius: 7px; background: #0e1621; color: #a3b5cc; box-shadow: 0 8px 28px #0007; }

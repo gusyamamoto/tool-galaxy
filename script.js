@@ -507,6 +507,8 @@ const contentInspector = new EntryContentInspector({ store: attachmentStore, mot
     save: saveEntryContent, saveLocation:saveEntryLocation, rollback: rollbackEntryContent,
     onAction() { cancelPendingBodyFocus();autoFitPending = false; keyboardNavigation = false; camera.stopAnimation(); },
     onLayout() { if (cameraViewReady) updateGraphViewport(); } });
+const backupUI=new CosmifoldBackupUI({repository:universeRepository,sample:sampleMode,
+    blocked:()=>contentInspector.jobs.size>0||deletionBusy||pasteBusy});
 const contentDrops=new CosmosContentDrops({host:galaxy,getEntry:id=>entries.get(id),
     tree:hierarchySidebar.tree,expandRow:id=>hierarchySidebar.expandForContentDrag(id),
     blocked:()=>!!document.querySelector('dialog[open]')||activeNodeDrags>0||!!pan||!!pinch||deletionBusy,

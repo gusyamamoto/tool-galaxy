@@ -87,6 +87,9 @@ function createIndexedDbFileStore({indexedDB = globalThis.indexedDB, scope = nul
         async get(key) {
             return transaction("readonly", (store, finish) => { const request = store.get(key); request.onsuccess = () => finish(request.result || null); });
         },
+        async readAll() {
+            return transaction("readonly", (store, finish) => { const request = store.getAll(); request.onsuccess = () => finish(request.result); });
+        },
         async saveBatch(records,commit,rollback) {
             const keys=new Set();
             records.forEach(record=>{if(!record?.key||keys.has(record.key)||!record.entryId||!(record.blob instanceof Blob))throw new Error('Invalid attachment copy.');keys.add(record.key);});

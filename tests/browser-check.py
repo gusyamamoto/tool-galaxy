@@ -110,6 +110,8 @@ class CDP:
         self.network_errors = []
         self.responses = []
         self.console_errors = []
+        self.requests = []
+        self.download_events = []
 
     def read(self, length):
         while len(self.buffer) < length:
@@ -145,6 +147,8 @@ class CDP:
                 response=message['params']['response'];self.responses.append(response)
                 if response['status']>=400:self.network_errors.append(response)
             if message.get('method')=='Network.loadingFailed':self.network_errors.append(message['params'])
+            if message.get('method')=='Network.requestWillBeSent':self.requests.append(message['params']['request'])
+            if message.get('method')=='Browser.downloadWillBegin':self.download_events.append(message['params'])
             if message.get('method')=='Log.entryAdded' and message['params']['entry']['level']=='error':self.console_errors.append(message['params']['entry'])
             if message.get("id") == self.id:
                 assert "error" not in message, message
@@ -173,6 +177,7 @@ def main():
     args = argparse.ArgumentParser()
     args.add_argument("--screenshots", action="store_true")
     args.add_argument("--static-hosting-only", action="store_true", help="Audit static assets, hosting headers, browser requests, CSP, refresh and origin-isolated persistence")
+    args.add_argument("--backup-only", action="store_true", help="Check complete read-only backup downloads, raw bytes/thumbnails, failure/cancel, narrow controls and Sample isolation")
     args.add_argument("--site-root", type=Path, default=ROOT, help="Serve an isolated baseline checkout when comparing performance")
     args.add_argument("--file-protocol", action="store_true", help="Open index.html directly to validate offline startup without HTTP fetch timing")
     args.add_argument("--migration-only", action="store_true", help="Check v2/v4 migration and corrupt-data safeguards in isolation")
@@ -273,7 +278,7 @@ def main():
         cdp = CDP(page["webSocketDebuggerUrl"])
         cdp.call("Page.enable")
         cdp.call("Runtime.enable")
-        if options.static_hosting_only:
+        if options.static_hosting_only or options.backup_only:
             cdp.call('Network.enable');cdp.call('Log.enable')
         cdp.call("Emulation.setDeviceMetricsOverride", width=1440, height=1000, deviceScaleFactor=1, mobile=False)
         origin = f"http://{'localhost' if options.static_hosting_only else '127.0.0.1'}:{server.server_port}"
@@ -452,6 +457,126 @@ def main():
         check(evaluate("localStorage.getItem('galaxy:user-data:pre-cosmic-tree')") == old_raw, "exact original snapshot retained before migration")
         check(evaluate("JSON.parse(localStorage.getItem('galaxy:user-data')).version===5 && JSON.parse(localStorage.getItem('galaxy:user-data')).entries.every(e=>!('role' in e) && !('depth' in e))"), "version 5 persists generic ancestry without hardcoded roles or depth")
         check(evaluate("!document.querySelector('#pin-position-button,[data-action=pin],#panel-placement,#panel-role,#connection-options') && !panel.textContent.includes('Moves naturally') && !dialog.textContent.includes('Other connections') && roleField.tagName==='OUTPUT' && [...entries.values()].every(e=>e.depth>=0)"), "normal UI derives roles without pin, physics status or relationship controls")
+
+        if options.backup_only:
+            import hashlib
+            downloads=Path(tempfile.mkdtemp(prefix='galaxy-backup-downloads-')).resolve()
+            cdp.call('Browser.setDownloadBehavior',behavior='allowAndName',downloadPath=str(downloads),eventsEnabled=True)
+            def backup_files():return [p for p in downloads.iterdir() if p.is_file() and not p.name.endswith('.crdownload')]
+            def settle():evaluate('new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))')
+            def key(value):
+                cdp.call('Input.dispatchKeyEvent',type='keyDown',key=value,code=value,windowsVirtualKeyCode=27 if value=='Escape' else 9)
+                cdp.call('Input.dispatchKeyEvent',type='keyUp',key=value,code=value,windowsVirtualKeyCode=27 if value=='Escape' else 9)
+            def shot(name):
+                if screenshot_dir:
+                    settle();result=cdp.call('Page.captureScreenshot',format='png',captureBeyondViewport=False)
+                    (screenshot_dir/(name+'.png')).write_bytes(base64.b64decode(result['data']))
+            def workspace():return evaluate("JSON.stringify({data:localStorage.getItem('galaxy:user-data'),preferences:localStorage.getItem('galaxy:navigation-ui'),entries:[...allCanonicalEntries()],selected:hierarchySidebar.getSelectedEntryIds(),active:hierarchySidebar.activeEntryId,inspector:contentInspector.entryId,draft:contentInspector.notes.value,editing:contentInspector.notesForm.hidden,view:camera.view})")
+            def read_package(file):
+                data=file.read_bytes();magic=b'COSMIFOLD-BACKUP\n';header=len(magic)+40
+                check(data.startswith(magic) and struct.unpack_from('<I',data,len(magic))[0]==1,'download has a recognizable version-1 Cosmifold header')
+                length=struct.unpack_from('<I',data,len(magic)+4)[0];raw=data[header:header+length]
+                check(hashlib.sha256(raw).digest()==data[len(magic)+8:header],'JSON manifest SHA-256 detects corruption')
+                manifest=json.loads(raw);offset=0;payloads={}
+                for record in manifest['attachments']:
+                    values={}
+                    for field in ['original','thumbnail']:
+                        part=record[field]
+                        if part is not None:
+                            assert part['offset']==offset
+                            value=data[header+length+offset:header+length+offset+part['size']]
+                            assert len(value)==part['size'] and hashlib.sha256(value).hexdigest()==part['sha256']
+                            values[field]=value;offset+=part['size']
+                    payloads[record['record']['key']]=values
+                check(offset==manifest['payloadBytes'] and len(data)==header+length+offset,'every original/thumbnail payload and total length validate with no trailing or missing bytes')
+                return manifest,payloads
+            evaluate("openEntryForm();fields[0].value='Trip';galaxyStarter.value='trip';galaxyStarter.dispatchEvent(new Event('change'));form.requestSubmit();physics.pause()")
+            settle();root=evaluate('hierarchySidebar.activeEntryId');food=evaluate(f"[...galaxyModel.subtreeIds(entries,{json.dumps(root)})].find(id=>entries.get(id).name==='Food')")
+            target=add('Other trip');archive=add('Archived trip');archive_child=add('Archived notes',archive)
+            evaluate(f"selectEntry(entries.get({json.dumps(food)}),nodes.get({json.dumps(food)}),{{reframe:false}});saveEntryContent({json.dumps(food)},{{...galaxyModel.emptyContent(),notes:{{format:'plain',text:'Saved restaurant notes'}},links:[{{id:'backup-bookmark',url:'https://example.com/',title:'Reservations'}}]}});saveEntryLocation({json.dumps(food)},{{text:'Colima 166, Mexico City'}})")
+            evaluate(r"""(async()=>{
+                const c=document.createElement('canvas');c.width=320;c.height=180;const x=c.getContext('2d');x.fillStyle='#476982';x.fillRect(0,0,c.width,c.height);
+                const photo=await new Promise(r=>c.toBlob(r,'image/png'));
+                const stream=c.captureStream(20),recorder=new MediaRecorder(stream,{mimeType:'video/webm'}),chunks=[];
+                const done=new Promise(r=>{recorder.ondataavailable=e=>{if(e.data.size)chunks.push(e.data)};recorder.onstop=r});recorder.start();
+                const timer=setInterval(()=>{x.fillStyle=`hsl(${Math.random()*360} 50% 50%)`;x.fillRect(0,0,c.width,c.height)},50);
+                await new Promise(r=>setTimeout(r,700));recorder.stop();await done;clearInterval(timer);stream.getTracks().forEach(t=>t.stop());
+                const objects=['<< /Type /Catalog /Pages 2 0 R >>','<< /Type /Pages /Kids [3 0 R] /Count 1 >>','<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>','<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>'];
+                const text='BT /F1 20 Tf 60 700 Td (Trip itinerary backup) Tj ET';objects.push('<< /Length '+text.length+' >>\nstream\n'+text+'\nendstream');
+                let pdf='%PDF-1.4\n%'+ 'P'.repeat(3*1024*1024)+'\n',offsets=[0];objects.forEach((object,i)=>{offsets.push(pdf.length);pdf+=(i+1)+' 0 obj\n'+object+'\nendobj\n'});
+                const xref=pdf.length;pdf+='xref\n0 '+offsets.length+'\n0000000000 65535 f \n';offsets.slice(1).forEach(n=>pdf+=String(n).padStart(10,'0')+' 00000 n \n');pdf+='trailer\n<< /Size '+offsets.length+' /Root 1 0 R >>\nstartxref\n'+xref+'\n%%EOF';
+                window.backupFixtureFiles=[new File([photo],'photo.png',{type:'image/png'}),new File(chunks,'trip.webm',{type:'video/webm'}),
+                    new File([pdf],'itinerary.pdf',{type:'application/pdf'}),
+                    new File([Uint8Array.from({length:256},(_,i)=>i)],'document.custom',{type:'application/octet-stream'})];
+                await contentInspector.upload(backupFixtureFiles);
+            })()""")
+            check(evaluate('contentInspector.content().attachments.length===4'),'realistic Trip includes photo, browser-encoded video, 3 MiB PDF and generic original bytes')
+            evaluate(f"commitConstellations(new Map([['backup-favorites',{{id:'backup-favorites',name:'Favorites',memberEntryIds:[{json.dumps(food)}],createdAt:new Date().toISOString()}}]]));copyHierarchyItems([{json.dumps(food)}]);openHierarchyPaste({json.dumps(target)});pasteCopy.click()")
+            wait_for('!pasteBusy');settle();copy=evaluate('hierarchySidebar.activeEntryId')
+            evaluate(f"copyHierarchyItems([{json.dumps(food)}]);openHierarchyPaste({json.dumps(target)});pasteLink.click()")
+            wait_for('!pasteBusy');settle()
+            evaluate(f"saveEntryContent({json.dumps(archive_child)},{{...galaxyModel.emptyContent(),notes:{{format:'plain',text:'Archived saved notes'}}}});requestGalaxyArchive({json.dumps(archive)});document.getElementById('archive-galaxy-form').requestSubmit()")
+            wait_for('!archiveDialog.open');settle();evaluate('physics.pause();saveGalaxy()')
+            evaluate(f"selectEntry(entries.get({json.dumps(food)}),nodes.get({json.dumps(food)}),{{reframe:false}});hierarchySidebar.restoreMovedSelection([{json.dumps(food)},{json.dumps(copy)}],{json.dumps(food)});contentInspector.editNotes();contentInspector.notes.value='UNSAVED TEXT MUST NOT APPEAR';physics.pause()")
+            source=evaluate("localStorage.getItem('galaxy:user-data')");original_state=workspace()
+            fixture_hashes=evaluate("(async()=>{const result={};for(const f of backupFixtureFiles)result[f.name]=[...new Uint8Array(await crypto.subtle.digest('SHA-256',await f.arrayBuffer()))].map(n=>n.toString(16).padStart(2,'0')).join('');return result})()")
+            records=evaluate("(async()=>{const result={};for(const r of await attachmentStore.readAll()){const hex=b=>[...new Uint8Array(b)].map(n=>n.toString(16).padStart(2,'0')).join('');result[r.key]={entryId:r.entryId,original:hex(await crypto.subtle.digest('SHA-256',await r.blob.arrayBuffer())),thumbnail:r.thumbnail?hex(await crypto.subtle.digest('SHA-256',await r.thumbnail.arrayBuffer())):null}}return result})()")
+            click_selector('#backup-button')
+            check(evaluate("backupUI.dialog.open&&document.activeElement.id==='download-backup'&&document.getElementById('backup-privacy').textContent.includes('not encrypted')"),'Backup opens a quiet named dialog with download focus and honest privacy wording')
+            key('Tab');check(evaluate("document.activeElement.id==='cancel-backup'"),'Tab wraps from Download to Cancel inside Backup')
+            key('Tab');check(evaluate("document.activeElement.id==='download-backup'"),'Tab returns to Download without moving focus behind the modal')
+            check(workspace()==original_state,'opening Backup preserves selection, multi-selection, Content draft and camera')
+            shot('backup-desktop');key('Escape');settle();check(evaluate('!backupUI.dialog.open&&document.activeElement.id==="backup-button"'),'Escape closes and restores sidebar focus')
+            click_selector('#backup-button');click_selector('#cancel-backup');settle();check(workspace()==original_state,'Cancel creates nothing and preserves the Cosmos')
+            requests_before=len(cdp.requests);cdp.call('Network.emulateNetworkConditions',offline=True,latency=0,downloadThroughput=0,uploadThroughput=0)
+            click_selector('#backup-button');evaluate("downloadBackupProgress=[];window.backupCreate=cosmifoldBackup.create;cosmifoldBackup.create=function(repo,options){return backupCreate.call(this,repo,{...options,onProgress:p=>{downloadBackupProgress.push(p);options.onProgress(p)}})};backupUI.download.click();backupUI.download.click()")
+            check(evaluate('backupUI.busy&&backupUI.download.disabled'),'Preparing state disables duplicate export clicks')
+            wait_for('!backupUI.busy');settle()
+            check(evaluate("document.getElementById('backup-status').textContent.includes('sent to your browser')&&downloadBackupProgress.some(p=>p.stage==='files'&&p.total===8)&&!backupUI.download.disabled"),'file progress ends with a usable dialog and a restrained success confirmation')
+            deadline=time.monotonic()+15
+            while not backup_files() and time.monotonic()<deadline:time.sleep(.1)
+            first=backup_files();check(len(first)==1,'one export downloads exactly one portable backup file')
+            check(re.fullmatch(r'cosmifold-backup-\d{4}-\d{2}-\d{2}\.cosmifold',cdp.download_events[-1]['suggestedFilename']) is not None,'filename contains only the predictable prefix and local date')
+            manifest,payloads=read_package(first[0])
+            check(manifest['metadata']==json.loads(source) and manifest['metadataText']==source,'entire saved v5 snapshot is retained exactly, including archived entries and references')
+            check('UNSAVED TEXT MUST NOT APPEAR' not in json.dumps(manifest),'unsaved drafts and transient UI state are not exported')
+            check(manifest['counts']['attachmentRecords']==8 and manifest['counts']['archivedGalaxies']==1 and manifest['counts']['linkedPlacements']==1 and manifest['counts']['constellationMembers']==1,'counts describe original/copied files, archive, linked placements and memberships')
+            original_metadata={f['storageKey']:f for e in manifest['metadata']['entries'] for f in e.get('content',{}).get('attachments',[])}
+            for record in manifest['attachments']:
+                key_id=record['record']['key'];stored=records[key_id]
+                assert record['record']['entryId']==stored['entryId'] and hashlib.sha256(payloads[key_id]['original']).hexdigest()==stored['original']
+                assert record['original']['sha256']==fixture_hashes[original_metadata[key_id]['filename']]
+                if stored['thumbnail']:assert hashlib.sha256(payloads[key_id]['thumbnail']).hexdigest()==stored['thumbnail']
+            check(True,'original image/PDF/video/generic bytes and persisted thumbnails match exactly for both independent owners')
+            check(workspace()==original_state,'export is read-only: raw storage, preferences, runtime hierarchy, selection and draft remain unchanged')
+            check(not [r for r in cdp.requests[requests_before:] if r['url'].startswith(('http:','https:'))],'Backup completes with networking offline and makes no network request/upload')
+            shot('backup-success');click_selector('#download-backup');wait_for('!backupUI.busy')
+            deadline=time.monotonic()+15
+            while len(backup_files())<2 and time.monotonic()<deadline:time.sleep(.1)
+            second=next(p for p in backup_files() if p!=first[0]);again,_=read_package(second)
+            manifest.pop('exportedAt');again.pop('exportedAt');check(manifest==again,'repeat exports represent equivalent complete user data')
+            evaluate("cosmifoldBackup.create=backupCreate;window.backupRead=universeRepository.readBackup;universeRepository.readBackup=async()=>{throw new Error('Simulated storage failure')};backupUI.download.click()")
+            wait_for('!backupUI.busy');check(evaluate("backupUI.dialog.open&&!backupUI.download.disabled&&backupUI.status.textContent.includes('not changed')") and workspace()==original_state,'read failure preserves data and leaves the dialog usable')
+            evaluate('universeRepository.readBackup=backupRead')
+            missing=next(iter(records));evaluate(f"window.backupReadAll=attachmentStore.readAll;attachmentStore.readAll=async()=>{{const values=await backupReadAll();return values.filter(r=>r.key!=={json.dumps(missing)})}};backupUI.download.click()")
+            wait_for('!backupUI.busy');check(evaluate("backupUI.status.textContent.includes('missing')") and len(backup_files())==2,'missing binary fails clearly and downloads no partial backup')
+            evaluate('attachmentStore.readAll=backupReadAll;backupUI.dialog.close()');settle()
+            click_selector('#backup-button');evaluate("cosmifoldBackup.create=async(repo,options)=>{await new Promise(r=>setTimeout(r,150));return backupCreate.call(cosmifoldBackup,repo,options)};backupUI.download.click()")
+            key('Escape');wait_for('!backupUI.busy');check(evaluate('!backupUI.dialog.open') and len(backup_files())==2,'cancelling preparation prevents a later download without changing data')
+            evaluate('cosmifoldBackup.create=backupCreate')
+            cdp.call('Network.emulateNetworkConditions',offline=False,latency=0,downloadThroughput=-1,uploadThroughput=-1)
+            for width in [390,320]:
+                cdp.call('Emulation.setDeviceMetricsOverride',width=width,height=844,deviceScaleFactor=1,mobile=True)
+                wait_for('hierarchySidebar.narrow');evaluate('hierarchySidebar.setCollapsed(false)');wait_camera()
+                evaluate("backupUI.trigger.scrollIntoView({block:'nearest'})");settle();click_selector('#backup-button')
+                check(evaluate('backupUI.dialog.open'),'mobile Backup action opens the same dialog')
+                check_rendered("(()=>{const r=backupUI.dialog.getBoundingClientRect();return r.left>=0&&r.right<=innerWidth&&[...backupUI.dialog.querySelectorAll('button')].every(b=>b.getBoundingClientRect().height>=44)})()",'Backup fits a narrow viewport with accessible touch controls: '+str(width))
+                shot('backup-mobile-'+str(width));click_selector('#cancel-backup');settle()
+            real_saved=evaluate("localStorage.getItem('galaxy:user-data')")
+            evaluate('loadSampleButton.click()');wait_for("typeof sampleMode!=='undefined'&&sampleMode&&entries.size===282")
+            check(evaluate('backupUI.trigger.disabled&&!backupUI.dialog.open') and evaluate("localStorage.getItem('galaxy:user-data')")==real_saved,'Sample cannot export a misleading personal backup or touch real data')
+            check(not cdp.errors,f'no unhandled backup browser exceptions: {cdp.errors}')
+            print(f'{count} local-backup browser checks passed',flush=True);return
 
         if options.static_hosting_only:
             downloads=Path(tempfile.mkdtemp(prefix='galaxy-hosting-downloads-'))
@@ -888,7 +1013,8 @@ def main():
             for width,height in [(390,844),(320,568),(740,360)]:
                 cdp.call('Emulation.setDeviceMetricsOverride',width=width,height=height,deviceScaleFactor=1,mobile=True)
                 cdp.call('Emulation.setTouchEmulationEnabled',enabled=True)
-                evaluate('hierarchySidebar.setCollapsed(false)');wait_camera();before=workspace()
+                wait_for('hierarchySidebar.narrow');evaluate('hierarchySidebar.setCollapsed(false)');wait_camera()
+                evaluate("document.getElementById('help-button').scrollIntoView({block:'nearest'})");before=workspace()
                 click_selector('#help-button');evaluate("document.querySelectorAll('#help-dialog details').forEach(t=>t.open=true)")
                 check_rendered("(()=>{const d=document.getElementById('help-dialog'),r=d.getBoundingClientRect(),s=d.querySelector('.help-topics');return r.left>=0&&r.right<=innerWidth&&r.top>=0&&r.bottom<=innerHeight&&s.scrollHeight>s.clientHeight&&s.scrollWidth<=s.clientWidth&&document.getElementById('help-button').getBoundingClientRect().height>=44&&document.getElementById('close-help-button').getBoundingClientRect().height>=44&&[...d.querySelectorAll('summary')].every(s=>s.getBoundingClientRect().height>=44)})()",f'Help fits {width}x{height} with internal scrolling and comfortable touch targets')
                 evaluate("document.querySelector('#help-dialog .help-topics').scrollTop=10000")
@@ -5193,8 +5319,8 @@ def main():
             process.kill()
             process.wait(timeout=10)
         server.shutdown()
-        if options.static_hosting_only and 'downloads' in locals():
-            assert downloads.resolve().is_relative_to(temp_root) and downloads.name.startswith('galaxy-hosting-downloads-')
+        if (options.static_hosting_only or options.backup_only) and 'downloads' in locals():
+            assert downloads.resolve().is_relative_to(temp_root) and downloads.name.startswith(('galaxy-hosting-downloads-','galaxy-backup-downloads-'))
             shutil.rmtree(downloads,ignore_errors=True)
         assert profile.is_relative_to(temp_root) and profile.name.startswith("galaxy-test-profile-")
         shutil.rmtree(profile, ignore_errors=True)

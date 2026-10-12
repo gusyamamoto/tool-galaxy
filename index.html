@@ -61,6 +61,7 @@
             </section>
             <div id="sidebar-utilities">
             <button id="help-button" type="button" aria-label="Help" title="Help" aria-haspopup="dialog" aria-controls="help-dialog"><span aria-hidden="true">?</span> Help</button>
+            <button id="backup-button" type="button" title="Back up Cosmifold" aria-haspopup="dialog" aria-controls="backup-dialog">Backup</button>
             <details id="sample-utility">
                 <summary>Sample data</summary>
                 <aside id="sample-controls" aria-label="Sample controls">
@@ -274,6 +275,13 @@
         </form>
     </dialog>
 
+    <dialog id="backup-dialog" class="collection-dialog" aria-labelledby="backup-title" aria-describedby="backup-description backup-privacy">
+        <h2 id="backup-title">Back up Cosmifold</h2>
+        <p id="backup-description">Download a copy of your saved Cosmifold data and files.</p>
+        <p id="backup-privacy">This backup is not encrypted. Keep it somewhere you trust. Restore will be available in a separate upcoming feature.</p>
+        <p id="backup-status" role="status" aria-live="polite" hidden></p>
+        <div class="form-actions"><button id="cancel-backup" type="button">Cancel</button><button id="download-backup" type="button">Download backup</button></div>
+    </dialog>
     <dialog id="help-dialog" aria-labelledby="help-title" aria-describedby="help-intro">
         <header class="help-header"><h2 id="help-title">Help</h2><button id="close-help-button" type="button" aria-label="Close Help" title="Close Help" autofocus>&times;</button></header>
         <div class="help-topics">
@@ -385,6 +393,8 @@
     <script src="persistence/memory-stores.js"></script>
     <script src="persistence/composition.js"></script>
     <script src="services/universe-repository.js"></script>
+    <script src="services/local-backup.js"></script>
+    <script src="backup-ui.js"></script>
     <script src="vendor/d3-force.bundle.min.js"></script>
     <script src="physics.js"></script>
     <script src="background.js"></script>
