@@ -141,6 +141,8 @@ const hierarchySidebar = new HierarchySidebar({ host: galaxy, preferences: persi
 const hierarchyClipboard=new HierarchyClipboard();
 const pasteDialog=document.getElementById('hierarchy-paste-dialog'),pasteCopy=document.getElementById('hierarchy-paste-copy'),pasteLink=document.getElementById('hierarchy-paste-link'),pasteCancel=document.getElementById('hierarchy-paste-cancel'),pasteStatus=document.getElementById('hierarchy-paste-status');
 let pasteDestination=null,pasteBusy=false,pasteReturnFocus=null,pasteCommitted=false;
+const structureDialog=document.getElementById('duplicate-structure-dialog'),structureForm=document.getElementById('duplicate-structure-form'),structureName=document.getElementById('duplicate-structure-name'),structureError=document.getElementById('duplicate-structure-error');
+let structureSourceId=null,structureReturnFocus=null,structureCommitted=false;
 const smoothDetail = (scale, start, end) => cosmosView.smooth(scale, start, end);
 const renderBackground = createUniverseBackground(galaxy);
 const camera = new GraphCamera({
@@ -340,6 +342,7 @@ function openContextMenu(id, x, y, {surface='canvas'}={}) {
     contextMenu.dataset.copySelection=String(selectedGroup);
     if (!selectedGroup&&(selectedNode?.dataset.entryId !== id || constellationOverview)) selectEntry(entry, nodes.get(id), { openInspector: false });
     contextMenu.querySelector('[data-action=paste]').disabled=!hierarchyClipboard.roots(entries).length||(!sampleMode&&!storageAvailable);
+    contextMenu.querySelector('[data-action=duplicate-structure]').disabled=hierarchySidebar.getSelectedEntryIds().length>1||(!sampleMode&&!storageAvailable);
     contextMenu.setAttribute("aria-label", `Actions for ${entry.name}`);
     document.getElementById("context-entry-name").textContent = entry.name;
     contextMenu.querySelector('[data-action="create"]').textContent = cosmosHierarchy.childContext(entries, id).action;
@@ -395,6 +398,7 @@ contextMenu.addEventListener("click", event => {
     if (action === 'constellation') { showConstellationMemberships(id); return; }
     if(action==='copy'){copyHierarchyItems(contextMenu.dataset.copySelection==='true'?hierarchySidebar.getSelectedEntryIds():[id]);closeContextMenu(true);return;}
     if(action==='paste'){closeContextMenu();openHierarchyPaste(id);return;}
+    if(action==='duplicate-structure'){if(hierarchySidebar.getSelectedEntryIds().length>1)return;closeContextMenu(true);openDuplicateStructure(id);return;}
     closeContextMenu(action === "delete");
     if (action === "create") createChildEntry(id);
     else if (action === "files") openEntryContentAction(id, "files");
@@ -1476,7 +1480,7 @@ function beginCrudOperation() {
 }
 
 function finishCrudOperation() {
-    if (dialog.open || deleteDialog.open || archiveDialog.open || portalDialog.open || pasteDialog.open || constellationWorkspace.isDialogOpen()) return;
+    if (dialog.open || deleteDialog.open || archiveDialog.open || portalDialog.open || pasteDialog.open || structureDialog.open || constellationWorkspace.isDialogOpen()) return;
     crudActive = false;
     if (!document.hidden) physics.resume();
 }
@@ -1530,6 +1534,40 @@ function commitCrudMutation(mutate, { selectionId, topologyChanged = true, revea
     }
     if(animateCreation)materialized.forEach(node=>motion.materialize(node));
 }
+
+function openDuplicateStructure(id) {
+    if(!entries.has(id)||hierarchySidebar.getSelectedEntryIds().length>1||(!sampleMode&&!storageAvailable)||deletionBusy||activeNodeDrags||hierarchySidebar.moveDrag||document.querySelector('dialog[open]'))return;
+    structureSourceId=id;structureReturnFocus=document.activeElement;structureCommitted=false;
+    structureName.value=`${entries.get(id).name.slice(0,55)} copy`;
+    document.getElementById('duplicate-structure-description').textContent=`Create a new empty structure based on “${entries.get(id).name}”.`;
+    structureError.hidden=true;structureName.removeAttribute('aria-invalid');
+    beginCrudOperation();structureDialog.showModal();structureName.focus();structureName.select();
+}
+structureForm.addEventListener('submit',event=>{
+    event.preventDefault();
+    if(!structureDialog.open)return;
+    try{
+        const source=entries.get(structureSourceId);
+        if(!source)throw new Error('This item no longer exists.');
+        const result=universeRepository.duplicateStructure(getGalaxySnapshot(),source.id,structureName.value,
+            ()=>`structure:${crypto.randomUUID()}`,getNewEntryPosition(source.parentId?[source.parentId]:[],source.role));
+        commitCrudMutation(()=>{
+            result.copies.forEach(entry=>entries.set(entry.id,{...entry,seedLayout:true}));
+        },{selectionId:result.rootIds[0],persisted:true,inspectorOpen:true,preserveScroll:false});
+        storageStatus.hidden=true;structureCommitted=true;structureDialog.close();
+    }catch(error){
+        structureError.textContent=`Nothing was added. ${error.message}`;structureError.hidden=false;
+        structureName.setAttribute('aria-invalid','true');structureName.focus();
+    }
+});
+structureName.addEventListener('input',()=>{structureError.hidden=true;structureName.removeAttribute('aria-invalid');});
+document.getElementById('duplicate-structure-cancel').addEventListener('click',()=>structureDialog.close());
+structureDialog.addEventListener('close',()=>{
+    finishCrudOperation();
+    const target=structureCommitted?hierarchySidebar.rows.get(hierarchySidebar.activeEntryId):structureReturnFocus;
+    if(target?.isConnected)target.focus({preventScroll:true});
+    structureSourceId=null;structureReturnFocus=null;
+});
 
 function copyHierarchyItems(ids=hierarchySidebar.getSelectedEntryIds()) {
     const count=hierarchyClipboard.copy(entries,ids);

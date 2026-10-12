@@ -67,6 +67,13 @@ function createUniverseRepository({persistence, canWrite = () => true}) {
             if(changed.length)this.save(next,{type:'items.moved',ids:changed});
             return {snapshot:next,roots:plan.roots,changed};
         },
+        duplicateStructure(snapshot,rootId,name,newId,position) {
+            const plan=hierarchyCopies.structure(snapshot,rootId,name,newId,position);
+            const next={...snapshot,entries:[...snapshot.entries,...plan.copies]};
+            // One synchronous metadata write; no files or UI are touched before success.
+            this.save(next,{type:'items.structure-duplicated',ids:plan.rootIds});
+            return {...plan,snapshot:next};
+        },
         async copyEntries(snapshot,roots,destination,newId,{readSnapshot=()=>snapshot,validate=()=>{}}={}) {
             const plan=hierarchyCopies.plan(snapshot,roots,destination,newId),records=[];
             for(const file of plan.files){

@@ -1144,6 +1144,10 @@ summary:focus-visible { outline: 1px solid #b9d0e9; outline-offset: 3px; }
 .hierarchy-row.hierarchy-move-invalid { outline: 1px solid #c28d8d80; outline-offset: -1px; }
 .hierarchy-row.is-moving { opacity: .75; }
 #hierarchy-paste-dialog { width: min(460px, calc(100vw - 32px)); padding: 22px; border-radius: 10px; }
+#duplicate-structure-dialog { width: min(380px, calc(100vw - 32px)); padding: 20px; border-radius: 7px; background: #0e1621; border-color: #50627c55; box-shadow: 0 8px 28px #0007; }
+#duplicate-structure-dialog::backdrop { background: #02060bb3; backdrop-filter: none; }
+#duplicate-structure-dialog h2 { font-size: 18px; }
+#duplicate-structure-dialog button:focus-visible { outline: 1px solid #91adc9; outline-offset: 2px; }
 #hierarchy-paste-dialog h2 { margin-bottom: 5px; font-size: 19px; }
 #hierarchy-paste-description { font-size: 12px; color: #91a5bd; overflow-wrap: anywhere; }
 #hierarchy-paste-dialog .paste-choices { display: grid; gap: 9px; margin-top: 18px; }

@@ -49,6 +49,9 @@ Constellation references remain unchanged. No remote bookmark fetching is used.
 Run `node --test tests/everyday.test.js` and
 `python tests/browser-check.py --everyday-only --screenshots` to check starter
 CRUD/persistence, canonical drops, gallery rendering and touch checklists.
+Run `node --test tests/duplicate-structure.test.js` and
+`python tests/browser-check.py --duplicate-structure-only --screenshots` to check
+empty independent hierarchies, naming, persistence, recovery and Sample isolation.
 
 - **Add:** each hierarchy row has a small **+**, shown on hover/focus on desktop
   and on the selected/focused row in the mobile drawer. It opens Add item, Add existing item, Add files, Add note and Add
@@ -111,8 +114,19 @@ CRUD/persistence, canonical drops, gallery rendering and touch checklists.
   canonical objects/content, and leaves the destination active. The clipboard
   remains usable after Paste but resets on refresh; missing sources are ignored.
   Existing Galaxy/ancestor leaf links remain supported; Paste rejects self,
-  direct-child and duplicate placements. This adds no Cut, content-free structure
-  duplication, OS clipboard serialization or storage migration (v5 is unchanged).
+  direct-child and duplicate placements. This adds no Cut, OS clipboard
+  serialization or storage migration (v5 is unchanged).
+  **Duplicate structure** is a separate canonical-item context-menu command,
+  after Paste. It asks for a new root name (with a selected "Name copy" default)
+  and creates an independent empty hierarchy with fresh IDs. A Galaxy becomes a
+  new top-level Galaxy; any other item becomes a sibling under its original
+  parent. Only names, canonical parents and existing sibling insertion order
+  are reused. Content, descriptions/categories, appearances, attachments,
+  Constellation memberships, Portal placements, archive state and layout
+  preferences are excluded. Creation uses one metadata write before publishing
+  the tree, then selects the new root and opens its empty Content panel. The
+  command is disabled for multiple selected items and absent from linked-item
+  menus. It has no shortcut and leaves Copy/Paste's two choices unchanged.
   The small Cosmifold title stays above Search and three independently collapsible
   sections: Universe, Constellations and Archived Galaxies. Each heading and its
   chevron toggle only that section. Universe + opens the existing New Galaxy /
