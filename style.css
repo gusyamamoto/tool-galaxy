@@ -1271,7 +1271,17 @@ summary:focus-visible { outline: 1px solid #b9d0e9; outline-offset: 3px; }
 #backup-dialog #backup-status[data-error='true'] { color: #dbb59d; }
 #backup-dialog #backup-status[data-error='false'] { color: #a3b5cc; }
 #backup-dialog .form-actions { display: flex; flex-wrap: wrap; }
-#backup-dialog button { min-height: 44px; }
+#backup-dialog button { min-height: 44px; padding: 8px 12px; border-radius: 6px; box-shadow: none; font-size: 12px; }
+#backup-dialog .backup-section-action { margin-top: 14px; }
+#backup-restore-options { border-top: 1px solid #50627c55; margin-top: 18px; padding-top: 16px; }
+#backup-restore-label { margin: 0; font-size: 14px; }
+#backup-restore-options p { color: #8195ad; }
+#backup-dialog #choose-restore-backup { background: transparent; color: #a3b5cc; }
+#backup-dialog #cancel-backup { background: transparent; border-color: transparent; color: #8195ad; }
+#backup-dialog #cancel-backup:hover { background: #ffffff04; color: #c3d3e4; }
+#restore-backup-preview { border-top: 1px solid #50627c55; margin-top: 16px; padding-top: 14px; }
+#restore-backup-preview h3 { margin: 0; font-size: 16px; }
+#restore-backup-summary { line-height: 1.8; }
 @media (max-width:760px), (pointer:coarse) { #sidebar-utilities #backup-button { min-height: 44px; } }
 #help-button:focus-visible,#close-help-button:focus-visible,#help-dialog summary:focus-visible { outline: 1px solid #91adc9; outline-offset: 2px; }
 

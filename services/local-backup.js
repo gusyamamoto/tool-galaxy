@@ -3,6 +3,9 @@
 const cosmifoldBackup = {
     format:'cosmifold-backup', backupVersion:1, storageVersion:5,
     magic:'COSMIFOLD-BACKUP\n', maxBytes:512*1024*1024, maxManifestBytes:32*1024*1024,
+    get headerBytes(){return new TextEncoder().encode(this.magic).length+8+32;},
+    digest(bytes){return crypto.subtle.digest('SHA-256',bytes);},
+    async sha256(bytes){return [...new Uint8Array(await this.digest(bytes))].map(n=>n.toString(16).padStart(2,'0')).join('');},
     filename(date=new Date()) {
         const part=value=>String(value).padStart(2,'0');
         return `cosmifold-backup-${date.getFullYear()}-${part(date.getMonth()+1)}-${part(date.getDate())}.cosmifold`;
@@ -64,7 +67,7 @@ const cosmifoldBackup = {
         const payload=async blob=>{
             check();const buffer=await blob.arrayBuffer();
             if(buffer.byteLength!==blob.size)throw new Error('A file could not be read completely.');
-            const digest=await crypto.subtle.digest('SHA-256',buffer);check();
+            const digest=await this.digest(buffer);check();
             const descriptor={offset,size:blob.size,type:blob.type,sha256:hex(digest)};
             parts.push(blob);offset+=blob.size;return descriptor;
         };
@@ -86,10 +89,10 @@ const cosmifoldBackup = {
         }
         check();onProgress({stage:'finishing'});
         const json=new TextEncoder().encode(JSON.stringify(manifest));
-        const magic=new TextEncoder().encode(this.magic),header=new Uint8Array(magic.length+8+32);
+        const magic=new TextEncoder().encode(this.magic),header=new Uint8Array(this.headerBytes);
         if(json.length>maxManifestBytes||header.length+json.length+bytes>maxBytes)throw new Error('This backup is too large for this version (512 MiB maximum).');
         header.set(magic);const view=new DataView(header.buffer);view.setUint32(magic.length,this.backupVersion,true);view.setUint32(magic.length+4,json.length,true);
-        header.set(new Uint8Array(await crypto.subtle.digest('SHA-256',json)),magic.length+8);check();
+        header.set(new Uint8Array(await this.digest(json)),magic.length+8);check();
         const blob=new Blob([header,json,...parts],{type:'application/octet-stream'});
         return {blob,filename:this.filename(date),manifest};
     }

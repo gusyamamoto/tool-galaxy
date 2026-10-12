@@ -177,6 +177,8 @@ def main():
     args = argparse.ArgumentParser()
     args.add_argument("--screenshots", action="store_true")
     args.add_argument("--static-hosting-only", action="store_true", help="Audit static assets, hosting headers, browser requests, CSP, refresh and origin-isolated persistence")
+    args.add_argument("--backup-dialog-only", action="store_true", help="Focused Backup/Restore layout, renamed-file validation, picker, download and keyboard checks")
+    args.add_argument("--restore-only", action="store_true", help="Check validated local replacement, real IndexedDB rollback, reload recovery and fresh-origin migration")
     args.add_argument("--backup-only", action="store_true", help="Check complete read-only backup downloads, raw bytes/thumbnails, failure/cancel, narrow controls and Sample isolation")
     args.add_argument("--site-root", type=Path, default=ROOT, help="Serve an isolated baseline checkout when comparing performance")
     args.add_argument("--file-protocol", action="store_true", help="Open index.html directly to validate offline startup without HTTP fetch timing")
@@ -278,7 +280,7 @@ def main():
         cdp = CDP(page["webSocketDebuggerUrl"])
         cdp.call("Page.enable")
         cdp.call("Runtime.enable")
-        if options.static_hosting_only or options.backup_only:
+        if options.static_hosting_only or options.backup_only or options.restore_only:
             cdp.call('Network.enable');cdp.call('Log.enable')
         cdp.call("Emulation.setDeviceMetricsOverride", width=1440, height=1000, deviceScaleFactor=1, mobile=False)
         origin = f"http://{'localhost' if options.static_hosting_only else '127.0.0.1'}:{server.server_port}"
@@ -332,7 +334,7 @@ def main():
             until = time.monotonic() + timeout
             while not evaluate(code):
                 if time.monotonic() >= until:
-                    state = evaluate("typeof physics==='undefined' ? null : ({alpha:physics.simulation.alpha(),target:physics.simulation.alphaTarget(),paused:physics.paused,settled:physics.settled,dragging:[...physics.dragging],hidden:document.hidden,dialog:dialog.open,deleteDialog:deleteDialog.open,textures:{ready:[...nodes.values()].filter(n=>n.dataset.textureReady==='true').length,pending:[...nodes.values()].filter(n=>n.dataset.textureReady==='pending').length}})")
+                    state = evaluate("typeof physics==='undefined' ? null : ({alpha:physics.simulation.alpha(),target:physics.simulation.alphaTarget(),paused:physics.paused,settled:physics.settled,dragging:[...physics.dragging],hidden:document.hidden,dialog:dialog.open,deleteDialog:deleteDialog.open,viewer:typeof imageViewer==='undefined'?null:{open:imageViewer.dialog.open,videoHidden:imageViewer.video.hidden,videoReady:imageViewer.video.readyState,videoError:imageViewer.video.error?.message,status:imageViewer.status.textContent},textures:{ready:[...nodes.values()].filter(n=>n.dataset.textureReady==='true').length,pending:[...nodes.values()].filter(n=>n.dataset.textureReady==='pending').length}})")
                     raise AssertionError(f"Timed out: {code}; state: {state}")
                 time.sleep(0.1)
 
@@ -458,7 +460,62 @@ def main():
         check(evaluate("JSON.parse(localStorage.getItem('galaxy:user-data')).version===5 && JSON.parse(localStorage.getItem('galaxy:user-data')).entries.every(e=>!('role' in e) && !('depth' in e))"), "version 5 persists generic ancestry without hardcoded roles or depth")
         check(evaluate("!document.querySelector('#pin-position-button,[data-action=pin],#panel-placement,#panel-role,#connection-options') && !panel.textContent.includes('Moves naturally') && !dialog.textContent.includes('Other connections') && roleField.tagName==='OUTPUT' && [...entries.values()].every(e=>e.depth>=0)"), "normal UI derives roles without pin, physics status or relationship controls")
 
-        if options.backup_only:
+        if options.backup_dialog_only:
+            downloads=Path(tempfile.mkdtemp(prefix='cosmifold-dialog-downloads-')).resolve()
+            cdp.call('Browser.setDownloadBehavior',behavior='allowAndName',downloadPath=str(downloads),eventsEnabled=True)
+            evaluate('physics.pause();saveGalaxy();graphNeedsSave=false')
+            saved=evaluate("localStorage.getItem('galaxy:user-data')")
+            def press(value,modifiers=0):
+                cdp.call('Input.dispatchKeyEvent',type='keyDown',key=value,code=value,modifiers=modifiers,windowsVirtualKeyCode=27 if value=='Escape' else 9)
+                cdp.call('Input.dispatchKeyEvent',type='keyUp',key=value,code=value,modifiers=modifiers,windowsVirtualKeyCode=27 if value=='Escape' else 9)
+            def shot_dialog(name):
+                if screenshot_dir:
+                    result=cdp.call('Page.captureScreenshot',format='png',captureBeyondViewport=False)
+                    (screenshot_dir/(name+'.png')).write_bytes(base64.b64decode(result['data']))
+            def choose(path):
+                evaluate("backupUI.file.value=''")
+                document=cdp.call('DOM.getDocument')['root']['nodeId']
+                node=cdp.call('DOM.querySelector',nodeId=document,selector='#restore-backup-file')['nodeId']
+                cdp.call('DOM.setFileInputFiles',nodeId=node,files=[str(path)])
+                wait_for('!backupUI.busy')
+            click_selector('#backup-button')
+            check(evaluate("backupUI.dialog.open&&document.activeElement===backupUI.download"),'Download backup retains initial keyboard focus')
+            press('Tab');check(evaluate('document.activeElement===backupUI.choose'),'Tab moves from Download to Restore')
+            press('Tab');check(evaluate('document.activeElement===backupUI.cancel'),'Tab moves from Restore to quiet Cancel')
+            press('Tab');check(evaluate('document.activeElement===backupUI.download'),'Tab wraps within the dialog')
+            press('Tab',8);check(evaluate('document.activeElement===backupUI.cancel'),'Shift+Tab wraps to Cancel')
+            evaluate("window.dialogPickerClicked=false;backupUI.file.addEventListener('click',e=>{e.preventDefault();dialogPickerClicked=true},{once:true});backupUI.choose.click()")
+            check(evaluate("dialogPickerClicked&&backupUI.file.accept==='.cosmifold'"),'Restore action invokes its file picker with the existing convenience hint')
+            click_selector('#download-backup');wait_for('!backupUI.busy')
+            deadline=time.monotonic()+10
+            while not [p for p in downloads.iterdir() if p.is_file() and not p.name.endswith('.crdownload')] and time.monotonic()<deadline:time.sleep(.1)
+            files=[p for p in downloads.iterdir() if p.is_file() and not p.name.endswith('.crdownload')]
+            check(len(files)==1 and evaluate("backupUI.status.textContent.includes('downloads')"),'Download backup still produces one complete file')
+            renamed=downloads/'completely-unrelated-name.anything';renamed.write_bytes(files[0].read_bytes())
+            choose(renamed)
+            check(evaluate("backupUI.handle&&!backupUI.preview.hidden&&document.activeElement===backupUI.confirm"),'real File with unrelated name and extension validates and focuses confirmation')
+            check(evaluate("localStorage.getItem('galaxy:user-data')")==saved,'renamed-file validation leaves persisted Cosmos untouched')
+            press('Escape');check(evaluate('!backupUI.dialog.open&&document.activeElement===backupUI.trigger'),'Escape cancels preview and restores sidebar focus')
+            click_selector('#backup-button')
+            fake=downloads/'fake.cosmifold';fake.write_bytes(b'Not a real backup despite its extension')
+            choose(fake);check(evaluate("!backupUI.handle&&backupUI.preview.hidden&&backupUI.status.dataset.error==='true'"),'fake .cosmifold file is rejected by its contents')
+            click_selector('#cancel-backup');check(evaluate('!backupUI.dialog.open'),'Cancel closes the dialog without changing data')
+            for width,height,mobile in [(1440,1000,False),(640,800,False),(390,844,True),(320,844,True)]:
+                cdp.call('Emulation.setDeviceMetricsOverride',width=width,height=height,deviceScaleFactor=1,mobile=mobile)
+                if width<=760:
+                    wait_for('hierarchySidebar.narrow');evaluate('hierarchySidebar.setCollapsed(false)');wait_camera()
+                evaluate("backupUI.trigger.scrollIntoView({block:'nearest'})")
+                click_selector('#backup-button')
+                check_rendered("(()=>{const d=backupUI.dialog.getBoundingClientRect(),a=backupUI.download.getBoundingClientRect(),b=backupUI.choose.getBoundingClientRect(),c=backupUI.cancel.getBoundingClientRect();return d.left>=0&&d.right<=innerWidth&&backupUI.dialog.scrollWidth<=backupUI.dialog.clientWidth&&Math.abs(a.left-b.left)<1&&b.top>a.bottom&&c.top>b.bottom&&c.right>a.right&&[a,b,c].every(r=>r.height>=44)})()",'aligned related actions and quiet footer fit viewport '+str(width))
+                shot_dialog('backup-dialog-'+str(width))
+                choose(renamed)
+                check_rendered("(()=>{const d=backupUI.dialog.getBoundingClientRect();return backupUI.handle&&d.left>=0&&d.right<=innerWidth&&backupUI.dialog.scrollWidth<=backupUI.dialog.clientWidth&&backupUI.confirm.getBoundingClientRect().height>=44&&backupUI.download.textContent==='Download current backup'})()",'confirmation and current-backup action remain usable at '+str(width))
+                shot_dialog('restore-dialog-'+str(width));click_selector('#cancel-backup')
+            check(evaluate("localStorage.getItem('galaxy:user-data')")==saved,'all dialog/picker/cancel checks preserve current Cosmos')
+            check(not cdp.errors,f'no unhandled dialog browser exceptions: {cdp.errors}')
+            print(f'{count} focused Backup/Restore dialog checks passed',flush=True);return
+
+        if options.backup_only or options.restore_only:
             import hashlib
             downloads=Path(tempfile.mkdtemp(prefix='galaxy-backup-downloads-')).resolve()
             cdp.call('Browser.setDownloadBehavior',behavior='allowAndName',downloadPath=str(downloads),eventsEnabled=True)
@@ -497,10 +554,10 @@ def main():
             evaluate(r"""(async()=>{
                 const c=document.createElement('canvas');c.width=320;c.height=180;const x=c.getContext('2d');x.fillStyle='#476982';x.fillRect(0,0,c.width,c.height);
                 const photo=await new Promise(r=>c.toBlob(r,'image/png'));
-                const stream=c.captureStream(20),recorder=new MediaRecorder(stream,{mimeType:'video/webm'}),chunks=[];
+                const stream=c.captureStream(0),track=stream.getVideoTracks()[0],recorder=new MediaRecorder(stream,{mimeType:'video/webm;codecs=vp8',videoBitsPerSecond:140000}),chunks=[];
                 const done=new Promise(r=>{recorder.ondataavailable=e=>{if(e.data.size)chunks.push(e.data)};recorder.onstop=r});recorder.start();
-                const timer=setInterval(()=>{x.fillStyle=`hsl(${Math.random()*360} 50% 50%)`;x.fillRect(0,0,c.width,c.height)},50);
-                await new Promise(r=>setTimeout(r,700));recorder.stop();await done;clearInterval(timer);stream.getTracks().forEach(t=>t.stop());
+                const timer=setInterval(()=>{x.fillStyle=`hsl(${Math.random()*360} 50% 50%)`;x.fillRect(0,0,c.width,c.height);track.requestFrame()},60);
+                await new Promise(r=>setTimeout(r,1500));recorder.stop();await done;clearInterval(timer);stream.getTracks().forEach(t=>t.stop());
                 const objects=['<< /Type /Catalog /Pages 2 0 R >>','<< /Type /Pages /Kids [3 0 R] /Count 1 >>','<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>','<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>'];
                 const text='BT /F1 20 Tf 60 700 Td (Trip itinerary backup) Tj ET';objects.push('<< /Length '+text.length+' >>\nstream\n'+text+'\nendstream');
                 let pdf='%PDF-1.4\n%'+ 'P'.repeat(3*1024*1024)+'\n',offsets=[0];objects.forEach((object,i)=>{offsets.push(pdf.length);pdf+=(i+1)+' 0 obj\n'+object+'\nendobj\n'});
@@ -518,13 +575,14 @@ def main():
             evaluate(f"saveEntryContent({json.dumps(archive_child)},{{...galaxyModel.emptyContent(),notes:{{format:'plain',text:'Archived saved notes'}}}});requestGalaxyArchive({json.dumps(archive)});document.getElementById('archive-galaxy-form').requestSubmit()")
             wait_for('!archiveDialog.open');settle();evaluate('physics.pause();saveGalaxy()')
             evaluate(f"selectEntry(entries.get({json.dumps(food)}),nodes.get({json.dumps(food)}),{{reframe:false}});hierarchySidebar.restoreMovedSelection([{json.dumps(food)},{json.dumps(copy)}],{json.dumps(food)});contentInspector.editNotes();contentInspector.notes.value='UNSAVED TEXT MUST NOT APPEAR';physics.pause()")
-            source=evaluate("localStorage.getItem('galaxy:user-data')");original_state=workspace()
+            source=evaluate("localStorage.getItem('galaxy:user-data')");original_metadata_preferences=evaluate("localStorage.getItem('galaxy:navigation-ui')");original_state=workspace()
             fixture_hashes=evaluate("(async()=>{const result={};for(const f of backupFixtureFiles)result[f.name]=[...new Uint8Array(await crypto.subtle.digest('SHA-256',await f.arrayBuffer()))].map(n=>n.toString(16).padStart(2,'0')).join('');return result})()")
             records=evaluate("(async()=>{const result={};for(const r of await attachmentStore.readAll()){const hex=b=>[...new Uint8Array(b)].map(n=>n.toString(16).padStart(2,'0')).join('');result[r.key]={entryId:r.entryId,original:hex(await crypto.subtle.digest('SHA-256',await r.blob.arrayBuffer())),thumbnail:r.thumbnail?hex(await crypto.subtle.digest('SHA-256',await r.thumbnail.arrayBuffer())):null}}return result})()")
             click_selector('#backup-button')
             check(evaluate("backupUI.dialog.open&&document.activeElement.id==='download-backup'&&document.getElementById('backup-privacy').textContent.includes('not encrypted')"),'Backup opens a quiet named dialog with download focus and honest privacy wording')
-            key('Tab');check(evaluate("document.activeElement.id==='cancel-backup'"),'Tab wraps from Download to Cancel inside Backup')
-            key('Tab');check(evaluate("document.activeElement.id==='download-backup'"),'Tab returns to Download without moving focus behind the modal')
+            key('Tab');check(evaluate("document.activeElement.id==='choose-restore-backup'"),'Tab wraps from Download to Restore inside Backup')
+            key('Tab');check(evaluate("document.activeElement.id==='cancel-backup'"),'Tab continues to Cancel without moving focus behind the modal')
+            key('Tab');check(evaluate("document.activeElement.id==='download-backup'"),'Tab returns to Download inside the modal')
             check(workspace()==original_state,'opening Backup preserves selection, multi-selection, Content draft and camera')
             shot('backup-desktop');key('Escape');settle();check(evaluate('!backupUI.dialog.open&&document.activeElement.id==="backup-button"'),'Escape closes and restores sidebar focus')
             click_selector('#backup-button');click_selector('#cancel-backup');settle();check(workspace()==original_state,'Cancel creates nothing and preserves the Cosmos')
@@ -565,18 +623,122 @@ def main():
             key('Escape');wait_for('!backupUI.busy');check(evaluate('!backupUI.dialog.open') and len(backup_files())==2,'cancelling preparation prevents a later download without changing data')
             evaluate('cosmifoldBackup.create=backupCreate')
             cdp.call('Network.emulateNetworkConditions',offline=False,latency=0,downloadThroughput=-1,uploadThroughput=-1)
+            if options.restore_only:
+                def choose_backup(path):
+                    if not evaluate('backupUI.dialog.open'):click_selector('#backup-button')
+                    evaluate("backupUI.file.value=''")
+                    doc=cdp.call('DOM.getDocument')['root']['nodeId']
+                    node=cdp.call('DOM.querySelector',nodeId=doc,selector='#restore-backup-file')['nodeId']
+                    cdp.call('DOM.setFileInputFiles',nodeId=node,files=[str(path)])
+                    wait_for('!backupUI.busy')
+                def reload_restore_page():
+                    before=evaluate('performance.timeOrigin')
+                    cdp.call('Page.reload')
+                    wait_for(f"performance.timeOrigin!=={before}&&document.readyState==='complete'&&typeof attachmentStore!=='undefined'&&typeof physics!=='undefined'")
+                def disk_state():return evaluate("(async()=>({metadata:localStorage.getItem('galaxy:user-data'),preferences:localStorage.getItem('galaxy:navigation-ui'),files:await Promise.all((await attachmentStore.readAll()).map(async r=>({key:r.key,entryId:r.entryId,original:await cosmifoldBackup.sha256(await r.blob.arrayBuffer()),thumbnail:r.thumbnail?await cosmifoldBackup.sha256(await r.thumbnail.arrayBuffer()):null})))}))()")
+                # Prevent test-only animation/autosaves during reload equivalence checks.
+                cdp.call('Page.addScriptToEvaluateOnNewDocument',source="document.addEventListener('load',e=>{if(e.target.tagName==='SCRIPT'&&e.target.src.endsWith('/script.js')){physics.pause();graphNeedsSave=false}},true)")
+                choose_backup(first[0]);check(evaluate('backupUI.handle&& !backupUI.preview.hidden&&document.activeElement.id==="confirm-restore-backup"'),'file picker validates completely and focuses explicit Restore confirmation')
+                check(evaluate('backupUI.preview.textContent.includes("replace")&&backupUI.preview.textContent.includes("Download a backup")&&!backupUI.preview.textContent.includes("IndexedDB")'),'preview explains replacement and suggests saving current data in plain language')
+                check(workspace()==original_state,'choosing and validating a backup leaves current Cosmos untouched')
+                shot('restore-confirmation');key('Escape');check(workspace()==original_state,'cancelling validated Restore changes nothing')
+                invalid=downloads/'not-a-backup.cosmifold';invalid.write_bytes(b'Other file contents'*10)
+                choose_backup(invalid);check(evaluate('!backupUI.handle&&backupUI.status.textContent.includes("doesn")') and workspace()==original_state,'invalid file is rejected without mutation or a Restore action')
+                damaged=downloads/'damaged.cosmifold';bad=bytearray(first[0].read_bytes());bad[-1]^=1;damaged.write_bytes(bad)
+                choose_backup(damaged);check(evaluate('!backupUI.handle&&backupUI.status.textContent.includes("damaged")') and workspace()==original_state,'damaged original payload is rejected before confirmation')
+                # Replace the current store with unrelated B, including an orphan record.
+                evaluate(f"""(async()=>{{
+                    backupUI.dialog.close();physics.pause();graphNeedsSave=false;
+                    const key={json.dumps(missing)},blob=new Blob(['Unrelated current original bytes'],{{type:'application/octet-stream'}}),date=new Date().toISOString();
+                    const file={{id:'b-original',kind:'upload',entryId:'unrelated-b',storageKey:key,filename:'old.bin',mimeType:blob.type,size:blob.size,createdAt:date}};
+                    await attachmentStore.save({{key,entryId:'unrelated-b',blob}},()=>universeRepository.save({{entries:[{{id:'unrelated-b',name:'Other Cosmos',parentId:null,x:200,y:300,content:{{...galaxyModel.emptyContent(),notes:{{format:'plain',text:'Current B notes'}},attachments:[file]}}}}],layout:[]}}));
+                    persistence.preferences.replaceRaw('{{"width":240}}');await attachmentStore.save({{key:'old-orphan',entryId:'gone',blob:new Blob(['Keep until success'])}});
+                }})()""")
+                reload_restore_page()
+                check(evaluate("entries.size===1&&entries.has('unrelated-b')&&(async()=> (await attachmentStore.get(entries.get('unrelated-b').content.attachments[0].storageKey)).blob.text())()"),'unrelated populated Cosmos B has a referenced original colliding with an incoming attachment key')
+                before_b=disk_state()
+                choose_backup(first[0])
+                evaluate("window.restoreAdd=IDBObjectStore.prototype.add;let n=0;IDBObjectStore.prototype.add=function(...args){if(this.name==='files'&&++n===3)throw new DOMException('Simulated quota','QuotaExceededError');return restoreAdd.apply(this,args)};backupUI.confirm.click()")
+                wait_for('!backupUI.busy');evaluate('IDBObjectStore.prototype.add=restoreAdd')
+                check(disk_state()==before_b and evaluate('backupUI.status.textContent.includes("not changed")'),'real IndexedDB staging failure aborts all replacement rows and preserves old files/orphans')
+                evaluate("window.restoreReplace=persistence.metadata.replaceRaw;persistence.metadata.replaceRaw=text=>{restoreReplace(text);throw new Error('Simulated commit failure')};backupUI.confirm.click()")
+                wait_for('!backupUI.busy');evaluate('persistence.metadata.replaceRaw=restoreReplace')
+                check(disk_state()==before_b and evaluate('!persistence.metadata.readRestoreJournal()'),'partial metadata commit aborts real IndexedDB replacement and verifies rollback')
+                evaluate("window.restorePut=IDBObjectStore.prototype.put;window.restorePref=persistence.preferences.replaceRaw;IDBObjectStore.prototype.put=function(...args){if(this.name==='restoreState')window.restoreTx=this.transaction;return restorePut.apply(this,args)};let first=true;persistence.preferences.replaceRaw=text=>{restorePref(text);if(first){first=false;restoreTx.abort()}};backupUI.confirm.click()")
+                wait_for('!backupUI.busy');evaluate('IDBObjectStore.prototype.put=restorePut;persistence.preferences.replaceRaw=restorePref')
+                check(disk_state()==before_b,'late IndexedDB abort after metadata/preferences publication restores verified old state')
+                # An additional open tab holds the shared workspace lock.
+                page_id=cdp.call('Target.createTarget',url=origin)['targetId']
+                second_pages=json.load(urllib.request.urlopen(f'http://127.0.0.1:{debug_port}/json'))
+                other=CDP(next(p['webSocketDebuggerUrl'] for p in second_pages if p['id']==page_id))
+                until=time.monotonic()+15
+                while not other.evaluate("typeof physics!=='undefined'") and time.monotonic()<until:time.sleep(.1)
+                other.evaluate('physics.pause();graphNeedsSave=false');before_tabs=disk_state()
+                evaluate('backupUI.confirm.click()');wait_for('!backupUI.busy')
+                check(evaluate('backupUI.status.textContent.includes("Close other")') and disk_state()==before_tabs,'Restore is blocked while another Cosmifold tab can edit the same workspace')
+                cdp.call('Target.closeTarget',targetId=page_id);other.sock.close()
+                choose_backup(first[0]);restore_requests=len(cdp.requests)
+                cdp.call('Network.emulateNetworkConditions',offline=True,latency=0,downloadThroughput=-1,uploadThroughput=-1)
+                evaluate("backupUI.reload=()=>{window.restoreFinished=true};backupUI.confirm.click()")
+                wait_for('window.restoreFinished===true')
+                check(not [r for r in cdp.requests[restore_requests:] if r['url'].startswith(('http:','https:'))],'confirmed Restore completes entirely offline with no upload or network request')
+                cdp.call('Network.emulateNetworkConditions',offline=False,latency=0,downloadThroughput=-1,uploadThroughput=-1)
+                reload_restore_page()
+                wait_for("typeof backupUI!=='undefined'&&!backupUI.dialog.open&&entries.has("+json.dumps(food)+")")
+                wait_for('!persistence.metadata.readRestoreJournal()')
+                restored=disk_state()
+                check(json.loads(restored['metadata'])==json.loads(source) and restored['preferences']==original_metadata_preferences,'confirmed Restore replaces B with exact persisted A and its sidebar preferences')
+                check('old-orphan' not in [r['key'] for r in restored['files']] and len(restored['files'])==8,'old and orphan records disappear only after successful replacement')
+                check({r['key']:{k:r[k] for k in ['entryId','original','thumbnail']} for r in restored['files']}==records,'restored original and thumbnail hashes are identical for independent copied owners')
+                check(evaluate('!selectedNode&&hierarchySidebar.getSelectedEntryIds().length===0&&searchField.value===""&&!backupUI.dialog.open'),'reload clears selection, multi-selection, Search and temporary dialogs')
+                select(food)
+                check(evaluate("contentInspector.content().notes.text==='Saved restaurant notes'&&document.getElementById('content-location-maps').href.startsWith('https://www.google.com/maps/search/')&&document.getElementById('content-location-maps').rel.includes('noopener')"),'restored Notes and Location render with safe Google Maps navigation')
+                wait_for("[...document.querySelectorAll('#content-media img')].some(img=>img.complete&&img.naturalWidth>0)")
+                check(evaluate('portals.size===1&&constellations.size===1&&archivedGalaxies.size===1'),'linked placements, Constellations and Archive rebuild after reload')
+                for filename,ready in [('photo.png',"imageViewer.image.complete&&imageViewer.image.naturalWidth>0&&!imageViewer.image.hidden"),('trip.webm',"!imageViewer.video.hidden&&imageViewer.video.readyState>=2"),('itinerary.pdf',"!imageViewer.pdf.hidden&&imageViewer.pdf.src.startsWith('blob:')")]:
+                    evaluate(f"contentInspector.openFile(contentInspector.content().attachments.find(f=>f.filename==={json.dumps(filename)}))")
+                    wait_for(ready);check(True,'restored attachment opens in its existing preview: '+filename);evaluate('new Promise(r=>{imageViewer.dialog.close();setTimeout(r,80)})')
+                equivalent=evaluate("(async()=>{const r=await cosmifoldBackup.create(universeRepository);delete r.manifest.exportedAt;return r.manifest})()")
+                check(equivalent==manifest,'Export -> Restore -> Export represents equivalent complete user data in the browser')
+                reload_restore_page();wait_for("typeof physics!=='undefined'&&entries.has("+json.dumps(food)+")")
+                check(disk_state()==restored,'restored metadata/preferences and IndexedDB bytes survive an ordinary reload')
+                cached_document=evaluate('performance.timeOrigin')
+                evaluate(f"entries.get({json.dumps(food)}).name='Obsolete cached graph';graphNeedsSave=true;window.dispatchEvent(new PageTransitionEvent('pageshow',{{persisted:true}}))")
+                wait_for(f"performance.timeOrigin!=={cached_document}&&document.readyState==='complete'&&typeof attachmentStore!=='undefined'&&typeof physics!=='undefined'")
+                wait_for("typeof physics!=='undefined'&&entries.has("+json.dumps(food)+")&&entries.get("+json.dumps(food)+").name!=='Obsolete cached graph'")
+                check(disk_state()==restored,'returning from browser cache reloads without saving an obsolete runtime graph')
+                evaluate("(()=>{const old=persistence.metadata.captureRestoreState(),prefs=persistence.preferences.readForBackup();persistence.metadata.beginRestore({version:1,id:crypto.randomUUID(),previous:old,previousPreferences:prefs,metadataText:old.current,preferencesText:prefs});persistence.metadata.replaceRaw('{\"version\":5,\"entries\":[],\"layout\":[]}')})()")
+                reload_restore_page();wait_for("typeof physics!=='undefined'&&entries.has("+json.dumps(food)+")")
+                check(disk_state()==restored and evaluate('!persistence.metadata.readRestoreJournal()'),'startup rolls back interrupted metadata when no matching file commit exists')
+                # Simulate interruption after durable file commit but before metadata publication.
+                evaluate("(async()=>{const old=persistence.metadata.captureRestoreState(),prefs=persistence.preferences.readForBackup(),id=crypto.randomUUID();persistence.metadata.beginRestore({version:1,id,previous:old,previousPreferences:prefs,metadataText:old.current,preferencesText:prefs});await attachmentStore.replaceAll(await attachmentStore.readAll(),id,()=>{},()=>{});persistence.metadata.replaceRaw('{\"version\":5,\"entries\":[],\"layout\":[]}')})()")
+                reload_restore_page();wait_for("typeof physics!=='undefined'&&entries.has("+json.dumps(food)+")")
+                check(disk_state()==restored and evaluate('!persistence.metadata.readRestoreJournal()'),'startup commit-marker recovery finishes new metadata before initializing the runtime')
+                # A different origin starts without the development origin's IndexedDB rows.
+                fresh_origin=f'http://localhost:{server.server_port}'
+                cdp.call('Page.navigate',url=fresh_origin);wait_for("typeof physics!=='undefined'&&location.hostname==='localhost'")
+                evaluate('physics.pause();graphNeedsSave=false')
+                check(evaluate('(async()=> (await attachmentStore.readAll()).length===0)()'),'independent fresh origin contains none of the original browser attachments')
+                choose_backup(first[0]);click_selector('#confirm-restore-backup')
+                wait_for("typeof physics!=='undefined'&&!backupUI.dialog.open&&entries.has("+json.dumps(food)+")")
+                check(disk_state()==restored,'127.0.0.1 export restores complete identical data into fresh localhost origin')
+                # Return to the backup dialog for shared narrow-width and Sample checks.
+                original_state=workspace()
             for width in [390,320]:
                 cdp.call('Emulation.setDeviceMetricsOverride',width=width,height=844,deviceScaleFactor=1,mobile=True)
                 wait_for('hierarchySidebar.narrow');evaluate('hierarchySidebar.setCollapsed(false)');wait_camera()
                 evaluate("backupUI.trigger.scrollIntoView({block:'nearest'})");settle();click_selector('#backup-button')
                 check(evaluate('backupUI.dialog.open'),'mobile Backup action opens the same dialog')
-                check_rendered("(()=>{const r=backupUI.dialog.getBoundingClientRect();return r.left>=0&&r.right<=innerWidth&&[...backupUI.dialog.querySelectorAll('button')].every(b=>b.getBoundingClientRect().height>=44)})()",'Backup fits a narrow viewport with accessible touch controls: '+str(width))
+                check_rendered("(()=>{const r=backupUI.dialog.getBoundingClientRect();return r.left>=0&&r.right<=innerWidth&&[...backupUI.dialog.querySelectorAll('button')].filter(b=>b.getClientRects().length).every(b=>b.getBoundingClientRect().height>=44)})()",'Backup fits a narrow viewport with accessible touch controls: '+str(width))
+                if options.restore_only:
+                    choose_backup(first[0]);check_rendered("(()=>{const r=backupUI.dialog.getBoundingClientRect();return backupUI.handle&&!backupUI.preview.hidden&&r.left>=0&&r.right<=innerWidth&&backupUI.confirm.getBoundingClientRect().height>=44})()",'Restore preview fits narrow viewport with deliberate touch-sized confirmation: '+str(width))
+                    shot('restore-mobile-'+str(width))
                 shot('backup-mobile-'+str(width));click_selector('#cancel-backup');settle()
             real_saved=evaluate("localStorage.getItem('galaxy:user-data')")
             evaluate('loadSampleButton.click()');wait_for("typeof sampleMode!=='undefined'&&sampleMode&&entries.size===282")
             check(evaluate('backupUI.trigger.disabled&&!backupUI.dialog.open') and evaluate("localStorage.getItem('galaxy:user-data')")==real_saved,'Sample cannot export a misleading personal backup or touch real data')
             check(not cdp.errors,f'no unhandled backup browser exceptions: {cdp.errors}')
-            print(f'{count} local-backup browser checks passed',flush=True);return
+            print(f'{count} local-backup'+('/restore' if options.restore_only else '')+' browser checks passed',flush=True);return
 
         if options.static_hosting_only:
             downloads=Path(tempfile.mkdtemp(prefix='galaxy-hosting-downloads-'))
@@ -5319,7 +5481,7 @@ def main():
             process.kill()
             process.wait(timeout=10)
         server.shutdown()
-        if (options.static_hosting_only or options.backup_only) and 'downloads' in locals():
+        if (options.static_hosting_only or options.backup_only or options.restore_only) and 'downloads' in locals():
             assert downloads.resolve().is_relative_to(temp_root) and downloads.name.startswith(('galaxy-hosting-downloads-','galaxy-backup-downloads-'))
             shutil.rmtree(downloads,ignore_errors=True)
         assert profile.is_relative_to(temp_root) and profile.name.startswith("galaxy-test-profile-")

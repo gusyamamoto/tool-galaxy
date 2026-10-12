@@ -19,9 +19,98 @@ The success message means the file was sent to the browser's download mechanism;
 check the browser's downloads for its destination. Export does not clear your
 Cosmos. Sample mode disables Backup: leave Sample to back up your saved data.
 
-**Restore is not available in this branch.** The next planned branch is
-`feature/local-backup-restore`. Keep your original browser data until that feature
-has been implemented and verified.
+## Restore a backup
+
+1. Close other Cosmifold tabs for the same workspace, including older versions.
+2. Choose **Backup** beside Help, then **Restore backup?** and select a
+   backup file. The picker hints `.cosmifold`, but selected filenames, extensions
+   and MIME types do not determine compatibility. A valid renamed file such as
+   `completely-unrelated-name.anything` is accepted; a fake `.cosmifold` is not.
+   The internal `cosmifold-backup` identifier and supported versions/integrity
+   remain the contract even after future product branding changes.
+3. Wait for **Checking backup?** / file checking to finish. The preview shows
+   the backup date, Galaxies, total items (including Galaxy roots/archived items),
+   Constellations, distinct files and complete backup size.
+4. Read the replacement message. **Download current backup** remains available to keep
+   the current Cosmos first; doing so is optional and does not change the preview.
+5. Choose **Restore** only when ready. Cancel/Escape before this step changes
+   nothing. During replacement, controls are disabled and Cancel is unavailable.
+6. After **Cosmifold restored. Reloading?**, the page reloads from the restored
+   local data. Selection, multi-selection, clipboard, Search, drafts and open
+   panels are reset; persisted sidebar preferences are restored.
+
+**Restore replaces this browser's current local Cosmos. It does not merge.**
+All backed-up IDs, hierarchy, content, links, Constellations, archive data,
+appearance/layout and referenced original/thumbnail bytes are preserved. Old
+unrelated files and orphan rows disappear only with a successful replacement.
+Existing historical migration/recovery snapshots are neither imported, erased
+nor manufactured. They remain internal; they are not part of this backup.
+
+Restore supports **backupVersion 1 / storageVersion 5** only. Unsupported
+versions, malformed hierarchy/references, corrupt/truncated data and inconsistent
+counts are rejected before confirmation, without storage writes. Executable/script
+attachment metadata rejected by the current file policy is not restored. The fixed header,
+manifest SHA-256, raw/parsed metadata consistency, sequential offsets, byte lengths,
+all original/thumbnail hashes and ownership relationships are checked. No content
+is executed, and preview text never becomes HTML. SHA-256 detects corruption,
+not trustworthiness or encryption. Some malformed snapshots which Export could
+capture without normalization are deliberately rejected rather than repaired.
+
+Restore requires an up-to-date browser with **Web Locks** on HTTPS or localhost.
+The application still runs and exports where safe Restore is unavailable. Tabs
+running this app hold shared workspace locks; replacement requires an exclusive
+lock. Older app versions cannot participate, so close those tabs explicitly.
+If simultaneous Restore attempts race, the losing tab checks the durable commit
+revision before resuming. A changed revision blocks stale writes and asks for a
+reload. Returning from the browser's back/forward cache reloads the page to avoid writing
+an obsolete runtime graph after another tab restored data.
+
+### Moving between origins
+
+Export from your original `127.0.0.1` browser address. Open the hosted HTTPS site,
+choose Backup ? Restore backup, and explicitly confirm replacement there. The
+file carries portable IDs/bytes, not an origin, database name or filesystem path.
+These browser origins stay independent: restoring on the hosted site does not
+modify the development site's storage. Keep the source and backup until you have
+checked the restored Cosmos. This is a local file transfer, not an upload or sync.
+
+### Replacement and recovery
+
+The repository captures exact current metadata, legacy fallback and preferences
+for rollback, then writes a small local write-ahead Restore journal. Only after
+confirmation does one IndexedDB read/write transaction stage the entire restored
+file set and an internal commit marker. Old rows remain recoverable by transaction
+abort until completion. After all staged writes succeed, the same transaction's
+callback synchronously writes restored metadata/preferences. It does not use
+normal save/copy helpers, normalize data or regenerate IDs.
+
+- A staging failure aborts the transaction: old file rows remain.
+- A metadata/preference error or late transaction abort restores the exact old
+  local strings and verifies rollback before reporting that data was unchanged.
+- If the page/process closes in the cross-store commit window, startup checks the
+  durable IndexedDB marker **before loading the application**. A matching marker
+  completes the new metadata/preferences; no matching marker restores the old
+  strings. The files and marker commit atomically together, so startup chooses
+  the matching complete dataset rather than exposing a mixed graph.
+- Successful replacement removes the journal. If final journal cleanup fails,
+  the complete new dataset remains committed; startup finishes cleanup. If
+  rollback/recovery itself cannot write storage, the journal is preserved and
+  editing is blocked. The UI asks for a reload without claiming old data was
+  unchanged. Persistent storage/device failure is not something software can
+  guarantee away; keep the downloaded backup and original origin available.
+
+The attachment database has an additive internal IndexedDB version 2
+`restoreState` store for the commit marker; existing `files` rows are untouched
+by that upgrade. **Cosmifold metadata storage remains v5.** The Restore journal
+and marker are internal machinery and are excluded from Export. The ordinary
+historical migration recovery mechanism is unchanged.
+
+Replacement needs temporary space for old and new file sets plus the journal,
+and localStorage quota must fit the new metadata and rollback strings. Insufficient
+quota fails safely instead of omitting files. Validation retains Blob slices and
+hashes one payload at a time; it does not allocate a full-file byte array. The
+same 512 MiB complete-file / 32 MiB manifest caps apply. Large individual files
+still need an ArrayBuffer for native SHA-256; smaller backups suit mobile memory.
 
 ## What is included
 
@@ -33,8 +122,7 @@ has been implemented and verified.
   including archived items: exact original bytes, storage key/owner, original
   filename/MIME/size metadata, and every persisted thumbnail for those records.
   Independent copied files remain independently identified.
-- Genuinely persisted sidebar preferences, kept separately so future Restore can
-  make applying device-specific settings optional.
+- Genuinely persisted sidebar preferences, restored with the Cosmos; normal responsive width limits still apply.
 
 **Excluded:** orphan/unreferenced IndexedDB records and internal recovery snapshots.
 An orphan has no storage-key reference in current canonical item content, even
@@ -90,7 +178,7 @@ dependency, custom ZIP compressor, framework or build step was added.
 This choice avoids base64's roughly one-third binary size expansion and large
 encoded strings. Original/thumbnail bytes are never re-encoded or transformed.
 The overhead is the header and JSON manifest, which includes exact source text
-as well as parsed metadata/preferences. It is uncompressed and requires a future
+as well as parsed metadata/preferences. It is uncompressed and requires a
 Cosmifold reader; ordinary ZIP tools do not open it.
 
 The v1 exporter caps the **complete file at 512 MiB** and the manifest at 32 MiB.
@@ -116,7 +204,7 @@ support these payloads.
 ## Developer format contract
 
 `backupVersion` is the portable file format version; `storageVersion` identifies
-the embedded persistence format. They are independent. A future reader must
+the embedded persistence format. They are independent. A reader must
 inspect/bound the fixed header before allocating or parsing the manifest.
 
 ```text
@@ -172,13 +260,13 @@ name is needed. Extra JSON record metadata is retained; unsupported extra binary
 record fields fail rather than silently becoming empty JSON.
 
 The fixed manifest digest and individual payload digests support corruption
-detection, not signatures, encryption or proof of who created a file. Future
-Restore must also validate lengths/offsets/counts, raw-text/parsed consistency,
+detection, not signatures, encryption or proof of who created a file. Restore also validates lengths/offsets/counts, raw-text/parsed consistency,
 hierarchy/IDs/references and ownership before writing anything. It should not
 execute content or trust a user-supplied backup merely because its hashes match.
 Hashes detect package damage after creation; without an earlier source digest,
 they cannot prove that already-stored bytes had never been damaged beforehand.
-No production parser, file picker, import, merge or restore operation is added.
+The Restore reader validates this contract before any replacement. No merge,
+append, partial import, new IDs or speculative storage-version migration exists.
 
 ## Code paths and checks
 
@@ -190,6 +278,16 @@ Backup dialog (backup-ui.js)
        files.readAll() in a read-only IndexedDB transaction
   -> one Blob with manifest + original/thumbnail payloads
   -> one browser download
+
+Restore file picker (backup-ui.js)
+  -> cosmifoldRestore.inspect() (services/local-restore.js)
+       bounded header/manifest, hashes, metadata/relationship/count validation
+  -> immutable validated summary -> explicit user confirmation
+  -> exclusive workspace session -> cosmifoldRestore.restore()
+  -> universeRepository.replaceLocalBackup()
+       metadata/preferences journal + files.replaceAll() / commit marker
+  -> success message -> page reload
+       startup.js recovers any pending journal before loading script.js
 ```
 
 No arbitrary runtime Maps are serialized. The new metadata read method returns
@@ -197,12 +295,17 @@ the original persisted representation without `load()` migration/projection
 flags or the runtime snapshot allowlist discarding future fields.
 
 ```powershell
-node --test tests/backup.test.js
+node --test tests/backup.test.js tests/restore.test.js
 python tests/browser-check.py --backup-only --screenshots
+python tests/browser-check.py --restore-only --screenshots
 ```
 
 The unit tests parse and hash exported packages independently of the writer.
 Browser checks inspect actual downloads in temporary profiles, verify original
 and copied binary bytes/thumbnails, run export with networking disabled, check
 progress/repeat/failure/cancel, preserve data/drafts/selection, and exercise narrow
-controls and Sample isolation. They do not claim that Restore is proven yet.
+controls and Sample isolation. Restore tests cover rich Export ? Restore ? Export
+parity, fresh/populated stores, malformed references/offsets, quota/commit/late-abort
+failures and startup recovery. Browser checks exercise actual file selection,
+confirmation, IndexedDB rollback, reload, multi-tab protection and independent
+127.0.0.1 ? localhost origins using temporary profiles.

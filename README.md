@@ -10,7 +10,8 @@ localhost data does not automatically appear at the hosted address.
 
 **Backup**, near Help in the sidebar, downloads one unencrypted `.cosmifold`
 file containing saved data, uploaded files/media and thumbnails. It is local and
-read-only; Restore is a separate upcoming feature. See [Local backup](docs/local-backup.md).
+read-only. **Restore backup** validates a selected file, previews its contents,
+then asks before replacing this browser's Cosmos. See [Local backup](docs/local-backup.md).
 
 Each canonical item can have one optional **Location**, shown after Bookmarks
 in the Content panel. Use the section's + to enter a place name or address;

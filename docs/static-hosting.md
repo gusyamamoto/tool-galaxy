@@ -41,7 +41,7 @@ Choose the actual project name later; `cosmifold.pages.dev` is an example, not a
 
 With output directory `.`, treat the checked-out application root as public deployment content. Review the selected commit before connecting or deploying: never commit credentials, local backups, private screenshots or user files there. A private GitHub repository does not make served assets private. Documentation and tests in that root may also be publicly reachable; do not assume Git integration filters them into a runtime-only allowlist.
 
-Keep `index.html` at the repository root, with `persistence/`, `services/` and `vendor/` in their existing relative positions. Keep vendor licenses/notices. No ZIP packaging helper or copied build directory is needed. The retired source-only ZIP was not a backup/export of browser metadata or IndexedDB attachments; real Export/Restore remains a separate future feature.
+Keep `index.html` at the repository root, with `persistence/`, `services/` and `vendor/` in their existing relative positions. Keep vendor licenses/notices. No ZIP packaging helper or copied build directory is needed. The retired source-only ZIP was not a backup/export of browser metadata or IndexedDB attachments; real local Export/Restore is documented in [Local backup](local-backup.md).
 
 ## Staged Git deployment — later, after explicit review
 
@@ -71,7 +71,7 @@ Scheme, hostname and port matter. Browser profiles/devices also keep separate st
 
 The hosted application keeps the existing `galaxy:user-data` v5 metadata, `galaxy:navigation-ui` preferences and `galaxy-attachments` IndexedDB database (binary DB version 1). Notes, Bookmarks, Location, collections, linked placements and archive/layout data remain browser-local. Files, Media and thumbnails remain in IndexedDB and are not part of the Git deployment. No credentials are required by the app.
 
-There is no auto-import, browser-storage workaround or upload of localhost data. Keep the original browser profile/origin available. Export/Restore will provide safe portability in the next product phase. Do not promise that hosting protects against clearing site data, private-session loss or browser storage eviction.
+There is no auto-import, browser-storage workaround or upload of localhost data. Keep the original browser profile/origin available. Local Export/Restore now provides explicit file-based portability; see [Local backup](local-backup.md). Do not promise that hosting protects against clearing site data, private-session loss or browser storage eviction.
 
 ## Headers and compatibility
 
@@ -146,7 +146,7 @@ A static rollback changes served application files, not localStorage/IndexedDB i
 
 ## What comes later
 
-The next coding branch should be **`feature/local-backup-export`**, following [the cloud foundation plan](cloud-foundation-plan.md): portable metadata, original file bytes and thumbnails, while preserving the source. Staged Restore follows. Accounts, awaitable/cloud persistence, private cloud files and cross-device sync are separate later branches.
+Local Export and confirmed replacement Restore are now implemented; see [Local backup](local-backup.md). The subsequent application-command foundation is described in [the cloud foundation plan](cloud-foundation-plan.md). Accounts, awaitable/cloud persistence, private cloud files and cross-device sync are separate later branches.
 
 PWA installation, service workers, offline asset caching and push notifications are also later work. No manifest/service worker is added here.
 

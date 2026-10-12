@@ -1,28 +1,39 @@
 // Explicit disposable adapters for Sample and tests. Never touch browser storage.
 function createMemoryMetadataStore(initial = null) {
-    let snapshot = initial;
+    let snapshot = initial, journal=null, raw=null;
     return {
+        readRestoreJournal:()=>structuredClone(journal),beginRestore(value){journal=structuredClone(value);},endRestore(){journal=null;},
+        captureRestoreState(){return {current:this.readForBackup().metadataText,legacy:null};},
+        replaceRaw(text){snapshot=text===null?null:JSON.parse(text);raw=text;},recoverRaw(previous){this.replaceRaw(previous.current);},
         load: () => snapshot == null ? null : structuredClone(snapshot),
-        readForBackup: () => ({metadataText: snapshot == null ? null : JSON.stringify({version:5,connections:[],layout:[],...snapshot})}),
-        save(value) { snapshot = structuredClone(value); },
-        clear() { snapshot = null; }
+        readForBackup: () => ({metadataText: raw ?? (snapshot == null ? null : JSON.stringify({version:5,connections:[],layout:[],...snapshot}))}),
+        save(value) { snapshot = structuredClone(value);raw=null; },
+        clear() { snapshot = null;raw=null; }
     };
 }
 function createMemoryPreferencesStore() {
-    let preferences = {};
+    let preferences = {},raw;
     return {
+        replaceRaw(text){preferences=text===null?{}:JSON.parse(text);raw=text;},
         load: () => ({...preferences}),
-        readForBackup: () => JSON.stringify(preferences),
-        update(patch) { preferences = {...preferences, ...patch}; },
-        clear() { preferences = {}; }
+        readForBackup: () => raw === undefined ? JSON.stringify(preferences) : raw,
+        update(patch) { preferences = {...preferences, ...patch};raw=undefined; },
+        clear() { preferences = {};raw=undefined; }
     };
 }
 function createMemoryFileStore() {
-    const records = new Map();
+    let records = new Map();
+    let marker=null;
     function commitNow(commit) {
         if (commit?.()?.then) throw new Error('Attachment metadata must be committed synchronously.');
     }
     return {
+        async restoreMarker(){return marker;},
+        async replaceAll(values,id,commit,rollback){
+            const staged=new Map();values.forEach(record=>{if(!record?.key||staged.has(record.key)||!(record.blob instanceof Blob))throw new Error('Invalid restored file.');staged.set(record.key,record);});
+            try{commitNow(commit);}catch(error){try{rollback();}catch(cause){const failure=new Error('Restore recovery needs a reload before continuing.',{cause});failure.recoveryRequired=true;throw failure;}throw error;}
+            records=staged;marker=id;
+        },
         temporary: true,
         hasEntries(ids) { const set = new Set(ids); return [...records.values()].some(record => set.has(record.entryId)); },
         async save(record, commit) {
