@@ -8,6 +8,10 @@ For Cloudflare Pages with staged GitHub integration and `main` deployments, see
 [Static hosting](docs/static-hosting.md). Hosting keeps data browser-local;
 localhost data does not automatically appear at the hosted address.
 
+**Backup**, near Help in the sidebar, downloads one unencrypted `.cosmifold`
+file containing saved data, uploaded files/media and thumbnails. It is local and
+read-only; Restore is a separate upcoming feature. See [Local backup](docs/local-backup.md).
+
 Each canonical item can have one optional **Location**, shown after Bookmarks
 in the Content panel. Use the section's + to enter a place name or address;
 Enter/Save stores trimmed text, and Escape/Cancel keeps the previous value.
