@@ -7,10 +7,12 @@ desktop/mobile previews in the OS temporary directory printed at the end.
 import argparse
 import base64
 import functools
+from html.parser import HTMLParser
 import http.server
 import json
 import math as zoom_math
 import os
+import re
 from pathlib import Path
 import shutil
 import socket
@@ -20,11 +22,65 @@ import tempfile
 import threading
 import time
 import urllib.request
+from urllib.parse import unquote, urlsplit
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
+class AssetReferences(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self.references = []
+
+    def handle_starttag(self, tag, attributes):
+        attrs = dict(attributes)
+        for key in ('src', 'poster'):
+            if attrs.get(key):self.references.append(attrs[key])
+        if tag == 'link' and attrs.get('href'):self.references.append(attrs['href'])
+
+
+def static_asset_files(root):
+    """Discover required files for HTTP smoke checks; no packaging or deployment."""
+    root = Path(root).resolve()
+    pending = ['index.html', '404.html', '_headers', 'vendor/LICENSES.txt', 'vendor/README.md']
+    files = set()
+    while pending:
+        reference = pending.pop()
+        parsed = urlsplit(reference)
+        if parsed.scheme or parsed.netloc:
+            if parsed.scheme == 'data':continue
+            raise ValueError(f'Runtime assets must be local: {reference}')
+        target = (root / unquote(parsed.path).lstrip('/')).resolve()
+        if not target.is_relative_to(root) or not target.is_file():
+            raise ValueError(f'Missing or out-of-root asset: {reference}')
+        relative = target.relative_to(root).as_posix()
+        if relative in files:continue
+        files.add(relative)
+        if target.suffix == '.html':
+            parser = AssetReferences();parser.feed(target.read_text(encoding='utf-8'));pending.extend(parser.references)
+        elif target.suffix == '.css':
+            for matches in re.findall(r'url\(\s*(?:"([^"]*)"|\'([^\']*)\'|([^)]*))\s*\)', target.read_text(encoding='utf-8')):
+                value = next((part for part in matches if part), '').strip()
+                if not value.startswith(('data:', '#')):
+                    pending.append((target.parent.relative_to(root) / value).as_posix())
+    return sorted(files)
+
+
 class QuietHandler(http.server.SimpleHTTPRequestHandler):
+    def end_headers(self):
+        # Emulate this repository's single catch-all Pages header rule so the
+        # ordinary browser regressions exercise the actual hosting policy.
+        config = Path(self.directory) / '_headers'
+        if config.is_file():
+            lines=config.read_text(encoding='utf-8').splitlines()
+            rules=[line for line in lines if line and not line.startswith(('#',' '))]
+            if rules!=['/*']:raise ValueError('The test server supports only one catch-all _headers rule.')
+            for line in lines:
+                if line.startswith('  ') and ':' in line:
+                    name, value = line.strip().split(':', 1)
+                    self.send_header(name, value.strip())
+        super().end_headers()
+
     def log_message(self, *args):
         pass
 
@@ -51,6 +107,9 @@ class CDP:
         self.id = 0
         self.errors = []
         self.drag_data = None
+        self.network_errors = []
+        self.responses = []
+        self.console_errors = []
 
     def read(self, length):
         while len(self.buffer) < length:
@@ -82,6 +141,11 @@ class CDP:
             if message.get("method") == "Runtime.exceptionThrown":
                 self.errors.append(message["params"])
             if message.get('method')=='Input.dragIntercepted':self.drag_data=message['params']['data']
+            if message.get('method')=='Network.responseReceived':
+                response=message['params']['response'];self.responses.append(response)
+                if response['status']>=400:self.network_errors.append(response)
+            if message.get('method')=='Network.loadingFailed':self.network_errors.append(message['params'])
+            if message.get('method')=='Log.entryAdded' and message['params']['entry']['level']=='error':self.console_errors.append(message['params']['entry'])
             if message.get("id") == self.id:
                 assert "error" not in message, message
                 return message.get("result", {})
@@ -108,6 +172,7 @@ def find_browser():
 def main():
     args = argparse.ArgumentParser()
     args.add_argument("--screenshots", action="store_true")
+    args.add_argument("--static-hosting-only", action="store_true", help="Audit static assets, hosting headers, browser requests, CSP, refresh and origin-isolated persistence")
     args.add_argument("--site-root", type=Path, default=ROOT, help="Serve an isolated baseline checkout when comparing performance")
     args.add_argument("--file-protocol", action="store_true", help="Open index.html directly to validate offline startup without HTTP fetch timing")
     args.add_argument("--migration-only", action="store_true", help="Check v2/v4 migration and corrupt-data safeguards in isolation")
@@ -208,8 +273,10 @@ def main():
         cdp = CDP(page["webSocketDebuggerUrl"])
         cdp.call("Page.enable")
         cdp.call("Runtime.enable")
+        if options.static_hosting_only:
+            cdp.call('Network.enable');cdp.call('Log.enable')
         cdp.call("Emulation.setDeviceMetricsOverride", width=1440, height=1000, deviceScaleFactor=1, mobile=False)
-        origin = f"http://127.0.0.1:{server.server_port}"
+        origin = f"http://{'localhost' if options.static_hosting_only else '127.0.0.1'}:{server.server_port}"
         page_url = (options.site_root.resolve() / 'index.html').as_uri() if options.file_protocol else origin
         seed_condition = "location.protocol === 'file:'" if options.file_protocol else f"location.origin === {json.dumps(origin)}"
         legacy = {
@@ -240,6 +307,8 @@ def main():
             document.addEventListener('DOMContentLoaded',()=>{{if(window===window.top&&typeof physics!=='undefined')physics.setReducedMotion(false)}});
             window.openSelectedRowAdd=()=>hierarchySidebar.rows.get(selectedNode.dataset.entryId).querySelector('.tree-add').click();
         """)
+        if options.static_hosting_only:
+            cdp.call('Page.addScriptToEvaluateOnNewDocument',source="window.hostingViolations=[];document.addEventListener('securitypolicyviolation',e=>hostingViolations.push({directive:e.effectiveDirective,blocked:e.blockedURI}));")
 
         def evaluate(code):
             return cdp.evaluate(code)
@@ -383,6 +452,79 @@ def main():
         check(evaluate("localStorage.getItem('galaxy:user-data:pre-cosmic-tree')") == old_raw, "exact original snapshot retained before migration")
         check(evaluate("JSON.parse(localStorage.getItem('galaxy:user-data')).version===5 && JSON.parse(localStorage.getItem('galaxy:user-data')).entries.every(e=>!('role' in e) && !('depth' in e))"), "version 5 persists generic ancestry without hardcoded roles or depth")
         check(evaluate("!document.querySelector('#pin-position-button,[data-action=pin],#panel-placement,#panel-role,#connection-options') && !panel.textContent.includes('Moves naturally') && !dialog.textContent.includes('Other connections') && roleField.tagName==='OUTPUT' && [...entries.values()].every(e=>e.depth>=0)"), "normal UI derives roles without pin, physics status or relationship controls")
+
+        if options.static_hosting_only:
+            downloads=Path(tempfile.mkdtemp(prefix='galaxy-hosting-downloads-'))
+            cdp.call('Browser.setDownloadBehavior',behavior='allow',downloadPath=str(downloads))
+            assets=static_asset_files(options.site_root)
+            for asset in assets:
+                with urllib.request.urlopen(origin+'/'+asset) as response:
+                    check(response.status==200 and response.read()==(options.site_root/asset).read_bytes(),'static asset resolves without rewriting: '+asset)
+                    if asset.endswith('.js'):check(response.headers.get_content_type() in ['text/javascript','application/javascript'],'JavaScript has a compatible MIME type: '+asset)
+                    if asset.endswith('.css'):check(response.headers.get_content_type()=='text/css','CSS has the correct MIME type')
+                    check(response.headers.get('Cache-Control')=='no-cache','stable-name asset requires cache revalidation: '+asset)
+            with urllib.request.urlopen(origin+'/') as response:
+                check(response.headers.get('X-Content-Type-Options')=='nosniff' and response.headers.get('Referrer-Policy')=='strict-origin-when-cross-origin','static responses include the baseline security headers')
+                check("script-src 'self'" in response.headers.get('Content-Security-Policy',''),'the actual static server enforces the Pages CSP')
+            try:urllib.request.urlopen(origin+'/not-an-app-route')
+            except urllib.error.HTTPError as error:check(error.code==404,'unknown paths are real 404s; no SPA rewrite is required')
+            else:raise AssertionError('Unexpected SPA fallback')
+            check(evaluate("isSecureContext&&typeof crypto.randomUUID==='function'&&storageAvailable&&nodes.size===entries.size"),'app initializes on a normal localhost static origin with secure-context browser APIs')
+            for filename in assets:
+                if filename.endswith(('.js','.css','.html')):
+                    source=(options.site_root/filename).read_text(encoding='utf-8')
+                    check(not re.search(r'file://|https?://(?:localhost|127\.0\.0\.1)|[A-Za-z]:\\',source),'runtime asset requires no developer-machine URL: '+filename)
+            evaluate("openEntryForm();fields[0].value='Hosted trip';galaxyStarter.value='trip';galaxyStarter.dispatchEvent(new Event('change'));form.requestSubmit();physics.pause()")
+            root=evaluate('hierarchySidebar.activeEntryId');food=evaluate(f"[...galaxyModel.subtreeIds(entries,{json.dumps(root)})].find(id=>entries.get(id).name==='Food')")
+            destination=add('Another trip')
+            evaluate(f"selectEntry(entries.get({json.dumps(food)}),nodes.get({json.dumps(food)}),{{reframe:false}});saveEntryContent({json.dumps(food)},{{...galaxyModel.emptyContent(),notes:{{format:'plain',text:'Keep hosted trip notes'}},links:[{{id:'hosted-bookmark',url:'https://example.com/',title:'Booking'}}]}});saveEntryLocation({json.dumps(food)},{{text:'Cuauhtémoc & Café + #1, Mexico City'}});contentInspector.select(entries.get({json.dumps(food)}),true)")
+            evaluate("(async()=>{const c=document.createElement('canvas');c.width=32;c.height=16;c.getContext('2d').fillRect(0,0,32,16);const blob=await new Promise(r=>c.toBlob(r,'image/png'));await contentInspector.upload([new File(['Trip notes'],'trip.txt',{type:'text/plain'}),new File([blob],'trip.png',{type:'image/png'})]);})()")
+            original_files=evaluate('contentInspector.content().attachments')
+            wait_for("document.querySelector('#content-media img')?.src.startsWith('blob:')")
+            check(len(original_files)==2 and evaluate("document.querySelector('#content-media img')?.src.startsWith('blob:')"),'IndexedDB upload and local thumbnail display work under the hosting headers')
+            evaluate(f"commitConstellations(new Map([['hosted-favorites',{{id:'hosted-favorites',name:'Trip favorites',memberEntryIds:[{json.dumps(food)}],createdAt:new Date().toISOString()}}]]));copyHierarchyItems([{json.dumps(food)}]);openHierarchyPaste({json.dumps(destination)});pasteCopy.click()")
+            wait_for('!pasteBusy');evaluate('new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))');copy=evaluate('hierarchySidebar.activeEntryId')
+            copied_files=evaluate('contentInspector.content().attachments')
+            check(evaluate(f"(async()=>{{for(const file of entries.get({json.dumps(copy)}).content.attachments){{const record=await attachmentStore.get(file.storageKey);if(!record||record.entryId!=={json.dumps(copy)}||record.blob.size!==file.size)return false}}return true}})()"),'copying an item duplicates attachment ownership and bytes')
+            check(evaluate(f"contentInspector.downloadFile(entries.get({json.dumps(copy)}).content.attachments[0])"),'Save a copy/download uses stored bytes without blocked navigation')
+            deadline=time.monotonic()+10
+            while not (downloads/'trip.txt').is_file() and time.monotonic()<deadline:time.sleep(.1)
+            check((downloads/'trip.txt').read_bytes()==b'Trip notes','browser download contains the original bytes in an isolated temporary directory')
+            evaluate(f"copyHierarchyItems([{json.dumps(food)}]);openHierarchyPaste({json.dumps(destination)});pasteLink.click()")
+            wait_for('!pasteBusy');evaluate('new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))');portal=evaluate('[...portals.keys()].at(-1)')
+            evaluate(f"selectEntry(entries.get({json.dumps(root)}),nodes.get({json.dumps(root)}),{{reframe:false}});openDuplicateStructure({json.dumps(root)});structureName.value='Empty hosted trip';structureForm.requestSubmit()")
+            evaluate('new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))');structure=evaluate('hierarchySidebar.activeEntryId')
+            evaluate('saveGalaxy();physics.pause()')
+            cdp.call('Page.reload',ignoreCache=False);load();evaluate('physics.pause()')
+            check(evaluate(f"entries.get({json.dumps(food)}).content.notes.text==='Keep hosted trip notes'&&entries.get({json.dumps(food)}).content.links[0].title==='Booking'&&entries.get({json.dumps(food)}).location.text==='Cuauhtémoc & Café + #1, Mexico City'&&constellations.get('hosted-favorites').memberEntryIds.includes({json.dumps(food)})&&portals.has({json.dumps(portal)})&&galaxyModel.subtreeIds(entries,{json.dumps(structure)}).size===16&&[...galaxyModel.subtreeIds(entries,{json.dumps(structure)})].every(id=>!entries.get(id).content&&!entries.get(id).location)&&JSON.parse(localStorage.getItem('galaxy:user-data')).version===5"),'ordinary refresh retains hierarchy, Notes, Bookmarks, Locations, Constellations, linked items and empty structure duplicates in v5')
+            check(evaluate(f"(async()=>{{for(const f of {json.dumps(original_files+copied_files)}){{const r=await attachmentStore.get(f.storageKey);if(!r||r.blob.size!==f.size)return false;if(f.filename==='trip.png'&&!r.thumbnail)return false}}return true}})()"),'original and copied attachment bytes/thumbnails survive reload')
+            evaluate(f"selectEntry(entries.get({json.dumps(food)}),nodes.get({json.dumps(food)}),{{reframe:false}})")
+            check(evaluate("(()=>{const a=document.getElementById('content-location-maps'),u=new URL(a.href);return u.protocol==='https:'&&u.searchParams.get('query')==='Cuauhtémoc & Café + #1, Mexico City'&&a.target==='_blank'&&a.rel==='noopener noreferrer'})()"),'Google Maps search keeps its encoded HTTPS query and safe new-tab attributes')
+            evaluate("document.getElementById('help-button').click()")
+            check(evaluate("document.getElementById('help-dialog').open"),'Help opens under CSP');evaluate("document.getElementById('close-help-button').click()")
+            evaluate('new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))')
+            evaluate(f"requestEntryDelete({json.dumps(copy)});document.getElementById('delete-entry-form').requestSubmit()")
+            wait_for('!deletionBusy');check(evaluate(f"(async()=>!entries.has({json.dumps(copy)})&&!(await attachmentStore.get({json.dumps(copied_files[0]['storageKey'])}))&&!!(await attachmentStore.get({json.dumps(original_files[0]['storageKey'])})))()"),'deleting the copied branch removes only its independently owned files')
+            with urllib.request.urlopen(origin+'/index.html') as response:check(response.status==200,'direct index.html access works without a router')
+            check(evaluate('hostingViolations.length===0'),f'no CSP violations: {evaluate("hostingViolations")}')
+            failures=[e for e in cdp.network_errors if not e.get('url','').endswith('/favicon.ico')]
+            console=[e for e in cdp.console_errors if not e.get('url','').endswith('/favicon.ico')]
+            check(not failures,f'no application network errors or missing assets: {failures}')
+            check(not console and not cdp.errors,f'no browser console/runtime errors: {console+cdp.errors}')
+            scripts=[r for r in cdp.responses if r['url'].split('?')[0].endswith('.js')]
+            check(len({r['url'] for r in scripts})==len([a for a in assets if a.endswith('.js')]),'browser actually loaded every declared JavaScript asset')
+            favicon=[e for e in cdp.network_errors if e.get('url','').endswith('/favicon.ico')]
+            print(f'Optional browser favicon.ico probes: {len(favicon)} (no favicon is declared by the current app)',flush=True)
+            other_target=cdp.call('Target.createTarget',url=f'http://127.0.0.1:{server.server_port}/')['targetId']
+            pages=json.load(urllib.request.urlopen(f'http://127.0.0.1:{debug_port}/json'))
+            other=CDP(next(p['webSocketDebuggerUrl'] for p in pages if p['id']==other_target))
+            deadline=time.monotonic()+30
+            while not other.evaluate("document.readyState==='complete'&&typeof physics!=='undefined'"):
+                assert time.monotonic()<deadline,'second origin did not initialize';time.sleep(.1)
+            check(other.evaluate(f"(async()=>!entries.has({json.dumps(root)})&&!(localStorage.getItem('galaxy:user-data')||'').includes('Hosted trip')&&!(await attachmentStore.get({json.dumps(original_files[0]['storageKey'])})))()"),'localhost and 127.0.0.1 keep metadata and IndexedDB separate without any migration')
+            other.sock.close();cdp.call('Target.closeTarget',targetId=other_target)
+            print(f'{count} static-hosting checks passed; root={options.site_root}; origin={origin}',flush=True)
+            return
 
         if options.media_only:
             from media_browser import run_media_checks
@@ -748,7 +890,7 @@ def main():
                 cdp.call('Emulation.setTouchEmulationEnabled',enabled=True)
                 evaluate('hierarchySidebar.setCollapsed(false)');wait_camera();before=workspace()
                 click_selector('#help-button');evaluate("document.querySelectorAll('#help-dialog details').forEach(t=>t.open=true)")
-                check(evaluate("(()=>{const d=document.getElementById('help-dialog'),r=d.getBoundingClientRect(),s=d.querySelector('.help-topics');return r.left>=0&&r.right<=innerWidth&&r.top>=0&&r.bottom<=innerHeight&&s.scrollHeight>s.clientHeight&&s.scrollWidth<=s.clientWidth&&document.getElementById('help-button').getBoundingClientRect().height>=44&&document.getElementById('close-help-button').getBoundingClientRect().height>=44&&[...d.querySelectorAll('summary')].every(s=>s.getBoundingClientRect().height>=44)})()"),f'Help fits {width}x{height} with internal scrolling and comfortable touch targets')
+                check_rendered("(()=>{const d=document.getElementById('help-dialog'),r=d.getBoundingClientRect(),s=d.querySelector('.help-topics');return r.left>=0&&r.right<=innerWidth&&r.top>=0&&r.bottom<=innerHeight&&s.scrollHeight>s.clientHeight&&s.scrollWidth<=s.clientWidth&&document.getElementById('help-button').getBoundingClientRect().height>=44&&document.getElementById('close-help-button').getBoundingClientRect().height>=44&&[...d.querySelectorAll('summary')].every(s=>s.getBoundingClientRect().height>=44)})()",f'Help fits {width}x{height} with internal scrolling and comfortable touch targets')
                 evaluate("document.querySelector('#help-dialog .help-topics').scrollTop=10000")
                 check(evaluate("(()=>{const b=document.getElementById('close-help-button'),r=b.getBoundingClientRect();return document.elementFromPoint(r.x+r.width/2,r.y+r.height/2)===b})()"),f'close control stays reachable after scrolling at {width}x{height}')
                 if width==320:shot('help-mobile')
@@ -5051,6 +5193,9 @@ def main():
             process.kill()
             process.wait(timeout=10)
         server.shutdown()
+        if options.static_hosting_only and 'downloads' in locals():
+            assert downloads.resolve().is_relative_to(temp_root) and downloads.name.startswith('galaxy-hosting-downloads-')
+            shutil.rmtree(downloads,ignore_errors=True)
         assert profile.is_relative_to(temp_root) and profile.name.startswith("galaxy-test-profile-")
         shutil.rmtree(profile, ignore_errors=True)
 
