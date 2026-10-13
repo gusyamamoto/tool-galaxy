@@ -482,7 +482,10 @@ def main():
             from cloud_repository_browser import run_cloud_repository_checks
             run_cloud_repository_checks(cdp=cdp,evaluate=evaluate,check=check,wait_for=wait_for,
                 origin=origin,screenshot_dir=screenshot_dir)
-            print(f'{count} account/gateway/repository foundation browser checks passed',flush=True);return
+            from cloud_cache_browser import run_cloud_cache_checks
+            run_cloud_cache_checks(cdp=cdp,evaluate=evaluate,check=check,wait_for=wait_for,
+                origin=origin,screenshot_dir=screenshot_dir)
+            print(f'{count} account/cloud foundation browser checks passed',flush=True);return
 
         if options.awaitable_only:
             evaluate('physics.pause();graphNeedsSave=false')

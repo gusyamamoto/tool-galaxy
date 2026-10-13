@@ -49,6 +49,22 @@ live evidence for the bounded commit/read/receipt/stale-write path and cleanup,
 not proof of actual network loss, delayed original requests or multiple-session
 locking. See [the repository checkpoint](cloud-metadata-repository.md).
 
+**Live Step 6 checkpoint — October 13, 2026:** the user reports successful fresh
+acknowledged cache/bootstrap at revision `0` in the exact user/Universe namespace,
+reopening the same cache after reload, server refresh confirming `0`, and sign-out
+fencing both current and prior cached readers. After sign-in/reopen, a real read
+was deliberately delayed; disposing its context ignored the late result with no
+cache writes. The existing local Cosmos was not read or uploaded. Guarded SQL
+cleanup returned exactly **1 row**; the exact localStorage cache key and
+`cosmifold:dev:cloud-cache-diagnostic:v1` sessionStorage marker were removed.
+Codex performed none of these live requests or cleanup actions.
+
+This closes the bounded Step 6 cache/reload/sign-out/disposal gate, not live
+pending-operation recovery, A/B or A1/A2 switch races, genuine failure cases or
+multi-session locking. See [the full cache checkpoint](cloud-cache-foundation.md).
+**Step 6 is ready to commit as an inactive foundation.** Normal-app cloud
+activation and local-data migration remain separate approvals.
+
 The user reports that the generated validation ran successfully in the real
 Supabase SQL Editor. This is user-supplied runtime evidence; Codex did not connect
 to the project or execute SQL.
@@ -84,10 +100,11 @@ those successes do not close the remaining gates.
 
 **Readiness:** the SQL runtime gate passed, the unchanged migration was
 subsequently installed by the user with the intended API configuration, and
-Steps 4/5's bounded live RPC and cleanup gates have passed. **Step 5 is ready
-to commit as an inactive repository foundation.** Remaining HTTP/concurrency,
-durable pending-work recovery and Step 6 scoped cache/bootstrap are separate
-gates before production cloud use. This documentation update does not authorize or perform
+Steps 4–6's bounded live RPC/cache/fencing and cleanup gates have passed.
+**Step 6 is ready to commit as an inactive foundation.** Remaining HTTP/
+concurrency, live durable pending-work recovery and the separately approved
+activation/migration strategy are gates before production cloud use.
+This documentation update does not authorize or perform
 database changes, cloud activation or deployment.
 
 ## Runtime review

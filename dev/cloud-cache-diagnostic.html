@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Development only · Cosmifold scoped cache diagnostic</title>
+    <link rel="stylesheet" href="cloud-metadata-diagnostic.css"></head>
+<body><main>
+    <h1>Development only: account-scoped cloud cache</h1>
+    <p>Sign in in the normal Cosmifold tab at this same local origin. No tokens are displayed or copied.</p>
+    <p>Run creates one disposable empty cloud Universe the first time. Reload this page, then Run/reopen reuses its saved test identity and checks the acknowledged cache plus server refresh. No current local Cosmos is read or uploaded.</p>
+    <button id="run" type="button">Run/reopen scoped cache checks</button>
+    <p>After the reload check, this action signs out of your real Supabase session in this browser. Your existing local Cosmos stays local and unchanged.</p>
+    <button id="sign-out" type="button" disabled>Check sign-out fencing</button>
+    <p>Optional: deliberately hold back a real read, close its development context and verify the late response is ignored. This does not sign out or mutate metadata.</p>
+    <button id="delayed" type="button" disabled>Check ignored delayed response</button>
+    <pre id="output" role="status" aria-live="polite">Ready. Loopback development only; no requests until you press a button.</pre>
+    <section id="cleanup-section" hidden><h2>Manual cleanup after review</h2>
+        <p>Record this exact test UUID/cache key. Run the guarded empty-Universe SQL below in Supabase SQL Editor as its normal administrative role. One returned row confirms removal. Do not remove guards or force deletion of changed data.</p>
+        <pre id="identity"></pre><pre id="cleanup"></pre>
+        <p>The cache is scoped and contains only this empty test Universe. After server cleanup, you can remove exactly its printed localStorage key and the sessionStorage marker <code>cosmifold:dev:cloud-cache-diagnostic:v1</code> in browser DevTools. Do not clear all browser storage.</p>
+    </section>
+</main>
+<script src="../auth-config.js"></script><script src="../services/supabase-client.js"></script>
+<script src="../services/supabase-auth.js"></script><script src="../services/auth-service.js"></script>
+<script src="../config.js"></script><script src="../model.js"></script><script src="../portals.js"></script>
+<script src="../constellations.js"></script><script src="../clipboard.js"></script><script src="../services/universe-repository.js"></script>
+<script src="../services/cloud-repository-contract.js"></script><script src="../services/cloud-metadata-projection.js"></script>
+<script src="../services/cloud-metadata-changes.js"></script><script src="../services/supabase-metadata-gateway.js"></script>
+<script src="../persistence/cloud-cache-store.js"></script><script src="../services/cloud-universe-repository.js"></script>
+<script src="../services/cloud-workspace.js"></script><script src="cloud-metadata-diagnostic.js"></script>
+<script src="cloud-cache-diagnostic.js"></script><script src="cloud-cache-diagnostic-page.js"></script>
+</body></html>

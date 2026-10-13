@@ -28,6 +28,18 @@ private-table/GraphQL probes, concurrent locking and pending-work durability
 remain gaps. Normal startup and local user data are unchanged; scoped
 cache/bootstrap, migration and cloud activation remain later gates.
 
+Step 6 now adds an inactive [account-scoped cache/bootstrap foundation](cloud-cache-foundation.md):
+independent versioned cache, durable original pending commands, receipt recovery,
+explicit degraded/read-only outcomes and Auth/Universe generation fences. Its
+live reload/cache/sign-out/disposed-read diagnostic passed according to the user
+on October 13, 2026, at revision `0`, without reading/uploading the local Cosmos.
+Guarded SQL cleanup returned one row; the exact scoped cache key and diagnostic
+session marker were removed. Step 6 is ready to commit as an inactive foundation.
+Live cross-account/Universe switching, pending reload recovery, genuine failures,
+multi-tab/session races and private API exposure checks remain gates. Normal startup
+still uses the existing unscoped local Cosmos; no data migration or activation
+has occurred.
+
 This is a design document, not an implementation. Repository observations below describe the current checked-out code. Proposed tables, interfaces, branches and deployment settings describe future work. No provider account, connection, credential, package, migration or deployment is part of this audit.
 
 ## 1. Plain-language summary

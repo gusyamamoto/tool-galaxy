@@ -161,6 +161,19 @@ steps. Disposal/context fencing prevents late read/commit/receipt publication;
 it cannot cancel a transaction already dispatched. Do not activate production
 cloud mode before these decisions and real concurrency validation.
 
+That is the original Step 5 behavior without a durability adapter. The approved
+[Step 6 cache/workspace foundation](cloud-cache-foundation.md) now supplies
+optional synchronous prepare/accept/reject/presentation hooks and a validated
+read-only cache hydration API. Pending recovery becomes durable only through
+that explicit scoped workspace; default normal-app/local behavior is unchanged.
+
+The user subsequently reported successful live Step 6 scoped bootstrap/cache,
+reload/refresh, sign-out and ignored disposed-context read checks, followed by
+one-row server cleanup and exact cache/marker removal on October 13, 2026.
+[The cache checkpoint](cloud-cache-foundation.md) distinguishes these passed
+checks from still-unverified live pending-mutation recovery and account/Universe
+switching races. Step 6 is ready to commit without activating cloud mode.
+
 ## Files and presentation
 
 Nonempty attachment metadata in input or planned result rejects with
@@ -259,7 +272,9 @@ Stop at Step 5; this inactive foundation is ready to commit. Second-owner HTTP
 isolation, private-table/GraphQL HTTP probes, concurrent locking, genuine
 transport-loss/delayed-request cases, broader rich/compound commands over real
 HTTP, realistic performance/parser parity and
-durable pending-work recovery remain open. Step 6 must define scoped cache/
-bootstrap and pending-command persistence/context fencing before activation.
+live durable pending-work recovery remain open. Step 6's scoped cache/bootstrap
+and pending persistence/context fencing are now implemented; its bounded live
+cache/reload/sign-out/disposal test passed. Normal-app activation still requires
+the remaining integration gates and an explicit migration/activation strategy.
 Migration/import UX, cloud files, sync and PWA require later approval. Cloud mode
 is inactive.
