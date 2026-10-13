@@ -1340,3 +1340,26 @@ summary:focus-visible { outline: 1px solid #b9d0e9; outline-offset: 3px; }
     .sidebar-section-header .collection-add { width: 44px; height: 44px; opacity: 1; pointer-events: auto; }
     #sample-utility summary,#hierarchy-sidebar #sample-controls button { min-height: 44px; }
 }
+
+/* Account identity is independent of the local Cosmos. */
+#sidebar-utilities #account-button { display: block; width: auto; min-height: 28px; margin: 0; padding: 0; border: 0; background: transparent; box-shadow: none; color: #73849b; font-size: 10px; }
+#sidebar-utilities #account-button:is(:hover,:focus-visible) { color: #c3d3e4; }
+#account-button:focus-visible,#account-dialog button:focus-visible { outline: 1px solid #91adc9; outline-offset: 2px; }
+#account-dialog { width: min(390px,calc(100vw - 32px)); padding: 20px; border-radius: 7px; background: #0e1621; border-color: #50627c55; box-shadow: 0 8px 28px #0007; }
+#account-dialog::backdrop { background: #02060bb3; backdrop-filter: none; }
+#account-dialog .account-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+#account-dialog h2 { margin: 0; font-size: 18px; }
+#account-dialog p { margin: 10px 0; font-size: 12px; overflow-wrap: anywhere; }
+#account-dialog #account-local-data { color: #8195ad; }
+#account-dialog form { display: grid; gap: 8px; margin-top: 14px; }
+#account-dialog .account-field { display: grid; gap: 6px; min-width: 0; }
+#account-dialog .account-field[hidden] { display: none; }
+#account-dialog input { min-height: 44px; min-width: 0; }
+#account-dialog button { min-height: 44px; padding: 8px 12px; border-radius: 6px; box-shadow: none; font-size: 12px; }
+#account-dialog #account-submit { justify-self: start; background: #36506c; border-color: #6f8aa755; }
+#account-dialog .account-text-button { justify-self: start; text-align: left; color: #a3b5cc; background: transparent; border-color: transparent; padding-left: 0; }
+#account-dialog #account-close { flex-shrink: 0; padding: 0; width: 44px; color: #8195ad; background: transparent; border-color: transparent; font-size: 22px; }
+#account-dialog footer { display: flex; justify-content: flex-end; margin-top: 12px; }
+#account-dialog #account-cancel { color: #8195ad; background: transparent; border-color: transparent; }
+#account-dialog button:disabled { opacity: .6; cursor: wait; }
+@media (max-width:760px), (pointer:coarse) { #sidebar-utilities #account-button { min-height: 44px; } #account-dialog input { font-size: 16px; } }
