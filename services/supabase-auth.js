@@ -1,38 +1,9 @@
-// The only module that knows the Supabase SDK. No Cosmos repository access.
-const supabaseAuthSDK = Object.freeze({
-    version: '2.117.3',
-    url: 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/dist/umd/supabase.js',
-    integrity: 'sha384-BWcjm9OdFth9TbhCxZPdm+gAOUMAzQy9nmTs12ioXdCcbVnJaPMn+fMUoQCLt60R'
-});
-let supabaseAuthSDKPromise;
-function loadSupabaseAuthSDK() {
-    if (!supabaseAuthSDKPromise) {
-        supabaseAuthSDKPromise = new Promise((resolve,reject)=>{
-            const script=document.createElement('script');
-            script.src=supabaseAuthSDK.url;script.integrity=supabaseAuthSDK.integrity;script.crossOrigin='anonymous';
-            const timer=setTimeout(()=>finish(new Error('Auth library unavailable')),15000);
-            function finish(error){
-                clearTimeout(timer);script.onload=script.onerror=null;
-                if(error){script.remove();reject(error);}else resolve(globalThis.supabase);
-            }
-            script.onload=()=>finish(globalThis.supabase?.createClient?null:new Error('Auth library unavailable'));
-            script.onerror=()=>finish(new Error('Auth library unavailable'));
-            document.head.append(script);
-        }).catch(error=>{supabaseAuthSDKPromise=null;throw error;});
-    }
-    return supabaseAuthSDKPromise;
-}
-function readPublicAuthConfiguration(config) {
-    if(!config?.SUPABASE_URL&&!config?.SUPABASE_PUBLISHABLE_KEY)return null;
-    const url=new URL(config.SUPABASE_URL);
-    if(url.protocol!=='https:'||url.username||url.password||url.search||url.hash||url.pathname!=='/'||
-        !/^sb_publishable_[A-Za-z0-9_-]+$/.test(config.SUPABASE_PUBLISHABLE_KEY||''))throw new Error('Invalid public Auth configuration');
-    return {url:url.origin,key:config.SUPABASE_PUBLISHABLE_KEY};
-}
+// Identity-only Auth adapter. The shared provider owns the SDK client.
 function createSupabaseAuthAdapter({config=cosmifoldAuthConfig,loadSDK=loadSupabaseAuthSDK,
-    location=globalThis.location,history=globalThis.history,disabled=false}={}) {
-    let settings,configurationError,client,subscription,initializing;
-    try{settings=disabled?null:readPublicAuthConfiguration(config);}catch(error){configurationError=error;}
+    location=globalThis.location,history=globalThis.history,disabled=false,provider=null}={}) {
+    const owned=!provider&&(config!==cosmifoldAuthConfig||loadSDK!==loadSupabaseAuthSDK);
+    const clientProvider=provider||(owned?createSupabaseClientProvider({config,loadSDK}):getSharedSupabaseClientProvider());
+    let client,subscription,initializing;
     const identity=session=>session?.user&&session.access_token?{id:session.user.id,email:session.user.email||''}:null;
     // The SDK does the PKCE exchange and URL detection. Only a successful callback
     // event permits cleanup here; unrelated query parameters and fragments survive.
@@ -52,16 +23,11 @@ function createSupabaseAuthAdapter({config=cosmifoldAuthConfig,loadSDK=loadSupab
     const checked=result=>{if(result.error)throw new Error('Auth request failed');return result.data;};
     const redirectTo=()=>new URL('./',location.href).href;
     return {
-        available:!!settings||!!configurationError,
+        available:!disabled&&clientProvider.available,
         async initialize(onChange){
-            if(configurationError)throw configurationError;
-            if(!settings)return {user:null};
+            if(disabled||!clientProvider.available)return {user:null};
             if(!initializing)initializing=(async()=>{
-                if(!client){
-                    const sdk=await loadSDK();
-                    client=sdk.createClient(settings.url,settings.key,{auth:{persistSession:true,autoRefreshToken:true,
-                        detectSessionInUrl:true,flowType:'pkce'}});
-                }
+                if(!client)client=await clientProvider.getClient();
                 if(!subscription)subscription=client.auth.onAuthStateChange((event,session)=>{
                     // Never await or call another Auth method from this SDK callback.
                     cleanCallback(event);onChange({event,user:identity(session)});
@@ -83,6 +49,6 @@ function createSupabaseAuthAdapter({config=cosmifoldAuthConfig,loadSDK=loadSupab
         async signOut(){checked(await client.auth.signOut({scope:'local'}));return {user:null};},
         async requestPasswordReset(email){checked(await client.auth.resetPasswordForEmail(email,{redirectTo:redirectTo()}));},
         async updatePassword(password){checked(await client.auth.updateUser({password}));},
-        dispose(){subscription?.unsubscribe();client?.auth.stopAutoRefresh();}
+        dispose(){subscription?.unsubscribe();if(owned)clientProvider.dispose();}
     };
 }

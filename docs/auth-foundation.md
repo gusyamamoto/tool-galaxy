@@ -1,10 +1,10 @@
 # Account foundation
 
 Cosmifold now has an optional email/password account surface beside **Help** and
-**Backup**. Accounts are ready to configure, but no Supabase project is connected
-in this branch. With the public configuration blank, the app still opens and
-saves its local Cosmos normally, and does not download the Auth SDK or make Auth
-requests.
+**Backup**. The public project configuration is now supplied, and the user has
+verified Auth locally and in production. With the public configuration blank,
+the app still opens and saves its local Cosmos normally, and does not download
+the Auth SDK or make Auth requests.
 
 **Signing in changes identity only.** It does not upload, claim, move, rename or
 assign ownership to any local data. Signing out keeps every local Galaxy, item,
@@ -20,7 +20,8 @@ local data, even when the same account signs in.
 Account button / CosmifoldAccountUI (account-ui.js)
     -> createAuthService (services/auth-service.js)
         -> createSupabaseAuthAdapter (services/supabase-auth.js)
-            -> official Supabase JS Auth client
+            -> shared client provider (services/supabase-client.js)
+                -> official Supabase JS Auth client
 
 Cosmos UI -> existing universe repository -> local metadata v5 / IndexedDB
 Backup / Restore -> existing explicitly scoped local persistence keys
@@ -38,6 +39,13 @@ The provider interface is `available`, `initialize(onChange)`, `signUp`, `signIn
 Promises. Initialization is once per instance, with retry after failure. The
 service guards duplicate actions and clears pending state after success/failure.
 Provider failures remain account errors; they never disable local editing.
+
+The SDK loader, public configuration validation and lazy client ownership now
+live in `services/supabase-client.js`. Auth and the explicit metadata gateway
+borrow the same configured client; neither consumer's disposal stops the other's
+refresh lifecycle. Auth's interface, session flags, events, callback cleanup and
+UI are unchanged. A deliberately injected test configuration/loader may own an
+isolated client. See [the Step 4 gateway and manual diagnostic](cloud-metadata-gateway.md).
 
 ## SDK and session lifecycle
 
@@ -133,9 +141,10 @@ substitute for those controls. This phase creates no such tables or buckets.
 in addition to `'self'`. SRI verifies its bytes. No inline scripts, eval, wildcard
 script hosts or other security/header/cache changes are added.
 
-`connect-src` deliberately remains `'self' blob:` because the actual project host
-is unknown. Once provided, append **that one exact HTTPS project origin** to the
-existing directive, e.g. substitute the real dashboard URL in:
+`connect-src` now permits `'self' blob:` and the one configured HTTPS project
+origin, `https://vaxijeucpakfzyfbjnyv.supabase.co`. The shared-client/gateway
+extraction makes no further CSP change. For a future project change, replace
+that exact origin alongside the public configuration:
 
 ```text
 connect-src 'self' blob: <exact HTTPS Supabase project origin>
@@ -144,7 +153,7 @@ connect-src 'self' blob: <exact HTTPS Supabase project origin>
 Do not paste the angle-bracket placeholder into `_headers`. Do not add `*`, all
 Supabase subdomains, CDN connection permissions or WebSocket permissions; Auth
 HTTP requests need only the exact project origin. Update config and CSP in the
-same reviewed change. Without this adjustment, a Pages deployment correctly
+same reviewed change. Without the correct exact origin, a Pages deployment correctly
 blocks Auth requests while local data continues working. A stock Python server
 does not enforce `_headers`; the test server emulates it.
 

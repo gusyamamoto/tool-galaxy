@@ -2,6 +2,44 @@
 
 Audit date: October 11, 2026. Branch: `architecture/cloud-foundation`.
 
+Subsequent implementation checkpoint: Auth has been verified by the user locally
+and in production, and the cloud metadata SQL migration is installed with its
+private schema unexposed. [Step 4](cloud-metadata-gateway.md) adds shared client
+ownership and an explicit, validated RPC gateway plus a manual local HTTP
+diagnostic. The user reports that its live authenticated list/create/read and
+anonymous-denial checks passed, with revision `0`, no local metadata upload,
+and exactly one row returned by guarded cleanup of the disposable Universe.
+At that Step 4 checkpoint, commit/receipt HTTP remained a gap; its bounded
+Step 5 test has now passed as recorded below. Second-owner HTTP isolation,
+private-table/GraphQL probes and concurrent locking remain gaps. Cloud mode is
+inactive; all current Cosmos metadata/files stay browser-local. Cache/bootstrap,
+local-data migration and sync remain separate gates. The audit observations below retain their original
+date/scope.
+
+Step 5 now adds an explicit, inactive [cloud metadata repository](cloud-metadata-repository.md)
+using revision-checked commands and receipt reconciliation. It reuses the
+existing file-free planners and v5 projection, rejects attachments, and keeps
+presentation separate. The user reports its live revision `0 -> 1` commit,
+exact read, receipt reconciliation without a second mutation and stale-write
+rejection passed, with no local Cosmos upload. Guarded cleanup returned
+`test_universe_removed = true`. Step 5 is ready to commit as an inactive
+foundation. Real transport-loss/delay cases, second-owner HTTP isolation,
+private-table/GraphQL probes, concurrent locking and pending-work durability
+remain gaps. Normal startup and local user data are unchanged; scoped
+cache/bootstrap, migration and cloud activation remain later gates.
+
+Step 6 now adds an inactive [account-scoped cache/bootstrap foundation](cloud-cache-foundation.md):
+independent versioned cache, durable original pending commands, receipt recovery,
+explicit degraded/read-only outcomes and Auth/Universe generation fences. Its
+live reload/cache/sign-out/disposed-read diagnostic passed according to the user
+on October 13, 2026, at revision `0`, without reading/uploading the local Cosmos.
+Guarded SQL cleanup returned one row; the exact scoped cache key and diagnostic
+session marker were removed. Step 6 is ready to commit as an inactive foundation.
+Live cross-account/Universe switching, pending reload recovery, genuine failures,
+multi-tab/session races and private API exposure checks remain gates. Normal startup
+still uses the existing unscoped local Cosmos; no data migration or activation
+has occurred.
+
 This is a design document, not an implementation. Repository observations below describe the current checked-out code. Proposed tables, interfaces, branches and deployment settings describe future work. No provider account, connection, credential, package, migration or deployment is part of this audit.
 
 ## 1. Plain-language summary

@@ -304,6 +304,16 @@ def main():
         if options.saved_snapshot:
             assert options.compatibility_only, '--saved-snapshot requires --compatibility-only'
             old_raw = options.saved_snapshot.read_text(encoding='utf-8')
+        # Every browser suite uses an isolated Auth fixture, never the configured
+        # production project's SDK/session. Account checks install their richer
+        # fake after this baseline on later reloads. Shipped code is unchanged.
+        cdp.call('Page.addScriptToEvaluateOnNewDocument', source="""
+            document.addEventListener('load', event=>{
+                if(event.target.tagName==='SCRIPT'&&event.target.src.endsWith('/services/supabase-auth.js')){
+                    createSupabaseAuthAdapter=()=>({available:false,async initialize(){return {user:null}},dispose(){}});
+                }
+            },true);
+        """)
         cdp.call("Page.addScriptToEvaluateOnNewDocument", source=f"""
             if ({seed_condition} && !sessionStorage.getItem('seeded')) {{
                 localStorage.setItem('galaxy:user-data',{json.dumps(old_raw)});
@@ -466,7 +476,16 @@ def main():
             from auth_browser import run_auth_checks
             run_auth_checks(cdp=cdp,evaluate=evaluate,check=check,wait_for=wait_for,load=load,
                 origin=origin,root=ROOT,screenshot_dir=screenshot_dir)
-            print(f'{count} account foundation browser checks passed',flush=True);return
+            from metadata_gateway_browser import run_metadata_gateway_checks
+            run_metadata_gateway_checks(cdp=cdp,evaluate=evaluate,check=check,wait_for=wait_for,
+                origin=origin,root=ROOT,screenshot_dir=screenshot_dir)
+            from cloud_repository_browser import run_cloud_repository_checks
+            run_cloud_repository_checks(cdp=cdp,evaluate=evaluate,check=check,wait_for=wait_for,
+                origin=origin,screenshot_dir=screenshot_dir)
+            from cloud_cache_browser import run_cloud_cache_checks
+            run_cloud_cache_checks(cdp=cdp,evaluate=evaluate,check=check,wait_for=wait_for,
+                origin=origin,screenshot_dir=screenshot_dir)
+            print(f'{count} account/cloud foundation browser checks passed',flush=True);return
 
         if options.awaitable_only:
             evaluate('physics.pause();graphNeedsSave=false')

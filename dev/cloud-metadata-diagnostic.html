@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Development only · Cosmifold RPC diagnostic</title>
+    <link rel="stylesheet" href="cloud-metadata-diagnostic.css">
+</head>
+<body>
+<main>
+    <h1>Development only: cloud metadata boundary</h1>
+    <p>Sign in to Cosmifold in another tab at this same local origin. This page uses that session without displaying tokens.</p>
+    <p>Running the checks creates one disposable empty Universe labelled in this report as <strong>Cosmifold disposable RPC boundary test</strong>. The database stores its UUID, not a name. No local Cosmos is uploaded; no semantic commit is made.</p>
+    <p>No requests are made until you press Run. Leave this page open to reuse the same test UUID on a deliberate rerun.</p>
+    <button id="run" type="button">Run boundary checks (creates test Universe)</button>
+    <pre id="output" role="status" aria-live="polite">Ready. This diagnostic is allowed only on localhost / 127.0.0.1 / ::1.</pre>
+    <section id="cleanup-section" hidden>
+        <h2>Manual cleanup</h2>
+        <p>After checking the report, paste this guarded delete into the Supabase SQL Editor using its administrative role. It only removes this owner's unchanged, empty test Universe. One returned row means removed; zero means absent or changed. Do not force a delete if changed.</p>
+        <pre id="cleanup"></pre>
+        <p>Record this UUID before closing the page. Reloading starts a new diagnostic session. An uncertain create may already exist; inspect this UUID before creating another test.</p>
+    </section>
+</main>
+<script src="../auth-config.js"></script>
+<script src="../services/supabase-client.js"></script>
+<script src="../services/cloud-repository-contract.js"></script>
+<script src="../services/cloud-metadata-projection.js"></script>
+<script src="../services/supabase-metadata-gateway.js"></script>
+<script src="cloud-metadata-diagnostic.js"></script>
+<script src="cloud-metadata-diagnostic-page.js"></script>
+</body>
+</html>
