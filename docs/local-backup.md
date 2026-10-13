@@ -4,6 +4,11 @@
 It stays on your device. Nothing is uploaded, and it is not cloud sync.
 The file is **not encrypted**; store it somewhere you trust.
 
+Optional accounts are independent of Backup/Restore. Cosmifold does not add Auth
+sessions, access/refresh tokens, passwords or PKCE verifiers to its backup data.
+Restore replaces the local Cosmos without changing the browser's Auth session.
+See [Auth foundation](auth-foundation.md); signing in still does not sync data.
+
 ## Create a backup
 
 1. Save any Notes, Bookmarks or Locations you want included. Unsaved text is not

@@ -63,6 +63,7 @@
             <div id="sidebar-utilities">
             <button id="help-button" type="button" aria-label="Help" title="Help" aria-haspopup="dialog" aria-controls="help-dialog"><span aria-hidden="true">?</span> Help</button>
             <button id="backup-button" type="button" title="Back up Cosmifold" aria-haspopup="dialog" aria-controls="backup-dialog">Backup</button>
+            <button id="account-button" type="button" aria-haspopup="dialog" aria-controls="account-dialog">Sign in</button>
             <details id="sample-utility">
                 <summary>Sample data</summary>
                 <aside id="sample-controls" aria-label="Sample controls">
@@ -444,6 +445,27 @@
             <div class="form-actions"><button id="duplicate-structure-cancel" type="button">Cancel</button><button type="submit">Duplicate</button></div>
         </form>
     </dialog>
+    <dialog id="account-dialog" class="collection-dialog" aria-labelledby="account-title" aria-describedby="account-description">
+        <header class="account-header"><h2 id="account-title">Sign in to Cosmifold</h2><button id="account-close" type="button" aria-label="Close account">&times;</button></header>
+        <p id="account-description">Your Cosmifold data stays in this browser.</p>
+        <p id="account-local-data" hidden>Your Cosmifold data is still stored in this browser while cloud sync is being prepared.</p>
+        <form id="account-form">
+            <div class="account-field"><label for="account-email">Email</label><input id="account-email" name="email" type="email" autocomplete="email" required></div>
+            <div class="account-field"><label for="account-password">Password</label><input id="account-password" name="password" type="password" autocomplete="current-password" required></div>
+            <div class="account-field" hidden><label for="account-confirm-password">Confirm password</label><input id="account-confirm-password" name="confirm-password" type="password" autocomplete="new-password" disabled></div>
+            <button id="account-forgot" class="account-text-button" type="button">Forgot password?</button>
+            <p id="account-status" role="status" aria-live="polite" hidden></p>
+            <button id="account-submit" type="submit">Sign in</button>
+            <button id="account-switch" class="account-text-button" type="button">New to Cosmifold? Create account</button>
+        </form>
+        <button id="account-retry" class="account-text-button" type="button" hidden>Try again</button>
+        <footer><button id="account-cancel" type="button">Close</button></footer>
+    </dialog>
+    <script src="auth-config.js"></script>
+    <script src="services/supabase-auth.js"></script>
+    <script src="services/auth-service.js"></script>
+    <script src="account-ui.js"></script>
+    <script src="account-startup.js"></script>
     <script src="clipboard.js"></script>
     <script src="startup.js"></script>
 </body>

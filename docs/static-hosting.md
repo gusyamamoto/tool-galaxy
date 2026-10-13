@@ -1,6 +1,6 @@
 # Static hosting for Cosmifold
 
-This phase prepares Cosmifold to run at a normal HTTPS web address. It does **not** make your data cloud data: each browser still stores its own Cosmos and files locally. There is no backend, account, upload service or cross-device sync yet.
+This phase prepares Cosmifold to run at a normal HTTPS web address. It does **not** make your data cloud data: each browser still stores its own Cosmos and files locally. There is no Cosmos backend, upload service or cross-device sync. The later optional [Auth foundation](auth-foundation.md) is separate from this hosting milestone and does not move data.
 
 Nothing has been deployed or connected by this branch. The instructions below describe the staged GitHub connection and deployment to perform only after review.
 
@@ -87,7 +87,7 @@ The root [_headers](../_headers) file applies one `/*` rule to static responses.
 
 ### CSP decision
 
-All application scripts are external same-origin files, and the vendored bundle does not require dynamic evaluation. Script execution is restricted to `'self'`; there is no script `'unsafe-inline'` or `'unsafe-eval'`.
+Application scripts are external files, and the vendored bundle does not require dynamic evaluation. Script execution permits `'self'` and the exact pinned Supabase Auth browser bundle added by [Auth foundation](auth-foundation.md); there is no script `'unsafe-inline'` or `'unsafe-eval'`. The SDK loads only with public Auth configuration; its exact project connection permission is deferred until that host is known.
 
 Styles permit `'unsafe-inline'` because current rendering/menus use dynamic style properties and SVG/style generation. Images permit same-origin, `data:` and `blob:` for generated artwork/thumbnails. Media permits same-origin/Blob sources; PDF objects permit `blob:`, and frames permit same-origin/Blob sources for native viewing. Connections permit same-origin/Blob reads. Base tags and framing the app are blocked, and forms stay same-origin.
 
@@ -146,7 +146,7 @@ A static rollback changes served application files, not localStorage/IndexedDB i
 
 ## What comes later
 
-Local Export and confirmed replacement Restore are now implemented; see [Local backup](local-backup.md). The subsequent application-command foundation is described in [the cloud foundation plan](cloud-foundation-plan.md). Accounts, awaitable/cloud persistence, private cloud files and cross-device sync are separate later branches.
+Local Export/Restore and the awaitable application-command foundation are implemented; see [Local backup](local-backup.md) and [the persistence contract](persistence-contract.md). Optional accounts are ready to configure through [Auth foundation](auth-foundation.md); live verification is still pending. Cloud persistence, private cloud files and cross-device sync are separate later branches.
 
 PWA installation, service workers, offline asset caching and push notifications are also later work. No manifest/service worker is added here.
 

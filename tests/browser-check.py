@@ -176,6 +176,7 @@ def find_browser():
 def main():
     args = argparse.ArgumentParser()
     args.add_argument("--screenshots", action="store_true")
+    args.add_argument("--auth-only", action="store_true", help="Check independent account flows, pending/error/recovery, local data and Backup/Restore isolation")
     args.add_argument("--static-hosting-only", action="store_true", help="Audit static assets, hosting headers, browser requests, CSP, refresh and origin-isolated persistence")
     args.add_argument("--awaitable-only", action="store_true", help="Deterministic pending/rejected command, draft, publication and ordering checks")
     args.add_argument("--backup-dialog-only", action="store_true", help="Focused Backup/Restore layout, renamed-file validation, picker, download and keyboard checks")
@@ -281,7 +282,7 @@ def main():
         cdp = CDP(page["webSocketDebuggerUrl"])
         cdp.call("Page.enable")
         cdp.call("Runtime.enable")
-        if options.static_hosting_only or options.backup_only or options.restore_only:
+        if options.static_hosting_only or options.backup_only or options.restore_only or options.auth_only:
             cdp.call('Network.enable');cdp.call('Log.enable')
         cdp.call("Emulation.setDeviceMetricsOverride", width=1440, height=1000, deviceScaleFactor=1, mobile=False)
         origin = f"http://{'localhost' if options.static_hosting_only else '127.0.0.1'}:{server.server_port}"
@@ -460,6 +461,12 @@ def main():
         check(evaluate("localStorage.getItem('galaxy:user-data:pre-cosmic-tree')") == old_raw, "exact original snapshot retained before migration")
         check(evaluate("JSON.parse(localStorage.getItem('galaxy:user-data')).version===5 && JSON.parse(localStorage.getItem('galaxy:user-data')).entries.every(e=>!('role' in e) && !('depth' in e))"), "version 5 persists generic ancestry without hardcoded roles or depth")
         check(evaluate("!document.querySelector('#pin-position-button,[data-action=pin],#panel-placement,#panel-role,#connection-options') && !panel.textContent.includes('Moves naturally') && !dialog.textContent.includes('Other connections') && roleField.tagName==='OUTPUT' && [...entries.values()].every(e=>e.depth>=0)"), "normal UI derives roles without pin, physics status or relationship controls")
+
+        if options.auth_only:
+            from auth_browser import run_auth_checks
+            run_auth_checks(cdp=cdp,evaluate=evaluate,check=check,wait_for=wait_for,load=load,
+                origin=origin,root=ROOT,screenshot_dir=screenshot_dir)
+            print(f'{count} account foundation browser checks passed',flush=True);return
 
         if options.awaitable_only:
             evaluate('physics.pause();graphNeedsSave=false')

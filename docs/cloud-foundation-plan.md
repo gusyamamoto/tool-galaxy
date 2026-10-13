@@ -490,20 +490,20 @@ The order differs from the initial hypothesis: portability comes early; identity
 - **Still local:** every store; delays/failures are injected tests only.
 - **Stop:** implemented: public user-data workflows await acknowledgement; deferred rejection/ordering and current local file atomicity/Backup/Restore regressions pass. Device preferences are awaited-capable best-effort local writes; reads and fenced closing checkpoints retain documented synchronous local capabilities. No SDK/provider, authentication, networking, revisions or sync. Remote bootstrap/account scope and cloud file lifecycle remain subsequent gates.
 
-### Phase 5 — identity and cache isolation
+### Phase 5 — optional identity, separate from local data
 
-- **Goal/scope:** `feature/account-auth-foundation`; signup/login/logout/reset/confirmation and account+universe cache namespaces. Cloud data mode remains disabled.
-- **Dependencies:** Phase 4; separately authorized Supabase setup/public client configuration and production SMTP preparation.
-- **Files:** proposed auth/session module and small account UI; composition/bootstrap/config and account-isolation tests.
-- **Risks:** user A data appearing for B, expired-session fallback into unscoped data, automatic destructive migration.
-- **Tests:** confirmation/reset redirects, refresh/expiry/offline, two accounts, logout during pending work, Sample never using real adapters.
-- **Still local:** domain metadata and attachment bytes; authenticated identity is remote. Label this milestone accurately.
-- **Stop:** accounts work without claiming data is synced; original unscoped data remains untouched.
+- **Goal/scope:** `feature/account-auth-foundation`; optional email/password signup/login/logout/reset/confirmation. Auth session storage is separate; current Cosmos keys and ownership are unchanged. Do not introduce account/universe cache namespaces or move local data in this branch.
+- **Dependencies:** Phase 4. Real Supabase setup/public configuration, exact-project CSP connection permission and email delivery are separately reviewed manual steps.
+- **Files:** implemented `auth-config.js`, `services/auth-service.js`, `services/supabase-auth.js`, `account-ui.js`, `account-startup.js`, small HTML/CSS account surface and exact pinned SDK script permission in `_headers`. Repository/composition/Restore code remains unchanged; see [Auth foundation](auth-foundation.md).
+- **Risks:** implying browser-local data belongs to/syncs with an account, hiding shared-browser visibility, callback/PKCE delivery failure or automatic destructive migration.
+- **Tests:** deterministic account UI/adapter tests, confirmation/recovery events, reload, pending/errors, A/signout/B retaining identical local metadata/files, Backup excluding and Restore preserving Auth, Sample disabling real Auth. Live redirect/email/refresh/cross-tab checks still require the actual project.
+- **Still local:** all domain metadata, preferences and attachment bytes. Only identity eventually contacts Supabase; blank configuration makes no Auth network requests.
+- **Stop:** Auth-capable, mock-tested architecture is implemented with blank public configuration. No project connection, data association, cloud persistence or deployment. Live Auth verification remains a gate before Phase 6; account-scoped Cosmos caches belong with explicit cloud ownership/migration design later.
 
 ### Phase 6 — transactional cloud metadata, restricted beta
 
 - **Goal/scope:** `feature/cloud-metadata-repository`; relational model/RLS, coherent v5 projection, async cloud commands, global revision CAS and idempotent results. No unauthenticated/private table access.
-- **Dependencies:** Phase 5; server constraints/authorization/revision validation and Phase 4's safe publication seam.
+- **Dependencies:** Phase 5 including live Auth verification; server constraints/authorization/revision validation and Phase 4's safe publication seam.
 - **Files:** proposed cloud repository/projection, DB migrations/RPC tests, composition and narrow save/error status UI.
 - **Risks:** missing same-universe constraints, stale whole-snapshot replacement, unknown save outcomes, invalid ancestry silently repaired.
 - **Tests:** users A/B/anonymous, concurrent devices, duplicate retry, server commit/lost response, six-depth tree, all metadata semantics and archive projection.
