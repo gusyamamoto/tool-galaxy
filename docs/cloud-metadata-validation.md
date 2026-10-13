@@ -1,8 +1,9 @@
 # Reversible Supabase SQL Editor validation
 
 Run manually from the real Supabase SQL Editor only after reviewing this file
-and the SQL. Codex has **not connected or executed the validation**. The approved
-migration, database suite, Auth and application code are unchanged.
+and the SQL. Codex has **not connected or executed the validation**. At the SQL
+validation checkpoint, the approved migration, database suite, Auth and
+application code were unchanged. Subsequent gateway work is linked below.
 
 Use [cloud-metadata-sql-editor.sql](../tests/database/cloud-metadata-sql-editor.sql).
 It is generated from the approved migration/test suite by
@@ -10,6 +11,29 @@ It is generated from the approved migration/test suite by
 psql test file into SQL Editor. The generated file includes everything it needs.
 
 ## Real Supabase runtime checkpoint
+
+**Subsequent installed checkpoint:** the user has now permanently installed the
+unchanged migration and verified all six private tables, all five public RPCs,
+forced RLS, private-schema exclusion, zero exposed private tables, disabled
+automatic table exposure and Data API extra search path `public, extensions`.
+Codex did not perform that installation. The rollback-only result below remains
+the evidence for the earlier SQL validation run. The subsequent live Step 4
+JWT/HTTP checkpoint and cleanup are recorded below and in
+[the gateway documentation](cloud-metadata-gateway.md).
+
+**Live Step 4 checkpoint, recorded October 12, 2026:** the user reports that
+anonymous list/read were rejected; authenticated list succeeded and initially
+returned 0 Universes; explicit empty-Universe creation succeeded; authenticated
+list then included it; and authenticated read returned revision `0`. No local
+Cosmos metadata was uploaded. The generated guarded cleanup SQL returned
+exactly **1 row**, confirming the disposable Universe was removed. Codex did
+not connect to Supabase or execute these requests or the cleanup SQL.
+
+This proves the tested public RPC list/create/read HTTP boundary for that
+account, including anonymous denial. It does not prove direct private-table or
+GraphQL HTTP exclusion, another authenticated owner's isolation over HTTP,
+real commit/receipt RPC behavior or independent-session locking. Those gaps
+remain despite the passed SQL assertions and installed configuration review.
 
 The user reports that the generated validation ran successfully in the real
 Supabase SQL Editor. This is user-supplied runtime evidence; Codex did not connect
@@ -32,20 +56,24 @@ The user then independently verified cleanup:
 This closes the actual PostgreSQL compilation and single-session database/security
 gate for the validated artifact: INVOKER calls/grants, role/claim simulation,
 A/B/anonymous isolation, constraints, serial revision/retry behavior, compound
-rollback and scratch cleanup passed. The migration remains **not permanently
-applied**; the schema/RPCs and scratch users are absent after rollback.
+rollback and scratch cleanup passed. **At that validation checkpoint** the
+migration was not permanently applied; schema/RPCs and scratch users were absent
+after rollback. The subsequent authorized installation is recorded above.
 
-Still unverified: actual PostgREST/GraphQL HTTP exposure and JWT role mapping,
-independent-session locking/races, historical parser edge cases and realistic
-database performance. A successful SQL session does not close these gates.
+Still unverified: real commit/receipt HTTP behavior and uncertain-outcome
+reconciliation, second-owner HTTP isolation, direct private-table/GraphQL HTTP
+exclusion, independent-session locking/races, historical parser edge cases and
+realistic database performance. JWT/HTTP list/create/read and anonymous denial
+have now passed as recorded above; that narrower success does not close the
+remaining gates.
 
-**Readiness:** the SQL runtime gate has passed. The unchanged migration is ready
-for a separately authorized controlled installation **after the private API
-schema/search-path configuration is confirmed**. Permanent installation and
-production cloud activation are different decisions. HTTP/concurrency checks
-remain required before enabling production cloud use; they can be performed in a
-separately approved committed test environment. This documentation update neither
-authorizes nor performs installation, cloud activation or deployment.
+**Readiness:** the SQL runtime gate passed, the unchanged migration was
+subsequently installed by the user with the intended API configuration, and
+Step 4's live list/create/read and cleanup gate has now passed. **Step 4 is ready
+to commit as an inactive client/gateway foundation.** The remaining
+HTTP/concurrency checks and Step 5 repository work are separate gates before
+production cloud use. This documentation update does not authorize or perform
+database changes, cloud activation or deployment.
 
 ## Runtime review
 

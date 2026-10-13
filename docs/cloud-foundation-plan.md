@@ -2,6 +2,20 @@
 
 Audit date: October 11, 2026. Branch: `architecture/cloud-foundation`.
 
+Subsequent implementation checkpoint: Auth has been verified by the user locally
+and in production, and the cloud metadata SQL migration is installed with its
+private schema unexposed. [Step 4](cloud-metadata-gateway.md) adds shared client
+ownership and an explicit, validated RPC gateway plus a manual local HTTP
+diagnostic. The user reports that its live authenticated list/create/read and
+anonymous-denial checks passed, with revision `0`, no local metadata upload,
+and exactly one row returned by guarded cleanup of the disposable Universe.
+Step 4 is ready to commit; commit/receipt HTTP behavior, second-owner HTTP
+isolation, private-table/GraphQL HTTP probes and concurrent locking remain
+integration gaps. Cloud mode is still inactive; all current Cosmos metadata/files stay
+browser-local. Repository commands, cache/bootstrap, local-data migration and
+sync remain separate gates. The audit observations below retain their original
+date/scope.
+
 This is a design document, not an implementation. Repository observations below describe the current checked-out code. Proposed tables, interfaces, branches and deployment settings describe future work. No provider account, connection, credential, package, migration or deployment is part of this audit.
 
 ## 1. Plain-language summary

@@ -1,16 +1,18 @@
 # Cloud metadata SQL: Step 3, review only
 
 The draft migration is
-`supabase/migrations/202610120001_cloud_metadata.sql`. **It has not been applied
-permanently.** The user subsequently reported successful temporary compilation
-and single-session tests in the real Supabase SQL Editor, followed by verified
-rollback cleanup; see [the runtime checkpoint](cloud-metadata-validation.md).
+`supabase/migrations/202610120001_cloud_metadata.sql`. The user has now reported
+successful permanent installation with the intended private-schema exposure
+settings. Earlier temporary compilation and single-session tests in the real
+Supabase SQL Editor passed and rollback cleanup was verified; see
+[the runtime checkpoints](cloud-metadata-validation.md).
 Codex made no database connection, tooling installation, deployment,
 application configuration or runtime behavior change.
 
-This adds SQL authorship only. Steps 1/2 and their JavaScript contract/projection
-remain unchanged. No SDK gateway, cloud repository activation, cache or migration
-UI is introduced. Local storage v5, Backup/Restore and files are untouched.
+This document describes the Step 3 SQL checkpoint. Steps 1/2 and their JavaScript
+contract/projection remain unchanged. The subsequent [Step 4 gateway](cloud-metadata-gateway.md)
+is separately documented; cloud repository activation, cache and migration UI
+are still absent. Local storage v5, Backup/Restore and files are untouched.
 
 ## Schemas and representation
 
@@ -256,8 +258,13 @@ Before considering a live application, review/verify:
 - Review receipt retention and explicit account/Universe deletion later. No
   cleanup timer, deletion cascade, sharing, collaboration or realtime is added.
 
-Stop after Step 3. The SQL runtime gate is passed. A controlled permanent
-installation is a separately authorized action after confirming private API
-schema/search-path exclusion. Do not enable production cloud use until the
-remaining HTTP exposure and concurrent-session gates pass. No permanent
-application, cloud activation or deployment was performed in this update.
+The Step 3 SQL runtime gate passed and the user subsequently installed the
+unchanged migration with private API schema/search-path exclusion confirmed.
+The user also reports successful Step 4 authenticated list/create/read and
+anonymous-denial HTTP checks, followed by guarded cleanup returning exactly
+one deleted disposable Universe; see [the live gateway checkpoint](cloud-metadata-gateway.md).
+Step 4 is ready to commit as an inactive foundation. Real commit/receipt HTTP
+behavior, second-owner isolation and direct private-table/GraphQL HTTP exclusion,
+plus concurrent-session locking, remain untested integration gates before
+production cloud use. Codex performed no database connection, application,
+cloud activation or deployment.
