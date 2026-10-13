@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Development only · Cosmifold metadata commit diagnostic</title>
+    <link rel="stylesheet" href="cloud-metadata-diagnostic.css">
+</head>
+<body>
+<main>
+    <h1>Development only: metadata commit and receipt</h1>
+    <p>Sign in in the normal Cosmifold tab at this same local origin. This page uses that session without displaying tokens.</p>
+    <p>Run creates one disposable Universe, adds one fixed test Galaxy, checks receipt reconciliation, and sends one deliberately stale write that must be rejected. No existing local Cosmos is read or uploaded.</p>
+    <p>The successful commit reply is deliberately withheld inside this diagnostic to test receipt recovery. This does not simulate every real network failure. No mutation is retried.</p>
+    <button id="run" type="button">Run commit/receipt checks (creates test data)</button>
+    <pre id="output" role="status" aria-live="polite">Ready. Development/test only; no requests until Run.</pre>
+    <section id="cleanup-section" hidden>
+        <h2>Manual cleanup after review</h2>
+        <p>Record the UUID and SQL below. After reviewing the result, run this guarded transaction in Supabase SQL Editor as its normal administrative role. It removes only the exact empty or one-Galaxy diagnostic fixture and its receipt. It must report test_universe_removed = true. If an error occurs, run ROLLBACK; do not remove guards or force cleanup.</p>
+        <pre id="cleanup"></pre>
+        <p>If a request outcome is uncertain, keep this page/UUID and review before cleanup or rerunning. This page runs once; reloading allocates a different test UUID.</p>
+    </section>
+</main>
+<script src="../auth-config.js"></script>
+<script src="../services/supabase-client.js"></script>
+<script src="../config.js"></script>
+<script src="../model.js"></script>
+<script src="../portals.js"></script>
+<script src="../constellations.js"></script>
+<script src="../clipboard.js"></script>
+<script src="../services/universe-repository.js"></script>
+<script src="../services/cloud-repository-contract.js"></script>
+<script src="../services/cloud-metadata-projection.js"></script>
+<script src="../services/cloud-metadata-changes.js"></script>
+<script src="../services/supabase-metadata-gateway.js"></script>
+<script src="../services/cloud-universe-repository.js"></script>
+<script src="cloud-metadata-commit-diagnostic.js"></script>
+<script src="cloud-metadata-commit-diagnostic-page.js"></script>
+</body>
+</html>

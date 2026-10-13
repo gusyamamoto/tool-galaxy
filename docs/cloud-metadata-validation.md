@@ -31,9 +31,23 @@ not connect to Supabase or execute these requests or the cleanup SQL.
 
 This proves the tested public RPC list/create/read HTTP boundary for that
 account, including anonymous denial. It does not prove direct private-table or
-GraphQL HTTP exclusion, another authenticated owner's isolation over HTTP,
-real commit/receipt RPC behavior or independent-session locking. Those gaps
-remain despite the passed SQL assertions and installed configuration review.
+GraphQL HTTP exclusion, another authenticated owner's isolation over HTTP or
+independent-session locking. The later Step 5 checkpoint below closes bounded
+commit/receipt HTTP behavior, but not those remaining isolation/exposure/race gaps.
+
+**Live Step 5 checkpoint:** the user reports an empty disposable Universe at
+revision `0`, one semantic commit reaching `1`, real receipt reconciliation of
+its deliberately withheld successful reply, exact committed-data read at `1`,
+and a receipt matching the original operation/revision. Repeated reconciliation
+returned the same acknowledgement without a second semantic mutation. A fresh
+operation with stale base `0` was rejected, leaving metadata and revision `1`
+unchanged. No local Cosmos data was uploaded. The generated guarded cleanup
+returned **`test_universe_removed = true`** in SQL Editor.
+
+Codex did not connect or execute these requests/cleanup. This is user-reported
+live evidence for the bounded commit/read/receipt/stale-write path and cleanup,
+not proof of actual network loss, delayed original requests or multiple-session
+locking. See [the repository checkpoint](cloud-metadata-repository.md).
 
 The user reports that the generated validation ran successfully in the real
 Supabase SQL Editor. This is user-supplied runtime evidence; Codex did not connect
@@ -60,19 +74,20 @@ rollback and scratch cleanup passed. **At that validation checkpoint** the
 migration was not permanently applied; schema/RPCs and scratch users were absent
 after rollback. The subsequent authorized installation is recorded above.
 
-Still unverified: real commit/receipt HTTP behavior and uncertain-outcome
-reconciliation, second-owner HTTP isolation, direct private-table/GraphQL HTTP
-exclusion, independent-session locking/races, historical parser edge cases and
+Still unverified: genuine transport-loss/delayed-request reconciliation cases,
+second-owner HTTP isolation, direct private-table/GraphQL HTTP
+exclusion, independent-session locking/races, broader rich/compound commands
+over real HTTP, historical parser edge cases and
 realistic database performance. JWT/HTTP list/create/read and anonymous denial
-have now passed as recorded above; that narrower success does not close the
-remaining gates.
+and bounded commit/receipt/stale-write checks have passed as recorded above;
+those successes do not close the remaining gates.
 
 **Readiness:** the SQL runtime gate passed, the unchanged migration was
 subsequently installed by the user with the intended API configuration, and
-Step 4's live list/create/read and cleanup gate has now passed. **Step 4 is ready
-to commit as an inactive client/gateway foundation.** The remaining
-HTTP/concurrency checks and Step 5 repository work are separate gates before
-production cloud use. This documentation update does not authorize or perform
+Steps 4/5's bounded live RPC and cleanup gates have passed. **Step 5 is ready
+to commit as an inactive repository foundation.** Remaining HTTP/concurrency,
+durable pending-work recovery and Step 6 scoped cache/bootstrap are separate
+gates before production cloud use. This documentation update does not authorize or perform
 database changes, cloud activation or deployment.
 
 ## Runtime review

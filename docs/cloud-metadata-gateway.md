@@ -238,11 +238,24 @@ screenshots were reviewed at desktop/narrow/mobile widths. All browser sessions
 were isolated test profiles with Auth/SDK/RPC mocks. These automated results
 remain distinct from the subsequent user-reported real HTTP checkpoint above.
 
-Still separate: real metadata commit/receipt HTTP behavior, independent-session
-locking/races, second authenticated-owner isolation over HTTP, GraphQL HTTP
+The subsequent Step 5 live commit/read/receipt and stale-write diagnostic passed,
+according to the user, followed by guarded cleanup returning
+`test_universe_removed = true`. It reconciled a deliberately withheld successful
+reply without a second semantic mutation, left revision `1` unchanged after
+stale rejection, and uploaded no existing local Cosmos. Codex ran neither test
+nor cleanup; see [the full Step 5 checkpoint](cloud-metadata-repository.md).
+
+Still separate: genuine transport-loss/delayed-request scenarios, independent-session
+locking/races, second authenticated-owner isolation over HTTP, private-table/GraphQL HTTP
 exposure, cross-device bootstrap/cache, migration decisions, files, synchronization
 and offline/PWA work. The installed schema/configuration review and SQL Editor
 assertions do not claim these live integration checks.
 
 Stop at Step 4. Step 5 repository commands and production cloud activation need
 their own approved work; nothing in this branch enables them.
+
+Subsequent approved Step 5 work is documented in
+[the inactive cloud repository](cloud-metadata-repository.md). It adds revision
+and receipt command orchestration without changing this gateway, Auth or normal
+startup. Its bounded live diagnostic and cleanup have now passed; Step 5 is
+ready to commit as an inactive foundation, without enabling cloud mode.

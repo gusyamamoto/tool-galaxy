@@ -263,8 +263,11 @@ unchanged migration with private API schema/search-path exclusion confirmed.
 The user also reports successful Step 4 authenticated list/create/read and
 anonymous-denial HTTP checks, followed by guarded cleanup returning exactly
 one deleted disposable Universe; see [the live gateway checkpoint](cloud-metadata-gateway.md).
-Step 4 is ready to commit as an inactive foundation. Real commit/receipt HTTP
-behavior, second-owner isolation and direct private-table/GraphQL HTTP exclusion,
+The subsequent user-reported Step 5 commit/read/receipt/stale-write diagnostic
+passed, and guarded cleanup returned `test_universe_removed = true`; see
+[the live repository checkpoint](cloud-metadata-repository.md). Step 5 is ready
+to commit as an inactive foundation. Genuine transport-loss/delayed-request
+cases, second-owner isolation and direct private-table/GraphQL HTTP exclusion,
 plus concurrent-session locking, remain untested integration gates before
 production cloud use. Codex performed no database connection, application,
 cloud activation or deployment.

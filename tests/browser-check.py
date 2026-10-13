@@ -479,7 +479,10 @@ def main():
             from metadata_gateway_browser import run_metadata_gateway_checks
             run_metadata_gateway_checks(cdp=cdp,evaluate=evaluate,check=check,wait_for=wait_for,
                 origin=origin,root=ROOT,screenshot_dir=screenshot_dir)
-            print(f'{count} account/gateway foundation browser checks passed',flush=True);return
+            from cloud_repository_browser import run_cloud_repository_checks
+            run_cloud_repository_checks(cdp=cdp,evaluate=evaluate,check=check,wait_for=wait_for,
+                origin=origin,screenshot_dir=screenshot_dir)
+            print(f'{count} account/gateway/repository foundation browser checks passed',flush=True);return
 
         if options.awaitable_only:
             evaluate('physics.pause();graphNeedsSave=false')
