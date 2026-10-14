@@ -5,9 +5,14 @@
 <p>Loopback only. Sign in through normal Cosmifold at this same origin. No requests run automatically. Normal cloud mode stays inactive; this diagnostic never reads or uploads your local Cosmos.</p>
 <p>Review docs/cloud-uncertain-recovery.md before any live test. Each case creates ONE new disposable Universe. The first two cases inject harness failures. The browser Offline case uses real gateway requests under browser network emulation; it does not prove interruption during server execution.</p>
 <h2>1. Explicit disposable preparation</h2>
-<label for="test-case">Case</label><select id="test-case"><option value="lost-reply">Real commit; discard successful reply</option><option value="not-dispatched">Block HTTP dispatch; real missing receipt</option><option value="browser-offline">Actual browser Offline transport / reconnect</option></select>
+<label for="test-case">Case</label><select id="test-case"><option value="lost-reply">Real commit; discard successful reply</option><option value="not-dispatched">Block HTTP dispatch; real missing receipt</option><option value="browser-offline">Actual browser Offline transport / reconnect</option><option value="response-interruption">Server-committed / native response interruption</option></select>
 <button id="prepare" type="button">Create ONE new disposable Universe</button>
 <button id="dispatch" type="button">Send ONE planned command with transport injection</button>
+<h2>Native response interruption (reviewed harness only)</h2>
+<p>Use an isolated loopback debug browser and TWO same-origin tabs. Prepare one new fixture in the writer only. The harness pauses the exact commit response before the SDK, independently proves its receipt/state in the observer, then interrupts native transport. Do not dispatch this case by hand without the harness. It proves committed-but-unreceived recovery, not interruption midway through SQL execution.</p>
+<button id="native-writer" type="button">Label this tab WRITER (no requests)</button>
+<button id="native-observer" type="button">Label this tab OBSERVER (no requests)</button>
+<p id="native-role">No native harness role assigned.</p>
 <h2>Browser Offline subgate (new case only)</h2>
 <p>Prepare while online, then preflight below. Set this tab's DevTools Network throttling to Offline BEFORE dispatch. The command and receipt requests use the actual gateway with no synthetic failures. Do not reload while offline: static app/SDK loading is a separate gate. Restore No throttling before reloading/reopening. No manual timing deadline.</p>
 <button id="network-arm" type="button">Online: preflight browser-offline fixture (no mutation)</button>

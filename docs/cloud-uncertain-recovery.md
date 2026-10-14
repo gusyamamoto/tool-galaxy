@@ -320,7 +320,7 @@ failing real `fetch` calls to a local mocked backend; no real Supabase/CDN traff
 or SQL. Old Phase C lost-reply and stale-peer flows remain regression-tested.
 
 The operator has now completed live Supabase N1–N3 and guarded cleanup, as
-recorded below. Actual in-flight server interruption, late
+recorded below. Interruption during SQL execution, late
 original commit after an initially missing receipt, live session-switch/recovery
 overlap, simultaneous same-origin recovery contention, offline app/SDK loading,
 quota failures and realistic limits remain later bounded subgates. Files,
@@ -360,8 +360,8 @@ It is ready for commit review as an inactive checkpoint, not cloud activation.
 
 ### Next incomplete gate
 
-Next: **server-admitted/in-flight interruption with later original-receipt
-recovery**. Protect against a request committing after the client times out or
+Next: **server-admitted operation with an initially missing, later-arriving
+original receipt**. Protect against a request committing after the client times out or
 reloads, causing discarded pending state, duplicate resubmission or stale
 publication. A bounded follow-up must prove the request reached the server
 before interruption, retain the original operation ID across reload, keep writes
@@ -369,7 +369,22 @@ blocked while the receipt is unavailable/missing, and recover an eventual
 original acknowledgement at most once without semantic resend. Evidence of
 server admission/overlap is required; a client timer or held Promise alone is
 not proof. Leave this UNVERIFIED until separately designed and live-tested.
-No implementation for that follow-up is added by this documentation update.
+The bounded server-committed/native-response continuation is implemented as
+an additional case in the SAME diagnostic; see [cloud-inflight-recovery.md](cloud-inflight-recovery.md).
+It uses an independent real receipt/state audit before native response failure,
+not the original successful-reply discard. The operator has now live-validated
+independent visibility of the original receipt/exact revision-1 state BEFORE
+native response failure, with WRITER's original journal/cache still at 0.
+Transport-only reconnect followed by WRITER-only reload recovered the original
+receipt once. Two repeated recovery checks retained that state without resend,
+replacement ID, stale publication or duplicate semantic application.
+Both diagnostics were disposed; guarded cleanup returned
+`test_universes_removed = 1`; only exact temporary cache/marker keys were removed.
+Final state was **No Phase C fixture.** / **Ready; no requests made.**
+This closes the committed-before-SDK-acceptance checkpoint, not mid-SQL
+cancellation or later creation of a missing receipt. Existing cases, original-ID
+recovery and cleanup guards are unchanged. The next timing gate above remains
+UNVERIFIED. No live request or SQL was executed by Codex.
 
 Post-validation review reran all 480 non-physics Node tests (including 15 focused
 recovery tests), all 50 isolated recovery browser checks and `git diff --check`;

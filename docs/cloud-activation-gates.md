@@ -4,8 +4,9 @@ Normal Cosmifold still uses the browser-local Cosmos, IndexedDB files and local
 Backup/Restore. Signing in does not claim/upload data. Storage v5 and Backup v1
 are unchanged. Phase A, Phase B and the initial Phase C checkpoint are merged,
 operator-run live-validated and cleaned up. The browser Offline/reconnect
-checkpoint has also passed live and been cleaned up. The next open gate is
-server-admitted/in-flight interruption and later-receipt recovery. The Offline
+checkpoint and server-committed/native-response interruption checkpoint have
+also passed live and been cleaned up. The next open transport gate is an admitted
+operation with an initially missing receipt that later appears. The Offline
 checkpoint proves transport failure before server execution/dispatch completion,
 not arbitrary interruption while the server executes. No live request or SQL is
 run by Codex.
@@ -97,7 +98,7 @@ by Codex. No second account, token copying or new credentials were needed.
 
 | Gate | Urgency / next boundary |
 | --- | --- |
-| Server-admitted/in-flight interruption and later-arriving receipt | NEXT: prove a write reached the server before interruption, retain original-ID journal, block dependent writes while unresolved, and reconcile a later real receipt without resend. Browser Offline before-execution/reconnect is live-validated and closed; it does not establish this boundary. |
+| Admitted operation with initially missing, later-arriving original receipt | NEXT: establish admission while outcome remains unresolved, retain original-ID journal through interruption/reload, block dependent writes on missing/unavailable receipts, then reconcile a later real receipt without resend. Offline-before-execution and committed-before-response-acceptance checkpoints are closed; neither proves this timing case or interruption during SQL execution. |
 | Multi-tab recovery contention and session changes during delayed recovery | Phase C live-validated stale-peer/base protection; account changes and simultaneous recovery contention are automated-tested but broader live timing races remain open before activation. |
 | Rich/compound semantic HTTP round trips, archive/link/Constellation/order parity and parser/history compatibility | Subsequent bounded metadata compatibility phase; before activation/import of real data |
 | Private cloud files, originals/thumbnails, copies/deletion, upload recovery and portable export | Before normal activation/migration of file-bearing Cosmos. Strict attachment rejection remains until complete support; never imply local-only binaries are synced. |
@@ -120,8 +121,9 @@ cleaned up. Their development code stays inactive. None authorizes cloud activat
 ## Phase C checkpoint and remaining transport tests
 
 The `test/cloud-uncertain-recovery` checkpoint is merged. Do not carry its
-cleaned-up disposable fixture forward or recreate it. Recommended next branch
-name: `test/cloud-network-interruption`; extend the same recovery diagnostic.
+cleaned-up disposable fixture forward or recreate it. At that checkpoint the
+recommended follow-up was `test/cloud-network-interruption`, extending the same
+recovery diagnostic; the completed transport subgates are recorded below.
 
 Prepare an inactive, disposable-Universe diagnostic for durable uncertain writes
 across reload and unavailable/missing/later receipts. Use the existing gateway,
@@ -148,7 +150,7 @@ dependent writes, original-ID receipt recovery without semantic resubmission,
 repeat recovery without duplicate application, stale same-origin peer fencing
 and authoritative revision-1 reopening. Guarded cleanup removed exactly one
 test Universe and browser cleanup returned **No Phase C fixture**. This inactive
-checkpoint is merged; genuine interruption and the other live
+checkpoint is merged; interruption during SQL execution and the other live
 subcases in the bounded plan remain separate gates. Future runs still require
 procedure review. Realistic metadata compatibility, private cloud files and
 reversible migration remain subsequent gates; cloud activation is still blocked.
@@ -182,9 +184,9 @@ This case starts offline before dispatch: it does not prove arbitrary interrupti
 after PostgreSQL begins a mutation, long offline reload of app/SDK assets, or all
 account/multi-tab/quota races. Keep those and rich metadata/files/migration gates.
 
-### Next incomplete gate: server-admitted write interrupted before its outcome is known
+### Next incomplete transport gate: initially missing receipt after server admission
 
-The next diagnostic must establish server admission/overlap independently, not
+The next bounded diagnostic must establish server admission/overlap independently, not
 infer it from a clicked button, client timer, Offline flag or locally held
 Promise. Then interrupt transport/reload without resubmitting, preserve the
 original pending command, and verify unresolved/missing receipt states stay
@@ -192,8 +194,30 @@ blocked until the original receipt proves an outcome. Where a late commit
 occurs, accept it once, refresh authoritative state and fence abandoned contexts.
 Use new disposable fixtures and unchanged ownership/revision/cleanup boundaries.
 If actual admission/overlap or a later receipt cannot be established, mark that
-case UNVERIFIED. This follow-up is a design/testing gate, not implemented or
-authorized as a live run by recording the completed Offline checkpoint.
+case UNVERIFIED.
+
+### Closed bounded checkpoint: server-committed / native response interruption
+
+The bounded **server-committed / native response interruption** diagnostic was
+live-validated on `feature/cloud-inflight-recovery` using the existing recovery
+architecture. It pauses the exact commit response in Chromium before SDK
+delivery, independently reads the real original receipt and revision-1 state
+from another same-origin tab, then natively fails transport and preserves the
+writer's original revision-0 journal. Reconnect/reload recovers that receipt
+without resend. No SQL, RPC, schema/grant or production-client changes.
+See [the exact admission proof, limits and reviewed manual procedure](cloud-inflight-recovery.md).
+The operator independently observed the original receipt/exact revision-1 state
+before native failure while WRITER's journal/cache remained at revision 0.
+Transport-only reconnect and WRITER-only reload recovered the original receipt
+once; two repeated recovery checks preserved the same state without resend,
+replacement ID, stale publication or duplicate semantic application. Both
+diagnostics were disposed; guarded cleanup returned `test_universes_removed = 1`;
+only exact temporary cache/marker keys were removed, returning the diagnostic to
+**No Phase C fixture.** / **Ready; no requests made.**
+This is operator-reported live evidence, distinct from local/mock tests. It
+covers committed-but-unreceived response loss, not cancellation during SQL
+execution or a receipt created after an initially missing lookup. Those timing
+cases remain separate open gates. No normal cloud mode was activated.
 
 Phase B local verification: 450 non-physics Node regression tests and 58 physics
 tests passed. Mocked browser checks passed: Phase B 35, Phase A 39, and existing
