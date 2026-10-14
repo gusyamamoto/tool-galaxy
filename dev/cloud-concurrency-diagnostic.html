@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Development only: cloud revision concurrency</title><link rel="stylesheet" href="cloud-metadata-diagnostic.css">
+<style>textarea,input,select{box-sizing:border-box;width:100%;max-width:100%;padding:10px;background:#191d25;color:inherit;border:1px solid #7187ad;border-radius:6px;font:inherit}label{display:block;margin:12px 0 6px}textarea{min-height:90px}button{margin:4px 0}code{overflow-wrap:anywhere}</style></head>
+<body><main>
+<h1>Development only: Phase B revision concurrency</h1>
+<p>Cloud mode remains inactive. These buttons use one NEW disposable metadata-only Universe. They never read or upload your device Cosmos. No requests on page load.</p>
+<p>Use two distinct loopback origins with separate browser storage/Auth sessions (for example 127.0.0.1 and localhost on the same port). Sign in as the same test owner in the normal app at BOTH origins first. Do not use two tabs at the same origin. No tokens/passwords are copied here.</p>
+<p>Follow <a href="../docs/cloud-revision-concurrency.md">the exact Phase B steps</a>. Browser races do not prove PostgreSQL lock overlap. Keep fixtures if any step stops; no automatic mutation retry.</p>
+<h2>1. Prepare LEFT, then join RIGHT</h2>
+<label for="right-origin">Other context origin</label><input id="right-origin" autocomplete="off">
+<button id="prepare" type="button">LEFT: Create and seed ONE disposable Universe</button>
+<label for="fixture">Fixture JSON to copy (identities only, no credentials)</label><textarea id="fixture" readonly></textarea>
+<label for="join-fixture">RIGHT: paste the LEFT fixture JSON</label><textarea id="join-fixture" spellcheck="false"></textarea>
+<button id="join" type="button">RIGHT: Join existing fixture read-only</button>
+<h2>2. Run and verify each coordinated race</h2>
+<label for="case">Case (complete competing writes before identical operation)</label><select id="case"><option value="race">Competing writes: revision 1 to 2</option><option value="identical">Identical operation: revision 2 to 3</option></select>
+<p id="case-status" role="status">Verify each case on BOTH contexts before advancing.</p>
+<p>Before the identical-operation ticket: RIGHT must verify the competing race, generate readiness below, and copy it to LEFT. LEFT verifies the race too. A PASS in only one context is insufficient.</p>
+<button id="readiness" type="button">Generate read-only readiness for identical operation</button>
+<label for="readiness-json">RIGHT readiness (generate on RIGHT; copy to LEFT before creating ticket)</label><textarea id="readiness-json" spellcheck="false"></textarea>
+<button id="ticket" type="button">LEFT: Create a start ticket, 45 seconds ahead</button>
+<label for="ticket-json">Start ticket (copy to RIGHT, then arm BOTH before deadline)</label><textarea id="ticket-json" spellcheck="false"></textarea>
+<button id="arm" type="button">Arm ONE scheduled semantic mutation</button>
+<label for="observation">This context's observation (copy to the other context)</label><textarea id="observation" readonly></textarea>
+<label for="peer">Other context's observation</label><textarea id="peer" spellcheck="false"></textarea>
+<button id="verify" type="button">Verify both observations and exact server receipts</button>
+<h3>Explicit sequencing recovery — no new fixture</h3>
+<p>Only if LEFT committed the identical operation while RIGHT never dispatched: first select Competing writes and finish its verification on RIGHT using LEFT's preserved race observation. Historical receipt verification is allowed at revision 3. Then select Identical operation on LEFT and copy its preserved committed observation below in BOTH contexts. Recovery verifies reads/receipts only; it cannot pass the missed concurrent test.</p>
+<label for="recovery-json">Preserved LEFT identical-operation observation</label><textarea id="recovery-json" spellcheck="false"></textarea>
+<button id="recover-identical" type="button">BOTH: Verify existing LEFT commit read-only; mark concurrency UNVERIFIED</button>
+<button id="replay-identical" type="button">RIGHT only: Explicitly replay exact committed command ONCE (no new operation)</button>
+<p>The replay sends the original command/operation ID through the RPC. It must return the existing receipt without changing revision or metadata. It is not concurrent proof. No recovery action automatically retries a command.</p>
+<h3>Fresh concurrent recovery — revision 3 to 4</h3>
+<p>Only after BOTH read-only recovery checks passed. This allocates one NEW operation ID under the SAME Universe, preserves all original IDs/receipts, and changes the name to “Phase B concurrent recovery” exactly once. Do not use the old replay or original revision-4 buttons on this path.</p>
+<button id="concurrent-prepare" type="button">LEFT: Allocate fresh recovery plan locally (no mutation)</button>
+<label for="concurrent-plan">Recovery plan (copy LEFT to RIGHT)</label><textarea id="concurrent-plan" spellcheck="false"></textarea>
+<button id="concurrent-join" type="button">RIGHT: Join recovery plan read-only</button>
+<button id="concurrent-ready" type="button">BOTH: Check recovery readiness read-only at revision 3</button>
+<label for="concurrent-ready-json">RIGHT readiness (copy RIGHT to LEFT)</label><textarea id="concurrent-ready-json" spellcheck="false"></textarea>
+<p>The manual-copy countdown is retired after the missed RIGHT deadline. Do not dispatch it again. Use the read-only revision-4 check below; the next attempt needs both contexts pre-armed before a coordinated start.</p>
+<button id="concurrent-ticket" type="button" disabled>Retired: create countdown ticket</button>
+<label for="concurrent-ticket-json">Recovery start ticket (copy LEFT to RIGHT; then arm BOTH)</label><textarea id="concurrent-ticket-json" spellcheck="false"></textarea>
+<button id="concurrent-arm" type="button" disabled>Retired: automatic countdown dispatch</button>
+<label for="concurrent-observation">This context's recovery observation (copy to other context)</label><textarea id="concurrent-observation" readonly></textarea>
+<label for="concurrent-peer">Other context's recovery observation</label><textarea id="concurrent-peer" spellcheck="false"></textarea>
+<button id="concurrent-verify" type="button">BOTH: Verify concurrent recovery and exact server state</button>
+<label for="concurrent-audit-observation">Preserved LEFT recovery observation for read-only revision-4 check</label><textarea id="concurrent-audit-observation" spellcheck="false"></textarea>
+<button id="concurrent-audit" type="button">BOTH: Check existing LEFT recovery commit read-only at revision 4</button>
+<h3>Coordinated start barrier — revision 4 to 5</h3>
+<p>Requires BOTH revision-4 read-only checks. Run the development-only loopback relay at the SAME existing port/origins as instructed in the documentation. Copy/join the plan first, with no deadline. Then park LEFT and RIGHT: neither sends a mutation until both have opened revision 4, parked, confirmed, and the local relay releases them automatically. No Auth tokens go to the relay.</p>
+<button id="barrier-prepare" type="button">LEFT: Allocate fresh revision-4 barrier plan (no mutation)</button>
+<label for="barrier-plan">Barrier plan (copy LEFT to RIGHT before parking)</label><textarea id="barrier-plan" spellcheck="false"></textarea>
+<button id="barrier-join" type="button">RIGHT: Join barrier plan read-only</button>
+<button id="barrier-park" type="button">Park this context; dispatch ONCE only after BOTH are confirmed</button>
+<p>Keep both contexts visible in separate windows. The relay waits at most 120 seconds for both, then fails closed. Do not refresh/close either during the run or restart the relay. If stopped/uncertain, retain identities; never re-park or reset.</p>
+<label for="barrier-observation">This context's barrier observation (copy after BOTH finish)</label><textarea id="barrier-observation" readonly></textarea>
+<label for="barrier-peer">Other context's barrier observation</label><textarea id="barrier-peer" spellcheck="false"></textarea>
+<button id="barrier-verify" type="button">BOTH: Verify coordinated identical operation and revision 5</button>
+<h4>Next bounded check — changed-content ID reuse</h4>
+<p>Only after the coordinated test is verified in THIS context. Sends one deliberately different command with the already committed barrier operation ID. It MUST be rejected; no new ID or revision is created. Run once on LEFT, then once on RIGHT. Stop after both results; do not park/replay again.</p>
+<button id="barrier-reuse" type="button">BOTH: Test changed-content barrier ID reuse ONCE (must reject)</button>
+<h4>Next bounded check — independent SQL sessions at revision 5</h4>
+<p>After BOTH changed-content checks pass, LEFT generates exact rollback-only scripts. Prepare two independent SQL sessions BEFORE running either. Holder locks this test Universe for 20 seconds; waiter calls the public read RPC with a 2-second lock timeout. No metadata/receipt writes, new operations, schema changes or cleanup.</p>
+<button id="barrier-lock-scripts" type="button">LEFT: Generate revision-5 holder/waiter SQL (no execution)</button>
+<details><summary>Revision-5 HOLDER SQL (20-second lock, rollback)</summary><pre id="barrier-holder-sql"></pre></details>
+<details><summary>Revision-5 WAITER SQL (2-second lock timeout, rollback)</summary><pre id="barrier-waiter-sql"></pre></details>
+<label for="barrier-lock-evidence">LEFT: array of TWO complete revision-5 SQL JSON evidence objects</label><textarea id="barrier-lock-evidence" spellcheck="false"></textarea>
+<button id="barrier-verify-lock" type="button">LEFT: Verify revision-5 independent-session lock evidence</button>
+<h4>Final bounded check: delayed receipt fencing (read-only)</h4>
+<p>After SQL locking PASS, LEFT holds the real prior revision-4 receipt in an isolated in-memory recovery repository. Open revision 5 in a fresh context, then release the receipt within 120 seconds. No command is submitted and no cache is written. Do not refresh this page between these three actions. Expiry or account changes stop the test.</p>
+<button id="barrier-hold" type="button">LEFT: Hold prior revision-4 receipt (read-only)</button>
+<button id="barrier-refresh" type="button">LEFT: Open revision 5 and fence old context</button>
+<button id="barrier-release" type="button">LEFT: Release held receipt and verify fencing</button>
+<button id="barrier-complete" type="button">LEFT: Final read-only Phase B check at revision 5</button>
+<p>Different backend PIDs, exact plan/revision tags and overlapping server-time intervals are required. If overlap is absent, locking stays UNVERIFIED. Run whole scripts including ROLLBACK; after any SQL error, manually ROLLBACK that session. Do not modify grants/RLS or force a pass. Stop after the evidence result.</p>
+<button id="barrier-cleanup" type="button">Inspect barrier state and generate exact guarded cleanup (no SQL execution)</button>
+<p>Stop after BOTH verification results. This step does not complete independent-session SQL locking or the remaining Phase B gates.</p>
+<button id="concurrent-cleanup" type="button">Inspect recovery state and generate separately guarded cleanup (no SQL execution)</button>
+<p>Stop after BOTH verifications pass. Independent-session locking and remaining Phase B gates are not completed by this step. Existing cleanup guards remain unchanged; old revision-3 cleanup intentionally refuses the new revision-4 state.</p>
+<h2>3. Negative reuse and delayed acknowledgement</h2>
+<button id="reuse" type="button">BOTH: Submit changed content with the committed operation ID (must reject)</button>
+<button id="hold" type="button">LEFT: Hold an old real receipt acknowledgement</button>
+<button id="advance" type="button">RIGHT: Commit the explicit NEWER test state, revision 4</button>
+<button id="refresh" type="button">LEFT: Refresh revision 4 and dispose prior context</button>
+<button id="release" type="button">LEFT: Release held acknowledgement and verify fencing</button>
+<p>The receipt hold lasts at most 60 seconds. Do not reload during it. It is a development publication delay, not a real network outage.</p>
+<h2>4. Independent SQL sessions (manual only)</h2>
+<button id="lock-scripts" type="button">Generate bounded holder/waiter scripts after revision 4</button>
+<details><summary>Holder SQL (8-second lock, rollback)</summary><pre id="holder-sql"></pre></details>
+<details><summary>Waiter SQL (2-second lock timeout, rollback)</summary><pre id="waiter-sql"></pre></details>
+<label for="lock-evidence">Paste an array containing the TWO complete SQL JSON evidence objects</label><textarea id="lock-evidence" spellcheck="false"></textarea>
+<button id="verify-lock" type="button">Check different backend PIDs and actual overlapping lock interval</button>
+<button id="complete" type="button">LEFT: Final Phase B check</button>
+<h2>5. Guarded cleanup</h2>
+<button id="cleanup" type="button">Inspect exact fixture read-only and generate guarded cleanup</button>
+<p>After verification, retain generated SQL and identities, then CLOSE BOTH diagnostic tabs before running cleanup manually. Changed/extra data must abort cleanup. Never remove guards or clear all browser storage.</p>
+<pre id="cleanup-identities"></pre><pre id="cleanup-sql"></pre>
+<pre id="output" role="status" aria-live="polite">Ready. No requests have run.</pre>
+</main>
+<script src="../auth-config.js"></script><script src="../services/supabase-client.js"></script><script src="../services/supabase-auth.js"></script><script src="../services/auth-service.js"></script>
+<script src="../config.js"></script><script src="../model.js"></script><script src="../portals.js"></script><script src="../constellations.js"></script><script src="../clipboard.js"></script><script src="../services/universe-repository.js"></script>
+<script src="../services/cloud-repository-contract.js"></script><script src="../services/cloud-metadata-projection.js"></script><script src="../services/cloud-metadata-changes.js"></script><script src="../services/supabase-metadata-gateway.js"></script>
+<script src="../persistence/cloud-cache-store.js"></script><script src="../services/cloud-universe-repository.js"></script>
+<script src="cloud-concurrency-plan.js"></script><script src="cloud-concurrent-recovery-plan.js"></script><script src="cloud-start-barrier-plan.js"></script><script src="cloud-start-barrier-client.js"></script><script src="cloud-concurrency-sql.js"></script><script src="cloud-concurrency-diagnostic.js"></script><script src="cloud-concurrency-page.js"></script>
+</body></html>

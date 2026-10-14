@@ -3,7 +3,9 @@
 Normal Cosmifold still uses the browser-local Cosmos, IndexedDB files and local
 Backup/Restore. Signing in does not claim/upload data. Storage v5 and Backup v1
 are unchanged. Phase A passed live and was cleaned up; this document plans the
-next tests only. No Phase B diagnostic or SQL has been implemented here.
+next tests. Phase B is now authored as an inactive diagnostic with guarded manual
+SQL generation; [its procedure](cloud-revision-concurrency.md) is ready for review.
+No live Phase B result or SQL execution is claimed.
 
 ## Closed identity/privacy gate
 
@@ -67,36 +69,31 @@ local regressions pass; guarded cleanup confirms removal of only the expected
 test Universe/state/receipts and its printed cache/marker keys. This does not
 authorize normal-app cloud activation.
 
-## Planned manual steps after Phase B is authored and reviewed
+## Phase B manual validation
 
-**There is no new page or SQL script to run now.** The next branch should supply:
-
-1. Serve the repository on the current loopback origin. Sign in as the test owner
-   normally and open the new diagnostic in two independent tabs/contexts. No
-   second account, password/token copying or new credentials are needed.
-2. Explicitly prepare one new disposable Universe in the first context; retain
-   its owner/UUID/operation IDs and generated guarded cleanup SQL. Join that exact
-   fixture in the second context; do not create another Universe.
-3. Run the distinct-operation race, checking one winner/one stale rejection and
-   unchanged losing cache. Refresh both test contexts to confirm the winner.
-4. Run identical-operation concurrency, changed-digest rejection and coherent
-   reads/reopen. Failed checks must stop without recreating/retrying fixtures.
-5. Review generated lock-test SQL. Run holder/waiter in genuinely independent SQL
-   sessions with short bounded waits, different PIDs and automatic rollback/release.
-   If SQL Editor cannot provide provable overlap, stop that assertion as unverified
-   rather than weakening it or installing/connecting tooling automatically.
-6. After final verification, run generated guarded cleanup manually. Require
-   explicit confirmation for the exact expected Universe. Unexpected metadata,
-   revisions or receipts must abort cleanup. Remove only printed Phase B
-   cache/marker keys and verify absence; never clear all browser data.
-7. Report live results for the documentation checkpoint. Do not enable cloud mode
-   or use real local/cloud Cosmos data as a test fixture.
+Phase B now supplies `/dev/cloud-concurrency-diagnostic.html` and generated
+scoped SQL. Use [the exact stage-by-stage procedure](cloud-revision-concurrency.md).
+The implementation requires TWO distinct
+loopback origins to avoid same-origin cache/Web Lock serialization; preparation
+seeds revision 1; the current recovered fixture is revision 5 with five receipts.
+The operator has verified independent SQL locking at revision 5 using two
+dashboard browser contexts, distinct backend PIDs and overlapping lock/timeout
+intervals. The final read-only historical-receipt reconciliation and fresh-context
+fencing check also passed live, producing COMPLETE at revision 5 with all five
+receipts and cache unchanged. Guarded cleanup then returned
+`test_universes_removed = 1`; the exact cache and marker keys returned null at
+BOTH origins, both diagnostic tabs were closed and the relay was stopped.
+The operator also removed accidental blank Local/Session Storage keys left by
+Chrome Application-panel editing and rechecked the original keys. No Auth
+session, real local Cosmos or unrelated storage was removed. Phase B's live
+stopping gate is closed; its development artifacts remain inactive and
+unstaged/uncommitted. These results are operator-reported, not remote execution
+by Codex. No second account, token copying or new credentials were needed.
 
 ## Gates still open
 
 | Gate | Urgency / next boundary |
 | --- | --- |
-| Concurrent writers, identical retries, coherent reads and actual locking | Phase B; close before normal activation |
 | Durable uncertain operation across reload; real lost/delayed requests/replies; missing/later receipts | Separate Phase C; close before activation. Preserve original operation identity, block dependent writes and never treat a missing receipt as proof of noncommit. |
 | Multi-tab pending-operation ownership, session changes during commits/recovery, reload/lock races | Phase B covers ordinary competing clients; Phase C covers pending/recovery races. Close before activation. Phase A is not blanket race coverage. |
 | Rich/compound semantic HTTP round trips, archive/link/Constellation/order parity and parser/history compatibility | Subsequent bounded metadata compatibility phase; before activation/import of real data |
@@ -114,11 +111,41 @@ accompany files/migration; implementation must not leave users unable to preserv
 or restore data before any destructive action. Keep each branch independently
 reviewable rather than combining them into an activation rewrite.
 
-Phase A is ready for review/commit when the user chooses. This documentation
-checkpoint does not commit it or implement Phase B.
+Phase A is complete and committed. Phase B is complete, live-validated and
+cleaned up; its changes remain inactive and unstaged/uncommitted, ready for a
+separate review/commit decision. Neither phase authorizes cloud activation.
 
-Documentation-checkpoint verification: 200 focused cloud/gateway Node tests
-passed and `git diff --check` passed. Existing browser/live evidence is recorded
-separately; no browser suite rerun was needed for these documentation-only edits.
-No application, diagnostic implementation, migration, Auth configuration or
-runtime persistence was changed, and no dependencies or connections were added.
+## Recommended next bounded branch: Phase C
+
+Recommended name: `test/cloud-uncertain-recovery`. First checkpoint and commit
+the reviewed Phase B work when explicitly authorized, so the new branch has a
+clear baseline; do not carry its disposable fixture forward or recreate it.
+
+Prepare an inactive, disposable-Universe diagnostic for durable uncertain writes
+across reload and unavailable/missing/later receipts. Use the existing gateway,
+repository, scoped cache and workspace recovery APIs. Begin with deterministic
+tests, then a separately reviewed manual transport-failure procedure. A held
+Promise alone is not genuine network-loss evidence: distinguish a harness-dropped
+response after a real server commit from actual browser/network interruption.
+Never claim which server outcome occurred until a receipt or authoritative read
+proves it. Missing receipt remains unresolved; no blind resubmission/new operation
+ID, offline outbox or automatic merge. Keep all failure injection confined to the
+development diagnostic, never normal application startup or production settings.
+
+Test the original operation surviving reload, receipt-proven commit advancing
+cache exactly once, unresolved recovery blocking dependent commands, quota/cache
+write failure after acknowledgement, and late responses after account/context
+disposal. Follow with same-origin multi-tab pending ownership/recovery races in
+one bounded substep, distinct from Phase B's two-origin writer test. Generate
+guarded cleanup for each new fixture and retain real local data untouched.
+
+No Phase C implementation or live test is authorized by documenting this scope.
+Realistic metadata compatibility, private cloud files and reversible migration
+remain subsequent gates; normal cloud activation is still blocked.
+
+Phase B local verification: 450 non-physics Node regression tests and 58 physics
+tests passed. Mocked browser checks passed: Phase B 35, Phase A 39, and existing
+Auth/cloud foundation 83. These are local/mock results, not Supabase or
+PostgreSQL validation. Normal application code, migrations, Auth configuration,
+headers and runtime persistence are unchanged; no dependencies or connections
+were added.
