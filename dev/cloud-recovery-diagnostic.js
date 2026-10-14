@@ -10,7 +10,7 @@ function createCloudRecoveryDiagnostic({auth=createAuthService(),gateway=createS
     const rawGateway=gateway;gateway={...rawGateway};
     for(const method of ['createUniverse','readUniverse','commitMetadata','getOperationReceipt'])gateway[method]=(...args)=>{
         const ctx={owner,epoch},write=['createUniverse','commitMetadata'].includes(method);
-        const timeout=method==='commitMetadata'&&readMarker()?.case==='response-interruption'?inflightTimeoutMs:requestTimeoutMs;
+        const timeout=method==='commitMetadata'&&p.nativeCase(readMarker()||{})?inflightTimeoutMs:requestTimeoutMs;
         return new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(Object.assign(new Error('Bounded diagnostic request timeout'),{
             code:write?'OUTCOME_UNKNOWN':'NETWORK_UNAVAILABLE',outcome:write?'unknown':'not-committed',requiresReconciliation:write})),timeout);
             Promise.resolve().then(()=>{guard(ctx);return rawGateway[method](...args);}).then(value=>{clearTimeout(timer);
@@ -41,7 +41,7 @@ function createCloudRecoveryDiagnostic({auth=createAuthService(),gateway=createS
             const record=reading(m,{owner,epoch});p.assert(record.status==='valid'&&record.record.pending?.command.operationId===m.operationId&&record.record.acknowledged.revision==='0','JOURNAL_MUST_PRECEDE_DISPATCH');
             p.assert(++commitCalls===1,'NO_MUTATION_RETRY');
             if(m.case==='not-dispatched')throw unknown('HARNESS_BLOCKED_BEFORE_HTTP');
-            if(['browser-offline','response-interruption'].includes(m.case)){
+            if(m.case==='browser-offline'||p.nativeCase(m)){
                 p.assert(m.case==='browser-offline'?isOffline():!isOffline(),'NATIVE_TRANSPORT_STATE_REQUIRED');
                 try{return await gateway.commitMetadata(command);}catch(error){
                     if(error.code==='OUTCOME_UNKNOWN'&&error.outcome==='unknown'&&['TRANSPORT_FAILURE','UNCLASSIFIED_RPC_FAILURE'].includes(error.reason))
@@ -53,10 +53,27 @@ function createCloudRecoveryDiagnostic({auth=createAuthService(),gateway=createS
             // Intentionally discard even a successful real reply. No ACK enters the cache.
             throw unknown('HARNESS_DROPPED_SUCCESSFUL_REPLY');
         },async getOperationReceipt(scope,id){p.assert(changes.equal(scope,m.scope)&&id===m.operationId,'ORIGINAL_OPERATION_REQUIRED');receiptCalls++;
-            if(!allowReceipts&&!['browser-offline','response-interruption'].includes(m.case))throw Object.assign(new Error('Harness receipt outage'),{code:'NETWORK_UNAVAILABLE',outcome:'not-committed'});
+            if(!allowReceipts&&m.case!=='browser-offline'&&!p.nativeCase(m))throw Object.assign(new Error('Harness receipt outage'),{code:'NETWORK_UNAVAILABLE',outcome:'not-committed'});
             const receipt=await gateway.getOperationReceipt(scope,id);
+            if(m.case==='late-receipt'){
+                // Only this disposable diagnostic's recovery observer is controlled.
+                // Never manufacture success: verify the real receipt AND state first.
+                const ctx={owner,epoch},current=owned(ctx);p.admission(current,current.admission);
+                p.assert(receipt.status==='found'&&changes.equal(receipt.acknowledgement,p.ack(current))&&
+                    receipt.request_digest===current.admission.requestDigest,'LATE_RECEIPT_PROOF_CHANGED');
+                const before=checkedCache(current,ctx),server=await gateway.readUniverse(scope);guard(ctx);
+                p.assert(server.status==='found'&&changes.equal(server.metadata,p.metadata(current,'1'))&&
+                    changes.equal(before,checkedCache(current,ctx)),'LATE_AUTHORITATIVE_STATE_CHANGED');
+                const latest=owned(ctx);p.assert(changes.equal(latest,current),'RECEIPT_VISIBILITY_CONTEXT_CHANGED');
+                if(current.visibility.state!=='released'){
+                    p.assert(before.acknowledged.revision==='0'&&before.pending?.command.operationId===id,'LATE_PENDING_REQUIRED');
+                    current.visibility.state='observed-missing';save(current,ctx);
+                    report('OBSERVATION: controlled missing ORIGINAL receipt; underlying real receipt and exact revision-1 state verified. Not a server missing result.');
+                    return {status:'missing',acknowledgement:null};
+                }
+            }
             if(receipt.status==='found')p.assert(changes.equal(receipt.acknowledgement,p.ack(m))&&/^[a-f0-9]{64}$/.test(receipt.request_digest),'PHASE_C_RECEIPT_CHANGED');return receipt;}};
-        workspace=createCloudWorkspace({auth,gateway:wrapped,cache,requestTimeoutMs:m.case==='response-interruption'?inflightTimeoutMs:requestTimeoutMs,contextId:'phase-c-'+randomUUID(),
+        workspace=createCloudWorkspace({auth,gateway:wrapped,cache,requestTimeoutMs:p.nativeCase(m)?inflightTimeoutMs:requestTimeoutMs,contextId:'phase-c-'+randomUUID(),
             newOperationId:()=>m.operationId});return workspace;}
     async function inspectServer(m,ctx){const state=await gateway.readUniverse(m.scope);guard(ctx);p.assert(state.status==='found','PHASE_C_FIXTURE_ABSENT');
         const revision=state.metadata.universe.revision;p.assert(['0','1'].includes(revision)&&changes.equal(state.metadata,p.metadata(m,revision)),'PHASE_C_SERVER_CHANGED');
@@ -67,7 +84,8 @@ function createCloudRecoveryDiagnostic({auth=createAuthService(),gateway=createS
     return Object.freeze({markerKey,
         identity(){local();const m=readMarker();return m?{...m,cacheKey:cache.key(m.scope)}:null;},
         async prepare(testCase){return run(ctx=>control(ctx,async()=>{p.assert(!readMarker(),'PHASE_C_FIXTURE_ALREADY_EXISTS');
-            const m=p.marker({format:'cosmifold-phase-c',fixtureVersion:1,scope:{ownerUserId:ctx.owner,universeId:randomUUID()},operationId:randomUUID(),case:testCase,phase:'allocated'});
+            const m=p.marker({format:'cosmifold-phase-c',fixtureVersion:1,scope:{ownerUserId:ctx.owner,universeId:randomUUID()},operationId:randomUUID(),case:testCase,phase:'allocated',
+                ...(testCase==='late-receipt'?{visibility:{visibilityVersion:1,state:'withheld'}}:{})});
             save(m,ctx);const metadata=await gateway.createUniverse(m.scope.universeId);guard(ctx);
             p.assert(changes.equal(metadata,p.metadata(m,'0')),'NEW_FIXTURE_NOT_EMPTY');
             allowReceipts=false;const state=await makeWorkspace(m).bootstrap(m.scope.universeId);guard(ctx);p.assert(state.status==='loaded'&&state.revision==='0'&&state.canMutate,'PREPARATION_NOT_DURABLE');
@@ -75,20 +93,20 @@ function createCloudRecoveryDiagnostic({auth=createAuthService(),gateway=createS
         async armBrowserOffline(){return run(ctx=>control(ctx,async()=>{const m=owned(ctx);p.assert(m.case==='browser-offline'&&m.phase==='prepared'&&workspace?.getState().canMutate&&!isOffline(),'ONLINE_PREFLIGHT_REQUIRED');
             const server=await inspectServer(m,ctx),record=checkedCache(m,ctx);p.assert(server.revision==='0'&&record.acknowledged.revision==='0'&&record.pending===null,'NETWORK_PREFLIGHT_CHANGED');
             m.phase='network-ready';save(m,ctx);report('ARMED: online fixture/cache/receipt preflight passed. No mutation sent. Set this tab to DevTools Offline, then dispatch ONCE; no timing deadline.');}));},
-        async nativeDescriptor(){return run(async ctx=>{const m=owned(ctx);p.assert(m.case==='response-interruption','NATIVE_CASE_REQUIRED');
+        async nativeDescriptor(){return run(async ctx=>{const m=owned(ctx);p.assert(p.nativeCase(m),'NATIVE_CASE_REQUIRED');
             return {origin:location.origin||null,scope:m.scope,operationId:m.operationId,command:p.command(m),commitURL:nativeCommitURL(),cacheKey:cache.key(m.scope),markerKey};});},
-        async armNativeResponse(){return run(ctx=>control(ctx,async()=>{const m=owned(ctx);p.assert(m.case==='response-interruption'&&m.phase==='prepared'&&workspace?.getState().canMutate&&!isOffline(),'NATIVE_ONLINE_PREFLIGHT_REQUIRED');
+        async armNativeResponse(){return run(ctx=>control(ctx,async()=>{const m=owned(ctx);p.assert(p.nativeCase(m)&&m.phase==='prepared'&&workspace?.getState().canMutate&&!isOffline(),'NATIVE_ONLINE_PREFLIGHT_REQUIRED');
             const server=await inspectServer(m,ctx),record=checkedCache(m,ctx);p.assert(server.revision==='0'&&record.acknowledged.revision==='0'&&record.pending===null,'NATIVE_PREFLIGHT_CHANGED');
             m.phase='native-ready';save(m,ctx);report('ARMED: native response interception preflight. Only the reviewed loopback CDP harness may coordinate this case. No mutation sent.');}));},
-        async auditNativeCommit(){return run(async ctx=>{const m=owned(ctx);p.assert(m.case==='response-interruption'&&m.phase==='dispatched','NATIVE_DISPATCH_REQUIRED');
+        async auditNativeCommit(){return run(async ctx=>{const m=owned(ctx);p.assert(p.nativeCase(m)&&m.phase==='dispatched','NATIVE_DISPATCH_REQUIRED');
             const before=checkedCache(m,ctx);p.assert(before.pending?.command.operationId===m.operationId&&before.acknowledged.revision==='0','NATIVE_JOURNAL_NOT_PENDING');
             const server=await inspectServer(m,ctx);p.assert(server.revision==='1'&&changes.equal(before,checkedCache(m,ctx)),'NATIVE_COMMIT_NOT_PROVED');
             return p.admission(m,{admissionVersion:1,source:'independent-receipt-before-native-failure',scope:m.scope,operationId:m.operationId,
                 baseRevision:'0',revision:'1',cacheRevision:'0',pausedStatus:200,requestDigest:server.receipt.request_digest});});},
-        recordNativeAdmission(proof){local();const ctx={owner,epoch};guard(ctx);const m=owned(ctx);p.assert(m.case==='response-interruption'&&m.phase==='dispatched'&&!m.admission,'NATIVE_PROOF_ALREADY_SET_OR_WRONG_PHASE');
+        recordNativeAdmission(proof){local();const ctx={owner,epoch};guard(ctx);const m=owned(ctx);p.assert(p.nativeCase(m)&&m.phase==='dispatched'&&!m.admission,'NATIVE_PROOF_ALREADY_SET_OR_WRONG_PHASE');
             const record=checkedCache(m,ctx);p.assert(record.acknowledged.revision==='0'&&record.pending?.command.operationId===m.operationId,'NATIVE_CLIENT_ACCEPTED_EARLY');
             m.admission=p.admission(m,proof);save(m,ctx);return {stored:true,cacheRevision:'0'};},
-        async dispatchOnce(){return run(ctx=>control(ctx,async()=>{const m=owned(ctx),network=m.case==='browser-offline',native=m.case==='response-interruption';
+        async dispatchOnce(){return run(ctx=>control(ctx,async()=>{const m=owned(ctx),network=m.case==='browser-offline',native=p.nativeCase(m);
             p.assert(m.phase===(native?'native-ready':network?'network-ready':'prepared')&&workspace?.getState().canMutate,'PREPARE_FIRST_NO_RETRY');
             if(network)p.assert(isOffline(),'BROWSER_OFFLINE_REQUIRED');
             else if(!native){const before=await inspectServer(m,ctx);p.assert(before.revision==='0','DISPATCH_REQUIRES_EMPTY_FIXTURE');}
@@ -105,7 +123,7 @@ function createCloudRecoveryDiagnostic({auth=createAuthService(),gateway=createS
             report('PASS: original operation journal persisted at acknowledged revision 0; dependent writes blocked. '+
                 (m.case==='lost-reply'?'Harness discarded the real commit reply.':'Harness blocked HTTP dispatch; this is not evidence of an actual network drop.')+' Reload this SAME tab next.');return {status:'pending-reconciliation',operationId:m.operationId};}));},
         async reopenBlocked(){return run(async ctx=>{const m=owned(ctx);p.assert(['dispatched','uncertain'].includes(m.phase),'UNCERTAIN_FIXTURE_REQUIRED');
-            p.assert(!['browser-offline','response-interruption'].includes(m.case),'USE_NETWORK_REOPEN');
+            p.assert(m.case!=='browser-offline'&&!p.nativeCase(m),'USE_NETWORK_REOPEN');
             const before=checkedCache(m,ctx);p.assert(before.pending?.command.operationId===m.operationId,'PENDING_ALREADY_RESOLVED');allowReceipts=false;
             const state=await makeWorkspace(m).bootstrap(m.scope.universeId);guard(ctx);
             p.assert(state.status==='pending-reconciliation'&&!state.canMutate&&state.pendingOperationId===m.operationId&&changes.equal(before,checkedCache(m,ctx)),'RELOAD_DID_NOT_PRESERVE_PENDING');
@@ -132,8 +150,29 @@ function createCloudRecoveryDiagnostic({auth=createAuthService(),gateway=createS
             let blocked=false;try{await workspace.repository().save(p.snapshot(m,'1'),{type:'items.created'});}catch(error){blocked=error.code==='PENDING_RECONCILIATION_REQUIRED';}
             guard(ctx);p.assert(blocked&&calls===commitCalls&&changes.equal(before,checkedCache(m,ctx)),'DEPENDENT_MUTATION_NOT_BLOCKED');
             report('PASS: dependent write rejected before command generation/dispatch; original ID/cache retained.');});},
+        async reopenLateReceipt(){return run(ctx=>control(ctx,async()=>{const m=owned(ctx);p.assert(m.case==='late-receipt'&&m.phase==='uncertain'&&m.admission&&m.transport&&!isOffline(),'LATE_RECOVERY_PROOF_REQUIRED');
+            const before=checkedCache(m,ctx),calls=commitCalls;allowReceipts=true;
+            const result=await makeWorkspace(m).bootstrap(m.scope.universeId);guard(ctx);const after=checkedCache(m,ctx),latest=owned(ctx);
+            p.assert(commitCalls===calls,'LATE_RECOVERY_RESENT_COMMAND');
+            if(m.visibility.state!=='released'){
+                p.assert(latest.visibility.state==='observed-missing'&&result.status==='pending-reconciliation'&&result.error?.reason==='RECEIPT_MISSING'&&
+                    !result.canMutate&&result.revision==='0'&&result.pendingOperationId===m.operationId&&changes.equal(before,after),'CONTROLLED_MISSING_NOT_BLOCKED');
+                report('PASS: controlled missing receipt kept ORIGINAL journal/ID, exact cache/base 0 and dependent writes blocked. Real commit independently proved; no resend or speculative publication.');
+            }else{
+                const server=await inspectServer(latest,ctx);p.assert(server.revision==='1'&&result.status==='loaded'&&result.revision==='1'&&after.pending===null&&
+                    after.acknowledged.revision==='1','LATE_RECEIPT_NOT_ACKNOWLEDGED');
+                report('PASS: restored receipt visibility recovered SAME ORIGINAL validated receipt at revision 1, acknowledged once; no resend or replacement operation ID.');
+            }return result;
+        }));},
+        async releaseLateReceipt(){return run(ctx=>control(ctx,async()=>{const m=owned(ctx);p.assert(m.case==='late-receipt'&&m.visibility.state==='observed-missing'&&
+            workspace?.getState().status==='pending-reconciliation'&&!isOffline(),'OBSERVE_CONTROLLED_MISSING_FIRST');
+            const before=checkedCache(m,ctx);p.assert(before.acknowledged.revision==='0'&&before.pending?.command.operationId===m.operationId,'LATE_PENDING_REQUIRED');
+            await inspectServer(m,ctx);p.assert(changes.equal(before,checkedCache(m,ctx)),'LATE_CACHE_CHANGED');
+            m.visibility.state='released';save(m,ctx);
+            report('RELEASED: only receipt visibility restored. Original journal/cache still at 0; no mutation or acknowledgement applied. Reopen original operation next.');
+        }));},
         async recoverRealReceipt(){return run(async ctx=>{const m=owned(ctx);p.assert(workspace?.getState().status==='pending-reconciliation','REOPEN_BLOCKED_FIRST');
-            p.assert(!['browser-offline','response-interruption'].includes(m.case),'USE_NETWORK_REOPEN');
+            p.assert(m.case!=='browser-offline'&&!p.nativeCase(m),'USE_NETWORK_REOPEN');
             allowReceipts=true;const state=await workspace.reconcile();guard(ctx);const record=checkedCache(m,ctx);
             if(m.case==='not-dispatched'){
                 const server=await inspectServer(m,ctx);p.assert(server.revision==='0'&&state.status==='pending-reconciliation'&&!state.canMutate&&
@@ -144,7 +183,7 @@ function createCloudRecoveryDiagnostic({auth=createAuthService(),gateway=createS
                 const server=await inspectServer(m,ctx);p.assert(server.revision==='1','RECEIPT_RECOVERY_NOT_ACKNOWLEDGED');
                 report('PASS: real original receipt recovered revision 1; journal cleared only after durable acknowledgement. No semantic command resent.');
             }return state;});},
-        async verifyAgain(){return run(async ctx=>{const m=owned(ctx);p.assert(['lost-reply','response-interruption'].includes(m.case)&&workspace?.getState().status==='loaded','RECOVER_FIRST');
+        async verifyAgain(){return run(async ctx=>{const m=owned(ctx);p.assert((m.case==='lost-reply'||p.nativeCase(m))&&workspace?.getState().status==='loaded','RECOVER_FIRST');
             const server=await inspectServer(m,ctx),before=checkedCache(m,ctx),calls=commitCalls;
             await workspace.reconcile();guard(ctx);const after=checkedCache(m,ctx);
             p.assert(server.revision==='1'&&before.pending===null&&after.pending===null&&before.acknowledged.revision==='1'&&after.acknowledged.revision==='1'&&

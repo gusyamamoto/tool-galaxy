@@ -16,8 +16,8 @@ PROOF={'admissionVersion':1,'source':'independent-receipt-before-native-failure'
 
 
 class Client:
-    def __init__(self,trace,observer=False,early=False,proof=None):
-        self.trace=trace;self.observer=observer;self.target_id='observer' if observer else 'writer';self.early=early;self.proof=proof or PROOF;self.pauses=[];self.failures=[];self.admission=None;self.phase='prepared';self.transport=None
+    def __init__(self,trace,observer=False,early=False,proof=None,test_case='response-interruption'):
+        self.trace=trace;self.observer=observer;self.target_id='observer' if observer else 'writer';self.early=early;self.proof=proof or PROOF;self.pauses=[];self.failures=[];self.admission=None;self.phase='prepared';self.transport=None;self.test_case=test_case
     def call(self,method,**params):
         self.trace.append(method)
         if method=='Fetch.failRequest':
@@ -31,12 +31,22 @@ class Client:
             self.phase='dispatched';self.pauses.append({'requestId':'fetch1','networkId':'net1','status':200,'url':DESC['commitURL'],'method':'POST','postData':json.dumps({'p_command':DESC['command']})});return True
         if code=='recoveryDiagnostic.auditNativeCommit()':self.trace.append('independent-receipt');return copy.deepcopy(self.proof)
         if code.startswith('recoveryDiagnostic.recordNativeAdmission('):self.admission=json.loads(code[len('recoveryDiagnostic.recordNativeAdmission('):-1]);self.trace.append('proof-stored');return {'stored':True,'cacheRevision':'0'}
-        if 'pendingEqual' in code:return {'phase':self.phase,'case':'response-interruption','operationId':OP,'revision':'1' if self.early else '0','pendingEqual':True,'transport':self.transport,'admission':self.admission}
+        if 'pendingEqual' in code:return {'phase':self.phase,'case':self.test_case,'operationId':OP,'revision':'1' if self.early else '0','pendingEqual':True,'transport':self.transport,'admission':self.admission}
         if code=='recoveryDiagnostic.dispose()':self.trace.append('disposed')
         return None
 
 
 class HarnessTests(unittest.TestCase):
+    def test_late_receipt_uses_same_native_commit_proof_and_failure_not_a_second_mutation(self):
+        trace=[];writer=Client(trace,test_case='late-receipt');observer=Client(trace,observer=True,test_case='late-receipt')
+        result=h.coordinate(writer,observer,ORIGIN,report=lambda _:None)
+        self.assertEqual(result['proof'],PROOF);self.assertEqual(result['operationId'],OP)
+        self.assertLess(trace.index('proof-stored'),trace.index('Fetch.failRequest'))
+        self.assertEqual(trace.count('Fetch.failRequest'),1)
+    def test_non_native_case_cannot_claim_native_gate(self):
+        trace=[]
+        with self.assertRaises(h.Unverified):h.coordinate(Client(trace,test_case='lost-reply'),Client(trace,observer=True),ORIGIN,report=lambda _:None)
+        self.assertNotIn('independent-receipt',trace)
     def test_exact_native_pause_and_original_body_required(self):
         paused={'requestId':'fetch1','networkId':'net1','status':200,'url':DESC['commitURL'],'method':'POST','postData':json.dumps({'p_command':DESC['command']})}
         h.validate_pause(paused,DESC)

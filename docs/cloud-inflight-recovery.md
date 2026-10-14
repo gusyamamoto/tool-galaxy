@@ -6,6 +6,12 @@ storage v5, Backup v1, hierarchy, physics or product UI changes are involved.
 No SQL/RPC/schema/grant/platform change is required. The operator has completed
 live validation and guarded cleanup; normal cloud activation remains blocked.
 
+The follow-up [controlled missing-then-visible receipt case](cloud-late-receipt-recovery.md)
+has also passed operator-run live validation and guarded cleanup using this
+native coordinator with a separate disposable fixture. Its withholding
+control applies only to case `late-receipt`; this checkpoint's case
+`response-interruption` still uses real receipts without that control.
+
 ## The exact boundary and why it is reliable
 
 For this bounded test, **server-admitted** means something stronger: the original
