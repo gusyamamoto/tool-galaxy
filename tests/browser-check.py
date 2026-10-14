@@ -253,7 +253,10 @@ def main():
     browser = find_browser()
     temp_root = Path(tempfile.gettempdir()).resolve()
     handler=QuietHandler
-    if options.cloud_concurrency_only or options.cloud_recovery_only:
+    if options.cloud_recovery_only:
+        from cloud_recovery_browser import make_handler
+        handler=make_handler(QuietHandler)
+    elif options.cloud_concurrency_only:
         from cloud_concurrency_browser import make_handler
         handler=make_handler(QuietHandler)
     server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), functools.partial(handler, directory=str(options.site_root)))

@@ -5,14 +5,16 @@ const recoveryDiagnostic=recoveryLocal?createCloudRecoveryDiagnostic({report:tex
 function recoveryIdentity(){const value=recoveryDiagnostic.identity();document.getElementById('identity').textContent=value?JSON.stringify({...value,markerKey:recoveryDiagnostic.markerKey},null,2):'No Phase C fixture.';return value;}
 function recoveryControls(){recoveryButtons.forEach(button=>button.disabled=!recoveryLocal||recoveryBusy||recoveryDisposed);
     if(!recoveryLocal||recoveryBusy||recoveryDisposed)return;
+    if(['cosmifold-inflight-writer','cosmifold-inflight-observer'].includes(window.name))document.getElementById('native-role').textContent='Native harness role: '+window.name.split('-').at(-1).toUpperCase()+'.';
     const m=recoveryIdentity();document.getElementById('prepare').disabled=!!m;
-    const network=m?.case==='browser-offline';
-    document.getElementById('dispatch').disabled=m?.phase!==(network?'network-ready':'prepared');
+    const network=m?.case==='browser-offline',native=m?.case==='response-interruption';
+    document.getElementById('dispatch').disabled=m?.phase!==(native?'native-ready':network?'network-ready':'prepared');
     for(const id of ['reopen','blocked','recover','again','stale','acknowledged'])document.getElementById(id).disabled=!m||!['dispatched','uncertain'].includes(m.phase);
-    for(const id of ['reopen','recover','again','stale','acknowledged'])if(network)document.getElementById(id).disabled=true;
+    for(const id of ['reopen','recover','stale','acknowledged'])if(network||native)document.getElementById(id).disabled=true;
+    if(network)document.getElementById('again').disabled=true;
     document.getElementById('network-arm').disabled=!network||m.phase!=='prepared';
     document.getElementById('network-blocked').disabled=!network||m.phase!=='uncertain';
-    document.getElementById('network-reopen').disabled=!network||m.phase!=='uncertain';
+    document.getElementById('network-reopen').disabled=!(network||native)||m.phase!=='uncertain';
     document.getElementById('cleanup').disabled=!m;
 }
 async function recoveryAction(action){recoveryBusy=true;recoveryControls();try{await action();}
@@ -21,6 +23,8 @@ async function recoveryAction(action){recoveryBusy=true;recoveryControls();try{a
     finally{recoveryBusy=false;recoveryControls();}}
 function recoveryClick(id,action){document.getElementById(id).addEventListener('click',()=>recoveryAction(action));}
 if(recoveryLocal){
+    for(const role of ['writer','observer'])recoveryClick('native-'+role,()=>{window.name='cosmifold-inflight-'+role;
+        document.getElementById('native-role').textContent='Native harness role: '+role.toUpperCase()+'.';});
     recoveryClick('prepare',()=>recoveryDiagnostic.prepare(document.getElementById('test-case').value));
     recoveryClick('dispatch',()=>recoveryDiagnostic.dispatchOnce());recoveryClick('reopen',()=>recoveryDiagnostic.reopenBlocked());
     recoveryClick('network-arm',()=>recoveryDiagnostic.armBrowserOffline());recoveryClick('network-blocked',()=>recoveryDiagnostic.checkBrowserOffline());

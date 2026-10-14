@@ -8,7 +8,8 @@ function diagnosticEnvironment(){const e=environment({initial:empty});let seq=10
     e.storage.setItem('galaxy:user-data','KEEP_LOCAL');e.storage.setItem('supabase-test-session','KEEP_AUTH');e.storage.setItem('cosmifold:dev:cloud-boundary:v1','KEEP_A');
     const messages=[],factory=e.get('createCloudRecoveryDiagnostic');
     function fresh(extra={}){let count=0;return factory({auth:e.auth,gateway:e.gateway,cache:e.cache,storage:()=>e.storage,locks:()=>e.locks,
-        location:{protocol:'http:',hostname:'127.0.0.1'},randomUUID:()=>++count===1?U:`00000000-0000-4000-9000-${String(++seq).padStart(12,'0')}`,
+        location:{protocol:'http:',hostname:'127.0.0.1',origin:'http://127.0.0.1:5500'},nativeCommitURL:()=> 'https://example.invalid/rest/v1/rpc/cosmifold_commit_metadata',
+        randomUUID:()=>++count===1?U:`00000000-0000-4000-9000-${String(++seq).padStart(12,'0')}`,
         report:text=>messages.push(text),...extra});}
     return {...e,fresh,messages};}
 
@@ -168,4 +169,62 @@ test('original Phase C markers remain compatible; fake/mis-scoped network eviden
     for(const field of [{attempts:2},{observedOffline:false},{reason:'REQUEST_TIMEOUT'},{code:'AUTH_UNAVAILABLE'}])assert.throws(()=>plan.marker({...m,transport:{...m.transport,...field}}));
     assert.throws(()=>plan.marker({...m,case:'lost-reply'}));
     const legacy={...m,case:'lost-reply'};delete legacy.transport;assert.deepEqual(plain(plan.marker(legacy)),legacy);
+});
+
+test('native interrupted response needs independent committed receipt BEFORE failure; reload recovers original ID once without semantic resend',async()=>{
+    const e=diagnosticEnvironment();let offline=false;const commit=e.gateway.commitMetadata,get=e.gateway.getOperationReceipt,started=deferred(),fail=deferred();
+    e.gateway.commitMetadata=async command=>{await commit(command);started.resolve();await fail.promise;
+        throw Object.assign(new Error('Native response failed'),{code:'OUTCOME_UNKNOWN',outcome:'unknown',reason:'TRANSPORT_FAILURE'});};
+    e.gateway.getOperationReceipt=async(...args)=>{if(offline)throw Object.assign(new Error('Offline'),{code:'NETWORK_UNAVAILABLE'});return get(...args);};
+    const writer=e.fresh({isOffline:()=>offline}),observer=e.fresh(),identity=await writer.prepare('response-interruption');
+    const desc=await writer.nativeDescriptor();assert.equal(desc.operationId,identity.operationId);await writer.armNativeResponse();
+    const dispatch=writer.dispatchOnce();await started.promise;const cached=e.storage.getItem(e.cache.key(identity.scope));
+    assert.equal(e.remote().universe.revision,'1');assert.equal(e.record().acknowledged.revision,'0');assert.ok(e.record().pending);
+    const proof=plain(await observer.auditNativeCommit());assert.equal(e.storage.getItem(e.cache.key(identity.scope)),cached);
+    assert.equal(writer.recordNativeAdmission(proof).stored,true);assert.equal(e.storage.getItem(e.cache.key(identity.scope)),cached);
+    offline=true;fail.resolve();await dispatch;await writer.checkBlocked();assert.equal(e.storage.getItem(e.cache.key(identity.scope)),cached);
+    const m=writer.identity();assert.deepEqual(plain(m.admission),proof);assert.equal(m.transport.attempts,1);
+    const noProof=plain(m);delete noProof.cacheKey;delete noProof.admission;
+    assert.throws(()=>e.get('cloudRecoveryPlan').marker(noProof),{code:'NATIVE_UNCERTAINTY_PROOF_REQUIRED'});
+    writer.dispose();offline=false;const recovered=e.fresh({isOffline:()=>offline});assert.equal((await recovered.reopenBrowserNetwork()).revision,'1');
+    await recovered.verifyAgain();await recovered.verifyAgain();assert.equal(e.record().pending,null);
+    assert.equal(e.calls.filter(c=>c.method==='commit').length,1);assert.ok(e.calls.filter(c=>c.method==='receipt').every(c=>c.id===identity.operationId));
+    assert.match(await recovered.cleanupSQL(),/^-- MANUAL PHASE-C CLEANUP/);assert.equal(e.storage.getItem('galaxy:user-data'),'KEEP_LOCAL');
+    observer.dispose();recovered.dispose();
+});
+
+test('native admission refuses missing/changed receipt, wrong scope/revision and early acknowledgement; no audit cache writes',async()=>{
+    const e=diagnosticEnvironment(),diag=e.fresh(),observer=e.fresh(),identity=await diag.prepare('response-interruption');await diag.armNativeResponse();
+    const started=deferred(),release=deferred();e.gateway.commitMetadata=async()=>{started.resolve();await release.promise;throw Object.assign(new Error('Failed'),{code:'OUTCOME_UNKNOWN',reason:'TRANSPORT_FAILURE',outcome:'unknown'});};
+    const dispatch=diag.dispatchOnce();await started.promise;const original=e.storage.getItem(e.cache.key(identity.scope));
+    await assert.rejects(observer.auditNativeCommit(),{code:'NATIVE_COMMIT_NOT_PROVED'});
+    const proof={admissionVersion:1,source:'independent-receipt-before-native-failure',scope:identity.scope,operationId:identity.operationId,baseRevision:'0',revision:'1',cacheRevision:'0',pausedStatus:200,requestDigest:'a'.repeat(64)};
+    for(const changed of [{...proof,revision:'2'},{...proof,pausedStatus:500},{...proof,operationId:U},{...proof,scope:{...identity.scope,ownerUserId:B}}])
+        assert.throws(()=>diag.recordNativeAdmission(changed),{code:'INVALID_NATIVE_ADMISSION'});
+    assert.equal(e.storage.getItem(e.cache.key(identity.scope)),original);diag.dispose();release.resolve();await assert.rejects(dispatch);observer.dispose();
+});
+
+test('committed native proof never tolerates a missing or changed original receipt after reconnect',async()=>{
+    const e=diagnosticEnvironment();let offline=false;const commit=e.gateway.commitMetadata,get=e.gateway.getOperationReceipt,started=deferred(),fail=deferred();
+    e.gateway.commitMetadata=async command=>{await commit(command);started.resolve();await fail.promise;throw Object.assign(new Error('Failed'),{code:'OUTCOME_UNKNOWN',reason:'TRANSPORT_FAILURE',outcome:'unknown'});};
+    e.gateway.getOperationReceipt=async(...args)=>{if(offline)throw Object.assign(new Error('Offline'),{code:'NETWORK_UNAVAILABLE'});return get(...args);};
+    const diag=e.fresh({isOffline:()=>offline}),observer=e.fresh(),identity=await diag.prepare('response-interruption');await diag.armNativeResponse();
+    const dispatch=diag.dispatchOnce();await started.promise;diag.recordNativeAdmission(plain(await observer.auditNativeCommit()));offline=true;fail.resolve();await dispatch;diag.dispose();offline=false;
+    e.gateway.getOperationReceipt=async()=>({status:'missing',acknowledgement:null});
+    const reloaded=e.fresh({isOffline:()=>offline}),before=e.storage.getItem(e.cache.key(identity.scope));
+    await assert.rejects(reloaded.reopenBrowserNetwork(),{code:'PHASE_C_RECEIPT_CHANGED'});
+    assert.equal(e.storage.getItem(e.cache.key(identity.scope)),before);assert.equal(e.calls.filter(c=>c.method==='commit').length,1);observer.dispose();reloaded.dispose();
+});
+
+test('account switch after native admission fences abandoned writer and retains original journal for validated owner recovery',async()=>{
+    const e=diagnosticEnvironment(),started=deferred(),fail=deferred(),commit=e.gateway.commitMetadata;
+    e.gateway.commitMetadata=async command=>{await commit(command);started.resolve();await fail.promise;
+        throw Object.assign(new Error('Native fail'),{code:'OUTCOME_UNKNOWN',reason:'TRANSPORT_FAILURE',outcome:'unknown'});};
+    const writer=e.fresh(),observer=e.fresh(),identity=await writer.prepare('response-interruption');await writer.armNativeResponse();
+    const sending=writer.dispatchOnce();await started.promise;writer.recordNativeAdmission(plain(await observer.auditNativeCommit()));
+    const before=e.storage.getItem(e.cache.key(identity.scope));e.auth.emit(B);fail.resolve();await assert.rejects(sending,{code:'ACCOUNT_CONTEXT_CHANGED'});
+    assert.equal(e.storage.getItem(e.cache.key(identity.scope)),before);assert.equal(e.storage.getItem(e.cache.key({ownerUserId:B,universeId:U})),null);
+    assert.equal(e.messages.some(text=>text.includes('independent real receipt proved commit BEFORE')),false);
+    e.auth.emit(A);const recovered=e.reload();assert.equal((await recovered.bootstrap(U)).revision,'1');assert.equal(e.record().pending,null);
+    assert.equal(e.calls.filter(c=>c.method==='commit').length,1);writer.dispose();observer.dispose();recovered.dispose();
 });
