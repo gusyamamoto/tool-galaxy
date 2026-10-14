@@ -360,8 +360,26 @@ It is ready for commit review as an inactive checkpoint, not cloud activation.
 
 ### Next incomplete gate
 
-Next: **server-admitted operation with an initially missing, later-arriving
-original receipt**. Protect against a request committing after the client times out or
+The [late-receipt observation subgate](cloud-late-receipt-recovery.md) has PASSED
+operator-run live validation and guarded cleanup (2026-10-14). The SAME diagnostic
+and native harness independently proved the original receipt/exact server revision
+1 while WRITER retained its original journal/cache at 0. Controlled missing
+visibility preserved that exact pending state and blocked dependent writes across
+reload. Release changed visibility only; reopening recovered the SAME original
+receipt once, and two repeat checks were idempotent. No resend, replacement ID,
+journal deletion while unresolved or speculative publication occurred. Both tabs
+were disposed; full guarded cleanup returned `test_universes_removed = 1`; exact
+temporary cache/marker removal restored **No Phase C fixture.** /
+**Ready; no requests made.** This is operator-reported evidence, not Codex remote
+execution. Every withheld lookup verified the real underlying receipt/state.
+This closes controlled receipt unavailability AFTER a real commit, not natural
+database replication/visibility delay, later creation of a genuinely absent
+server receipt, cancellation during SQL execution or broader live timing races.
+Existing cases and production recovery behavior remain unchanged; cloud activation
+is still blocked.
+
+The broader unverified timing case is **server-admitted operation with an
+initially missing server receipt that is created later**. Protect against a request committing after the client times out or
 reloads, causing discarded pending state, duplicate resubmission or stale
 publication. A bounded follow-up must prove the request reached the server
 before interruption, retain the original operation ID across reload, keep writes

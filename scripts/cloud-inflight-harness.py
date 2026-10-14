@@ -180,7 +180,7 @@ mock=True is available to local tests only; the manual CLI always uses real RPCs
         paused = writer.pauses.pop(0)
         validate_pause(paused,descriptor,mock)
         before = pending_summary(writer,descriptor)
-        require(before['phase']=='dispatched' and before['revision']=='0' and before['pendingEqual'] and not before['transport'], 'CLIENT_ACCEPTED_BEFORE_PROOF')
+        require(before['case'] in ('response-interruption','late-receipt') and before['phase']=='dispatched' and before['revision']=='0' and before['pendingEqual'] and not before['transport'], 'CLIENT_ACCEPTED_BEFORE_PROOF')
         proof = validate_admission(observer.evaluate('recoveryDiagnostic.auditNativeCommit()'),descriptor)
         stored = writer.evaluate('recoveryDiagnostic.recordNativeAdmission('+json.dumps(proof)+')')
         require(stored=={'stored':True,'cacheRevision':'0'}, 'ADMISSION_PROOF_NOT_STORED')
@@ -198,7 +198,7 @@ mock=True is available to local tests only; the manual CLI always uses real RPCs
                 break
             require(time.monotonic()<deadline+10, 'UNCERTAIN_JOURNAL_UNVERIFIED')
             time.sleep(0.03)
-        require(value['case']=='response-interruption' and value['operationId']==descriptor['operationId'] and value['revision']=='0' and
+        require(value['case']==before['case'] and value['operationId']==descriptor['operationId'] and value['revision']=='0' and
                 value['pendingEqual'] and value['admission']==proof and value['transport'] and value['transport']['attempts']==1, 'NATIVE_INTERRUPTION_NOT_DURABLE')
         require(any(f['requestId']==failed_id and f['errorText']=='net::ERR_INTERNET_DISCONNECTED' for f in writer.failures), 'NATIVE_LOADING_FAILURE_UNVERIFIED')
         writer.evaluate('recoveryDiagnostic.checkBlocked()')

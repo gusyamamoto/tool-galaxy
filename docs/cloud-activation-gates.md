@@ -5,8 +5,12 @@ Backup/Restore. Signing in does not claim/upload data. Storage v5 and Backup v1
 are unchanged. Phase A, Phase B and the initial Phase C checkpoint are merged,
 operator-run live-validated and cleaned up. The browser Offline/reconnect
 checkpoint and server-committed/native-response interruption checkpoint have
-also passed live and been cleaned up. The next open transport gate is an admitted
-operation with an initially missing receipt that later appears. The Offline
+also passed live and been cleaned up. The controlled missing-then-visible
+ORIGINAL receipt checkpoint has now passed live and been cleaned up as well:
+receipt visibility was withheld AFTER an independently verified real commit.
+The next open transport timing gate is a server-admitted operation whose receipt
+is genuinely absent on the server at lookup and created later; it remains
+UNVERIFIED, as does interruption/cancellation midway through SQL execution. The Offline
 checkpoint proves transport failure before server execution/dispatch completion,
 not arbitrary interruption while the server executes. No live request or SQL is
 run by Codex.
@@ -98,7 +102,7 @@ by Codex. No second account, token copying or new credentials were needed.
 
 | Gate | Urgency / next boundary |
 | --- | --- |
-| Admitted operation with initially missing, later-arriving original receipt | NEXT: establish admission while outcome remains unresolved, retain original-ID journal through interruption/reload, block dependent writes on missing/unavailable receipts, then reconcile a later real receipt without resend. Offline-before-execution and committed-before-response-acceptance checkpoints are closed; neither proves this timing case or interruption during SQL execution. |
+| Server-admitted operation with genuinely absent server receipt created later; interruption/cancellation during SQL execution | UNVERIFIED: controlled missing-then-visible receipt observation after an independently proved commit has PASSED live and been cleaned up. That bounded checkpoint does not prove natural database replication/visibility delay, actual later receipt creation or mid-SQL interruption. Independently establish admission/overlap and the relevant server outcome in a separately reviewed timing test. |
 | Multi-tab recovery contention and session changes during delayed recovery | Phase C live-validated stale-peer/base protection; account changes and simultaneous recovery contention are automated-tested but broader live timing races remain open before activation. |
 | Rich/compound semantic HTTP round trips, archive/link/Constellation/order parity and parser/history compatibility | Subsequent bounded metadata compatibility phase; before activation/import of real data |
 | Private cloud files, originals/thumbnails, copies/deletion, upload recovery and portable export | Before normal activation/migration of file-bearing Cosmos. Strict attachment rejection remains until complete support; never imply local-only binaries are synced. |
@@ -184,7 +188,7 @@ This case starts offline before dispatch: it does not prove arbitrary interrupti
 after PostgreSQL begins a mutation, long offline reload of app/SDK assets, or all
 account/multi-tab/quota races. Keep those and rich metadata/files/migration gates.
 
-### Next incomplete transport gate: initially missing receipt after server admission
+### Next incomplete transport timing gate: genuinely absent server receipt created later
 
 The next bounded diagnostic must establish server admission/overlap independently, not
 infer it from a clicked button, client timer, Offline flag or locally held
@@ -195,6 +199,39 @@ occurs, accept it once, refresh authoritative state and fence abandoned contexts
 Use new disposable fixtures and unchanged ownership/revision/cleanup boundaries.
 If actual admission/overlap or a later receipt cannot be established, mark that
 case UNVERIFIED.
+
+### Closed bounded checkpoint: controlled missing-then-visible ORIGINAL receipt
+
+`feature/cloud-late-receipt-recovery` has PASSED operator-run live validation and
+guarded cleanup (2026-10-14). In an isolated Chrome debug profile on port 9222,
+same-origin OBSERVER independently verified the ORIGINAL receipt and exact
+authoritative revision-1 state before native response failure, while WRITER's
+original journal/cache remained at revision 0. Only WRITER prepared one disposable
+Universe; the existing native interruption harness ran exactly once.
+
+Transport-only `--reconnect` made no RPC, mutation or reload. WRITER-only reload
+then reopened the SAME original operation. The diagnostic verified the real
+underlying receipt/state and deliberately withheld receipt visibility from
+recovery as controlled missing, explicitly NOT a server-missing result. The
+original ID/journal and exact revision-0 cache survived another reload/check;
+dependent writes stayed blocked. There was no resend, replacement ID, unresolved
+journal deletion or speculative publication.
+
+Explicit visibility restoration changed only control state, leaving journal/cache
+at 0 with no mutation or acknowledgement. Reopening recovered the SAME ORIGINAL
+validated receipt at revision 1 once. Two repeat checks preserved revision/state
+without a second semantic application or mutation call. Both diagnostics were
+disposed; full guarded Phase C cleanup returned `test_universes_removed = 1`.
+Only exact temporary cache/marker keys were removed, restoring
+**No Phase C fixture.** / **Ready; no requests made.**
+
+See [the exact proof, live record and repeatable procedure](cloud-late-receipt-recovery.md).
+This operator-reported evidence closes safe recovery across controlled receipt
+unavailability AFTER a real original commit. It does not prove natural database
+replication/visibility delay, a genuinely absent server receipt created later,
+or interruption/cancellation midway through SQL execution. The deployed
+metadata/revision/receipt transaction remains atomic. Production recovery behavior
+is unchanged; cloud mode remains inactive and all remaining gates stay in force.
 
 ### Closed bounded checkpoint: server-committed / native response interruption
 

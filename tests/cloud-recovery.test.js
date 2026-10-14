@@ -13,6 +13,90 @@ function diagnosticEnvironment(){const e=environment({initial:empty});let seq=10
         report:text=>messages.push(text),...extra});}
     return {...e,fresh,messages};}
 
+async function lateEnvironment(){
+    const e=diagnosticEnvironment();let offline=false;
+    const commit=e.gateway.commitMetadata,started=deferred(),fail=deferred();
+    e.gateway.commitMetadata=async command=>{await commit(command);started.resolve();await fail.promise;
+        throw Object.assign(new Error('Native failure'),{code:'OUTCOME_UNKNOWN',outcome:'unknown',reason:'TRANSPORT_FAILURE'});};
+    const writer=e.fresh({isOffline:()=>offline}),observer=e.fresh(),identity=await writer.prepare('late-receipt');await writer.armNativeResponse();
+    const dispatch=writer.dispatchOnce();await started.promise;writer.recordNativeAdmission(plain(await observer.auditNativeCommit()));
+    offline=true;fail.resolve();await dispatch;await writer.checkBlocked();writer.dispose();observer.dispose();offline=false;
+    return {...e,identity,resume:()=>e.fresh({isOffline:()=>offline})};
+}
+
+test('proved commit with controlled missing receipt survives reload, blocks writes, releases only observation, and recovers original exactly once',async()=>{
+    const e=await lateEnvironment(),key=e.cache.key(e.identity.scope),before=e.storage.getItem(key),diag=e.resume();
+    await assert.rejects(diag.releaseLateReceipt(),{code:'OBSERVE_CONTROLLED_MISSING_FIRST'});
+    for(let i=0;i<2;i++){
+        const state=await diag.reopenLateReceipt();assert.equal(state.status,'pending-reconciliation');assert.equal(state.error.reason,'RECEIPT_MISSING');
+        await diag.checkBlocked();assert.equal(e.storage.getItem(key),before);assert.equal(e.remote().universe.revision,'1');
+    }
+    assert.equal(diag.identity().visibility.state,'observed-missing');diag.dispose();const reloaded=e.resume();await reloaded.reopenLateReceipt();
+    await reloaded.releaseLateReceipt();assert.equal(e.storage.getItem(key),before);assert.equal(e.record().pending.command.operationId,e.identity.operationId);
+    reloaded.dispose();const visible=e.resume();assert.equal((await visible.reopenLateReceipt()).revision,'1');
+    await visible.verifyAgain();await visible.verifyAgain();assert.equal(e.record().pending,null);
+    assert.equal(e.calls.filter(c=>c.method==='commit').length,1);assert.ok(e.calls.filter(c=>c.method==='receipt').every(c=>c.id===e.identity.operationId));
+    let previous='0',advances=0;for(const w of e.storage.writes.filter(w=>w.key===key)){const r=JSON.parse(w.value).acknowledged.revision;if(previous==='0'&&r==='1')advances++;previous=r;}
+    assert.equal(advances,1);assert.equal(e.storage.getItem('galaxy:user-data'),'KEEP_LOCAL');assert.equal(e.storage.getItem('supabase-test-session'),'KEEP_AUTH');
+    const sql=await visible.cleanupSQL();assert.match(sql,/MANUAL PHASE-C CLEANUP/);assert.ok(sql.includes(e.identity.operationId));assert.ok(sql.includes('Exact receipt/digest changed'));
+    const changed=e.remote();changed.entries[0].name='Unexpected';e.setRemote(changed);await assert.rejects(visible.cleanupSQL(),{code:'PHASE_C_SERVER_CHANGED'});visible.dispose();
+});
+
+test('late controlled missing cannot be claimed without a real original receipt, digest, acknowledgement and exact authoritative state',async()=>{
+    for(const mode of ['missing','digest','scope','operation','base','revision','ack','state','unavailable']){
+        const e=await lateEnvironment(),diag=e.resume(),key=e.cache.key(e.identity.scope),before=e.storage.getItem(key),get=e.gateway.getOperationReceipt;
+        e.gateway.getOperationReceipt=async(...args)=>{const r=plain(await get(...args));
+            if(mode==='missing')return {status:'missing',acknowledgement:null};
+            if(mode==='unavailable')throw Object.assign(new Error('Network'),{code:'NETWORK_UNAVAILABLE'});
+            if(mode==='digest')r.request_digest='f'.repeat(64);
+            if(mode==='scope')r.acknowledgement.scope.ownerUserId=B;
+            if(mode==='operation')r.acknowledgement.operationId=U;
+            if(mode==='base')r.acknowledgement.baseRevision='1';
+            if(mode==='revision')r.acknowledgement.revision='2';
+            if(mode==='ack')r.acknowledgement.replayed=false;
+            return r;};
+        if(mode==='state'){const remote=e.remote();remote.entries[0].name='Wrong';e.setRemote(remote);}
+        await assert.rejects(diag.reopenLateReceipt(),{code:'CONTROLLED_MISSING_NOT_BLOCKED'});
+        assert.equal(diag.identity().visibility.state,'withheld');assert.equal(e.storage.getItem(key),before);
+        assert.equal(e.messages.some(m=>m.startsWith('OBSERVATION:')),false);assert.equal(e.calls.filter(c=>c.method==='commit').length,1);diag.dispose();
+    }
+});
+
+test('released late receipt rejects digest mismatch before any durable acknowledgement or publication',async()=>{
+    const e=await lateEnvironment(),diag=e.resume(),key=e.cache.key(e.identity.scope);await diag.reopenLateReceipt();await diag.releaseLateReceipt();
+    const before=e.storage.getItem(key),get=e.gateway.getOperationReceipt;e.gateway.getOperationReceipt=async(...args)=>({...plain(await get(...args)),request_digest:'f'.repeat(64)});
+    await assert.rejects(diag.reopenLateReceipt(),{code:'ADMITTED_COMMIT_CHANGED'});assert.equal(e.storage.getItem(key),before);
+    assert.equal(e.record().pending.command.operationId,e.identity.operationId);assert.equal(e.calls.filter(c=>c.method==='commit').length,1);diag.dispose();
+});
+
+test('late receipt observation is fenced on account switch or disposal without cache/control publication',async()=>{
+    for(const mode of ['account','dispose']){
+        const e=await lateEnvironment(),diag=e.resume(),get=e.gateway.getOperationReceipt,started=deferred(),gate=deferred();
+        e.gateway.getOperationReceipt=async(...args)=>{const r=await get(...args);started.resolve();await gate.promise;return r;};
+        const key=e.cache.key(e.identity.scope),before=e.storage.getItem(key),marker=e.storage.getItem(diag.markerKey),recover=diag.reopenLateReceipt();await started.promise;
+        if(mode==='account')e.auth.emit(B);else diag.dispose();gate.resolve();await assert.rejects(recover,{code:'ACCOUNT_CONTEXT_CHANGED'});
+        assert.equal(e.storage.getItem(key),before);assert.equal(e.storage.getItem(diag.markerKey),marker);assert.equal(e.messages.some(m=>m.startsWith('OBSERVATION:')),false);
+        assert.equal(e.storage.getItem(e.cache.key({ownerUserId:B,universeId:U})),null);diag.dispose();
+    }
+});
+
+test('same-origin late receipt peer cannot overwrite authoritative recovery or auto-release its observation gate',async()=>{
+    const e=await lateEnvironment(),left=e.resume(),right=e.resume();await left.reopenLateReceipt();await right.reopenLateReceipt();await left.releaseLateReceipt();
+    await left.reopenLateReceipt();const confirmed=e.storage.getItem(e.cache.key(e.identity.scope));
+    await right.checkStalePeer();assert.equal(e.storage.getItem(e.cache.key(e.identity.scope)),confirmed);
+    await assert.rejects(right.releaseLateReceipt(),{code:'OBSERVE_CONTROLLED_MISSING_FIRST'});await right.reopenAcknowledged();
+    assert.equal(e.record().acknowledged.revision,'1');assert.equal(e.calls.filter(c=>c.method==='commit').length,1);left.dispose();right.dispose();
+});
+
+test('late observation controls reject incompatible or unproved marker variants; old markers do not acquire visibility gates',async()=>{
+    const e=await lateEnvironment(),diag=e.resume(),plan=e.get('cloudRecoveryPlan'),m=plain(diag.identity());delete m.cacheKey;
+    for(const visibility of [null,{visibilityVersion:2,state:'withheld'},{visibilityVersion:1,state:'unknown'},{visibilityVersion:1,state:'withheld',extra:1}])
+        assert.throws(()=>plan.marker({...m,visibility}),{code:'INVALID_RECEIPT_VISIBILITY'});
+    assert.throws(()=>plan.marker({...m,case:'response-interruption'}),{code:'UNEXPECTED_RECEIPT_VISIBILITY'});
+    const early={...m,phase:'prepared',visibility:{visibilityVersion:1,state:'released'}};delete early.admission;delete early.transport;
+    assert.throws(()=>plan.marker(early),{code:'UNPROVED_RECEIPT_VISIBILITY'});diag.dispose();
+});
+
 test('lost successful response journals original ID across reload; real receipt recovers once, never resubmits or changes local/Auth data',async()=>{
     const e=diagnosticEnvironment(),first=e.fresh();assert.equal(e.calls.length,0);
     const identity=await first.prepare('lost-reply');await first.dispatchOnce();const original=plain(e.record());
