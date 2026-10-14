@@ -3,12 +3,17 @@
 <title>Development only · Cosmifold uncertain recovery</title><link rel="stylesheet" href="cloud-metadata-diagnostic.css"></head>
 <body><main><h1>Development only: uncertain operation recovery</h1>
 <p>Loopback only. Sign in through normal Cosmifold at this same origin. No requests run automatically. Normal cloud mode stays inactive; this diagnostic never reads or uploads your local Cosmos.</p>
-<p>Review docs/cloud-uncertain-recovery.md before any live test. Each case creates ONE new disposable Universe. The cases are transport injections, not a claim of genuine network interruption.</p>
+<p>Review docs/cloud-uncertain-recovery.md before any live test. Each case creates ONE new disposable Universe. The first two cases inject harness failures. The browser Offline case uses real gateway requests under browser network emulation; it does not prove interruption during server execution.</p>
 <h2>1. Explicit disposable preparation</h2>
-<label for="test-case">Case</label><select id="test-case"><option value="lost-reply">Real commit; discard successful reply</option><option value="not-dispatched">Block HTTP dispatch; real missing receipt</option></select>
+<label for="test-case">Case</label><select id="test-case"><option value="lost-reply">Real commit; discard successful reply</option><option value="not-dispatched">Block HTTP dispatch; real missing receipt</option><option value="browser-offline">Actual browser Offline transport / reconnect</option></select>
 <button id="prepare" type="button">Create ONE new disposable Universe</button>
 <button id="dispatch" type="button">Send ONE planned command with transport injection</button>
-<p>After the pending-operation PASS, reload this same tab. Never click preparation or dispatch again.</p>
+<h2>Browser Offline subgate (new case only)</h2>
+<p>Prepare while online, then preflight below. Set this tab's DevTools Network throttling to Offline BEFORE dispatch. The command and receipt requests use the actual gateway with no synthetic failures. Do not reload while offline: static app/SDK loading is a separate gate. Restore No throttling before reloading/reopening. No manual timing deadline.</p>
+<button id="network-arm" type="button">Online: preflight browser-offline fixture (no mutation)</button>
+<button id="network-blocked" type="button">Offline: verify real receipt transport remains blocked</button>
+<button id="network-reopen" type="button">Reconnected: reopen original operation with real receipts</button>
+<p>For the original harness cases, reload this same tab after the pending-operation PASS. For browser Offline, restore No throttling before reloading. Never click preparation or dispatch again.</p>
 <h2>2. Reload and receipt recovery</h2>
 <button id="reopen" type="button">Reopen original pending operation; receipts unavailable</button>
 <button id="blocked" type="button">Check dependent writes remain blocked</button>

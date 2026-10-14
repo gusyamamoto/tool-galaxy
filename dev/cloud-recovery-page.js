@@ -6,8 +6,13 @@ function recoveryIdentity(){const value=recoveryDiagnostic.identity();document.g
 function recoveryControls(){recoveryButtons.forEach(button=>button.disabled=!recoveryLocal||recoveryBusy||recoveryDisposed);
     if(!recoveryLocal||recoveryBusy||recoveryDisposed)return;
     const m=recoveryIdentity();document.getElementById('prepare').disabled=!!m;
-    document.getElementById('dispatch').disabled=m?.phase!=='prepared';
+    const network=m?.case==='browser-offline';
+    document.getElementById('dispatch').disabled=m?.phase!==(network?'network-ready':'prepared');
     for(const id of ['reopen','blocked','recover','again','stale','acknowledged'])document.getElementById(id).disabled=!m||!['dispatched','uncertain'].includes(m.phase);
+    for(const id of ['reopen','recover','again','stale','acknowledged'])if(network)document.getElementById(id).disabled=true;
+    document.getElementById('network-arm').disabled=!network||m.phase!=='prepared';
+    document.getElementById('network-blocked').disabled=!network||m.phase!=='uncertain';
+    document.getElementById('network-reopen').disabled=!network||m.phase!=='uncertain';
     document.getElementById('cleanup').disabled=!m;
 }
 async function recoveryAction(action){recoveryBusy=true;recoveryControls();try{await action();}
@@ -18,6 +23,8 @@ function recoveryClick(id,action){document.getElementById(id).addEventListener('
 if(recoveryLocal){
     recoveryClick('prepare',()=>recoveryDiagnostic.prepare(document.getElementById('test-case').value));
     recoveryClick('dispatch',()=>recoveryDiagnostic.dispatchOnce());recoveryClick('reopen',()=>recoveryDiagnostic.reopenBlocked());
+    recoveryClick('network-arm',()=>recoveryDiagnostic.armBrowserOffline());recoveryClick('network-blocked',()=>recoveryDiagnostic.checkBrowserOffline());
+    recoveryClick('network-reopen',()=>recoveryDiagnostic.reopenBrowserNetwork());
     recoveryClick('blocked',()=>recoveryDiagnostic.checkBlocked());recoveryClick('recover',()=>recoveryDiagnostic.recoverRealReceipt());
     recoveryClick('again',()=>recoveryDiagnostic.verifyAgain());recoveryClick('stale',()=>recoveryDiagnostic.checkStalePeer());
     recoveryClick('acknowledged',()=>recoveryDiagnostic.reopenAcknowledged());

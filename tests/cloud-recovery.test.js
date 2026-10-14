@@ -120,3 +120,52 @@ test('cache acceptance failure after receipt leaves original durable pending sta
     diag.dispose();e.storage.setItem=put;const reloaded=e.fresh();await reloaded.reopenBlocked();await reloaded.recoverRealReceipt();
     assert.equal(e.record().acknowledged.revision,'1');assert.equal(e.record().pending,null);assert.equal(e.calls.filter(c=>c.method==='commit').length,1);reloaded.dispose();
 });
+
+test('browser Offline requires online preflight, real transport failure and real receipt failure; reconnect/reload retains missing original operation',async()=>{
+    const e=diagnosticEnvironment();let offline=false;const rawCommit=e.gateway.commitMetadata,rawReceipt=e.gateway.getOperationReceipt;
+    e.gateway.commitMetadata=async command=>{if(offline){e.calls.push({method:'commit',command:plain(command)});throw Object.assign(new Error('Fetch failed'),{code:'OUTCOME_UNKNOWN',reason:'TRANSPORT_FAILURE',outcome:'unknown'});}return rawCommit(command);};
+    e.gateway.getOperationReceipt=async(...args)=>{if(offline){e.calls.push({method:'receipt',id:args[1]});throw Object.assign(new Error('Fetch failed'),{code:'NETWORK_UNAVAILABLE'});}return rawReceipt(...args);};
+    const diag=e.fresh({isOffline:()=>offline}),identity=await diag.prepare('browser-offline');
+    await assert.rejects(diag.dispatchOnce(),{code:'PREPARE_FIRST_NO_RETRY'});await diag.armBrowserOffline();
+    await assert.rejects(diag.dispatchOnce(),{code:'BROWSER_OFFLINE_REQUIRED'});assert.equal(e.record().pending,null);
+    offline=true;await diag.dispatchOnce();const cached=e.storage.getItem(e.cache.key(identity.scope));
+    assert.equal(diag.identity().transport.reason,'TRANSPORT_FAILURE');await diag.checkBrowserOffline();await diag.checkBlocked();
+    assert.equal(e.storage.getItem(e.cache.key(identity.scope)),cached);
+    await assert.rejects(diag.reopenBrowserNetwork(),{code:'RECONNECT_WITH_ORIGINAL_PROOF_REQUIRED'});
+    offline=false;diag.dispose();const reloaded=e.fresh({isOffline:()=>offline});
+    for(let i=0;i<2;i++){assert.equal((await reloaded.reopenBrowserNetwork()).status,'pending-reconciliation');await reloaded.checkBlocked();}
+    assert.equal(e.storage.getItem(e.cache.key(identity.scope)),cached);assert.equal(e.calls.filter(c=>c.method==='commit').length,1);
+    assert.equal(e.record().pending.command.operationId,identity.operationId);assert.equal(e.remote().universe.revision,'0');
+    const sql=await reloaded.cleanupSQL();assert.match(sql,/MANUAL PHASE-C CLEANUP/);assert.ok(sql.includes('Receipt count changed'));reloaded.dispose();
+});
+
+test('browser transport unknown outcome can resolve only from original found receipt without retry',async()=>{
+    const e=diagnosticEnvironment();let offline=false;const commit=e.gateway.commitMetadata,get=e.gateway.getOperationReceipt;
+    e.gateway.commitMetadata=async command=>{await commit(command);throw Object.assign(new Error('Response lost'),{code:'OUTCOME_UNKNOWN',reason:'TRANSPORT_FAILURE',outcome:'unknown'});};
+    e.gateway.getOperationReceipt=async(...args)=>{if(offline)throw Object.assign(new Error('Offline'),{code:'NETWORK_UNAVAILABLE'});return get(...args);};
+    const diag=e.fresh({isOffline:()=>offline}),identity=await diag.prepare('browser-offline');await diag.armBrowserOffline();offline=true;await diag.dispatchOnce();
+    assert.equal(e.record().acknowledged.revision,'0');assert.equal(e.remote().universe.revision,'1');offline=false;diag.dispose();
+    const reloaded=e.fresh({isOffline:()=>offline});assert.equal((await reloaded.reopenBrowserNetwork()).revision,'1');
+    assert.equal(e.record().pending,null);assert.equal(e.calls.filter(c=>c.method==='commit').length,1);
+    const original=identity.operationId;assert.ok(e.calls.filter(c=>c.method==='receipt').every(c=>c.id===original));reloaded.dispose();
+});
+
+test('browser offline gate refuses unrelated failures and unexpected success instead of claiming transport proof',async()=>{
+    for(const mode of ['auth','success']){const e=diagnosticEnvironment();let offline=false;
+        if(mode==='auth')e.gateway.commitMetadata=async()=>{throw Object.assign(new Error('No session'),{code:'AUTH_UNAVAILABLE'});};
+        e.gateway.getOperationReceipt=async()=>({status:'missing',acknowledgement:null});
+        const diag=e.fresh({isOffline:()=>offline});await diag.prepare('browser-offline');await diag.armBrowserOffline();offline=true;
+        await assert.rejects(diag.dispatchOnce(),{code:mode==='auth'?'REAL_TRANSPORT_FAILURE_NOT_PROVED':'UNCERTAINTY_NOT_PRESERVED'});
+        assert.equal(diag.identity().phase,'dispatched');assert.equal(diag.identity().transport,undefined);
+        await assert.rejects(diag.dispatchOnce(),{code:'PREPARE_FIRST_NO_RETRY'});diag.dispose();
+    }
+});
+
+test('original Phase C markers remain compatible; fake/mis-scoped network evidence is rejected',()=>{
+    const e=diagnosticEnvironment(),plan=e.get('cloudRecoveryPlan'),m={format:'cosmifold-phase-c',fixtureVersion:1,scope:{ownerUserId:A,universeId:U},
+        operationId:B,case:'browser-offline',phase:'uncertain',transport:{attempts:1,observedOffline:true,code:'OUTCOME_UNKNOWN',outcome:'unknown',reason:'TRANSPORT_FAILURE'}};
+    assert.deepEqual(plain(plan.marker(m)),m);
+    for(const field of [{attempts:2},{observedOffline:false},{reason:'REQUEST_TIMEOUT'},{code:'AUTH_UNAVAILABLE'}])assert.throws(()=>plan.marker({...m,transport:{...m.transport,...field}}));
+    assert.throws(()=>plan.marker({...m,case:'lost-reply'}));
+    const legacy={...m,case:'lost-reply'};delete legacy.transport;assert.deepEqual(plain(plan.marker(legacy)),legacy);
+});

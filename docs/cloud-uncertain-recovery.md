@@ -219,3 +219,161 @@ Focused pre-commit checks passed: 39 Phase C/Phase B Node tests, 34 mocked Phase
 browser checks, `git diff --check` and new-file whitespace checks. The SQL comment
 test compares everything after the first line against the original renderer for
 both revision-0 and revision-1 cleanup, proving all executable guards unchanged.
+
+## Completed bounded checkpoint: browser Offline transport and reconnect
+
+The initial checkpoint above is merged, live-validated and cleaned up. The next
+subgate covered here is **actual browser transport failure while offline**, followed by
+reload/reconnect against the original receipt. The risk is that clients discard
+an unresolved operation or retry it under a replacement ID merely because a
+response or receipt is unavailable. This is deliberately smaller than arbitrary
+loss of a request already executing on the server.
+
+The existing fixture plan adds case `browser-offline` and phase `network-ready`
+for a verified online preflight. Original markers/cases remain compatible. After
+proven transport failure, the same version-1 diagnostic marker gains a strictly
+validated optional `transport` object with attempts=1, observedOffline=true and
+safe gateway code/reason/outcome. It stores no tokens, headers or raw errors.
+Production pending/cache/storage versions and `.cosmifold` format are unchanged.
+
+No parallel network mechanism is added: the actual gateway, SDK and Web Lock /
+pending journal are used. The new case returns the real commit result/error and
+always calls the real receipt gateway; old synthetic Phase C cases are unchanged.
+No rejected/unclassified result is proof of noncommit. An unexpected successful
+commit or Auth failure stops this test without erasing its identities; preserve
+the actual resulting data and obtain reviewed cleanup rather than re-dispatching.
+No operation retry or new ID is offered. Each RPC remains bounded to 15 seconds.
+
+The browser offline flag is only a prerequisite. A classified unknown-outcome
+transport error AND unchanged original pending journal are required. Offline
+receipt checking requires a real failed receipt request, not a missing-receipt
+response or a synthetic exception. During live review, additionally require
+DevTools Network evidence for the failed commit request; an indicator/error
+string alone is not enough. Do not share request headers, tokens, HAR files or
+credentials. A safe report needs only operation ID, revision, request endpoint
+name and failure status.
+
+### N1: online preparation, then actual Offline failure — repeatable validated procedure
+
+1. Run ordinary local static hosting at the existing configured Auth origin;
+   sign in through normal Cosmifold. No relay or new configuration is required.
+2. Open the same `/dev/cloud-recovery-diagnostic.html`. Require **No Phase C
+   fixture**; if an old marker exists, stop rather than clearing/reusing it.
+3. Select **Actual browser Offline transport / reconnect**.
+4. Click **Create ONE new disposable Universe**. Record its printed exact owner,
+   Universe, original operation ID, cache key and marker key. Expect PREPARED at 0.
+5. Click **Online: preflight browser-offline fixture (no mutation)**. Expect ARMED
+   after a real empty-Universe/missing-receipt read and valid acknowledged cache.
+6. Open DevTools → Network. Enable Preserve log; select **Offline** in the
+   throttling selector, as described in the [Chrome Network reference](https://developer.chrome.com/docs/devtools/network/reference#offline).
+   Keep this SAME tab loaded and signed in. Do not reload while offline.
+7. Click **Send ONE planned command with transport injection** ONCE. In this case
+   it uses the actual gateway without synthetic failure. Expect PASS: transport
+   failure, original pending ID and acknowledged revision 0. In Network, verify
+   the commit RPC failed as offline (`net::ERR_INTERNET_DISCONNECTED` in Chrome).
+   Do not use Edit/resend or Replay XHR; do not copy headers or tokens.
+8. Click **Offline: verify real receipt transport remains blocked**. Expect PASS
+   and a failed real receipt RPC; exact pending/cache retained.
+9. Click **Check dependent writes remain blocked**. Expect PASS, no second commit.
+10. STOP and report these outputs plus the safe Network failure status. Restore
+    **No throttling** to avoid leaving the tab offline, but do not reload/reopen,
+    retry, clear data or run SQL until N1 is reviewed. No manual-copy deadline.
+
+### N2: reconnect/reload original operation — only after N1 review
+
+1. Confirm Network is **No throttling**, then reload this SAME tab. Reloading
+   online avoids conflating the test with unavailable static/SDK assets; no PWA
+   or offline asset cache is added. Do not press preparation or dispatch again.
+2. Click **Reconnected: reopen original operation with real receipts**.
+   Normally the offline-before-dispatch case yields a real missing receipt and
+   empty server at revision 0: require the original pending ID/cache byte-for-byte
+   unchanged and dependent writes still blocked. This does NOT authorize retry.
+   If the original receipt is found, the only supported alternative is exact
+   fixed metadata at revision 1, cleared pending state and no semantic resend;
+   report that outcome for review rather than assuming an empty account.
+3. For the missing outcome, click **Check dependent writes remain blocked**.
+4. Click **Reconnected: reopen original operation with real receipts** again.
+   Require the same outcome/ID and no second semantic command.
+5. STOP and report. A PASS is only this bounded offline/reconnect subgate,
+   not COMPLETE for all transport/network or activation gates.
+
+### N3: unchanged guarded cleanup — separately reviewed
+
+Use the existing **Inspect exact fixture; generate guarded cleanup SQL**. It
+checks the actual coherent fixture state and expects zero receipts at revision
+0 or exactly the original receipt at 1. Dispose ALL diagnostics, manually run
+the entire unchanged guarded transaction as the ordinary SQL administrator,
+require `test_universes_removed = 1`, and only then remove the printed cloud
+cache and `cosmifold:dev:cloud-recovery:v1` with exact `removeItem` calls. Verify
+both are null and the diagnostic shows **No Phase C fixture**. Never clear all
+storage, rewrite guards or force cleanup of unexpected/changed data. Existing
+Auth session, local Cosmos and Phase A/B storage remain untouched.
+
+### Tests and remaining gates
+
+Node tests cover online-only preflight, classified real transport failure,
+unavailable receipt blocking, reconnect/reload preserving a real missing receipt,
+an original found receipt after an unknown outcome, unrelated Auth failure and
+unexpected success refusing transport PASS, and strict compatible marker parsing.
+The isolated browser suite uses Chromium's native Offline network emulation,
+failing real `fetch` calls to a local mocked backend; no real Supabase/CDN traffic
+or SQL. Old Phase C lost-reply and stale-peer flows remain regression-tested.
+
+The operator has now completed live Supabase N1–N3 and guarded cleanup, as
+recorded below. Actual in-flight server interruption, late
+original commit after an initially missing receipt, live session-switch/recovery
+overlap, simultaneous same-origin recovery contention, offline app/SDK loading,
+quota failures and realistic limits remain later bounded subgates. Files,
+migration/activation, richer semantic compatibility and deployment are untouched.
+
+Offline/reconnect extension verification: all 15 focused recovery Node tests
+passed within 480 non-physics regression tests. All 50 isolated browser checks
+passed, including native Chromium Offline transport failure, blocked real receipt
+fetch, online reload/missing receipt and the original Phase C regressions.
+`git diff --check` passed. No live Supabase request or SQL was executed.
+
+### Operator-reported live Offline/reconnect checkpoint and cleanup
+
+The operator started with **No Phase C fixture**, created one new disposable
+Universe at revision 0 and passed online preflight with no mutation sent. With
+Chrome DevTools Network set to Offline, exactly one original command was
+attempted through the real gateway; its commit request failed with
+`net::ERR_INTERNET_DISCONNECTED`. The original pending operation ID and exact
+revision-0 cache were retained. Neither synthetic receipt failure nor the
+discarded-successful-reply mechanism was used. Real offline receipt transport
+also failed, and dependent writes remained blocked.
+
+After restoring No throttling and reloading the SAME tab, real receipt lookup
+found the original receipt genuinely missing at revision 0. The operation stayed
+blocked: no resend and no replacement operation ID. The operator reviewed the
+generated guarded cleanup, disposed the diagnostic, and ran the unchanged SQL;
+`test_universes_removed = 1`. Only the exact temporary cloud-cache and recovery
+marker keys were removed. Final browser state was **No Phase C fixture** and
+**Ready; no requests made.** This is operator-reported live evidence, not a claim
+of remote requests or SQL execution by Codex.
+
+The checkpoint proves real browser transport failure **before server execution /
+dispatch completion**, preservation of the unresolved operation across reload,
+and safe reconnect against a genuinely missing receipt. It does NOT prove
+arbitrary interruption while PostgreSQL is already executing the mutation.
+It is ready for commit review as an inactive checkpoint, not cloud activation.
+
+### Next incomplete gate
+
+Next: **server-admitted/in-flight interruption with later original-receipt
+recovery**. Protect against a request committing after the client times out or
+reloads, causing discarded pending state, duplicate resubmission or stale
+publication. A bounded follow-up must prove the request reached the server
+before interruption, retain the original operation ID across reload, keep writes
+blocked while the receipt is unavailable/missing, and recover an eventual
+original acknowledgement at most once without semantic resend. Evidence of
+server admission/overlap is required; a client timer or held Promise alone is
+not proof. Leave this UNVERIFIED until separately designed and live-tested.
+No implementation for that follow-up is added by this documentation update.
+
+Post-validation review reran all 480 non-physics Node tests (including 15 focused
+recovery tests), all 50 isolated recovery browser checks and `git diff --check`;
+all passed. Only checkpoint documentation and two generic diagnostic-page
+instructions changed during that review. Recovery code, SQL guards, production
+startup and activation gates were not weakened or changed. No live requests,
+SQL execution, commit, push or merge were performed by Codex.

@@ -2,10 +2,13 @@
 
 Normal Cosmifold still uses the browser-local Cosmos, IndexedDB files and local
 Backup/Restore. Signing in does not claim/upload data. Storage v5 and Backup v1
-are unchanged. Phase A passed live and was cleaned up; this document plans the
-next tests. Phase B is now authored as an inactive diagnostic with guarded manual
-SQL generation; [its procedure](cloud-revision-concurrency.md) is ready for review.
-No live Phase B result or SQL execution is claimed.
+are unchanged. Phase A, Phase B and the initial Phase C checkpoint are merged,
+operator-run live-validated and cleaned up. The browser Offline/reconnect
+checkpoint has also passed live and been cleaned up. The next open gate is
+server-admitted/in-flight interruption and later-receipt recovery. The Offline
+checkpoint proves transport failure before server execution/dispatch completion,
+not arbitrary interruption while the server executes. No live request or SQL is
+run by Codex.
 
 ## Closed identity/privacy gate
 
@@ -17,7 +20,7 @@ and independently verified disabled GraphQL. Cleanup returned
 session marker was `null`. This is user-reported real-project evidence, not a
 claim that Codex executed it or proof of a future enabled GraphQL configuration.
 
-## Next bounded phase: revision concurrency and idempotency
+## Closed Phase B: revision concurrency and idempotency (retained test scope)
 
 Recommended branch: **`test/cloud-revision-concurrency`**.
 
@@ -86,16 +89,16 @@ BOTH origins, both diagnostic tabs were closed and the relay was stopped.
 The operator also removed accidental blank Local/Session Storage keys left by
 Chrome Application-panel editing and rechecked the original keys. No Auth
 session, real local Cosmos or unrelated storage was removed. Phase B's live
-stopping gate is closed; its development artifacts remain inactive and
-unstaged/uncommitted. These results are operator-reported, not remote execution
+stopping gate is closed; its merged development artifacts remain inactive.
+These results are operator-reported, not remote execution
 by Codex. No second account, token copying or new credentials were needed.
 
 ## Gates still open
 
 | Gate | Urgency / next boundary |
 | --- | --- |
-| Durable uncertain operation across reload; real lost/delayed requests/replies; missing/later receipts | Separate Phase C; close before activation. Preserve original operation identity, block dependent writes and never treat a missing receipt as proof of noncommit. |
-| Multi-tab pending-operation ownership, session changes during commits/recovery, reload/lock races | Phase B covers ordinary competing clients; Phase C covers pending/recovery races. Close before activation. Phase A is not blanket race coverage. |
+| Server-admitted/in-flight interruption and later-arriving receipt | NEXT: prove a write reached the server before interruption, retain original-ID journal, block dependent writes while unresolved, and reconcile a later real receipt without resend. Browser Offline before-execution/reconnect is live-validated and closed; it does not establish this boundary. |
+| Multi-tab recovery contention and session changes during delayed recovery | Phase C live-validated stale-peer/base protection; account changes and simultaneous recovery contention are automated-tested but broader live timing races remain open before activation. |
 | Rich/compound semantic HTTP round trips, archive/link/Constellation/order parity and parser/history compatibility | Subsequent bounded metadata compatibility phase; before activation/import of real data |
 | Private cloud files, originals/thumbnails, copies/deletion, upload recovery and portable export | Before normal activation/migration of file-bearing Cosmos. Strict attachment rejection remains until complete support; never imply local-only binaries are synced. |
 | Reversible local-to-account copy/verify and explicit dataset choice/activation | Separately reviewed branches after persistence/files gates; retain local original, IDs and Backup/Restore; no automatic claim/merge/overwrite |
@@ -111,15 +114,14 @@ accompany files/migration; implementation must not leave users unable to preserv
 or restore data before any destructive action. Keep each branch independently
 reviewable rather than combining them into an activation rewrite.
 
-Phase A is complete and committed. Phase B is complete, live-validated and
-cleaned up; its changes remain inactive and unstaged/uncommitted, ready for a
-separate review/commit decision. Neither phase authorizes cloud activation.
+Phase A/B and the initial Phase C checkpoint are merged, live-validated and
+cleaned up. Their development code stays inactive. None authorizes cloud activation.
 
-## Recommended next bounded branch: Phase C
+## Phase C checkpoint and remaining transport tests
 
-Recommended name: `test/cloud-uncertain-recovery`. First checkpoint and commit
-the reviewed Phase B work when explicitly authorized, so the new branch has a
-clear baseline; do not carry its disposable fixture forward or recreate it.
+The `test/cloud-uncertain-recovery` checkpoint is merged. Do not carry its
+cleaned-up disposable fixture forward or recreate it. Recommended next branch
+name: `test/cloud-network-interruption`; extend the same recovery diagnostic.
 
 Prepare an inactive, disposable-Universe diagnostic for durable uncertain writes
 across reload and unavailable/missing/later receipts. Use the existing gateway,
@@ -146,10 +148,52 @@ dependent writes, original-ID receipt recovery without semantic resubmission,
 repeat recovery without duplicate application, stale same-origin peer fencing
 and authoritative revision-1 reopening. Guarded cleanup removed exactly one
 test Universe and browser cleanup returned **No Phase C fixture**. This inactive
-checkpoint is ready for commit review; genuine interruption and the other live
+checkpoint is merged; genuine interruption and the other live
 subcases in the bounded plan remain separate gates. Future runs still require
 procedure review. Realistic metadata compatibility, private cloud files and
 reversible migration remain subsequent gates; cloud activation is still blocked.
+
+### Closed bounded checkpoint: browser Offline and reconnect
+
+The existing diagnostic now offers **Actual browser Offline transport / reconnect**.
+Online preflight verifies the new empty fixture/cache/receipt before any mutation.
+The operator then sets DevTools Offline and sends exactly one journalled command
+through the actual gateway. This case neither suppresses a successful reply nor
+fabricates receipt failure. Native transport failure must leave the same pending
+ID/cache; real offline receipt failure must keep writes blocked. After restoring
+network and reloading, receipt lookup must either preserve unresolved missing
+state or accept the original receipt, without semantic resubmission. A missing
+receipt never authorizes a retry or deletion of pending state.
+
+See [the completed checkpoint and repeatable procedure](cloud-uncertain-recovery.md#completed-bounded-checkpoint-browser-offline-transport-and-reconnect).
+The extension uses the same marker/cache namespace, workspace, projection, RPC
+gateway and unchanged guarded cleanup. Old Phase C cases remain compatible.
+No new schema, SDK client, repository, outbox, service worker or production mode.
+Local tests include native Chromium Offline against a mocked local backend.
+The operator has now live-validated the real commit failure
+`net::ERR_INTERNET_DISCONNECTED`, retained original pending ID/exact revision-0
+cache, failed real offline receipt transport and blocked dependent writes.
+Online reload/reconnect found a genuinely missing original receipt at revision
+0; no semantic resend or replacement ID occurred. Guarded cleanup returned
+`test_universes_removed = 1`; only the exact test cache/marker keys were removed,
+and the diagnostic returned **No Phase C fixture** / **Ready; no requests made.**
+Future new runs still require deliberate procedure review and fresh fixtures.
+This case starts offline before dispatch: it does not prove arbitrary interruption
+after PostgreSQL begins a mutation, long offline reload of app/SDK assets, or all
+account/multi-tab/quota races. Keep those and rich metadata/files/migration gates.
+
+### Next incomplete gate: server-admitted write interrupted before its outcome is known
+
+The next diagnostic must establish server admission/overlap independently, not
+infer it from a clicked button, client timer, Offline flag or locally held
+Promise. Then interrupt transport/reload without resubmitting, preserve the
+original pending command, and verify unresolved/missing receipt states stay
+blocked until the original receipt proves an outcome. Where a late commit
+occurs, accept it once, refresh authoritative state and fence abandoned contexts.
+Use new disposable fixtures and unchanged ownership/revision/cleanup boundaries.
+If actual admission/overlap or a later receipt cannot be established, mark that
+case UNVERIFIED. This follow-up is a design/testing gate, not implemented or
+authorized as a live run by recording the completed Offline checkpoint.
 
 Phase B local verification: 450 non-physics Node regression tests and 58 physics
 tests passed. Mocked browser checks passed: Phase B 35, Phase A 39, and existing
