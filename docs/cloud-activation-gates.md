@@ -139,9 +139,17 @@ disposal. Follow with same-origin multi-tab pending ownership/recovery races in
 one bounded substep, distinct from Phase B's two-origin writer test. Generate
 guarded cleanup for each new fixture and retain real local data untouched.
 
-No Phase C implementation or live test is authorized by documenting this scope.
-Realistic metadata compatibility, private cloud files and reversible migration
-remain subsequent gates; normal cloud activation is still blocked.
+The initial Phase C diagnostic and deterministic tests are now implemented on
+`test/cloud-uncertain-recovery`; see [the bounded plan/procedure](cloud-uncertain-recovery.md).
+The operator has live-validated lost-reply persistence across reload, blocked
+dependent writes, original-ID receipt recovery without semantic resubmission,
+repeat recovery without duplicate application, stale same-origin peer fencing
+and authoritative revision-1 reopening. Guarded cleanup removed exactly one
+test Universe and browser cleanup returned **No Phase C fixture**. This inactive
+checkpoint is ready for commit review; genuine interruption and the other live
+subcases in the bounded plan remain separate gates. Future runs still require
+procedure review. Realistic metadata compatibility, private cloud files and
+reversible migration remain subsequent gates; cloud activation is still blocked.
 
 Phase B local verification: 450 non-physics Node regression tests and 58 physics
 tests passed. Mocked browser checks passed: Phase B 35, Phase A 39, and existing
