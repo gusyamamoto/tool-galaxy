@@ -178,6 +178,7 @@ def main():
     args.add_argument("--screenshots", action="store_true")
     args.add_argument("--auth-only", action="store_true", help="Check independent account flows, pending/error/recovery, local data and Backup/Restore isolation")
     args.add_argument("--cloud-boundary-only", action="store_true", help="Mocked development-only identity/Universe/REST/GraphQL privacy boundary")
+    args.add_argument("--cloud-concurrency-only", action="store_true", help="Two-origin mocked Phase B revision/idempotency/cache fencing diagnostic")
     args.add_argument("--static-hosting-only", action="store_true", help="Audit static assets, hosting headers, browser requests, CSP, refresh and origin-isolated persistence")
     args.add_argument("--awaitable-only", action="store_true", help="Deterministic pending/rejected command, draft, publication and ordering checks")
     args.add_argument("--backup-dialog-only", action="store_true", help="Focused Backup/Restore layout, renamed-file validation, picker, download and keyboard checks")
@@ -250,7 +251,11 @@ def main():
     options = args.parse_args()
     browser = find_browser()
     temp_root = Path(tempfile.gettempdir()).resolve()
-    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), functools.partial(QuietHandler, directory=str(options.site_root)))
+    handler=QuietHandler
+    if options.cloud_concurrency_only:
+        from cloud_concurrency_browser import make_handler
+        handler=make_handler(QuietHandler)
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), functools.partial(handler, directory=str(options.site_root)))
     threading.Thread(target=server.serve_forever, daemon=True).start()
     with socket.socket() as port_socket:
         port_socket.bind(("127.0.0.1", 0))
@@ -283,7 +288,7 @@ def main():
         cdp = CDP(page["webSocketDebuggerUrl"])
         cdp.call("Page.enable")
         cdp.call("Runtime.enable")
-        if options.static_hosting_only or options.backup_only or options.restore_only or options.auth_only or options.cloud_boundary_only:
+        if options.static_hosting_only or options.backup_only or options.restore_only or options.auth_only or options.cloud_boundary_only or options.cloud_concurrency_only:
             cdp.call('Network.enable');cdp.call('Log.enable')
         cdp.call("Emulation.setDeviceMetricsOverride", width=1440, height=1000, deviceScaleFactor=1, mobile=False)
         origin = f"http://{'localhost' if options.static_hosting_only else '127.0.0.1'}:{server.server_port}"
@@ -310,7 +315,7 @@ def main():
         # fake after this baseline on later reloads. Shipped code is unchanged.
         cdp.call('Page.addScriptToEvaluateOnNewDocument', source="""
             document.addEventListener('load', event=>{
-                if(event.target.tagName==='SCRIPT'&&event.target.src.endsWith('/services/supabase-auth.js')&&location.pathname!=='/dev/cloud-boundary-diagnostic.html'){
+                if(event.target.tagName==='SCRIPT'&&event.target.src.endsWith('/services/supabase-auth.js')&&!['/dev/cloud-boundary-diagnostic.html','/dev/cloud-concurrency-diagnostic.html'].includes(location.pathname)){
                     createSupabaseAuthAdapter=()=>({available:false,async initialize(){return {user:null}},dispose(){}});
                 }
             },true);
@@ -472,6 +477,11 @@ def main():
         check(evaluate("localStorage.getItem('galaxy:user-data:pre-cosmic-tree')") == old_raw, "exact original snapshot retained before migration")
         check(evaluate("JSON.parse(localStorage.getItem('galaxy:user-data')).version===5 && JSON.parse(localStorage.getItem('galaxy:user-data')).entries.every(e=>!('role' in e) && !('depth' in e))"), "version 5 persists generic ancestry without hardcoded roles or depth")
         check(evaluate("!document.querySelector('#pin-position-button,[data-action=pin],#panel-placement,#panel-role,#connection-options') && !panel.textContent.includes('Moves naturally') && !dialog.textContent.includes('Other connections') && roleField.tagName==='OUTPUT' && [...entries.values()].every(e=>e.depth>=0)"), "normal UI derives roles without pin, physics status or relationship controls")
+
+        if options.cloud_concurrency_only:
+            from cloud_concurrency_browser import run_cloud_concurrency_checks
+            run_cloud_concurrency_checks(cdp=cdp,evaluate=evaluate,check=check,origin=origin,root=ROOT,screenshot_dir=screenshot_dir)
+            print(f'{count} revision concurrency browser checks passed',flush=True);return
 
         if options.cloud_boundary_only:
             from cloud_boundary_browser import run_cloud_boundary_checks
