@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Development only · Cosmifold uncertain recovery</title><link rel="stylesheet" href="cloud-metadata-diagnostic.css"></head>
+<body><main><h1>Development only: uncertain operation recovery</h1>
+<p>Loopback only. Sign in through normal Cosmifold at this same origin. No requests run automatically. Normal cloud mode stays inactive; this diagnostic never reads or uploads your local Cosmos.</p>
+<p>Review docs/cloud-uncertain-recovery.md before any live test. Each case creates ONE new disposable Universe. The cases are transport injections, not a claim of genuine network interruption.</p>
+<h2>1. Explicit disposable preparation</h2>
+<label for="test-case">Case</label><select id="test-case"><option value="lost-reply">Real commit; discard successful reply</option><option value="not-dispatched">Block HTTP dispatch; real missing receipt</option></select>
+<button id="prepare" type="button">Create ONE new disposable Universe</button>
+<button id="dispatch" type="button">Send ONE planned command with transport injection</button>
+<p>After the pending-operation PASS, reload this same tab. Never click preparation or dispatch again.</p>
+<h2>2. Reload and receipt recovery</h2>
+<button id="reopen" type="button">Reopen original pending operation; receipts unavailable</button>
+<button id="blocked" type="button">Check dependent writes remain blocked</button>
+<button id="recover" type="button">Allow real receipt lookup and reconcile original ID</button>
+<button id="again" type="button">Verify recovery does not apply twice</button>
+<h2>3. Same-origin peer (separate bounded step)</h2>
+<p>Only after review: open this diagnostic in a second tab at the EXACT same origin, reopen blocked in both before recovering in one. Then test the stale peer. Never prepare or dispatch in the second tab.</p>
+<button id="stale" type="button">Stale peer: reject recovery against changed cache</button>
+<button id="acknowledged" type="button">Peer: reopen validated acknowledged state</button>
+<h2>4. Cleanup preparation only</h2>
+<button id="cleanup" type="button">Inspect exact fixture; generate guarded cleanup SQL</button>
+<button id="dispose" type="button">Dispose this diagnostic (retain storage)</button>
+<p>Do not run cleanup until results are reviewed. Require test_universes_removed = 1; only afterward remove the exact printed cache and marker keys. Never clear all storage.</p>
+<pre id="identity"></pre><pre id="output" role="status" aria-live="polite">Ready; no requests made.</pre><pre id="cleanup-sql"></pre>
+</main>
+<script src="../auth-config.js"></script><script src="../services/supabase-client.js"></script>
+<script src="../services/supabase-auth.js"></script><script src="../services/auth-service.js"></script>
+<script src="../config.js"></script><script src="../model.js"></script><script src="../portals.js"></script>
+<script src="../constellations.js"></script><script src="../clipboard.js"></script><script src="../services/universe-repository.js"></script>
+<script src="../services/cloud-repository-contract.js"></script><script src="../services/cloud-metadata-projection.js"></script>
+<script src="../services/cloud-metadata-changes.js"></script><script src="../services/supabase-metadata-gateway.js"></script>
+<script src="../persistence/cloud-cache-store.js"></script><script src="../services/cloud-universe-repository.js"></script>
+<script src="../services/cloud-workspace.js"></script><script src="cloud-concurrency-sql.js"></script>
+<script src="cloud-recovery-plan.js"></script><script src="cloud-recovery-diagnostic.js"></script><script src="cloud-recovery-page.js"></script>
+</body></html>
