@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Development only · Cosmifold identity/privacy boundary</title>
+    <link rel="stylesheet" href="cloud-metadata-diagnostic.css"></head>
+<body><main>
+    <h1>Development only: identity and API privacy</h1>
+    <p>Loopback HTTP only. No requests until you press a button. This page creates two disposable Universes for account A and one for account B. It never reads or uploads your device Cosmos.</p>
+    <p>Use two real accounts. Sign in/out in a separate normal Cosmifold tab at this exact origin. No tokens or passwords are displayed, requested or stored by this diagnostic.</p>
+    <p>Follow <a href="../docs/cloud-boundary-integration.md">the Phase A procedure</a>. Keep this page open through the account switch. Do not repeat failed mutations; retain the cleanup details for review.</p>
+    <p id="identity-state" role="status">Identity is checked only when a test starts.</p>
+    <details><summary>Read-only API inventory for restricted OpenAPI</summary>
+        <p>Supabase restricts OpenAPI discovery to administrative credentials. Never paste a key here. Run
+            <a href="../tests/database/cloud-api-surface-audit.sql">the read-only catalog audit</a> manually in this same project's SQL Editor, then paste only its JSON result below. This supplies exhaustive inventory; live RPC/privacy checks still run.</p>
+        <label for="surface-audit">Catalog audit JSON (no credentials or user data)</label>
+        <textarea id="surface-audit" rows="6" style="display:block;box-sizing:border-box;width:100%;max-width:100%" spellcheck="false"></textarea>
+        <p><button id="apply-audit" type="button">Use read-only inventory</button></p>
+        <p id="audit-status" role="status">No inventory supplied. A restricted OpenAPI response cannot pass on its own.</p>
+    </details>
+    <details><summary>Stock disabled GraphQL helper inspection</summary>
+        <p>Run <a href="../tests/database/cloud-graphql-helper-audit.sql">the read-only helper inspection</a> in this same project.
+            Paste its complete fresh JSON to verify the exact stock trigger helpers and disabled placeholder. This is required when those functions have browser EXECUTE grants.</p>
+        <label for="graphql-helper-audit">Helper inspection JSON (review custom bodies for embedded secrets first)</label>
+        <textarea id="graphql-helper-audit" rows="6" style="display:block;box-sizing:border-box;width:100%;max-width:100%" spellcheck="false"></textarea>
+        <p><button id="apply-graphql-helper-audit" type="button">Use stock helper inspection</button></p>
+        <p id="graphql-helper-audit-status" role="status">No stock helper proof supplied.</p>
+    </details>
+    <details><summary>Read-only GraphQL catalog proof for a disabled engine</summary>
+        <p>Run <a href="../tests/database/cloud-graphql-surface-audit.sql">the read-only GraphQL audit</a> in this same project's SQL Editor.
+            Paste only its fresh JSON result. This does not enable GraphQL or change permissions. An installed extension or browser-callable GraphQL function prevents a disabled-engine pass.</p>
+        <label for="graphql-audit">GraphQL catalog JSON (no credentials or user data)</label>
+        <textarea id="graphql-audit" rows="6" style="display:block;box-sizing:border-box;width:100%;max-width:100%" spellcheck="false"></textarea>
+        <p><button id="apply-graphql-audit" type="button">Use read-only GraphQL audit</button></p>
+        <p id="graphql-audit-status" role="status">No GraphQL audit supplied. An HTTP error alone is not proof.</p>
+    </details>
+    <p><button id="prepare-a" type="button">1. Prepare/check A1 and A2</button></p>
+    <p><button id="verify-existing-a" type="button">Verify existing A1/A2 (read-only)</button></p>
+    <p><button id="privacy" type="button">2. Check current account API privacy</button></p>
+    <p><button id="arm" type="button">3. Hold A response for account switch</button></p>
+    <p>After arming, sign out A and sign in B in the normal tab. You have three minutes.</p>
+    <p><button id="check-b" type="button">4. Check account B</button></p>
+    <p>Repeat button 2 while signed in as B. Then sign out B and sign back into A.</p>
+    <p><button id="finish-a" type="button">5. Check returning account A</button></p>
+    <pre id="output" role="status" aria-live="polite">Ready. No live tests have run.</pre>
+    <section id="cleanup-section" hidden><h2>Guarded manual cleanup</h2>
+        <p>Run this entire SQL transaction in Supabase SQL Editor after review. Successful full cleanup returns <code>test_universes_removed = 3</code>. Changed or unexpected data aborts cleanup. Never remove guards.</p>
+        <pre id="identities"></pre><pre id="cleanup"></pre>
+        <p>Only after confirmed server cleanup, remove the printed exact diagnostic cache keys (including any printed foreign-scope probe key) and the sessionStorage marker <code>cosmifold:dev:cloud-boundary:v1</code>. Do not clear all browser storage. Remove a disposable Auth user separately as documented; never delete a real account.</p>
+    </section>
+</main>
+<script src="../auth-config.js"></script><script src="../services/supabase-client.js"></script>
+<script src="../services/supabase-auth.js"></script><script src="../services/auth-service.js"></script>
+<script src="../config.js"></script><script src="../model.js"></script><script src="../portals.js"></script>
+<script src="../constellations.js"></script><script src="../clipboard.js"></script><script src="../services/universe-repository.js"></script>
+<script src="../services/cloud-repository-contract.js"></script><script src="../services/cloud-metadata-projection.js"></script>
+<script src="../services/cloud-metadata-changes.js"></script><script src="../services/supabase-metadata-gateway.js"></script>
+<script src="../persistence/cloud-cache-store.js"></script><script src="../services/cloud-universe-repository.js"></script>
+<script src="../services/cloud-workspace.js"></script><script src="cloud-boundary-http.js"></script>
+<script src="cloud-graphql-stock.js"></script><script src="cloud-boundary-diagnostic.js"></script><script src="cloud-boundary-cleanup.js"></script><script src="cloud-boundary-diagnostic-page.js"></script>
+</body></html>

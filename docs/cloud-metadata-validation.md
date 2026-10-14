@@ -1,5 +1,49 @@
 # Reversible Supabase SQL Editor validation
 
+## Current live checkpoint: Phase A complete and cleaned up
+
+The user reports all [Phase A identity/privacy checks](cloud-boundary-integration.md)
+passed: A1/A2 and real-user A/B isolation, delayed A-to-B response fencing,
+validated return to A, private REST exclusion, exactly five authenticated-only
+RPCs and independently proved disabled GraphQL for both caller classes. The
+final message was `COMPLETE: identity/Universe phase checks passed.`
+Guarded cleanup returned `test_universes_removed = 3`; exact diagnostic cache
+verification returned `[]`; the Phase A session marker returned `null`.
+Codex ran no live requests/SQL or cleanup. Earlier OpenAPI/grant/helper stops
+below are investigation history, not unresolved current Phase A gates.
+
+The user corrected and verified the RPC grants; preserve that least-privilege
+configuration and avoid dashboard exposure toggles that regrant anon execution.
+GraphQL was proved disabled, not tested as an enabled engine. Normal cloud mode
+remains inactive. [The remaining gates](cloud-activation-gates.md) recommend
+Phase B concurrent revisions/idempotency next, with true independent-session
+lock testing distinguished from browser races. No further Phase A cleanup is
+needed; do not run the old cleanup against removed fixture IDs.
+
+## Earlier Phase A preparation history (superseded by the checkpoint above)
+
+The next identity/privacy HTTP gate is prepared in
+[Cloud boundary integration — Phase A](cloud-boundary-integration.md). Its
+loopback-only diagnostic checks actual REST/private-profile exclusion, observed
+GraphQL exposure, same-owner A1/A2 switching and real-account A/B isolation with
+guarded disposable-fixture cleanup. The user reports live Step 1 and both
+Step 2 REST table-exclusion matrices passed; Step 2 stopped at the diagnostic's
+obsolete browser OpenAPI assumption. The corrected diagnostic requires fresh
+read-only catalog evidence when root discovery is restricted, plus actual RPC
+probes; GraphQL and A/B live checks remain pending. Deterministic local tests
+do not close that live gate. Concurrency, genuine
+network-loss recovery, performance and cloud files are outside Phase A.
+
+The user's subsequent canonical inventory reports effective anonymous EXECUTE
+on all five public RPCs. The strict inventory gate correctly rejects this
+against the intended authenticated-only grant model. A read-only ACL/membership
+follow-up confirmed direct `anon` ACL entries rather than inherited privileges.
+A [signature-specific corrective migration and read-only post-fix check](cloud-rpc-grants.md)
+are prepared, not applied. The dashboard's Exposed functions grant action includes
+anon, so future setup must preserve authenticated-only custom grants through SQL.
+No privileges or fixtures have been modified by Codex. GraphQL/A/B validation
+remains blocked until the user applies/verifies the correction and resumes Step 2.
+
 Run manually from the real Supabase SQL Editor only after reviewing this file
 and the SQL. Codex has **not connected or executed the validation**. At the SQL
 validation checkpoint, the approved migration, database suite, Auth and

@@ -245,9 +245,14 @@ reply without a second semantic mutation, left revision `1` unchanged after
 stale rejection, and uploaded no existing local Cosmos. Codex ran neither test
 nor cleanup; see [the full Step 5 checkpoint](cloud-metadata-repository.md).
 
-Still separate: genuine transport-loss/delayed-request scenarios, independent-session
-locking/races, second authenticated-owner isolation over HTTP, private-table/GraphQL HTTP
-exposure, cross-device bootstrap/cache, migration decisions, files, synchronization
+Subsequent Phase A passed live owner/Universe isolation, cross-account delayed-read
+fencing, private REST exclusion, all five authenticated-only RPCs and independently
+verified disabled GraphQL. Guarded cleanup returned `test_universes_removed = 3`,
+exact diagnostic cache verification `[]` and marker `null`. Codex ran none of
+those live checks/cleanup; see [the Phase A checkpoint](cloud-boundary-integration.md).
+
+Still separate: genuine transport-loss/delayed-mutation scenarios, independent-session
+locking/races, durable pending reload/recovery, migration decisions, files, synchronization
 and offline/PWA work. The installed schema/configuration review and SQL Editor
 assertions do not claim these live integration checks.
 
