@@ -25,11 +25,20 @@ Codex did not connect to Supabase, execute the diagnostic or perform cleanup.
 | Browser cleanup | Exact cloud cache key removed from localStorage; `cosmifold:dev:cloud-cache-diagnostic:v1` removed from sessionStorage |
 
 **Step 6 is ready to commit as an inactive foundation.** This closes the bounded
-live cache/bootstrap/reload/sign-out/disposal and fixture-cleanup gate. It does
-not claim live second-account or A1/A2 switching, durable pending-mutation
+live cache/bootstrap/reload/sign-out/disposal and fixture-cleanup gate. At that
+checkpoint it did not claim live second-account/A1-A2 switching, durable pending-mutation
 recovery across reload, genuine transport failures, quota failures or multi-tab/
 multi-session races. Those paths have deterministic coverage but remain separate
 live integration gates before production cloud activation.
+
+**Subsequent Phase A checkpoint:** the user now reports real A1/A2 and account
+A/B isolation, delayed A-to-B response fencing, validated returning-account
+bootstrap and the REST/RPC/disabled-GraphQL privacy boundary passed. Guarded
+cleanup returned `test_universes_removed = 3`; diagnostic cache verification was
+`[]`; the Phase A marker was `null`. See [the live record](cloud-boundary-integration.md).
+This closes those identity/privacy gaps, not durable uncertain-operation reload,
+genuine transport failures or concurrent multi-tab writers/locking. The next
+proposed phase is [revision concurrency/idempotency](cloud-activation-gates.md).
 
 Documentation-checkpoint verification: **141 focused local tests passed** for
 cache/diagnostic, repository, gateway, projection, schema static checks and the
@@ -281,8 +290,9 @@ Stop after Step 6. Normal-app activation, explicit local-to-cloud migration,
 cloud files, unrestricted offline edits, realtime, collaboration and PWA work
 are separate approvals. The user-reported scoped-cache/reload/fencing validation
 and exact server/browser cleanup passed as recorded above. Remaining gates:
-live second-account/A1-A2 isolation, durable pending reload/receipt recovery,
-genuine network-loss/quota failure cases, real multi-tab/multi-session locking,
-private-table/GraphQL HTTP exclusion, broader rich-command HTTP/parser/
+durable pending reload/receipt recovery, genuine network-loss/quota failure cases,
+real multi-tab/multi-session locking, broader rich-command HTTP/parser/
 performance cases, and a separately reviewed activation/migration strategy that
 preserves the existing local Cosmos and rejects unsupported file-bearing data.
+Live identity/Universe isolation and the private REST/RPC/disabled-GraphQL gate
+are now closed by Phase A; they must be rechecked if exposure/grants change.

@@ -268,8 +268,11 @@ the separate subsequent user-reported live diagnostic and cleanup passed as
 recorded above. No runtime implementation change was needed during the
 interruption review or this live-checkpoint documentation update.
 
-Stop at Step 5; this inactive foundation is ready to commit. Second-owner HTTP
-isolation, private-table/GraphQL HTTP probes, concurrent locking, genuine
+Stop at Step 5; this inactive foundation is ready to commit. Subsequent live
+Phase A closed second-owner/A1-A2 isolation, context fencing and private
+REST/RPC/disabled-GraphQL privacy; cleanup returned `test_universes_removed = 3`,
+diagnostic cache verification `[]` and marker `null`, according to the user.
+See [the checkpoint](cloud-boundary-integration.md). Concurrent locking, genuine
 transport-loss/delayed-request cases, broader rich/compound commands over real
 HTTP, realistic performance/parser parity and
 live durable pending-work recovery remain open. Step 6's scoped cache/bootstrap
@@ -278,3 +281,6 @@ cache/reload/sign-out/disposal test passed. Normal-app activation still requires
 the remaining integration gates and an explicit migration/activation strategy.
 Migration/import UX, cloud files, sync and PWA require later approval. Cloud mode
 is inactive.
+
+The next proposed bounded phase is [revision concurrency and idempotency](cloud-activation-gates.md),
+before separate durable/transport-failure recovery and later files/migration.

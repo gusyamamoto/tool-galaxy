@@ -81,6 +81,13 @@ direct privileged operator SQL must not bypass that invariant protocol.
 
 ## RLS and grants
 
+The later Phase A audit found direct anonymous grants on the five installed RPCs.
+The original migration's revocations are correct and remain unchanged. Review
+[the targeted corrective migration and dashboard precautions](cloud-rpc-grants.md)
+before resuming HTTP validation: Supabase's Exposed functions toggle grants
+anonymous execution as well as authenticated execution. Authenticated-only
+`custom` grants are intentional; do not toggle them to fully granted.
+
 All six tables have RLS enabled **and forced**. The Universe policy compares
 `owner_id` with `auth.uid()`. Child/receipt policies resolve ownership through the
 Universe, with `USING` and `WITH CHECK`. Receipt inserts additionally require the
@@ -266,8 +273,13 @@ one deleted disposable Universe; see [the live gateway checkpoint](cloud-metadat
 The subsequent user-reported Step 5 commit/read/receipt/stale-write diagnostic
 passed, and guarded cleanup returned `test_universe_removed = true`; see
 [the live repository checkpoint](cloud-metadata-repository.md). Step 5 is ready
-to commit as an inactive foundation. Genuine transport-loss/delayed-request
-cases, second-owner isolation and direct private-table/GraphQL HTTP exclusion,
-plus concurrent-session locking, remain untested integration gates before
+to commit as an inactive foundation at that checkpoint. Phase A has since passed
+live second-owner/A1-A2 isolation, direct private REST exclusion, exactly five
+authenticated-only RPCs and independently verified disabled GraphQL. Guarded
+cleanup returned `test_universes_removed = 3`, exact diagnostic cache verification
+`[]` and marker `null`, according to the user; see
+[the completed boundary checkpoint](cloud-boundary-integration.md).
+Genuine transport-loss/delayed-mutation cases and concurrent-session locking
+remain untested integration gates before
 production cloud use. Codex performed no database connection, application,
 cloud activation or deployment.

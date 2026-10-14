@@ -2,6 +2,19 @@
 
 Audit date: October 11, 2026. Branch: `architecture/cloud-foundation`.
 
+**Latest live validation checkpoint: Phase A complete.** The user reports real
+owner/Universe isolation, delayed-response/context fencing, private REST exclusion,
+exactly five authenticated-only public RPCs and independently verified disabled
+GraphQL for both browser caller classes. Final diagnostic reported
+`COMPLETE: identity/Universe phase checks passed.` Guarded cleanup returned
+`test_universes_removed = 3`; exact diagnostic cache verification returned `[]`;
+the Phase A session marker returned `null`. Codex ran no live requests/SQL or cleanup.
+See [the full checkpoint](cloud-boundary-integration.md) and
+[remaining gates/next bounded phase](cloud-activation-gates.md).
+Normal cloud mode remains inactive and local data/Backup/Restore unchanged.
+The implementation checkpoints below retain their original scope; gaps concerning
+identity/private HTTP exposure are now closed by Phase A under current configuration.
+
 Subsequent implementation checkpoint: Auth has been verified by the user locally
 and in production, and the cloud metadata SQL migration is installed with its
 private schema unexposed. [Step 4](cloud-metadata-gateway.md) adds shared client
@@ -10,8 +23,9 @@ diagnostic. The user reports that its live authenticated list/create/read and
 anonymous-denial checks passed, with revision `0`, no local metadata upload,
 and exactly one row returned by guarded cleanup of the disposable Universe.
 At that Step 4 checkpoint, commit/receipt HTTP remained a gap; its bounded
-Step 5 test has now passed as recorded below. Second-owner HTTP isolation,
-private-table/GraphQL probes and concurrent locking remain gaps. Cloud mode is
+Step 5 test has now passed as recorded below. Phase A has since closed second-owner
+HTTP isolation and private REST/RPC/disabled-GraphQL privacy. Concurrent locking
+remains a gap. Cloud mode is
 inactive; all current Cosmos metadata/files stay browser-local. Cache/bootstrap,
 local-data migration and sync remain separate gates. The audit observations below retain their original
 date/scope.
@@ -23,8 +37,7 @@ presentation separate. The user reports its live revision `0 -> 1` commit,
 exact read, receipt reconciliation without a second mutation and stale-write
 rejection passed, with no local Cosmos upload. Guarded cleanup returned
 `test_universe_removed = true`. Step 5 is ready to commit as an inactive
-foundation. Real transport-loss/delay cases, second-owner HTTP isolation,
-private-table/GraphQL probes, concurrent locking and pending-work durability
+foundation. Real transport-loss/delay cases, concurrent locking and pending-work durability
 remain gaps. Normal startup and local user data are unchanged; scoped
 cache/bootstrap, migration and cloud activation remain later gates.
 
@@ -35,8 +48,9 @@ live reload/cache/sign-out/disposed-read diagnostic passed according to the user
 on October 13, 2026, at revision `0`, without reading/uploading the local Cosmos.
 Guarded SQL cleanup returned one row; the exact scoped cache key and diagnostic
 session marker were removed. Step 6 is ready to commit as an inactive foundation.
-Live cross-account/Universe switching, pending reload recovery, genuine failures,
-multi-tab/session races and private API exposure checks remain gates. Normal startup
+Phase A has since passed live account/Universe switching and private API privacy.
+Pending reload recovery, genuine failures and concurrent multi-tab/session races
+remain gates. Normal startup
 still uses the existing unscoped local Cosmos; no data migration or activation
 has occurred.
 
