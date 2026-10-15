@@ -42,7 +42,11 @@ This closes safe recovery across controlled receipt unavailability AFTER a real,
 independently verified original commit. It does not prove natural database
 replication/visibility delay, a genuinely absent server receipt created later,
 or interruption/cancellation midway through SQL execution. Those timing cases
-remain UNVERIFIED; broader live recovery contention/session races remain open.
+remain unproved by this live test. The subsequent
+[atomicity review](cloud-receipt-atomicity.md) closes post-commit receipt absence
+as NOT APPLICABLE / IMPOSSIBLE BY CONTRACT. Delayed original execution before
+writer-lock acquisition, mid-SQL interruption and broader live recovery
+contention/session races remain open.
 
 ## Exact proof and limits
 
@@ -78,9 +82,11 @@ Direct server inspection and guarded cleanup always bypass the visibility gate.
 
 This does NOT prove natural receipt creation after an initially missing server
 lookup, replication lag, cancellation/interruption during SQL execution, every
-proxy timeout, or arbitrary account/multi-tab/quota timing. Those remain distinct
-limits/gates. Receipt withholding is deliberate development failure injection,
-not backend behavior and not production sync activation.
+proxy timeout, or arbitrary account/multi-tab/quota timing. These are limits of
+this live evidence; the atomicity review distinguishes impossible post-commit
+absence from still-open delayed original execution. Receipt withholding is
+deliberate development failure injection, not backend behavior and not production
+sync activation.
 
 ## Durable control and fencing
 

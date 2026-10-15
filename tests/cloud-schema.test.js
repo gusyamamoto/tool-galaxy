@@ -80,6 +80,42 @@ test('semantic command labels match the existing JS contract and layout/files ar
  assert.match(source,/UNSUPPORTED_ATTACHMENTS/);assert.match(body('cosmifold_private.valid_attributes'),/content->'attachments'<>'\[\]'::jsonb/);
  assert.doesNotMatch(migration,/\b(?:x|y|layout|positions)\s+(?:real|double|jsonb|numeric)/i);
 });
+
+test('new-operation success inserts its receipt synchronously before returning; errors cannot commit metadata alone',()=>{
+ const source=body('public.cosmifold_commit_metadata').replace(/--[^\n]*/g,'');
+ const ordered=['for update','select * into previous','current_revision<>base','delete from cosmifold_private.constellation_members',
+  'perform cosmifold_private.assert_integrity(target)','set revision=revision+1',
+  'insert into cosmifold_private.operation_receipts','values(target,operation,digest,base,current_revision,result)','return result;','\nexception'];
+ let previous=-1;for(const part of ordered){const at=source.indexOf(part);assert.ok(at>previous,part);previous=at;}
+ assert.deepEqual([...source.matchAll(/\breturn\s+([^;]+);/gi)].map(match=>match[1]),[
+  `previous.acknowledgement || '{"replayed":true}'::jsonb`,'result']);
+ // This is a source review guard, not execution of PostgreSQL's atomicity rules.
+ assert.equal((source.match(/\binsert into cosmifold_private\.operation_receipts/g)||[]).length,1);
+ assert.doesNotMatch(source,/\b(?:commit|rollback|savepoint|call)\b|when others|do nothing/i);
+ assert.match(source,/when check_violation or foreign_key_violation or unique_violation or not_null_violation then\s+raise exception/);
+ assert.match(source,/when invalid_text_representation or numeric_value_out_of_range then\s+raise exception/);
+});
+
+test('receipt reads wait on the same Universe lock and only the commit RPC writes receipts in the migrations',()=>{
+ const source=body('public.cosmifold_operation_receipt').replace(/--[^\n]*/g,'');
+ assert.ok(source.indexOf('checked_scope')<source.indexOf('for share'));
+ assert.ok(source.indexOf('for share')<source.indexOf('select acknowledgement into receipt'));
+ assert.ok(source.indexOf('select acknowledgement into receipt')<source.indexOf("'status','missing'"));
+ for(const name of ['public.cosmifold_read_universe','public.cosmifold_operation_receipt','public.cosmifold_commit_metadata'])
+  assert.match(functions.find(match=>match[1]===name)[3],/language plpgsql volatile/);
+ const migrations=fs.readdirSync('supabase/migrations').filter(name=>name.endsWith('.sql'))
+  .map(name=>fs.readFileSync('supabase/migrations/'+name,'utf8').replace(/--[^\n]*/g,'')).join('\n');
+ assert.equal((migrations.match(/\binsert into cosmifold_private\.operation_receipts/gi)||[]).length,1);
+ assert.doesNotMatch(migrations,/\b(?:update|delete from)\s+cosmifold_private\.operation_receipts\b|create\s+(?:constraint\s+)?trigger\b|\b(?:dblink|pg_background|pg_net|cron)\s*\./i);
+ assert.match(migration,/grant select, insert on cosmifold_private\.operation_receipts to authenticated/);
+ assert.doesNotMatch(migrations,/grant\s+[^;]*(?:update|delete|all)[^;]*on\s+cosmifold_private\.operation_receipts\b/i);
+});
+
+test('database regression asserts immediate receipt creation, no-op receipt retention and rollback after RPC return',()=>{
+ for(const marker of ['new operation returned without its exact receipt','no-op returned without its receipt',
+  'RPC return must not independently commit','outer rollback separated metadata/revision/receipt'])assert.ok(databaseTests.includes(marker),marker);
+ assert.match(databaseTests,/errcode='CT001'/);assert.match(databaseTests,/when sqlstate 'CT001'/);
+});
 test('SQL test literals match the Step-2 projector exactly, not a handwritten second projection',()=>{
  const cmd=fixture('cloud_command'),expected=fixture('expected_projection'),snapshot=fixture('source_snapshot');
  const generated=projection.toRelational(snapshot,{...cmd.scope,revision:'1'}).metadata;

@@ -8,10 +8,13 @@ checkpoint and server-committed/native-response interruption checkpoint have
 also passed live and been cleaned up. The controlled missing-then-visible
 ORIGINAL receipt checkpoint has now passed live and been cleaned up as well:
 receipt visibility was withheld AFTER an independently verified real commit.
-The next open transport timing gate is a server-admitted operation whose receipt
-is genuinely absent on the server at lookup and created later; it remains
-UNVERIFIED, as does interruption/cancellation midway through SQL execution. The Offline
-checkpoint proves transport failure before server execution/dispatch completion,
+The nominal committed-mutation-with-receipt-created-later gate is now CLOSED AS
+NOT APPLICABLE / IMPOSSIBLE BY CONTRACT: metadata, revision and receipt commit
+atomically. See [the architecture review](cloud-receipt-atomicity.md). The next
+recommended bounded checkpoint is live simultaneous recovery contention and
+session/account changes. Delayed original execution before writer-lock acquisition
+and interruption/cancellation midway through SQL remain unverified timing cases.
+The Offline checkpoint proves transport failure before server execution/dispatch completion,
 not arbitrary interruption while the server executes. No live request or SQL is
 run by Codex.
 
@@ -102,8 +105,8 @@ by Codex. No second account, token copying or new credentials were needed.
 
 | Gate | Urgency / next boundary |
 | --- | --- |
-| Server-admitted operation with genuinely absent server receipt created later; interruption/cancellation during SQL execution | UNVERIFIED: controlled missing-then-visible receipt observation after an independently proved commit has PASSED live and been cleaned up. That bounded checkpoint does not prove natural database replication/visibility delay, actual later receipt creation or mid-SQL interruption. Independently establish admission/overlap and the relevant server outcome in a separately reviewed timing test. |
-| Multi-tab recovery contention and session changes during delayed recovery | Phase C live-validated stale-peer/base protection; account changes and simultaneous recovery contention are automated-tested but broader live timing races remain open before activation. |
+| Delayed original execution before writer-lock acquisition; interruption/cancellation during SQL execution | OPEN / live-unverified: a pre-lock lookup may return missing BEFORE the original request commits metadata and receipt together. This remains distinct from impossible post-commit receipt absence. Independently establish admission/overlap and outcome; no synthetic late receipt insertion. |
+| Multi-tab recovery contention and session changes during delayed recovery | NEXT recommended bounded checkpoint: Phase C live-validated stale-peer/base protection; account changes and simultaneous recovery contention are automated-tested but broader live timing races remain open before activation. |
 | Rich/compound semantic HTTP round trips, archive/link/Constellation/order parity and parser/history compatibility | Subsequent bounded metadata compatibility phase; before activation/import of real data |
 | Private cloud files, originals/thumbnails, copies/deletion, upload recovery and portable export | Before normal activation/migration of file-bearing Cosmos. Strict attachment rejection remains until complete support; never imply local-only binaries are synced. |
 | Reversible local-to-account copy/verify and explicit dataset choice/activation | Separately reviewed branches after persistence/files gates; retain local original, IDs and Backup/Restore; no automatic claim/merge/overwrite |
@@ -188,17 +191,25 @@ This case starts offline before dispatch: it does not prove arbitrary interrupti
 after PostgreSQL begins a mutation, long offline reload of app/SDK assets, or all
 account/multi-tab/quota races. Keep those and rich metadata/files/migration gates.
 
-### Next incomplete transport timing gate: genuinely absent server receipt created later
+### Closed as not applicable: committed mutation with original receipt created later
 
-The next bounded diagnostic must establish server admission/overlap independently, not
-infer it from a clicked button, client timer, Offline flag or locally held
-Promise. Then interrupt transport/reload without resubmitting, preserve the
-original pending command, and verify unresolved/missing receipt states stay
-blocked until the original receipt proves an outcome. Where a late commit
-occurs, accept it once, refresh authoritative state and fence abandoned contexts.
-Use new disposable fixtures and unchanged ownership/revision/cleanup boundaries.
-If actual admission/overlap or a later receipt cannot be established, mark that
-case UNVERIFIED.
+Architecture review (2026-10-14) closes this nominal post-commit gate as
+**NOT APPLICABLE / IMPOSSIBLE BY CONTRACT**, not live-passed. The supported commit
+RPC synchronously changes metadata/revision and inserts its original receipt in
+ONE request transaction; they commit together or roll back together. Receipt
+lookup takes a conflicting Universe share lock before reading. No asynchronous
+receipt writer, split transaction or application replica-read path exists.
+See [exact SQL, transaction/visibility evidence and limits](cloud-receipt-atomicity.md).
+No live fixture, receipt insertion hook, production change or activation is added.
+
+This does NOT close delayed original execution: a request admitted but not yet
+holding the Universe writer lock can be overtaken by a missing receipt lookup,
+then later commit metadata AND receipt together without resend. Nor does it close
+mid-SQL interruption/cancellation. Both remain live-unverified. Any future timing
+test must independently prove admission/overlap and outcome, retain original
+identities/cache/journal, block writes while unresolved and use guarded cleanup.
+The next recommended bounded activation checkpoint is live same-origin
+simultaneous recovery contention and session/account changes during delay.
 
 ### Closed bounded checkpoint: controlled missing-then-visible ORIGINAL receipt
 
@@ -253,8 +264,9 @@ only exact temporary cache/marker keys were removed, returning the diagnostic to
 **No Phase C fixture.** / **Ready; no requests made.**
 This is operator-reported live evidence, distinct from local/mock tests. It
 covers committed-but-unreceived response loss, not cancellation during SQL
-execution or a receipt created after an initially missing lookup. Those timing
-cases remain separate open gates. No normal cloud mode was activated.
+execution or a delayed original commit after an initially missing lookup. Those
+reachable timing cases remain open; post-commit receipt absence is separately
+closed as impossible by contract above. No normal cloud mode was activated.
 
 Phase B local verification: 450 non-physics Node regression tests and 58 physics
 tests passed. Mocked browser checks passed: Phase B 35, Phase A 39, and existing

@@ -33,6 +33,13 @@ begin
   if response->>'status'<>'absent' then raise exception 'genuine absence not distinguished'; end if;
   ack:=public.cosmifold_commit_metadata(cmd);
   if ack->>'revision'<>'1' or ack->>'status'<>'committed' then raise exception 'valid revision did not increment once'; end if;
+  -- The RPC has returned inside THIS transaction, not committed a second one.
+  response:=public.cosmifold_operation_receipt(sa,(cmd->>'operationId')::uuid);
+  if response->>'status' is distinct from 'found' or
+    response->'acknowledgement' is distinct from (ack || '{"replayed":true}'::jsonb) or
+    (select count(*) from cosmifold_private.operation_receipts where universe_id=ua and operation_id=(cmd->>'operationId')::uuid)<>1 then
+    raise exception 'new operation returned without its exact receipt';
+  end if;
   response:=public.cosmifold_read_universe(sa);
   if response->'metadata' is distinct from expected then raise exception 'SQL projection differs from Step-2 fixture'; end if;
   response:=public.cosmifold_commit_metadata(cmd);
@@ -59,6 +66,27 @@ begin
   exception when sqlstate 'CM003' then null; end;
   if public.cosmifold_read_universe(sa) is distinct from before_data or
     (select count(*) from cosmifold_private.operation_receipts where universe_id=ua)<>before_receipts then raise exception 'stale write changed data/receipts'; end if;
+  -- A caller rollback AFTER successful RPC return must undo metadata, revision
+  -- and receipt together. Uses only the real RPC and an enclosing subtransaction;
+  -- no trigger, split write, receipt fabrication or change to deployed SQL.
+  modified:=jsonb_build_object('scope',sa,'operationId','00000000-0000-4000-8000-000000000109','baseRevision','2','type','items.renamed',
+    'payload',jsonb_build_object('upsert',jsonb_build_object('entries',jsonb_build_array(jsonb_set(row_data,'{name}','"Outer rollback"')))));
+  begin
+    ack:=public.cosmifold_commit_metadata(modified);
+    response:=public.cosmifold_operation_receipt(sa,(modified->>'operationId')::uuid);
+    if ack->>'revision' is distinct from '3' or
+      public.cosmifold_read_universe(sa)#>>'{metadata,universe,revision}' is distinct from '3' or
+      response->>'status' is distinct from 'found' or
+      response->'acknowledgement' is distinct from (ack || '{"replayed":true}'::jsonb) then
+      raise exception 'RPC return must not independently commit: expected provisional metadata/revision/receipt';
+    end if;
+    raise exception using errcode='CT001',message='ROLLBACK_SUCCESSFUL_RPC';
+  exception when sqlstate 'CT001' then null; end;
+  if public.cosmifold_read_universe(sa) is distinct from before_data or
+    (select count(*) from cosmifold_private.operation_receipts where universe_id=ua)<>before_receipts or
+    public.cosmifold_operation_receipt(sa,(modified->>'operationId')::uuid)->>'status' is distinct from 'missing' then
+    raise exception 'outer rollback separated metadata/revision/receipt';
+  end if;
   -- First row update succeeds; missing-parent second row fails FINAL validation.
   modified:=jsonb_build_object('scope',sa,'operationId','00000000-0000-4000-8000-000000000104','baseRevision','2','type','items.changed',
     'payload',jsonb_build_object('upsert',jsonb_build_object('entries',jsonb_build_array(jsonb_set(row_data,'{name}','"Must roll back"'),
@@ -100,6 +128,10 @@ begin
   empty_command:=jsonb_build_object('scope',sa,'operationId','00000000-0000-4000-8000-000000000106','baseRevision','2','type','items.changed','payload','{}'::jsonb);
   response:=public.cosmifold_commit_metadata(empty_command);
   if response->>'revision'<>'2' or response->>'status'<>'unchanged' then raise exception 'no-op revision changed'; end if;
+  ack:=public.cosmifold_operation_receipt(sa,(empty_command->>'operationId')::uuid);
+  if ack->>'status' is distinct from 'found' or ack->'acknowledgement' is distinct from (response || '{"replayed":true}'::jsonb) then
+    raise exception 'no-op returned without its receipt';
+  end if;
   -- Swap global ordinals: deferred uniqueness allows valid reordering atomically.
   modified:=jsonb_build_object('scope',sa,'operationId','00000000-0000-4000-8000-000000000107','baseRevision','2','type','items.changed',
     'payload',jsonb_build_object('upsert',jsonb_build_object('entries',jsonb_build_array(jsonb_set(row_data,'{ordinal}','1'),jsonb_set(cmd#>'{payload,upsert,entries,1}','{ordinal}','0')))));
