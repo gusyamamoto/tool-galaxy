@@ -123,6 +123,11 @@ and SDK session; there is no secret or privileged-key architecture.
 | `cosmifold_commit_metadata(p_command jsonb)` | Atomic row changes, CAS, validation, receipt and contract-compatible acknowledgement. |
 | `cosmifold_operation_receipt(p_scope jsonb, p_operation_id uuid)` | `absent` Universe / `missing` receipt / `found` receipt. Found includes server `request_digest` and the original acknowledgement with `replayed: true`. |
 
+The [receipt atomicity review](cloud-receipt-atomicity.md) records the exact
+transaction invariant: a supported RPC cannot commit metadata/revision and create
+its original receipt later. Pre-lock delayed execution is a distinct reachable
+case; missing receipt recovery must still preserve unresolved pending state.
+
 `p_scope` is the contract's `{ownerUserId, universeId}`. Owner is verified against
 `auth.uid()`, never trusted. A mismatched requested owner raises `FORBIDDEN`;
 missing Auth raises `UNAUTHENTICATED` (anonymous grants deny access earlier).

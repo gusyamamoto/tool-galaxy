@@ -378,15 +378,20 @@ server receipt, cancellation during SQL execution or broader live timing races.
 Existing cases and production recovery behavior remain unchanged; cloud activation
 is still blocked.
 
-The broader unverified timing case is **server-admitted operation with an
-initially missing server receipt that is created later**. Protect against a request committing after the client times out or
-reloads, causing discarded pending state, duplicate resubmission or stale
-publication. A bounded follow-up must prove the request reached the server
-before interruption, retain the original operation ID across reload, keep writes
-blocked while the receipt is unavailable/missing, and recover an eventual
-original acknowledgement at most once without semantic resend. Evidence of
-server admission/overlap is required; a client timer or held Promise alone is
-not proof. Leave this UNVERIFIED until separately designed and live-tested.
+The [atomicity review](cloud-receipt-atomicity.md) closes **committed original
+mutation with a genuinely absent receipt created later** as NOT APPLICABLE /
+IMPOSSIBLE BY CONTRACT, not live-passed. Metadata/revision/receipt commit in one
+transaction; no asynchronous receipt creation or replica-read path is configured.
+The next recommended checkpoint is live same-origin simultaneous recovery
+contention and account/session changes during delayed recovery.
+
+The distinct reachable timing case is **original request delayed BEFORE acquiring
+the writer lock, missing receipt lookup first, original commit later**. Admission
+alone is not commit. Preserve the original journal/cache/ID and block writes
+through delay/reload; an eventual original commit must create metadata and receipt
+together without resend. This and mid-SQL interruption/cancellation remain
+live-UNVERIFIED. Future evidence must independently establish server admission /
+overlap and outcome; a client timer or held Promise alone is not proof.
 The bounded server-committed/native-response continuation is implemented as
 an additional case in the SAME diagnostic; see [cloud-inflight-recovery.md](cloud-inflight-recovery.md).
 It uses an independent real receipt/state audit before native response failure,
@@ -400,9 +405,10 @@ Both diagnostics were disposed; guarded cleanup returned
 `test_universes_removed = 1`; only exact temporary cache/marker keys were removed.
 Final state was **No Phase C fixture.** / **Ready; no requests made.**
 This closes the committed-before-SDK-acceptance checkpoint, not mid-SQL
-cancellation or later creation of a missing receipt. Existing cases, original-ID
-recovery and cleanup guards are unchanged. The next timing gate above remains
-UNVERIFIED. No live request or SQL was executed by Codex.
+cancellation or a delayed original commit after a missing lookup. Existing cases,
+original-ID recovery and cleanup guards are unchanged. Those reachable timing
+cases remain UNVERIFIED; impossible post-commit receipt creation is closed by
+the architecture review above. No live request or SQL was executed by Codex.
 
 Post-validation review reran all 480 non-physics Node tests (including 15 focused
 recovery tests), all 50 isolated recovery browser checks and `git diff --check`;

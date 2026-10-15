@@ -244,7 +244,9 @@ This closes the **server-committed / native response interruption** checkpoint:
 commit was independently visible before WRITER accepted the response, and later
 reload recovered that original receipt. It does NOT prove interruption or
 cancellation midway through SQL execution, or a receipt initially missing and
-created later. Those and the other limitations above remain open. This is
+created later. The [subsequent atomicity review](cloud-receipt-atomicity.md) closes
+post-commit receipt absence as impossible by contract; delayed original execution
+before writer-lock acquisition and mid-SQL interruption remain unverified. This is
 operator-reported live evidence; Codex did not connect or execute SQL.
 
 Post-validation review changed checkpoint documentation only and found no
