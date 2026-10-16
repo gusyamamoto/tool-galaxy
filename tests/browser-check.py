@@ -99,7 +99,8 @@ class CDP:
         self.sock = socket.create_connection((parsed.hostname, parsed.port), timeout=45)
         self.buffer = b""
         key = base64.b64encode(os.urandom(16)).decode()
-        self.sock.sendall(f"GET {parsed.path} HTTP/1.1\r\nHost: {parsed.hostname}:{parsed.port}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: {key}\r\nSec-WebSocket-Version: 13\r\n\r\n".encode())
+        host = f"[{parsed.hostname}]" if ':' in parsed.hostname else parsed.hostname
+        self.sock.sendall(f"GET {parsed.path} HTTP/1.1\r\nHost: {host}:{parsed.port}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: {key}\r\nSec-WebSocket-Version: 13\r\n\r\n".encode())
         while b"\r\n\r\n" not in self.buffer:
             self.buffer += self.sock.recv(65536)
         header, self.buffer = self.buffer.split(b"\r\n\r\n", 1)

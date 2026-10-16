@@ -7,16 +7,17 @@ function recoveryControls(){recoveryButtons.forEach(button=>button.disabled=!rec
     if(!recoveryLocal||recoveryBusy||recoveryDisposed)return;
     if(['cosmifold-inflight-writer','cosmifold-inflight-observer'].includes(window.name))document.getElementById('native-role').textContent='Native harness role: '+window.name.split('-').at(-1).toUpperCase()+'.';
     const m=recoveryIdentity();document.getElementById('prepare').disabled=!!m;
-    const network=m?.case==='browser-offline',native=m&&cloudRecoveryPlan.nativeCase(m),late=m?.case==='late-receipt';
-    document.getElementById('dispatch').disabled=m?.phase!==(native?'native-ready':network?'network-ready':'prepared');
+    const network=m?.case==='browser-offline',native=m&&cloudRecoveryPlan.nativeCase(m),late=m?.case==='late-receipt',delayed=m?.case==='delayed-admission';
+    document.getElementById('dispatch').disabled=m?.phase!==(delayed?'delayed-ready':native?'native-ready':network?'network-ready':'prepared');
     for(const id of ['reopen','blocked','recover','again','stale','acknowledged'])document.getElementById(id).disabled=!m||!['dispatched','uncertain'].includes(m.phase);
-    for(const id of ['reopen','recover','stale','acknowledged'])if(network||native)document.getElementById(id).disabled=true;
+    for(const id of ['reopen','recover','stale','acknowledged'])if(network||native||delayed)document.getElementById(id).disabled=true;
     if(network)document.getElementById('again').disabled=true;
     document.getElementById('network-arm').disabled=!network||m.phase!=='prepared';
     document.getElementById('network-blocked').disabled=!network||m.phase!=='uncertain';
     document.getElementById('network-reopen').disabled=late||!(network||native)||m.phase!=='uncertain';
     document.getElementById('late-reopen').disabled=!late||m.phase!=='uncertain';
     document.getElementById('late-release').disabled=!late||m.visibility.state!=='observed-missing';
+    document.getElementById('delayed-reopen').disabled=!delayed||m.phase!=='uncertain';
     document.getElementById('cleanup').disabled=!m;
 }
 async function recoveryAction(action){recoveryBusy=true;recoveryControls();try{await action();}
@@ -33,6 +34,7 @@ if(recoveryLocal){
     recoveryClick('network-reopen',()=>recoveryDiagnostic.reopenBrowserNetwork());
     recoveryClick('late-reopen',()=>recoveryDiagnostic.reopenLateReceipt());
     recoveryClick('late-release',()=>recoveryDiagnostic.releaseLateReceipt());
+    recoveryClick('delayed-reopen',()=>recoveryDiagnostic.reopenDelayed());
     recoveryClick('blocked',()=>recoveryDiagnostic.checkBlocked());recoveryClick('recover',()=>recoveryDiagnostic.recoverRealReceipt());
     recoveryClick('again',()=>recoveryDiagnostic.verifyAgain());recoveryClick('stale',()=>recoveryDiagnostic.checkStalePeer());
     recoveryClick('acknowledged',()=>recoveryDiagnostic.reopenAcknowledged());

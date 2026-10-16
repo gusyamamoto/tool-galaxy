@@ -5,7 +5,9 @@ handling so request/response headers and exception objects are never retained.
 Run only against an isolated debug browser with reviewed disposable fixtures.
 """
 import argparse
+import errno
 import importlib.util
+import ipaddress
 import json
 import os
 import re
@@ -13,6 +15,7 @@ import socket
 import struct
 import sys
 import time
+import urllib.error
 import urllib.request
 import uuid
 from pathlib import Path
@@ -37,8 +40,13 @@ def require(ok, code):
 
 class SafeCDP(transport.CDP):
     def __init__(self, url, seconds=35):
-        parsed = urlsplit(url)
-        require(parsed.scheme=='ws' and parsed.hostname=='127.0.0.1' and parsed.port and
+        try:
+            parsed = urlsplit(url)
+            loopback = ipaddress.ip_address(parsed.hostname).compressed in ('127.0.0.1','::1')
+            port = parsed.port
+        except (ValueError,TypeError):
+            raise Unverified('LOOPBACK_DEBUG_TARGET_REQUIRED')
+        require(parsed.scheme=='ws' and loopback and port and not parsed.username and not parsed.password and
                 parsed.path.startswith('/devtools/page/') and not parsed.query and not parsed.fragment,
                 'LOOPBACK_DEBUG_TARGET_REQUIRED')
         super().__init__(url)
@@ -228,10 +236,27 @@ mock=True is available to local tests only; the manual CLI always uses real RPCs
                 pass
 
 
-def find_targets(port, origin):
+def discover_pages(port):
     require(1024<=port<=65535, 'INVALID_DEBUG_PORT')
-    with urllib.request.urlopen(f'http://127.0.0.1:{port}/json',timeout=5) as response:
-        pages = json.load(response)
+    # Literal loopback endpoints must connect directly, regardless of proxy
+    # environment settings (which often omit IPv6 from their bypass list).
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    def read(host):
+        with opener.open(f'http://{host}:{port}/json',timeout=5) as response:
+            return json.load(response)
+    try:
+        return read('127.0.0.1')
+    except OSError as error:
+        reason = error.reason if isinstance(error,urllib.error.URLError) else error
+        refused = isinstance(reason,ConnectionRefusedError) or (isinstance(reason,OSError) and
+            (reason.errno in (errno.ECONNREFUSED,10061) or getattr(reason,'winerror',None)==10061))
+        if not refused:raise
+        # Keep the IPv4 failure as exception context if IPv6 fails as well.
+        return read('[::1]')
+
+
+def find_targets(port, origin):
+    pages = discover_pages(port)
     roles = {}
     for page in pages:
         if page.get('type')!='page' or page.get('url')!=origin+'/dev/cloud-recovery-diagnostic.html':

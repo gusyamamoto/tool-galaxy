@@ -24,6 +24,101 @@ async function lateEnvironment(){
     return {...e,identity,resume:()=>e.fresh({isOffline:()=>offline})};
 }
 
+function delayedProof(identity,patch={}){return {proofVersion:2,source:'share-holder-before-writer-lock',scope:identity.scope,operationId:identity.operationId,
+    baseRevision:'0',revision:'0',holderPid:101,holderXid:'1001',writerPid:102,writerXid:null,writerVirtualXid:'6/3',queryStart:'2026-10-14T00:00:00.000Z',requestDigest:'a'.repeat(64),...patch};}
+async function delayedEnvironment(){
+    const e=diagnosticEnvironment(),arrived=deferred(),release=deferred(),finished=deferred(),original=e.gateway.commitMetadata;let sent=0;
+    e.gateway.commitMetadata=async command=>{sent++;arrived.resolve();await release.promise;const ack=await original(command);finished.resolve();return ack;};
+    const writer=e.fresh(),identity=await writer.prepare('delayed-admission');await writer.armDelayed();
+    const dispatch=writer.dispatchOnce();await arrived.promise;
+    return {...e,writer,identity,dispatch,release:async()=>{release.resolve();await finished.promise;await new Promise(r=>setTimeout(r,0));},sent:()=>sent};
+}
+
+test('delayed proof v2 retains virtual transaction identity with null or assigned permanent XID',()=>{
+    const e=diagnosticEnvironment(),p=e.get('cloudRecoveryPlan');
+    const m={format:'cosmifold-phase-c',fixtureVersion:1,scope:{ownerUserId:A,universeId:U},operationId:B,case:'delayed-admission',phase:'dispatched'};
+    for(const writerXid of [null,'1002']){
+        const proof=delayedProof(m,{writerXid});
+        assert.deepEqual(plain(p.delayedAdmission(m,proof)),proof);
+        assert.deepEqual(plain(p.marker({...m,delayedAdmission:proof})).delayedAdmission,proof);
+    }
+    const old=delayedProof(m,{proofVersion:1});delete old.writerVirtualXid;
+    assert.throws(()=>p.delayedAdmission(m,old),{code:'INVALID_DELAYED_ADMISSION'});
+});
+
+test('admission failure disposal without wait detachment reports account context fencing while original may commit and journal stays pending',async()=>{
+    const e=await delayedEnvironment(),key=e.cache.key(e.identity.scope),before=e.storage.getItem(key),owner=e.auth.getState().user.id;
+    assert.equal(e.writer.identity().phase,'dispatched');
+    const stopped=assert.rejects(e.dispatch,{code:'ACCOUNT_CONTEXT_CHANGED'});
+    e.writer.dispose();await e.release();await stopped;
+    assert.equal(e.auth.getState().user.id,owner);assert.equal(e.remote().universe.revision,'1');
+    assert.equal(e.storage.getItem(key),before);assert.equal(e.record().acknowledged.revision,'0');
+    assert.equal(e.record().pending.command.operationId,e.identity.operationId);
+    const marker=JSON.parse(e.storage.getItem(e.writer.markerKey));
+    assert.equal(marker.phase,'dispatched');assert.equal(marker.delayedAdmission,undefined);assert.equal(marker.delayedMissing,undefined);
+    assert.equal(e.sent(),1);assert.equal(e.calls.filter(c=>c.method==='commit').length,1);
+});
+
+test('delayed original request: real-model missing before commit, reload at base 0, late reply fenced, original receipt recovered once',async()=>{
+    const e=await delayedEnvironment(),key=e.cache.key(e.identity.scope),before=e.storage.getItem(key);
+    e.writer.detachDelayedWait(delayedProof(e.identity));await e.dispatch;await e.writer.checkBlocked();
+    assert.equal(e.remote().universe.revision,'0');assert.equal(e.storage.getItem(key),before);assert.equal(e.sent(),1);
+    assert.equal(e.writer.identity().delayedMissing,true);assert.ok(e.calls.some(c=>c.method==='receipt'&&c.id===e.identity.operationId));
+    e.writer.dispose();const reloaded=e.fresh();assert.equal((await reloaded.reopenDelayed()).status,'pending-reconciliation');await reloaded.checkBlocked();
+    assert.equal(e.storage.getItem(key),before);await e.release();assert.equal(e.remote().universe.revision,'1');assert.equal(e.storage.getItem(key),before);
+    assert.equal((await reloaded.reopenDelayed()).revision,'1');await reloaded.verifyAgain();await reloaded.verifyAgain();
+    assert.equal(e.record().pending,null);assert.equal(e.calls.filter(c=>c.method==='commit').length,1);assert.equal(e.sent(),1);
+    const sql=await reloaded.cleanupSQL();assert.ok(sql.includes(e.identity.operationId));assert.match(sql,/Exact receipt\/digest changed/);
+    assert.equal(e.storage.getItem('galaxy:user-data'),'KEEP_LOCAL');assert.equal(e.storage.getItem('supabase-test-session'),'KEEP_AUTH');reloaded.dispose();
+});
+
+test('delayed admission rejects wrong proof before detaching or changing the journal/control marker',async()=>{
+    const e=await delayedEnvironment(),key=e.cache.key(e.identity.scope),before=e.storage.getItem(key),marker=e.storage.getItem(e.writer.markerKey);
+    for(const patch of [{operationId:U},{scope:{...e.identity.scope,ownerUserId:B}},{baseRevision:'1'},{revision:'1'},
+        {holderPid:102},{holderXid:''},{writerXid:''},{writerXid:'1001'},{writerVirtualXid:null},{writerVirtualXid:''},
+        {writerVirtualXid:'6/0'},{proofVersion:1},{queryStart:'bad'},{requestDigest:'bad'},{extra:true}])
+        assert.throws(()=>e.writer.detachDelayedWait(delayedProof(e.identity,patch)),{code:'INVALID_DELAYED_ADMISSION'});
+    assert.equal(e.storage.getItem(key),before);assert.equal(e.storage.getItem(e.writer.markerKey),marker);
+    const stopped=assert.rejects(e.dispatch,{code:'ACCOUNT_CONTEXT_CHANGED'});e.writer.dispose();await e.release();await stopped;
+    assert.equal(e.storage.getItem(key),before);
+});
+
+test('receipt outage cannot be labelled a real delayed missing receipt',async()=>{
+    const e=await delayedEnvironment(),key=e.cache.key(e.identity.scope),before=e.storage.getItem(key);
+    e.gateway.getOperationReceipt=async()=>{throw Object.assign(new Error('Unavailable'),{code:'NETWORK_UNAVAILABLE'});};
+    e.writer.detachDelayedWait(delayedProof(e.identity));await assert.rejects(e.dispatch,{code:'REAL_DELAYED_MISSING_REQUIRED'});
+    assert.equal(e.writer.identity().delayedMissing,undefined);assert.equal(e.storage.getItem(key),before);
+    assert.equal(e.messages.some(m=>m.startsWith('OBSERVATION: real authoritative')),false);e.writer.dispose();await e.release();
+});
+
+test('delayed original found receipt must match admission digest and exact original acknowledgement before publication',async()=>{
+    for(const mode of ['digest','operation','scope','base','revision','replayed']){
+        const e=await delayedEnvironment(),key=e.cache.key(e.identity.scope);e.writer.detachDelayedWait(delayedProof(e.identity));await e.dispatch;
+        const before=e.storage.getItem(key);await e.release();const get=e.gateway.getOperationReceipt;
+        e.gateway.getOperationReceipt=async(...args)=>{const r=plain(await get(...args));
+            if(mode==='digest')r.request_digest='f'.repeat(64);if(mode==='operation')r.acknowledgement.operationId=U;
+            if(mode==='scope')r.acknowledgement.scope.ownerUserId=B;if(mode==='base')r.acknowledgement.baseRevision='1';
+            if(mode==='revision')r.acknowledgement.revision='2';if(mode==='replayed')r.acknowledgement.replayed=false;return r;};
+        await assert.rejects(e.writer.reopenDelayed());assert.equal(e.storage.getItem(key),before);assert.equal(e.sent(),1);e.writer.dispose();
+    }
+});
+
+test('account change or disposal fences a delayed original completion without publication in either account',async()=>{
+    for(const mode of ['account','dispose']){const e=await delayedEnvironment(),key=e.cache.key(e.identity.scope),before=e.storage.getItem(key);
+        e.writer.detachDelayedWait(delayedProof(e.identity));await e.dispatch;
+        if(mode==='account')e.auth.emit(B);else e.writer.dispose();await e.release();
+        assert.equal(e.storage.getItem(key),before);assert.equal(e.storage.getItem(e.cache.key({ownerUserId:B,universeId:U})),null);
+        assert.equal(e.sent(),1);e.writer.dispose();}
+});
+
+test('delayed admission controls cannot appear in old markers or claim uncertainty without genuine missing observation',async()=>{
+    const e=await delayedEnvironment(),m=plain(e.writer.identity());delete m.cacheKey;const p=e.get('cloudRecoveryPlan');
+    assert.throws(()=>p.marker({...m,phase:'uncertain'}),{code:'DELAYED_MISSING_PROOF_REQUIRED'});
+    assert.throws(()=>p.marker({...m,case:'lost-reply',delayedAdmission:delayedProof(e.identity)}),{code:'INVALID_DELAYED_PHASE'});
+    assert.throws(()=>p.marker({...m,delayedMissing:true}),{code:'INVALID_DELAYED_MISSING'});
+    e.writer.detachDelayedWait(delayedProof(e.identity));await e.dispatch;e.writer.dispose();await e.release();
+});
+
 test('proved commit with controlled missing receipt survives reload, blocks writes, releases only observation, and recovers original exactly once',async()=>{
     const e=await lateEnvironment(),key=e.cache.key(e.identity.scope),before=e.storage.getItem(key),diag=e.resume();
     await assert.rejects(diag.releaseLateReceipt(),{code:'OBSERVE_CONTROLLED_MISSING_FIRST'});

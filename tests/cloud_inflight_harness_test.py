@@ -1,9 +1,14 @@
 """Pure coordinator/validation tests, no browser, Supabase or SQL."""
 import copy
+from contextlib import ExitStack
+import errno
 import importlib.util
+import io
 import json
 from pathlib import Path
 import unittest
+from unittest import mock
+import urllib.error
 
 spec=importlib.util.spec_from_file_location('inflight_harness',Path(__file__).resolve().parents[1]/'scripts/cloud-inflight-harness.py')
 h=importlib.util.module_from_spec(spec);spec.loader.exec_module(h)
@@ -13,6 +18,94 @@ OP='00000000-0000-4000-8000-000000000003'
 DESC={'origin':ORIGIN,'scope':SCOPE,'operationId':OP,'command':{'scope':SCOPE,'operationId':OP,'baseRevision':'0','type':'items.created','payload':{}},
       'commitURL':'https://example.invalid/rest/v1/rpc/cosmifold_commit_metadata','cacheKey':f"cosmifold:cloud-cache:v1:{SCOPE['ownerUserId']}:{SCOPE['universeId']}",'markerKey':'cosmifold:dev:cloud-recovery:v1'}
 PROOF={'admissionVersion':1,'source':'independent-receipt-before-native-failure','scope':SCOPE,'operationId':OP,'baseRevision':'0','revision':'1','cacheRevision':'0','pausedStatus':200,'requestDigest':'a'*64}
+
+
+class DiscoveryTests(unittest.TestCase):
+    def pages(self,host='127.0.0.1'):
+        return [{'type':'page','url':ORIGIN+'/dev/cloud-recovery-diagnostic.html',
+                 'webSocketDebuggerUrl':f'ws://{host}:9222/devtools/page/{role}'} for role in ['writer','observer']]
+
+    def discover(self,results,pages=None):
+        opener=mock.Mock();opener.open.side_effect=results
+        clients=[mock.Mock(),mock.Mock()]
+        for role,client in zip(['writer','observer'],clients):
+            client.evaluate.return_value='cosmifold-inflight-'+role
+        with ExitStack() as stack:
+            connect=stack.enter_context(mock.patch.object(h.socket,'create_connection',side_effect=AssertionError('Real network forbidden')))
+            urlopen=stack.enter_context(mock.patch.object(h.urllib.request,'urlopen',side_effect=AssertionError('Unexpected discovery path')))
+            build=stack.enter_context(mock.patch.object(h.urllib.request,'build_opener',return_value=opener))
+            factory=stack.enter_context(mock.patch.object(h,'SafeCDP',side_effect=clients))
+            found=h.find_targets(9222,ORIGIN)
+            connect.assert_not_called();urlopen.assert_not_called()
+            self.assertEqual(build.call_args.args[0].proxies,{})
+            self.assertEqual(found,tuple(clients))
+            for client in clients:
+                client.evaluate.assert_called_once_with('window.name');client.call.assert_not_called()
+            if pages:self.assertEqual(factory.call_args_list,[mock.call(p['webSocketDebuggerUrl']) for p in pages])
+        return opener
+
+    def test_ipv4_discovery_still_uses_one_direct_request(self):
+        pages=self.pages()
+        opener=self.discover([io.StringIO(json.dumps(pages))],pages)
+        self.assertEqual(opener.open.call_args_list,[mock.call('http://127.0.0.1:9222/json',timeout=5)])
+
+    def test_ipv6_only_discovery_falls_back_after_wrapped_connection_refused(self):
+        pages=self.pages('[0000:0000:0000:0000:0000:0000:0000:0001]')
+        error=urllib.error.URLError(ConnectionRefusedError(errno.ECONNREFUSED,'refused'))
+        opener=self.discover([error,io.StringIO(json.dumps(pages))],pages)
+        self.assertEqual(opener.open.call_args_list,[mock.call('http://127.0.0.1:9222/json',timeout=5),
+                                                   mock.call('http://[::1]:9222/json',timeout=5)])
+
+    def test_raw_and_windows_refusal_errors_also_allow_one_ipv6_fallback(self):
+        windows=OSError('Windows refused');windows.winerror=10061
+        for error in [ConnectionRefusedError(errno.ECONNREFUSED,'refused'),OSError(10061,'refused'),urllib.error.URLError(windows)]:
+            with self.subTest(error=type(error).__name__):
+                opener=self.discover([error,io.StringIO(json.dumps(self.pages('[::1]')))])
+                self.assertEqual(opener.open.call_count,2)
+
+    def test_timeouts_http_errors_permissions_and_string_reasons_do_not_fall_back(self):
+        errors=[TimeoutError('timeout'),urllib.error.URLError(TimeoutError('timeout')),
+                PermissionError(errno.EACCES,'denied'),urllib.error.URLError('Connection refused'),
+                urllib.error.HTTPError('http://127.0.0.1:9222/json',403,'Forbidden',{},None)]
+        for error in errors:
+            with self.subTest(error=type(error).__name__),mock.patch.object(h.urllib.request,'build_opener') as build:
+                build.return_value.open.side_effect=error
+                with self.assertRaises(type(error)):h.find_targets(9222,ORIGIN)
+                build.return_value.open.assert_called_once_with('http://127.0.0.1:9222/json',timeout=5)
+
+    def test_bad_json_or_missing_roles_does_not_try_another_listener(self):
+        for body,error in [('not JSON',json.JSONDecodeError),('[]',h.Unverified)]:
+            with mock.patch.object(h.urllib.request,'build_opener') as build:
+                build.return_value.open.return_value=io.StringIO(body)
+                with self.assertRaises(error):h.find_targets(9222,ORIGIN)
+                self.assertEqual(build.return_value.open.call_count,1)
+
+    def test_invalid_port_never_opens_discovery(self):
+        with mock.patch.object(h.urllib.request,'build_opener') as build:
+            with self.assertRaises(h.Unverified):h.find_targets(1,ORIGIN)
+            build.assert_not_called()
+
+    def test_websocket_ipv4_and_both_ipv6_spellings_connect_with_correct_host_header(self):
+        for host in ['127.0.0.1','::1','0000:0000:0000:0000:0000:0000:0000:0001']:
+            authority=f'[{host}]:9222' if ':' in host else f'{host}:9222'
+            sock=mock.Mock();sock.recv.return_value=b'HTTP/1.1 101 Switching Protocols\r\n\r\n'
+            with self.subTest(host=host),mock.patch.object(h.socket,'create_connection',return_value=sock) as connect:
+                client=h.SafeCDP(f'ws://{authority}/devtools/page/test-target')
+                connect.assert_called_once_with((host,9222),timeout=45)
+                header=sock.sendall.call_args.args[0].decode()
+                self.assertIn(f'Host: {authority}\r\n',header)
+                self.assertTrue(header.startswith('GET /devtools/page/test-target HTTP/1.1\r\n'))
+                self.assertEqual(client.target_id,'test-target');client.sock.close()
+
+    def test_websocket_validation_still_rejects_nonloopback_and_nonpage_endpoints(self):
+        urls=['ws://192.0.2.1:9222/devtools/page/x','ws://[::2]:9222/devtools/page/x',
+              'ws://[::ffff:127.0.0.1]:9222/devtools/page/x','ws://example.invalid:9222/devtools/page/x',
+              'ws://user:password@[::1]:9222/devtools/page/x','ws://[::1]:9222/devtools/browser/x',
+              'ws://[::1]:9222/devtools/page/x?query=1','ws://[::1]:9222/devtools/page/x#fragment']
+        with mock.patch.object(h.socket,'create_connection',side_effect=AssertionError('Network forbidden')) as connect:
+            for url in urls:
+                with self.subTest(url=url),self.assertRaises(h.Unverified):h.SafeCDP(url)
+            connect.assert_not_called()
 
 
 class Client:
