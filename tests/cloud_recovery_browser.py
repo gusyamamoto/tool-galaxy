@@ -1,5 +1,7 @@
 """Real isolated browser tabs/reload, mocked Auth and HTTP RPC only; no Supabase/SQL."""
 import json
+import hashlib
+import threading
 import time
 import urllib.request
 
@@ -7,8 +9,32 @@ import urllib.request
 def make_handler(base):
     from cloud_concurrency_browser import make_handler as shared_handler
     class RecoveryHandler(shared_handler(base)):
+        # Local/mock timing model only; no PostgreSQL lock evidence is fabricated
+        # for a manual run. The real coordinator's SQL interface is substituted.
+        delay=None
         def do_POST(self):
+            if self.path.startswith('/__phase_c_delay__/'):
+                request=json.loads(self.rfile.read(int(self.headers['Content-Length'])))
+                action=self.path.rsplit('/',1)[-1]
+                if action=='arm':
+                    type(self).delay={'descriptor':request,'arrived':threading.Event(),'release':threading.Event(),'armed':True}
+                    result={'armed':True}
+                elif action=='release':
+                    type(self).delay['release'].set();result={'released':True}
+                else:
+                    d=type(self).delay;plan=d['descriptor'];rows=self.phase_b_mock['rows'];receipts=self.phase_b_mock['receipts']
+                    result={'monitorPid':103,'readOnly':'on','holderActive':not d['release'].is_set(),
+                        'exactServer':rows.get(plan['scope']['universeId'])==plan['metadata0'],
+                        'originalReceiptCount':sum(1 for key in receipts if key[0]==plan['scope']['universeId']),
+                        'requestDigest':hashlib.sha256(json.dumps(plan['command'],sort_keys=True,separators=(',',':')).encode()).hexdigest(),
+                        'writers':[{'pid':102,'xid':None,'virtualXid':'6/3','queryStart':'2026-10-14T00:00:00Z','blockers':[101]}] if d['arrived'].is_set() else []}
+                encoded=json.dumps(result).encode();self.send_response(200);self.send_header('Content-Type','application/json')
+                self.send_header('Content-Length',str(len(encoded)));self.end_headers();self.wfile.write(encoded);return
             if self.path=='/__phase_c_commit__':
+                d=type(self).delay
+                if d and d['armed']:
+                    d['armed']=False;d['arrived'].set()
+                    if not d['release'].wait(10):self.send_error(408);return
                 self.path='/__phase_b_mock_rpc__'
             return super().do_POST()
     return RecoveryHandler
@@ -218,6 +244,47 @@ def run_cloud_recovery_checks(*, cdp, evaluate, check, origin):
         check(cdp.evaluate("localStorage.getItem('galaxy:user-data')")==baseline,'late receipt diagnostic leaves local Cosmos unchanged')
         check(not any('.supabase.co' in r['url'] or 'cdn.jsdelivr.net' in r['url'] for client in [cdp,peer] for r in client.requests),'late receipt browser tests use only local mock HTTP')
         check(not cdp.errors and not peer.errors,'late receipt gate has no unhandled browser exceptions')
+        click(cdp,'dispose','DISPOSED:');click(peer,'dispose','DISPOSED:')
+        cdp.evaluate('localStorage.removeItem('+json.dumps(late['cacheKey'])+');localStorage.removeItem("cosmifold:dev:cloud-recovery:v1")')
+        navigate(cdp);navigate(peer)
+        cdp.evaluate("document.getElementById('test-case').value='delayed-admission'")
+        click(cdp,'prepare','PREPARED:')
+        import importlib.util
+        from pathlib import Path
+        spec=importlib.util.spec_from_file_location('delayed_browser_harness',Path(__file__).resolve().parents[1]/'scripts/cloud-delayed-admission-harness.py')
+        delayed=importlib.util.module_from_spec(spec);spec.loader.exec_module(delayed)
+        plan=delayed.descriptor(cdp.evaluate('recoveryDiagnostic.delayedDescriptor()'),origin,mock=True)
+        def control(action,value=None):
+            req=urllib.request.Request(origin+'/__phase_c_delay__/'+action,data=json.dumps(value or {}).encode(),headers={'Content-Type':'application/json'})
+            return json.load(urllib.request.urlopen(req,timeout=3))
+        control('arm',plan)
+        class MockHolder:
+            identity={'pid':101,'xid':'1001'}
+            def release(self):return control('release')
+            def close(self):control('release')
+        class MockMonitor:
+            pid=103
+            def query(self,sql):return control('status')
+        dw,do=delayed.DelayedCDP(writer_url),delayed.DelayedCDP(observer_url)
+        try:
+            proof=delayed.coordinate(dw,do,plan,MockHolder(),MockMonitor(),mock=True,report=lambda _:None)
+            check(proof['operationId']==plan['operationId'],'actual delayed coordinator uses same original ID through local mock admission/missing/release/recovery')
+            check(len(dw.commits)==1,'delayed coordinator emits one original HTTP semantic commit')
+        finally:
+            dw.sock.close();do.sock.close()
+        wait(cdp,'!recoveryBusy')
+        check(cdp.evaluate('recoveryDiagnostic.identity().delayedMissing') is True,'real local HTTP missing observation recorded without visibility gate')
+        confirmed=cdp.evaluate('localStorage.getItem('+json.dumps(plan['cacheKey'])+')')
+        check(json.loads(confirmed)['acknowledged']['revision']=='1' and json.loads(confirmed)['pending'] is None,'delayed original HTTP commit recovered exactly once')
+        cdp.call('Page.reload');wait(cdp,"document.readyState==='complete'&&typeof recoveryDiagnostic!=='undefined'")
+        click(cdp,'delayed-reopen','SAME ORIGINAL validated receipt')
+        click(cdp,'again','no second semantic application');click(cdp,'again','no second semantic application')
+        check(json.loads(cdp.evaluate('localStorage.getItem('+json.dumps(plan['cacheKey'])+')'))['acknowledged']==json.loads(confirmed)['acknowledged'],'delayed recovery reload/repeats preserve exact acknowledged state')
+        click(cdp,'cleanup','guarded cleanup SQL only')
+        check(plan['operationId'] in cdp.evaluate("document.getElementById('cleanup-sql').textContent"),'delayed cleanup binds exact original receipt')
+        check(cdp.evaluate("localStorage.getItem('galaxy:user-data')")==baseline,'delayed diagnostic preserves local Cosmos')
+        check(not any('.supabase.co' in r['url'] or 'cdn.jsdelivr.net' in r['url'] for client in [cdp,peer] for r in client.requests),'delayed browser checks use local mock HTTP and no PostgreSQL')
+        check(not cdp.errors and not peer.errors,'no delayed recovery unhandled browser exceptions')
     finally:
         peer.sock.close()
         cdp.call('Target.closeTarget', targetId=target)

@@ -12,6 +12,14 @@ native coordinator with a separate disposable fixture. Its withholding
 control applies only to case `late-receipt`; this checkpoint's case
 `response-interruption` still uses real receipts without that control.
 
+The separate [delayed-admission coordinator](cloud-delayed-admission-race.md)
+reuses the diagnostic and this harness's safe CDP transport, not its response
+interception sequence. It targets a real writer waiting behind a shared row-lock
+holder, with real missing receipt lookup before commit. Its proofVersion-2 live
+proof, same-receipt recovery and guarded server/browser retirement are complete:
+LIVE-PROVED / CLOSED. The native-response checkpoint remains unchanged, and
+mid-SQL interruption/session races remain separate open gates.
+
 ## The exact boundary and why it is reliable
 
 For this bounded test, **server-admitted** means something stronger: the original

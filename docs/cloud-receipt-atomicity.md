@@ -93,27 +93,39 @@ dashboard routing, deployed function drift or external privileged writers.
 | --- | --- |
 | Not dispatched, or request has not acquired the Universe writer lock; receipt missing | Yes; no original mutation has committed. |
 | Writer holds `FOR UPDATE` and is executing; recovery requests receipt | Recovery's `FOR SHARE` waits, or errors on timeout; it cannot expose a partial original commit. |
+| Writer has requested `FOR UPDATE` but waits for an existing shared row-lock holder | Compatible receipt `FOR SHARE` can join the shared row lockers and return missing before original commit; see the [delayed-admission analysis](cloud-delayed-admission-race.md). |
 | Original commit succeeds, response is lost | Metadata/revision AND original receipt exist; this checkpoint already passed live. |
 | Original commit succeeds, recovery observer withholds its receipt | Controlled client observation only; already live-passed, not genuine server absence. |
 | Original commit succeeds, authoritative original receipt does not exist and is inserted later | Impossible through the supported RPC; gate closed as not applicable. |
 
 **Server admission is not commit or writer-lock acquisition.** An original
-request delayed before its `FOR UPDATE` can be overtaken by a receipt lookup
-that obtains `FOR SHARE`, returns missing and releases its lock. The original
-request may then execute and commit metadata AND receipt together, without any
-client resend. This is a genuine missing-before-commit / later original commit
-case, not receipt creation after a committed mutation. It remains an unverified
-transport timing case; do not close it using this invariant or controlled tests.
+request delayed before acquiring `FOR UPDATE` can be overtaken by a receipt lookup
+that obtains `FOR SHARE`, returns missing and releases its lock. The
+[subsequent lock analysis and coordinator](cloud-delayed-admission-race.md) identify
+a deterministic candidate even AFTER the writer requests its lock: an existing
+shared row-lock holder permits compatible readers to join while the updater waits.
+The original request may then commit metadata AND receipt together without resend.
+This is missing-before-commit, not receipt creation after a committed mutation.
+The subsequent [proofVersion-2 live checkpoint](cloud-delayed-admission-race.md)
+has now independently established that bracket and completed same-receipt
+recovery, authoritative confirmation and guarded retirement: LIVE-PROVED /
+CLOSED. That closure rests on the separate live evidence, not this invariant or
+controlled visibility. Its monitor uses owned virtual transaction identity and
+the exact holder-XID wait because a blocked writer's permanent XID can be null.
 
 Interruption/cancellation during SQL execution also remains live-unverified.
 Actual cancellation before commit rolls back both writes; transport loss alone
 does not establish server cancellation and can leave an original request running.
-Neither timing case is implemented or claimed live-passed by this review.
+Neither timing case was implemented or live-passed by the original atomicity
+review. The subsequent delayed-admission branch closed only the shared-holder
+boundary, without increasing its six-second window or altering production SQL,
+RPC, transaction or recovery behavior.
 
-The next recommended bounded activation checkpoint is **same-origin simultaneous
-recovery contention and account/session changes during delayed recovery**.
+With the delayed-admission live gate and cleanup complete, the next recommended
+bounded checkpoint is **same-origin simultaneous recovery contention and
+account/session changes during delayed recovery**.
 Existing automated fencing/stale-peer checks are retained; broader live races
-remain open. Delayed original execution, mid-SQL interruption, rich metadata,
+remain open. Mid-SQL interruption, rich metadata,
 files, migration and controlled activation remain separate gates.
 
 Missing/unavailable receipt recovery remains conservative in
@@ -138,8 +150,11 @@ exact acknowledgement identity, and rollback of metadata/revision/receipt after
 a successful RPC returns into an enclosing failed subtransaction. It introduces
 no trigger or split write. The [generated SQL Editor artifact](../tests/database/cloud-metadata-sql-editor.sql)
 is regenerated from those sources. These new SQL assertions are authored but
-**not executed against PostgreSQL in this review**; no PostgreSQL runtime is
-available on PATH. The runner refuses an already-installed schema and must not be
+**not executed against PostgreSQL in the original atomicity review**; that
+environment had no PostgreSQL runtime on PATH. The later isolated PostgreSQL 15
+locklab applied the unchanged migration and exercised its real holder/receipt/
+commit RPCs; it did not run this entire rollback-only security suite. The runner
+refuses an already-installed schema and must not be
 used to bypass that preflight on the real project. No live validation or fixture
 is required to close an impossible post-commit gate by contract; future scratch
 database execution would add regression evidence, not make this state reachable.

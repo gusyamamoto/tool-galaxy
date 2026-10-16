@@ -10,10 +10,13 @@ ORIGINAL receipt checkpoint has now passed live and been cleaned up as well:
 receipt visibility was withheld AFTER an independently verified real commit.
 The nominal committed-mutation-with-receipt-created-later gate is now CLOSED AS
 NOT APPLICABLE / IMPOSSIBLE BY CONTRACT: metadata, revision and receipt commit
-atomically. See [the architecture review](cloud-receipt-atomicity.md). The next
-recommended bounded checkpoint is live simultaneous recovery contention and
-session/account changes. Delayed original execution before writer-lock acquisition
-and interruption/cancellation midway through SQL remain unverified timing cases.
+atomically. See [the architecture review](cloud-receipt-atomicity.md).
+[Delayed writer-lock acquisition](cloud-delayed-admission-race.md) is now
+**LIVE-PROVED / CLOSED**, including proofVersion-2 admission, same-original
+receipt recovery, reload/two idempotent repeats, authoritative confirmation and
+complete guarded server/browser retirement. Mid-SQL interruption and live
+simultaneous recovery/session races remain separate open gates. Production cloud
+activation remains disabled.
 The Offline checkpoint proves transport failure before server execution/dispatch completion,
 not arbitrary interruption while the server executes. No live request or SQL is
 run by Codex.
@@ -101,12 +104,26 @@ stopping gate is closed; its merged development artifacts remain inactive.
 These results are operator-reported, not remote execution
 by Codex. No second account, token copying or new credentials were needed.
 
+## Closed delayed-admission gate
+
+The operator completed the original-command/missing-before-commit bracket with
+stable writer PID/virtual transaction ownership and an exact holder-XID wait;
+the permanent writer XID was legitimately null. Only holder release allowed the
+original to complete; the same validated receipt recovered revision 1 without
+resend. Reload and two repeats remained idempotent. Authoritative inspection
+confirmed exact metadata and one original matching receipt; guarded cleanup
+committed, all six server-absence counts were zero, and both tabs verified the
+exact cache/marker keys null. The [proof and limits](cloud-delayed-admission-race.md)
+record the local PostgreSQL 15 reproduction of the original non-null-XID monitor
+bug and its version-2 correction. The six-second window, safety guards and
+production recovery/RPC semantics were preserved. No repeat live run is required.
+
 ## Gates still open
 
 | Gate | Urgency / next boundary |
 | --- | --- |
-| Delayed original execution before writer-lock acquisition; interruption/cancellation during SQL execution | OPEN / live-unverified: a pre-lock lookup may return missing BEFORE the original request commits metadata and receipt together. This remains distinct from impossible post-commit receipt absence. Independently establish admission/overlap and outcome; no synthetic late receipt insertion. |
-| Multi-tab recovery contention and session changes during delayed recovery | NEXT recommended bounded checkpoint: Phase C live-validated stale-peer/base protection; account changes and simultaneous recovery contention are automated-tested but broader live timing races remain open before activation. |
+| Interruption/cancellation during SQL execution | OPEN / live-unverified, separate from delayed lock acquisition and committed-response interruption. No synthetic late receipt insertion or transaction split. |
+| Multi-tab recovery contention and session changes during delayed recovery | Next recommended bounded checkpoint: Phase C live-validated stale-peer/base protection; account changes and simultaneous recovery contention are automated-tested but broader live timing races remain open before activation. |
 | Rich/compound semantic HTTP round trips, archive/link/Constellation/order parity and parser/history compatibility | Subsequent bounded metadata compatibility phase; before activation/import of real data |
 | Private cloud files, originals/thumbnails, copies/deletion, upload recovery and portable export | Before normal activation/migration of file-bearing Cosmos. Strict attachment rejection remains until complete support; never imply local-only binaries are synced. |
 | Reversible local-to-account copy/verify and explicit dataset choice/activation | Separately reviewed branches after persistence/files gates; retain local original, IDs and Backup/Restore; no automatic claim/merge/overwrite |
@@ -202,14 +219,21 @@ receipt writer, split transaction or application replica-read path exists.
 See [exact SQL, transaction/visibility evidence and limits](cloud-receipt-atomicity.md).
 No live fixture, receipt insertion hook, production change or activation is added.
 
-This does NOT close delayed original execution: a request admitted but not yet
-holding the Universe writer lock can be overtaken by a missing receipt lookup,
-then later commit metadata AND receipt together without resend. Nor does it close
-mid-SQL interruption/cancellation. Both remain live-unverified. Any future timing
+The atomicity review alone does not close delayed original execution: a request
+admitted but not yet holding the Universe writer lock can be overtaken by a
+missing receipt lookup, then commit metadata AND receipt together without resend.
+That separate delayed-admission gate has subsequently passed live and been fully
+retired. Mid-SQL interruption/cancellation remains live-unverified. Any future timing
 test must independently prove admission/overlap and outcome, retain original
 identities/cache/journal, block writes while unresolved and use guarded cleanup.
-The next recommended bounded activation checkpoint is live same-origin
-simultaneous recovery contention and session/account changes during delay.
+The completed [delayed-admission checkpoint](cloud-delayed-admission-race.md)
+implements a shared row-lock holder and requires authoritative original backend
+wait evidence before real missing receipt recovery and holder-only release.
+It is LIVE-PROVED / CLOSED. Compatible shared readers can bypass
+the waiting updater's heavyweight tuple arbitration; an exclusive row-lock
+holder would block receipt lookup and is not used. No new backend object or
+production recovery behavior is added. Same-origin simultaneous recovery and
+session/account changes remain the next recommended bounded checkpoint.
 
 ### Closed bounded checkpoint: controlled missing-then-visible ORIGINAL receipt
 

@@ -5,7 +5,7 @@ function createCloudRecoveryDiagnostic({auth=createAuthService(),gateway=createS
     nativeCommitURL=()=>new URL('/rest/v1/rpc/cosmifold_commit_metadata',cosmifoldAuthConfig.SUPABASE_URL).href}={}){
     const p=cloudRecoveryPlan,c=cosmifoldCloudContract,changes=cosmifoldCloudChanges;
     const markerKey='cosmifold:dev:cloud-recovery:v1';let workspace,busy=false,disposed=false,allowReceipts=false,epoch=0;
-    let owner=auth.getState().user?.id||null,commitCalls=0,receiptCalls=0,transportFailure=null;
+    let owner=auth.getState().user?.id||null,commitCalls=0,receiptCalls=0,transportFailure=null,detachDelayed=null;
     const unsubscribe=auth.subscribe(state=>{const next=state.user?.id||null;if(next!==owner){owner=next;epoch++;workspace?.close();}});
     const rawGateway=gateway;gateway={...rawGateway};
     for(const method of ['createUniverse','readUniverse','commitMetadata','getOperationReceipt'])gateway[method]=(...args)=>{
@@ -40,6 +40,13 @@ function createCloudRecoveryDiagnostic({auth=createAuthService(),gateway=createS
             const pending=readMarker();p.assert(pending?.phase==='dispatched'&&pending.operationId===command.operationId,'NO_UNREVIEWED_DISPATCH');
             const record=reading(m,{owner,epoch});p.assert(record.status==='valid'&&record.record.pending?.command.operationId===m.operationId&&record.record.acknowledged.revision==='0','JOURNAL_MUST_PRECEDE_DISPATCH');
             p.assert(++commitCalls===1,'NO_MUTATION_RETRY');
+            if(m.case==='delayed-admission'){
+                p.assert(!isOffline(),'ONLINE_DELAYED_REQUEST_REQUIRED');
+                // Detach only the diagnostic await AFTER independent SQL admission
+                // proof. The original HTTP promise is neither aborted nor resent.
+                const detached=new Promise((_,reject)=>{detachDelayed=()=>reject(unknown('DIAGNOSTIC_WAIT_DETACHED'));});
+                try{return await Promise.race([gateway.commitMetadata(command),detached]);}finally{detachDelayed=null;}
+            }
             if(m.case==='not-dispatched')throw unknown('HARNESS_BLOCKED_BEFORE_HTTP');
             if(m.case==='browser-offline'||p.nativeCase(m)){
                 p.assert(m.case==='browser-offline'?isOffline():!isOffline(),'NATIVE_TRANSPORT_STATE_REQUIRED');
@@ -53,8 +60,14 @@ function createCloudRecoveryDiagnostic({auth=createAuthService(),gateway=createS
             // Intentionally discard even a successful real reply. No ACK enters the cache.
             throw unknown('HARNESS_DROPPED_SUCCESSFUL_REPLY');
         },async getOperationReceipt(scope,id){p.assert(changes.equal(scope,m.scope)&&id===m.operationId,'ORIGINAL_OPERATION_REQUIRED');receiptCalls++;
-            if(!allowReceipts&&m.case!=='browser-offline'&&!p.nativeCase(m))throw Object.assign(new Error('Harness receipt outage'),{code:'NETWORK_UNAVAILABLE',outcome:'not-committed'});
+            if(!allowReceipts&&m.case!=='browser-offline'&&m.case!=='delayed-admission'&&!p.nativeCase(m))throw Object.assign(new Error('Harness receipt outage'),{code:'NETWORK_UNAVAILABLE',outcome:'not-committed'});
             const receipt=await gateway.getOperationReceipt(scope,id);
+            if(m.case==='delayed-admission'){
+                const ctx={owner,epoch},current=owned(ctx);p.delayedAdmission(current,current.delayedAdmission);
+                if(receipt.status==='missing'){current.delayedMissing=true;save(current,ctx);
+                    report('OBSERVATION: real authoritative ORIGINAL receipt RPC returned missing; no visibility filtering.');}
+                if(receipt.status==='found')p.assert(receipt.request_digest===current.delayedAdmission.requestDigest,'DELAYED_DIGEST_CHANGED');
+            }
             if(m.case==='late-receipt'){
                 // Only this disposable diagnostic's recovery observer is controlled.
                 // Never manufacture success: verify the real receipt AND state first.
@@ -80,6 +93,7 @@ function createCloudRecoveryDiagnostic({auth=createAuthService(),gateway=createS
         const receipt=await gateway.getOperationReceipt(m.scope,m.operationId);guard(ctx);
         p.assert(revision==='0'?receipt.status==='missing':receipt.status==='found'&&changes.equal(receipt.acknowledgement,p.ack(m))&&/^[a-f0-9]{64}$/.test(receipt.request_digest),'PHASE_C_RECEIPT_CHANGED');
         if(m.admission)p.assert(revision==='1'&&receipt.request_digest===m.admission.requestDigest,'ADMITTED_COMMIT_CHANGED');
+        if(m.delayedAdmission&&revision==='1')p.assert(receipt.request_digest===m.delayedAdmission.requestDigest,'DELAYED_DIGEST_CHANGED');
         return {revision,receipt};}
     return Object.freeze({markerKey,
         identity(){local();const m=readMarker();return m?{...m,cacheKey:cache.key(m.scope)}:null;},
@@ -95,6 +109,16 @@ function createCloudRecoveryDiagnostic({auth=createAuthService(),gateway=createS
             m.phase='network-ready';save(m,ctx);report('ARMED: online fixture/cache/receipt preflight passed. No mutation sent. Set this tab to DevTools Offline, then dispatch ONCE; no timing deadline.');}));},
         async nativeDescriptor(){return run(async ctx=>{const m=owned(ctx);p.assert(p.nativeCase(m),'NATIVE_CASE_REQUIRED');
             return {origin:location.origin||null,scope:m.scope,operationId:m.operationId,command:p.command(m),commitURL:nativeCommitURL(),cacheKey:cache.key(m.scope),markerKey};});},
+        async delayedDescriptor(){return run(async ctx=>{const m=owned(ctx);p.assert(m.case==='delayed-admission'&&m.phase==='prepared','DELAYED_PREPARED_REQUIRED');
+            return {origin:location.origin||null,scope:m.scope,operationId:m.operationId,command:p.command(m),commitURL:nativeCommitURL(),cacheKey:cache.key(m.scope),markerKey,
+                metadata0:p.metadata(m,'0')};});},
+        async armDelayed(){return run(ctx=>control(ctx,async()=>{const m=owned(ctx);p.assert(m.case==='delayed-admission'&&m.phase==='prepared'&&!isOffline(),'DELAYED_PREPARED_REQUIRED');
+            const server=await inspectServer(m,ctx),record=checkedCache(m,ctx);p.assert(server.revision==='0'&&record.acknowledged.revision==='0'&&record.pending===null,'DELAYED_PREFLIGHT_CHANGED');
+            m.phase='delayed-ready';save(m,ctx);}));},
+        detachDelayedWait(proof){local();const ctx={owner,epoch};guard(ctx);const m=owned(ctx);
+            p.assert(m.case==='delayed-admission'&&m.phase==='dispatched'&&!m.delayedAdmission&&detachDelayed,'DELAYED_REQUEST_NOT_PENDING');
+            const before=checkedCache(m,ctx);p.assert(before.pending?.command.operationId===m.operationId&&before.acknowledged.revision==='0','ORIGINAL_PENDING_REQUIRED');
+            m.delayedAdmission=p.delayedAdmission(m,proof);save(m,ctx);detachDelayed();return {detached:true,cacheRevision:'0'};},
         async armNativeResponse(){return run(ctx=>control(ctx,async()=>{const m=owned(ctx);p.assert(p.nativeCase(m)&&m.phase==='prepared'&&workspace?.getState().canMutate&&!isOffline(),'NATIVE_ONLINE_PREFLIGHT_REQUIRED');
             const server=await inspectServer(m,ctx),record=checkedCache(m,ctx);p.assert(server.revision==='0'&&record.acknowledged.revision==='0'&&record.pending===null,'NATIVE_PREFLIGHT_CHANGED');
             m.phase='native-ready';save(m,ctx);report('ARMED: native response interception preflight. Only the reviewed loopback CDP harness may coordinate this case. No mutation sent.');}));},
@@ -107,13 +131,17 @@ function createCloudRecoveryDiagnostic({auth=createAuthService(),gateway=createS
             const record=checkedCache(m,ctx);p.assert(record.acknowledged.revision==='0'&&record.pending?.command.operationId===m.operationId,'NATIVE_CLIENT_ACCEPTED_EARLY');
             m.admission=p.admission(m,proof);save(m,ctx);return {stored:true,cacheRevision:'0'};},
         async dispatchOnce(){return run(ctx=>control(ctx,async()=>{const m=owned(ctx),network=m.case==='browser-offline',native=p.nativeCase(m);
-            p.assert(m.phase===(native?'native-ready':network?'network-ready':'prepared')&&workspace?.getState().canMutate,'PREPARE_FIRST_NO_RETRY');
+            p.assert(m.phase===(m.case==='delayed-admission'?'delayed-ready':native?'native-ready':network?'network-ready':'prepared')&&workspace?.getState().canMutate,'PREPARE_FIRST_NO_RETRY');
             if(network)p.assert(isOffline(),'BROWSER_OFFLINE_REQUIRED');
             else if(!native){const before=await inspectServer(m,ctx);p.assert(before.revision==='0','DISPATCH_REQUIRES_EMPTY_FIXTURE');}
             allowReceipts=false;m.phase='dispatched';save(m,ctx);let error;
             try{await workspace.repository().save(p.snapshot(m,'1'),{type:'items.created'});}catch(value){error=value;}
             guard(ctx);p.assert(error&&workspace.getState().status==='pending-reconciliation','UNCERTAINTY_NOT_PRESERVED');
             const record=checkedCache(m,ctx);p.assert(record.pending?.command.operationId===m.operationId&&record.acknowledged.revision==='0','ORIGINAL_PENDING_ID_NOT_DURABLE');
+            if(m.case==='delayed-admission'){const latest=owned(ctx);p.assert(latest.delayedAdmission&&latest.delayedMissing&&
+                error.reason==='RECEIPT_MISSING','REAL_DELAYED_MISSING_REQUIRED');latest.phase='uncertain';save(latest,ctx);
+                report('PASS: real missing ORIGINAL receipt while original request remains pending; exact journal/cache at 0 and writes blocked. SQL coordinator must verify holder/writer still active before release.');
+                return {status:'pending-reconciliation',operationId:m.operationId};}
             m.phase='uncertain';if(native){m.admission=p.admission(m,readMarker().admission);p.assert(isOffline(),'NATIVE_WRITER_OFFLINE_REQUIRED');}
             if(network||native){p.assert(transportFailure?.attempts===1&&transportFailure.observedOffline,'REAL_TRANSPORT_FAILURE_NOT_PROVED');m.transport=transportFailure;}
             if(native){save(m,ctx);report('PASS: independent real receipt proved commit BEFORE native response failure; SDK accepted no success, original revision-0 journal retained. No synthetic receipt outage or semantic resend. Reconnect/reload only after review.');
@@ -123,6 +151,7 @@ function createCloudRecoveryDiagnostic({auth=createAuthService(),gateway=createS
             report('PASS: original operation journal persisted at acknowledged revision 0; dependent writes blocked. '+
                 (m.case==='lost-reply'?'Harness discarded the real commit reply.':'Harness blocked HTTP dispatch; this is not evidence of an actual network drop.')+' Reload this SAME tab next.');return {status:'pending-reconciliation',operationId:m.operationId};}));},
         async reopenBlocked(){return run(async ctx=>{const m=owned(ctx);p.assert(['dispatched','uncertain'].includes(m.phase),'UNCERTAIN_FIXTURE_REQUIRED');
+            p.assert(m.case!=='delayed-admission','USE_DELAYED_REOPEN');
             p.assert(m.case!=='browser-offline'&&!p.nativeCase(m),'USE_NETWORK_REOPEN');
             const before=checkedCache(m,ctx);p.assert(before.pending?.command.operationId===m.operationId,'PENDING_ALREADY_RESOLVED');allowReceipts=false;
             const state=await makeWorkspace(m).bootstrap(m.scope.universeId);guard(ctx);
@@ -150,6 +179,16 @@ function createCloudRecoveryDiagnostic({auth=createAuthService(),gateway=createS
             let blocked=false;try{await workspace.repository().save(p.snapshot(m,'1'),{type:'items.created'});}catch(error){blocked=error.code==='PENDING_RECONCILIATION_REQUIRED';}
             guard(ctx);p.assert(blocked&&calls===commitCalls&&changes.equal(before,checkedCache(m,ctx)),'DEPENDENT_MUTATION_NOT_BLOCKED');
             report('PASS: dependent write rejected before command generation/dispatch; original ID/cache retained.');});},
+        async reopenDelayed(){return run(ctx=>control(ctx,async()=>{const m=owned(ctx);p.assert(m.case==='delayed-admission'&&m.phase==='uncertain'&&m.delayedAdmission&&!isOffline(),'DELAYED_PROOF_REQUIRED');
+            const before=checkedCache(m,ctx),calls=commitCalls,result=await makeWorkspace(m).bootstrap(m.scope.universeId);guard(ctx);
+            const after=checkedCache(m,ctx);p.assert(commitCalls===calls,'DELAYED_RECOVERY_RESENT');
+            if(result.status==='pending-reconciliation'){
+                p.assert(result.error?.reason==='RECEIPT_MISSING'&&!result.canMutate&&result.pendingOperationId===m.operationId&&changes.equal(before,after),'DELAYED_MISSING_NOT_PRESERVED');
+                report('PASS: real missing receipt preserved exact ORIGINAL journal/cache/base 0; no resend or speculative publication.');
+            }else{const server=await inspectServer(m,ctx);p.assert(server.revision==='1'&&result.status==='loaded'&&result.revision==='1'&&after.pending===null&&after.acknowledged.revision==='1','DELAYED_RECOVERY_NOT_ACKNOWLEDGED');
+                report('PASS: SAME ORIGINAL validated receipt recovered at revision 1; no resend or replacement operation ID.');}
+            return result;
+        }));},
         async reopenLateReceipt(){return run(ctx=>control(ctx,async()=>{const m=owned(ctx);p.assert(m.case==='late-receipt'&&m.phase==='uncertain'&&m.admission&&m.transport&&!isOffline(),'LATE_RECOVERY_PROOF_REQUIRED');
             const before=checkedCache(m,ctx),calls=commitCalls;allowReceipts=true;
             const result=await makeWorkspace(m).bootstrap(m.scope.universeId);guard(ctx);const after=checkedCache(m,ctx),latest=owned(ctx);
@@ -172,6 +211,7 @@ function createCloudRecoveryDiagnostic({auth=createAuthService(),gateway=createS
             report('RELEASED: only receipt visibility restored. Original journal/cache still at 0; no mutation or acknowledgement applied. Reopen original operation next.');
         }));},
         async recoverRealReceipt(){return run(async ctx=>{const m=owned(ctx);p.assert(workspace?.getState().status==='pending-reconciliation','REOPEN_BLOCKED_FIRST');
+            p.assert(m.case!=='delayed-admission','USE_DELAYED_REOPEN');
             p.assert(m.case!=='browser-offline'&&!p.nativeCase(m),'USE_NETWORK_REOPEN');
             allowReceipts=true;const state=await workspace.reconcile();guard(ctx);const record=checkedCache(m,ctx);
             if(m.case==='not-dispatched'){
@@ -183,7 +223,7 @@ function createCloudRecoveryDiagnostic({auth=createAuthService(),gateway=createS
                 const server=await inspectServer(m,ctx);p.assert(server.revision==='1','RECEIPT_RECOVERY_NOT_ACKNOWLEDGED');
                 report('PASS: real original receipt recovered revision 1; journal cleared only after durable acknowledgement. No semantic command resent.');
             }return state;});},
-        async verifyAgain(){return run(async ctx=>{const m=owned(ctx);p.assert((m.case==='lost-reply'||p.nativeCase(m))&&workspace?.getState().status==='loaded','RECOVER_FIRST');
+        async verifyAgain(){return run(async ctx=>{const m=owned(ctx);p.assert((m.case==='lost-reply'||m.case==='delayed-admission'||p.nativeCase(m))&&workspace?.getState().status==='loaded','RECOVER_FIRST');
             const server=await inspectServer(m,ctx),before=checkedCache(m,ctx),calls=commitCalls;
             await workspace.reconcile();guard(ctx);const after=checkedCache(m,ctx);
             p.assert(server.revision==='1'&&before.pending===null&&after.pending===null&&before.acknowledged.revision==='1'&&after.acknowledged.revision==='1'&&

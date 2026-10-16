@@ -5,7 +5,7 @@
 <p>Loopback only. Sign in through normal Cosmifold at this same origin. No requests run automatically. Normal cloud mode stays inactive; this diagnostic never reads or uploads your local Cosmos.</p>
 <p>Review docs/cloud-uncertain-recovery.md before any live test. Each case creates ONE new disposable Universe. The first two cases inject harness failures. The browser Offline case uses real gateway requests under browser network emulation; it does not prove interruption during server execution.</p>
 <h2>1. Explicit disposable preparation</h2>
-<label for="test-case">Case</label><select id="test-case"><option value="lost-reply">Real commit; discard successful reply</option><option value="not-dispatched">Block HTTP dispatch; real missing receipt</option><option value="browser-offline">Actual browser Offline transport / reconnect</option><option value="response-interruption">Server-committed / native response interruption</option><option value="late-receipt">Committed original receipt; controlled missing then visible</option></select>
+<label for="test-case">Case</label><select id="test-case"><option value="lost-reply">Real commit; discard successful reply</option><option value="not-dispatched">Block HTTP dispatch; real missing receipt</option><option value="browser-offline">Actual browser Offline transport / reconnect</option><option value="response-interruption">Server-committed / native response interruption</option><option value="late-receipt">Committed original receipt; controlled missing then visible</option><option value="delayed-admission">Real missing receipt while original writer waits for share holder</option></select>
 <button id="prepare" type="button">Create ONE new disposable Universe</button>
 <button id="dispatch" type="button">Send ONE planned command with transport injection</button>
 <h2>Native response interruption (reviewed harness only)</h2>
@@ -13,6 +13,9 @@
 <button id="native-writer" type="button">Label this tab WRITER (no requests)</button>
 <button id="native-observer" type="button">Label this tab OBSERVER (no requests)</button>
 <p id="native-role">No native harness role assigned.</p>
+<h2>Delayed writer admission (reviewed SQL/CDP coordinator only)</h2>
+<p>Review docs/cloud-delayed-admission-race.md. One disposable Universe; a separate SQL session holds FOR SHARE, while the original browser commit waits for FOR UPDATE. Authoritative SQL evidence must precede detaching the diagnostic await. Receipt lookup is real and unfiltered. Do not dispatch or release SQL locks manually during the coordinated run.</p>
+<button id="delayed-reopen" type="button">Reopen ORIGINAL delayed operation with real receipt lookup</button>
 <h2>Controlled receipt visibility (late-receipt case only)</h2>
 <p>Review docs/cloud-late-receipt-recovery.md first. Use the same native harness to prove the original commit before response interruption. Reconnect and reload WRITER only. Its first recovery reads and validates the real receipt/state, but the development wrapper withholds the receipt as controlled missing. This is NOT evidence of a server returning missing after commit. Release visibility explicitly, then reopen the SAME original operation. No command is resent.</p>
 <button id="late-reopen" type="button">Reopen ORIGINAL operation under current receipt visibility</button>

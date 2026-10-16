@@ -1,0 +1,26 @@
+# Retain local delayed-admission evidence and generated operator artifacts.
+# These root-level patterns do not hide reusable implementation under scripts/.
+/delayed-admission-*.txt
+/delayed-admission-*.json
+/delayed-admission-*.jsonl
+/delayed-admission-*.sql
+/delayed-admission-*.js
+/delayed-admission-*.md
+/delayed-postmortem-*.txt
+/delayed-postmortem-*.json
+/delayed-postmortem-*.sql
+
+# Attempt-bound procedures/tools/tests are retained locally, not reusable code.
+/docs/cloud-delayed-admission-case-a-retirement.md
+/docs/cloud-delayed-admission-expired-postmortem.md
+/docs/cloud-delayed-admission-vxid-retirement.md
+/scripts/cloud-delayed-admission-expired-postmortem.ps1
+/scripts/cloud-delayed-admission-vxid-confirm.ps1
+/scripts/cloud-delayed-admission-vxid-retire.ps1
+/tests/cloud_delayed_admission_expired_postmortem_test.py
+/tests/cloud_delayed_admission_vxid_confirmation_test.py
+/tests/cloud_delayed_admission_vxid_retirement_test.py
+
+# Reproducible Python bytecode; preserve existing local caches.
+/tests/__pycache__/
+/scripts/__pycache__/

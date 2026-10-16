@@ -358,7 +358,7 @@ and safe reconnect against a genuinely missing receipt. It does NOT prove
 arbitrary interruption while PostgreSQL is already executing the mutation.
 It is ready for commit review as an inactive checkpoint, not cloud activation.
 
-### Next incomplete gate
+### Completed follow-up gates and remaining scope
 
 The [late-receipt observation subgate](cloud-late-receipt-recovery.md) has PASSED
 operator-run live validation and guarded cleanup (2026-10-14). The SAME diagnostic
@@ -382,16 +382,27 @@ The [atomicity review](cloud-receipt-atomicity.md) closes **committed original
 mutation with a genuinely absent receipt created later** as NOT APPLICABLE /
 IMPOSSIBLE BY CONTRACT, not live-passed. Metadata/revision/receipt commit in one
 transaction; no asynchronous receipt creation or replica-read path is configured.
-The next recommended checkpoint is live same-origin simultaneous recovery
-contention and account/session changes during delayed recovery.
+The delayed-admission checkpoint below is now LIVE-PROVED / CLOSED. The next
+recommended bounded checkpoint is live same-origin simultaneous recovery
+contention and account/session changes.
 
 The distinct reachable timing case is **original request delayed BEFORE acquiring
-the writer lock, missing receipt lookup first, original commit later**. Admission
-alone is not commit. Preserve the original journal/cache/ID and block writes
-through delay/reload; an eventual original commit must create metadata and receipt
-together without resend. This and mid-SQL interruption/cancellation remain
-live-UNVERIFIED. Future evidence must independently establish server admission /
-overlap and outcome; a client timer or held Promise alone is not proof.
+the writer lock, missing receipt lookup first, original commit later**. The
+[delayed-admission coordinator/procedure](cloud-delayed-admission-race.md) now uses
+an existing compatible shared row-lock holder to delay a writer already waiting
+for `FOR UPDATE`. Independent SQL PID/virtual-transaction/tuple/blocker proof,
+including ownership and an exact holder-XID wait, must bracket the
+real missing original-ID receipt. Holder-only release lets the original request
+commit atomically. The client await is detached without cancelling HTTP; no
+missing receipt is fabricated. The operator completed PROVED/PASS and exit 0,
+WRITER-only reload/same-original receipt recovery at revision 1, two idempotent
+repeats, exact authoritative state/sole receipt verification and guarded
+retirement with server absence and both tabs' exact keys null. The permanent
+writer XID was legitimately null; proofVersion 2 used its owned virtual
+transaction. The six-second admission window and production recovery/RPC
+semantics were unchanged. Mid-SQL interruption is a
+separate open gate. Original journal/cache/ID preservation and blocked writes
+remain mandatory; a client timer or held Promise alone is not admission proof.
 The bounded server-committed/native-response continuation is implemented as
 an additional case in the SAME diagnostic; see [cloud-inflight-recovery.md](cloud-inflight-recovery.md).
 It uses an independent real receipt/state audit before native response failure,
