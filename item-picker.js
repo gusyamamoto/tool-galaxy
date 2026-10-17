@@ -11,8 +11,8 @@ function createCanonicalPickerRow(entry, ancestry) {
 }
 
 class CanonicalSinglePicker {
-    constructor({list,search,getEntries,included,onSelect}) {
-        Object.assign(this,{list,search,getEntries,included,onSelect});
+    constructor({list,search,getEntries,included,onSelect,searchEntries,ancestryFor,includedLabel='Already here'}) {
+        Object.assign(this,{list,search,getEntries,included,onSelect,searchEntries,ancestryFor,includedLabel});
         list.addEventListener('click',event=>{
             const expand=event.target.closest('[data-expand-id]'),choice=event.target.closest('[data-entry-id]');
             if(expand)this.toggle(expand.dataset.expandId);
@@ -23,16 +23,16 @@ class CanonicalSinglePicker {
         search.addEventListener('input',()=>this.render());
         search.addEventListener('keydown',event=>{if(['Enter','ArrowDown'].includes(event.key)){event.preventDefault();list.querySelector('[data-entry-id]')?.focus();}});
     }
-    reset(){this.entries=this.getEntries();this.index=cosmosHierarchy.index(this.entries);this.expanded=new Set(this.index.roots);this.rows=new Map();this.focusId=null;this.selectedId=null;this.search.value='';this.render();this.onSelect(null);}
+    reset({expanded}={}){this.entries=this.getEntries();this.index=cosmosHierarchy.index(this.entries);this.expanded=new Set(expanded||this.index.roots);this.rows=new Map();this.focusId=null;this.selectedId=null;this.search.value='';this.render();this.onSelect(null);}
     render(){
         if(!this.entries)return;
         const searching=!!this.search.value.trim(),scroll=this.list.scrollTop;
-        const visible=searching?galaxyModel.search(this.entries,this.search.value).map(entry=>({id:entry.id,level:1})):cosmosHierarchy.visible(this.entries,this.index,this.expanded);
+        const visible=searching?(this.searchEntries?this.searchEntries(this.search.value):galaxyModel.search(this.entries,this.search.value)).map(entry=>({id:entry.id,level:1})):cosmosHierarchy.visible(this.entries,this.index,this.expanded);
         this.list.setAttribute('role',searching?'listbox':'tree');this.list.setAttribute('aria-multiselectable','false');
         if(!visible.some(row=>row.id===this.focusId))this.focusId=visible[0]?.id;
         const fragment=document.createDocumentFragment();
         visible.forEach(({id,level,position,size})=>{
-            const entry=this.entries.get(id),ancestry=galaxyModel.ancestors(this.entries,id).reverse().map(parent=>parent.name).join(' › ')||'Universe';
+            const entry=this.entries.get(id),ancestry=this.ancestryFor?this.ancestryFor(id):galaxyModel.ancestors(this.entries,id).reverse().map(parent=>parent.name).join(' › ')||'Universe';
             const row=this.rows.get(id)||createCanonicalPickerRow(entry,ancestry);this.rows.set(id,row);
             const children=this.index.children.get(id)||[],added=this.included(id),selected=this.selectedId===id;
             row.item.style.setProperty('--picker-indent',`${Math.min(48,level<=5?(level-1)*9:36+6*Math.log2(level-4))}px`);
@@ -42,7 +42,7 @@ class CanonicalSinglePicker {
             if(!searching&&children.length)row.choice.setAttribute('aria-expanded',String(this.expanded.has(id)));else row.choice.removeAttribute('aria-expanded');
             for(const [attribute,value] of [['aria-posinset',position],['aria-setsize',size]]){if(!searching)row.choice.setAttribute(attribute,value);else row.choice.removeAttribute(attribute);}
             row.choice.classList.toggle('is-selected',selected);row.choice.classList.toggle('picker-existing',added);row.choice.tabIndex=id===this.focusId?0:-1;
-            row.choice.ariaLabel=`${entry.name}, ${ancestry}${added?', already here':''}`;row.check.textContent=selected||added?'✓':'';row.added.textContent='Already here';row.added.hidden=!added;
+            row.choice.ariaLabel=`${entry.name}, ${ancestry}${added?', '+this.includedLabel.toLocaleLowerCase():''}`;row.check.textContent=selected||added?'✓':'';row.added.textContent=this.includedLabel;row.added.hidden=!added;
             row.path.hidden=!searching;fragment.append(row.item);
         });
         if(!visible.length){const empty=document.createElement('li');empty.className='picker-empty';empty.textContent='No matching items.';fragment.append(empty);}

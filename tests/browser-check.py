@@ -236,6 +236,7 @@ def main():
     args.add_argument("--bookmark-entry-only", action="store_true", help="Check on-demand inline bookmark creation, validation, cancellation and editing")
     args.add_argument("--body-actions-only", action="store_true", help="Check body management menus, quick/full identity, Move to and relocated Paste")
     args.add_argument("--reparent-drag-only", action="store_true", help="Check native drag continuity after confirmed Move to and subsequent layout")
+    args.add_argument("--move-destination-only", action="store_true", help="Check Move hierarchy/search destinations, guards, confirmation and responsive large-tree layout")
     args.add_argument("--compatibility-only", action="store_true", help="Check legitimate broad-file v5 data and unchanged corruption protection")
     args.add_argument("--saved-snapshot", type=Path, help="Read a saved snapshot into an isolated test profile; never change the original browser data")
     args.add_argument("--sidebar-sections-only", action="store_true", help="Check independent navigation sections, heading creation, Archive restore and Sample utility")
@@ -403,7 +404,7 @@ def main():
             if name is not None:
                 evaluate(f"fields[0].value={json.dumps(name)};fields[1].value='Updated description';fields[2].value='Updated label'")
             if parent is not None:
-                evaluate(f"parentField.value={json.dumps(parent)};parentField.dispatchEvent(new Event('change'))")
+                evaluate(f"moveDestinationPicker.select({json.dumps(parent)})")
             evaluate("form.requestSubmit()")
 
         def hierarchy_edge(parent, child):
@@ -545,7 +546,7 @@ def main():
             evaluate('deferredWrites.shift().resolve()');wait_for("commandCompletions.join(',')==='rename,move'&&deferredWrites.length===1");evaluate('physics.pause();graphNeedsSave=false')
             evaluate('deferredWrites.shift().resolve()');wait_for("commandCompletions.join(',')==='rename,move,note'")
             check(evaluate(f"(()=>{{const e=JSON.parse(localStorage.getItem('galaxy:user-data')).entries.find(e=>e.id==={json.dumps(item)});return e.name==='Acknowledged name'&&e.parentId==={json.dumps(destination)}&&e.content.notes.text==='Ordered note'}})()"),'ordered writes retain renamed name, new parent and content in the final snapshot')
-            evaluate(f"window.formRenamePending=renameEntry({json.dumps(item)},'Form-safe name');openEntryForm(entries.get({json.dumps(item)}),null,false,'move');parentField.value='';form.requestSubmit();void 0")
+            evaluate(f"window.formRenamePending=renameEntry({json.dumps(item)},'Form-safe name');openEntryForm(entries.get({json.dumps(item)}),null,false,'move');moveDestinationPicker.select(null);form.requestSubmit();void 0")
             wait_for('deferredWrites.length===1');evaluate('deferredWrites.shift().resolve()');wait_for(f"deferredWrites.length===1&&entries.get({json.dumps(item)}).name==='Form-safe name'")
             evaluate('deferredWrites.shift().resolve()');wait_for('!dialog.open&&!formSaveBusy');evaluate('physics.pause();graphNeedsSave=false')
             check(evaluate(f"entries.get({json.dumps(item)}).name==='Form-safe name'&&entries.get({json.dumps(item)}).parentId===null"),'form-based Move cannot overwrite an earlier pending rename with its hidden stale name')
@@ -951,6 +952,14 @@ def main():
                     result=cdp.call('Page.captureScreenshot',format='png',captureBeyondViewport=False);(screenshot_dir/(name+'.png')).write_bytes(base64.b64decode(result['data']))
             run_mobile_footer_checks(cdp=cdp,evaluate=evaluate,check=check,wait_for=wait_for,add=add,shot=shot,baseline=options.capture_baseline)
             print(f'{count} mobile footer browser checks passed',flush=True);return
+
+        if options.move_destination_only:
+            from move_destination_browser import run_move_destination_checks
+            def shot(name):
+                if screenshot_dir:
+                    result=cdp.call('Page.captureScreenshot',format='png',captureBeyondViewport=False);(screenshot_dir/(name+'.png')).write_bytes(base64.b64decode(result['data']))
+            run_move_destination_checks(cdp=cdp,evaluate=evaluate,check=check,wait_for=wait_for,add=add,shot=shot)
+            print(f'{count} Move destination browser checks passed',flush=True);return
 
         if options.contents_swipe_only:
             from mobile_contents_browser import run_contents_swipe_checks
@@ -3886,9 +3895,9 @@ def main():
             evaluate("document.getElementById('constellations-toggle').click()")
             check(evaluate(f"document.querySelector('[data-constellation-id=\"{c1}\"]').classList.contains('is-active')") and evaluate('JSON.stringify(camera.view)')==view,'expanding restores active styling without reframing')
             check(evaluate('JSON.stringify([...entries].map(([id,e])=>[id,e.x,e.y]))')==before and evaluate('JSON.stringify([...entries].map(([id,e])=>[id,e.parentId,e.role,e.depth,e.content]))')==topology,'activation never relocates, reparents or changes celestial roles/content')
-            evaluate(f"openEntryForm(entries.get({json.dumps(other)}),null,false,'move');parentField.value={json.dumps(sun)};form.requestSubmit();physics.pause()")
+            evaluate(f"openEntryForm(entries.get({json.dumps(other)}),null,false,'move');moveDestinationPicker.select({json.dumps(sun)});form.requestSubmit();physics.pause()")
             check(evaluate(f"activeConstellationId==={json.dumps(c1)}&&[...activeConstellationGalaxyIds].join(',')==={json.dumps(g1)}"),'reparenting an active collection entry immediately recomputes represented Galaxy IDs')
-            evaluate(f"(async()=>{{openEntryForm(entries.get({json.dumps(other)}),null,false,'move');parentField.value={json.dumps(g2)};form.requestSubmit();await applicationCommandTail;physics.pause();showConstellationOverview()}})()")
+            evaluate(f"(async()=>{{openEntryForm(entries.get({json.dumps(other)}),null,false,'move');moveDestinationPicker.select({json.dumps(g2)});form.requestSubmit();await applicationCommandTail;physics.pause();showConstellationOverview()}})()")
             check(evaluate(f"activeConstellationGalaxyIds.has({json.dumps(g1)})&&activeConstellationGalaxyIds.has({json.dumps(g2)})"),'restoring canonical ancestry restores its Galaxy context without sticky reveal state')
             check(evaluate("[...activeConstellationMembers].every(id=>{const n=nodes.get(id),b=physics.bounds;return n.renderX>=b.left&&n.renderX<=b.right&&n.renderY>=b.top&&n.renderY<=b.bottom})"),'cross-Galaxy framing fits all live member locations in the panel-aware viewport')
             check_rendered("[...activeConstellationMembers].every(id=>nodes.get(id).dataset.semanticHidden==='false'&&parseFloat(getComputedStyle(nodes.get(id)).opacity)>.95)",'Constellation entries retain visibility priority')
@@ -4194,7 +4203,7 @@ def main():
             check(evaluate(f"entries.get({json.dumps(target)}).content.notes.text==='Edited through Portal'&&[...portals.values()].every(p=>!p.content&&!p.name&&!p.parentId)"),'editing after Portal navigation edits only canonical content')
             evaluate(f"openEntryForm(entries.get({json.dumps(target)}));fields[0].value='Renamed original';form.requestSubmit();physics.pause()")
             check(evaluate(f"[{json.dumps(p1)},{json.dumps(p2)}].every(id=>hierarchySidebar.rows.get(id).querySelector('.tree-name').textContent==='Renamed original')"),'rename immediately updates every Portal label without stored names')
-            evaluate(f"openEntryForm(entries.get({json.dumps(target)}),null,false,'move');parentField.value={json.dumps(remote)};form.requestSubmit();physics.pause()")
+            evaluate(f"openEntryForm(entries.get({json.dumps(target)}),null,false,'move');moveDestinationPicker.select({json.dumps(remote)});form.requestSubmit();physics.pause()")
             check(evaluate(f"portals.get({json.dumps(p1)}).targetEntryId==={json.dumps(target)}&&hierarchySidebar.rows.get({json.dumps(p2)}).title.includes('Other Portal Galaxy')&&hierarchySidebar.rows.get({json.dumps(p2)}).title.includes('Favorites')"),'reparent preserves reference IDs and updates true-location tooltips')
             evaluate("camera.travelTo=originalPortalTravel;saveGalaxy()")
             saved_refs=evaluate('JSON.stringify([...portals.values()])')
@@ -4431,7 +4440,7 @@ def main():
                 evaluate("entries.get(editingId).description='Preserved description';entries.get(editingId).category='Preserved label';fields[1].value='';fields[2].value='';form.requestSubmit();physics.pause()")
                 evaluate('moreButton.click();contextMenu.querySelector("[data-action=move]").click()')
                 check(evaluate("dialog.open && !document.getElementById('parent-field').hidden && document.getElementById('entry-info-fields').hidden"),'Move exposes the existing parent selector without duplicate CRUD')
-                evaluate("form.requestSubmit();physics.pause()")
+                evaluate(f"moveDestinationPicker.select({json.dumps(other)});form.requestSubmit();physics.pause()")
                 check(evaluate("entries.get(selectedNode.dataset.entryId).description==='Preserved description' && entries.get(selectedNode.dataset.entryId).category==='Preserved label'"),'Move preserves metadata and contents')
                 select(owner);evaluate('physics.pause()');before=evaluate('JSON.stringify(camera.view)')
                 evaluate('openSelectedRowAdd();addMenu.querySelector("[data-add=note]").click()')
@@ -4745,8 +4754,8 @@ def main():
             for i in range(2):add('Branch sibling '+str(i),ids[2])
             wait_for('physics.settled');evaluate('physics.pause()')
             branch=ids[2];deep=ids[6]
-            evaluate(f"openEntryForm(entries.get({json.dumps(deep)}),null,false,'move');parentField.value={json.dumps(ids[4])};form.requestSubmit();physics.pause()")
-            evaluate(f"openEntryForm(entries.get({json.dumps(deep)}),null,false,'move');parentField.value={json.dumps(ids[5])};form.requestSubmit();physics.pause()")
+            evaluate(f"openEntryForm(entries.get({json.dumps(deep)}),null,false,'move');moveDestinationPicker.select({json.dumps(ids[4])});form.requestSubmit();physics.pause()")
+            evaluate(f"openEntryForm(entries.get({json.dumps(deep)}),null,false,'move');moveDestinationPicker.select({json.dumps(ids[5])});form.requestSubmit();physics.pause()")
             evaluate(f"focusEntry({json.dumps(deep)})");wait_camera();wait_for('physics.settled');evaluate('physics.pause();saveGalaxy()')
             evaluate("hierarchySidebar.setCollapsed(false);hierarchySidebar.tree.style.maxHeight='180px';hierarchySidebar.tree.scrollTop=120")
             subtree_count=evaluate(f"galaxyModel.subtreeIds(entries,{json.dumps(branch)}).size")

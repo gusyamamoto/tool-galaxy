@@ -67,19 +67,30 @@ It opens the same copy/link confirmation dialog bound to the Add destination;
 quick Add choices, existing keyboard shortcuts and copy/link semantics are
 unchanged. This does not introduce any new linking mechanism.
 
-Move to… reuses the existing Save/Cancel parent selector. Options include Universe
-and full destination ancestry paths, excluding the body and all descendants.
-Selection changes nothing before Save. Existing model validation runs before
+Move to… keeps the existing confirmation form and save/publish path, with a
+shared collapsible hierarchy and case-insensitive name search in place of the
+flat parent dropdown. Only the current-parent path starts expanded; other
+branches can be opened as needed. Search results show ancestry to distinguish
+duplicate names and select their canonical destination directly. Universe
+remains available for a top-level move. The current location is labelled
+separately and disabled as a new destination. No destination summary is shown
+until selection; then a compact “Move to: name” confirmation appears above Cancel
+and Move here, with a full-path secondary line for duplicate names.
+Selection changes nothing before confirmation.
+Existing model validation runs before
 and again inside the staged repository save; self/descendant moves cannot bypass
 the guard by injecting a selector option. Confirming changes the actual parent
 and carries descendants with the branch; it does not create a linked item.
 Cancel leaves the hierarchy untouched. Rename and membership actions also retain
 their original implementations, validation and persistence.
 
-Known usability limitation: Move to… uses a flat destination list with ancestry
-paths. Finding a destination becomes cumbersome in a large hierarchy. This is
-a non-blocking follow-up for a focused destination-picker task; the current
-parent validation, confirmation and hierarchy integrity remain in place.
+Move destination names, paths and sorting are indexed once per opening. Each
+query scans the cached names and renders matches; it does not revalidate every
+destination or rebuild ancestry on each keystroke. Browse/search/keyboard rows
+reuse the Add-existing-item picker with Move-specific read-only index hooks.
+Mobile and desktop use the same picker, with a bounded scroll area, 44px targets
+and separate reachable confirmation controls. No data model or physics changes
+are involved.
 
 After an acknowledged Move, publication updates the existing canonical body
 record in place, as Rename already does. The retained DOM handlers, rendering and
@@ -216,6 +227,8 @@ python -B tests/browser-check.py --mobile-footer-only --screenshots
 python -B tests/browser-check.py --bookmark-entry-only --screenshots
 python -B tests/browser-check.py --body-actions-only --screenshots
 python -B tests/browser-check.py --reparent-drag-only
+node --test tests/move-destination.test.js
+python -B tests/browser-check.py --move-destination-only --screenshots
 python -B tests/browser-check.py --mobile-capture-only --screenshots
 python -B tests/browser-check.py --media-only
 python -B tests/browser-check.py --general-files-only

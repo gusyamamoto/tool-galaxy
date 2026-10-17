@@ -229,9 +229,21 @@
             <output id="entry-role" hidden>Galaxy</output>
             <div id="creation-context" hidden><span></span><button id="change-creation-parent" type="button">Change parent</button></div>
             <div id="parent-field" hidden>
+                <div id="parent-select-controls">
                 <label id="parent-label" for="entry-parent">Parent</label>
                 <select id="entry-parent" name="parentId" aria-describedby="parent-help"></select>
                 <p id="parent-help"></p>
+                </div>
+                <div id="move-destination-browser" hidden>
+                    <p class="move-current">Currently: <span id="move-current-location"></span></p>
+                    <label for="move-destination-search" class="visually-hidden">Search locations</label>
+                    <input id="move-destination-search" type="search" placeholder="Search locations…" autocomplete="off" maxlength="60" aria-controls="move-destination-results">
+                    <div id="move-destination-scroll">
+                        <button id="move-to-universe" type="button" aria-pressed="false">Universe <small>Top level</small></button>
+                        <ul id="move-destination-results" aria-label="Move destinations"></ul>
+                    </div>
+                    <div class="move-selection" hidden><output id="move-destination-selection" aria-live="polite"></output></div>
+                </div>
             </div>
             <p id="entry-form-error" role="alert" hidden></p>
 
@@ -415,6 +427,7 @@
     <script src="portals.js"></script>
     <script src="constellations.js"></script>
     <script src="item-picker.js"></script>
+    <script src="move-destination-picker.js"></script>
     <script src="constellations-ui.js"></script>
     <script src="attachment-store.js"></script>
     <script src="rich-content.js"></script>

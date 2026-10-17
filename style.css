@@ -983,10 +983,10 @@ summary:focus-visible { outline: 1px solid #b9d0e9; outline-offset: 3px; }
 .collection-dialog .form-actions button:last-child { background: #36506c; border-color: #6f8aa755; }
 .collection-dialog p { color: #a3b5cc; line-height: 1.6; margin: 0; }
 .collection-dialog p[role="status"] { color: #dbb59d; }
-:is(#constellation-picker-results,#portal-parent-results) { list-style: none; margin: 0; padding: 0; max-height: min(280px, 38dvh); overflow: auto; scrollbar-width: thin; }
-:is(#constellation-picker-results,#portal-parent-results) button { display: block; width: 100%; padding: 9px 8px; text-align: left; border: 0; border-radius: 4px; background: transparent; box-shadow: none; font-size: 12px; }
-:is(#constellation-picker-results,#portal-parent-results) button:is(:hover,[aria-pressed="true"]) { background: #2a405966; }
-:is(#constellation-picker-results,#portal-parent-results) small { display: block; margin-top: 4px; color: #839ab5; font-size: 10px; overflow-wrap: anywhere; }
+:is(#constellation-picker-results,#portal-parent-results,#move-destination-results) { list-style: none; margin: 0; padding: 0; max-height: min(280px, 38dvh); overflow: auto; scrollbar-width: thin; }
+:is(#constellation-picker-results,#portal-parent-results,#move-destination-results) button { display: block; width: 100%; padding: 9px 8px; text-align: left; border: 0; border-radius: 4px; background: transparent; box-shadow: none; font-size: 12px; }
+:is(#constellation-picker-results,#portal-parent-results,#move-destination-results) button:is(:hover,[aria-pressed="true"]) { background: #2a405966; }
+:is(#constellation-picker-results,#portal-parent-results,#move-destination-results) small { display: block; margin-top: 4px; color: #839ab5; font-size: 10px; overflow-wrap: anywhere; }
 #constellation-memberships button { display: block; width: 100%; padding: 8px 10px; text-align: left; border: 0; background: transparent; box-shadow: none; font-size: 12px; }
 #constellation-memberships button:hover { background: #324b6866; }
 #constellation-memberships p { max-width: 240px; color: #dbb59d; font-size: 11px; }
@@ -1004,36 +1004,67 @@ summary:focus-visible { outline: 1px solid #b9d0e9; outline-offset: 3px; }
 #portal-placement { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 :is(#constellation-picker-dialog,#portal-dialog) { width: min(420px,calc(100vw - 32px)); max-height: min(520px,calc(var(--mobile-visible-height,100dvh) - 24px)); }
 :is(#constellation-picker-form,#portal-form) { display: flex; flex-direction: column; min-height: 0; max-height: min(486px,calc(var(--mobile-visible-height,100dvh) - 64px)); }
-:is(#constellation-picker-form,#portal-form) > :not(:is(#constellation-picker-results,#portal-parent-results)) { flex-shrink: 0; }
+:is(#constellation-picker-form,#portal-form) > :not(:is(#constellation-picker-results,#portal-parent-results,#move-destination-results)) { flex-shrink: 0; }
 #constellation-picker-name { color: #a9bdd3; overflow-wrap: anywhere; }
 #constellation-member-search { border-radius: 4px; background: #ffffff04; border-color: #60759030; }
-:is(#constellation-picker-results,#portal-parent-results) { flex: 1 1 auto; min-height: 0; max-height: min(340px,45dvh); margin: 0; padding: 0; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: #344359 transparent; }
-:is(#constellation-picker-results,#portal-parent-results) .picker-entry-row { display: grid; grid-template-columns: 26px minmax(0,1fr); align-items: center; padding-left: var(--picker-indent,0px); min-width: 0; }
-:is(#constellation-picker-results,#portal-parent-results) .picker-expand { display: grid; place-items: center; width: 26px; height: 32px; padding: 0; color: #8195ad; font-size: 18px; }
+:is(#constellation-picker-results,#portal-parent-results,#move-destination-results) { flex: 1 1 auto; min-height: 0; max-height: min(340px,45dvh); margin: 0; padding: 0; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: #344359 transparent; }
+:is(#constellation-picker-results,#portal-parent-results,#move-destination-results) .picker-entry-row { display: grid; grid-template-columns: 26px minmax(0,1fr); align-items: center; padding-left: var(--picker-indent,0px); min-width: 0; }
+:is(#constellation-picker-results,#portal-parent-results,#move-destination-results) .picker-expand { display: grid; place-items: center; width: 26px; height: 32px; padding: 0; color: #8195ad; font-size: 18px; }
 .picker-expand span { display: block; }
 .picker-expand[aria-expanded='true'] span { transform: rotate(90deg); }
 .picker-expand[hidden] { display: block !important; visibility: hidden; }
-:is(#constellation-picker-results,#portal-parent-results)[role='listbox'] .picker-entry-row { grid-template-columns: minmax(0,1fr); }
-:is(#constellation-picker-results,#portal-parent-results)[role='listbox'] .picker-expand { display: none !important; }
-:is(#constellation-picker-results,#portal-parent-results) .picker-choice { display: grid; grid-template-columns: 14px minmax(0,1fr) auto; align-items: center; gap: 6px; min-width: 0; min-height: 32px; width: 100%; padding: 6px; border-radius: 4px; color: #a9bdd3; font-size: 12px; }
-:is(#constellation-picker-results,#portal-parent-results) .picker-choice[aria-selected='true'] { background: #25364b99; color: #e1e9f3; }
-:is(#constellation-picker-results,#portal-parent-results) .picker-choice.picker-existing { color: #8296ad; background: transparent; }
-:is(#constellation-picker-results,#portal-parent-results) .picker-choice.picker-existing:hover { background: #ffffff04; }
+:is(#constellation-picker-results,#portal-parent-results,#move-destination-results)[role='listbox'] .picker-entry-row { grid-template-columns: minmax(0,1fr); }
+:is(#constellation-picker-results,#portal-parent-results,#move-destination-results)[role='listbox'] .picker-expand { display: none !important; }
+:is(#constellation-picker-results,#portal-parent-results,#move-destination-results) .picker-choice { display: grid; grid-template-columns: 14px minmax(0,1fr) auto; align-items: center; gap: 6px; min-width: 0; min-height: 32px; width: 100%; padding: 6px; border-radius: 4px; color: #a9bdd3; font-size: 12px; }
+:is(#constellation-picker-results,#portal-parent-results,#move-destination-results) .picker-choice[aria-selected='true'] { background: #25364b99; color: #e1e9f3; }
+:is(#constellation-picker-results,#portal-parent-results,#move-destination-results) .picker-choice.picker-existing { color: #8296ad; background: transparent; }
+:is(#constellation-picker-results,#portal-parent-results,#move-destination-results) .picker-choice.picker-existing:hover { background: #ffffff04; }
 .picker-check { color: #a9bdd3; font-size: 11px; }
 .picker-entry-info { min-width: 0; }
 .picker-entry-name { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .picker-added { font-size: 10px; color: #73869d; }
-:is(#constellation-picker-results,#portal-parent-results) small { margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 10px; }
-:is(#constellation-picker-results,#portal-parent-results) button:focus-visible { outline: 1px solid #839ab5; outline-offset: -1px; }
+:is(#constellation-picker-results,#portal-parent-results,#move-destination-results) small { margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 10px; }
+:is(#constellation-picker-results,#portal-parent-results,#move-destination-results) button:focus-visible { outline: 1px solid #839ab5; outline-offset: -1px; }
 .picker-empty { padding: 10px 6px; color: #8195ad; font-size: 12px; }
 #delete-constellation-dialog { width: min(320px,calc(100vw - 32px)); }
 #delete-constellation-question { color: #d8e5f4; overflow-wrap: anywhere; }
+
+/* Move uses the shared canonical picker inside the existing confirmation form. */
+#add-entry-dialog.move-destination-mode { width: min(440px,calc(100vw - 24px)); padding: 16px; border-radius: 5px; background: #0e1621; box-shadow: 0 6px 20px #0006; }
+.move-destination-mode #add-entry-title { font-size: 18px; }
+.move-destination-mode #add-entry-form { display: flex; flex-direction: column; min-height: 0; max-height: min(570px,calc(var(--mobile-visible-height,100dvh) - 58px)); gap: 10px; }
+.move-destination-mode #add-entry-form > :not(#parent-field) { flex-shrink: 0; }
+.move-destination-mode #parent-field { display: flex; flex: 1 1 auto; min-height: 0; }
+#move-destination-browser { display: flex; flex: 1 1 auto; flex-direction: column; gap: 10px; min-width: 0; min-height: 0; }
+#move-destination-browser > :not(#move-destination-scroll) { flex-shrink: 0; }
+.move-current { display: flex; gap: 6px; margin: 0; color: #8195ad; font-size: 11px; line-height: 16px; }
+#move-current-location { min-width: 0; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow-wrap: anywhere; color: #a9bdd3; }
+#move-destination-search { width: 100%; min-height: 44px; padding: 8px; border: 1px solid #60759030; border-radius: 4px; background: #ffffff04; color: #d8e5f4; font-size: 16px; }
+#move-destination-scroll { flex: 1 1 auto; min-height: 44px; max-height: 320px; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: #344359 transparent; }
+#move-destination-results { flex: none; max-height: none; overflow: visible; }
+.move-destination-mode #move-destination-results .picker-entry-row { grid-template-columns: 44px minmax(0,1fr); }
+.move-destination-mode #move-destination-results[role='listbox'] .picker-entry-row { grid-template-columns: minmax(0,1fr); }
+.move-destination-mode #move-destination-results .picker-expand { width: 44px; height: 44px; }
+#move-destination-results .picker-choice { min-height: 44px; text-align: left; background: transparent; border: 0; box-shadow: none; }
+#move-destination-results .picker-entry-info small { display: block; }
+#move-destination-results .picker-expand { background: transparent; border: 0; box-shadow: none; }
+#move-to-universe { display: block; width: 100%; min-height: 44px; padding: 6px 10px; border: 0; border-radius: 4px; box-shadow: none; background: transparent; text-align: left; color: #a9bdd3; font-size: 12px; }
+#move-to-universe small { margin-left: 6px; color: #73869d; font-size: 10px; }
+#move-to-universe[aria-pressed='true'] { background: #25364b99; color: #e1e9f3; }
+.move-selection { min-width: 0; font-size: 11px; line-height: 16px; }
+#move-destination-selection { display: block; min-width: 0; color: #c3d3e4; }
+#move-destination-selection strong, #move-destination-selection small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#move-destination-selection strong { font-weight: 500; }
+#move-destination-selection small { color: #8195ad; font-size: 10px; }
+.move-destination-mode .form-actions { margin-top: 0; }
+.move-destination-mode .form-actions button { min-height: 44px; padding: 8px 12px; border-radius: 4px; }
+.move-destination-mode #entry-form-error { margin: 0; }
 #delete-constellation-help { color: #8ea1b8; font-size: 12px; }
 #delete-constellation-form #confirm-delete-constellation { color: #e5c1c1; background: #523b3c; border-color: #99767566; }
 @media (pointer: coarse), (max-width: 760px) {
-    :is(#constellation-picker-results,#portal-parent-results) .picker-expand { width: 32px; height: 44px; }
-    :is(#constellation-picker-results,#portal-parent-results) .picker-entry-row { grid-template-columns: 32px minmax(0,1fr); }
-    :is(#constellation-picker-results,#portal-parent-results) .picker-choice { min-height: 44px; }
+    :is(#constellation-picker-results,#portal-parent-results,#move-destination-results) .picker-expand { width: 32px; height: 44px; }
+    :is(#constellation-picker-results,#portal-parent-results,#move-destination-results) .picker-entry-row { grid-template-columns: 32px minmax(0,1fr); }
+    :is(#constellation-picker-results,#portal-parent-results,#move-destination-results) .picker-choice { min-height: 44px; }
     :is(#constellation-picker-dialog,#delete-constellation-dialog,#portal-dialog) .form-actions button { min-height: 44px; }
 }
 
