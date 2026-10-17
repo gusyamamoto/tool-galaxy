@@ -1,7 +1,7 @@
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
 const {webcrypto}=require('node:crypto');
 const context=vm.createContext({URL,URLSearchParams,Blob,structuredClone,crypto:webcrypto,TextEncoder,TextDecoder,DOMException,setTimeout,clearTimeout});
-for(const file of ['auth-config.js','services/supabase-client.js','services/supabase-auth.js','services/auth-service.js','tests/fake-auth.js','config.js','model.js','portals.js','constellations.js','archives.js','persistence/local-metadata-store.js','persistence/local-preferences-store.js','persistence/memory-stores.js','persistence/composition.js','services/universe-repository.js','services/local-backup.js','services/local-restore.js'])vm.runInContext(fs.readFileSync(file,'utf8'),context);
+for(const file of ['ids.js','auth-config.js','services/supabase-client.js','services/supabase-auth.js','services/auth-service.js','tests/fake-auth.js','config.js','model.js','portals.js','constellations.js','archives.js','persistence/local-metadata-store.js','persistence/local-preferences-store.js','persistence/memory-stores.js','persistence/composition.js','services/universe-repository.js','services/local-backup.js','services/local-restore.js'])vm.runInContext(fs.readFileSync(file,'utf8'),context);
 const get=name=>vm.runInContext(name,context),plain=value=>JSON.parse(JSON.stringify(value));
 const fake=get('createFakeAuthAdapter'),service=get('createAuthService'),provider=get('createSupabaseAuthAdapter');
 function disk(){const map=new Map();return {map,getItem:k=>map.get(k)??null,setItem:(k,v)=>map.set(k,v),removeItem:k=>map.delete(k)};}

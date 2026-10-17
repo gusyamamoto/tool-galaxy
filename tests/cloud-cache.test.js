@@ -166,7 +166,7 @@ test('cache recovery with a found receipt but failed refresh advances acknowledg
 });
 test('existing local metadata/files/preferences and local Backup/Restore exclude and preserve cloud cache/journal',async()=>{
  const {webcrypto}=require('node:crypto'),e=environment();Object.assign(e.get('globalThis'),{crypto:webcrypto,TextEncoder,TextDecoder,DOMException});
- for(const path of ['persistence/local-metadata-store.js','persistence/local-preferences-store.js','persistence/memory-stores.js','persistence/composition.js','services/local-backup.js','services/local-restore.js'])e.load(path);
+ for(const path of ['ids.js','persistence/local-metadata-store.js','persistence/local-preferences-store.js','persistence/memory-stores.js','persistence/composition.js','services/local-backup.js','services/local-restore.js'])e.load(path);
  const metadata=e.get('createLocalMetadataStore')({storage:()=>e.storage}),preferences=e.get('createLocalPreferencesStore')({storage:()=>e.storage}),files=e.get('createMemoryFileStore')();
  const data={version:5,entries:[{id:'local-galaxy',name:'Only local',parentId:null,content:{version:1,notes:{format:'plain',text:'Keep local'},links:[],attachments:[{
   id:'local-file',kind:'upload',entryId:'local-galaxy',storageKey:'local-file',filename:'local.bin',mimeType:'application/octet-stream',size:3,createdAt:'2026-10-12T00:00:00Z'}]}}],layout:[],connections:[]};

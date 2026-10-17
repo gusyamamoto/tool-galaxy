@@ -90,7 +90,7 @@ class EntryContentInspector {
         document.getElementById("content-add-files").addEventListener("click", () => this.chooseFiles());
         document.getElementById("content-add-media").addEventListener("click", () => this.chooseFiles({media:true}));
         document.getElementById("content-notes-empty").addEventListener("click", () => this.editNotes());
-        document.getElementById("content-add-bookmark").addEventListener("click", () => this.editLink());
+        document.getElementById("content-add-bookmark").addEventListener("click", () => this.addBookmark());
         document.getElementById("content-cancel-notes").addEventListener("click", () => { if(this.pendingDrafts.get(this.entryId))delete this.pendingDrafts.get(this.entryId).notes;this.notesForm.hidden = true; this.renderNotes(); this.onLayout(); });
         document.getElementById("content-cancel-link").addEventListener("click", () => { if(this.pendingDrafts.get(this.entryId))delete this.pendingDrafts.get(this.entryId).bookmark;this.linkForm.hidden = true; this.renderBookmarkState(); this.onLayout(); });
         this.linkForm.addEventListener("submit", async event => {
@@ -101,19 +101,56 @@ class EntryContentInspector {
             }
         });
         this.quickUrl.addEventListener('input',()=>{this.quickSave.hidden=!galaxyModel.webUrl(this.quickUrl.value);this.quickUrl.removeAttribute('aria-invalid');});
+        document.getElementById('content-cancel-quick-bookmark').addEventListener('click',()=>this.cancelQuickBookmark());
+        this.quickBookmark.addEventListener('keydown',event=>{
+            if(event.key==='Escape'){event.preventDefault();event.stopPropagation();this.cancelQuickBookmark();}
+        });
         this.quickBookmark.addEventListener('focusin',()=>this.onLayout());
         // The compact mobile field retains a padded tap area around its silhouette.
         this.quickBookmark.addEventListener('click',event=>{if(event.target===this.quickBookmark)this.quickUrl.focus();});
         this.quickBookmark.addEventListener('submit',async event=>{event.preventDefault();const id=this.entryId;
-            if(await this.saveBookmark(this.quickUrl.value)){this.quickUrl.value='';this.quickSave.hidden=true;this.quickUrl.blur();this.renderLists();}
+            if(await this.saveBookmark(this.quickUrl.value)){this.cancelQuickBookmark();this.renderLists();}
             else if(id===this.entryId)this.quickUrl.setAttribute('aria-invalid','true');
         });
+        const inlineEntries=[
+            [this.quickBookmark,this.quickUrl,options=>this.cancelQuickBookmark(options)],
+            [this.locationForm,this.locationInput,options=>this.cancelLocation(options)]
+        ].map(([form,input,cancel])=>({form,input,cancel,empty:()=>!form.hidden&&!input.value.trim()&&!this.jobs.get(this.entryId)}));
+        // Keep the target stable until click dispatch, then collapse before
+        // its action runs (so anchored menus use the final sheet position).
+        // Keyboard focus changes still collapse empty entry immediately.
+        const sheet=this.root.closest('#entry-panel');let pendingEmptyEntries=[];
+        sheet.addEventListener('pointerdown',event=>{
+            pendingEmptyEntries=[];
+            if(event.button!==0||!event.target.closest('button,a,summary'))return;
+            pendingEmptyEntries=inlineEntries.filter(entry=>entry.empty()&&!entry.form.contains(event.target));
+            if(pendingEmptyEntries.length)event.preventDefault();
+        },true);
+        sheet.addEventListener('click',()=>{
+            const pending=pendingEmptyEntries;pendingEmptyEntries=[];
+            pending.forEach(entry=>{if(entry.empty())entry.cancel({restoreFocus:false});});
+        },true);
+        sheet.addEventListener('pointercancel',()=>{pendingEmptyEntries=[];});
+        sheet.addEventListener('keydown',()=>{pendingEmptyEntries=[];},true);
+        for(const {form,input,cancel,empty} of inlineEntries){
+            form.addEventListener('focusout',event=>{
+                if(empty()&&!form.contains(event.relatedTarget))cancel({restoreFocus:false});
+            });
+            input.addEventListener('invalid',event=>{if(empty()){event.preventDefault();cancel();}});
+            form.addEventListener('submit',event=>{
+                if(empty()){event.preventDefault();event.stopImmediatePropagation();cancel();}
+            },true);
+        }
         this.files.addEventListener("change", () => {
             const files = [...this.files.files]; this.files.value = "";
+            const selection = this.fileSelection; this.fileSelection = null;
             document.getElementById("content-file-limit").hidden = true;
-            if (files.length) this.upload(files); else this.onLayout();
+            const id = selection?.entryId || this.entryId;
+            if (files.length && this.getEntry(id)) {
+                selection?.onSelect?.(); this.upload(files, id);
+            } else this.onLayout();
         });
-        this.files.addEventListener("cancel", () => { document.getElementById("content-file-limit").hidden = true; this.onLayout(); });
+        this.files.addEventListener("cancel", () => { this.fileSelection = null; document.getElementById("content-file-limit").hidden = true; this.onLayout(); });
         document.addEventListener("pointerdown", event => {
             this.root.querySelectorAll(".content-item-menu[open]").forEach(menu => { if (!menu.contains(event.target)) menu.open = false; });
         });
@@ -126,18 +163,28 @@ class EntryContentInspector {
     message(text, error = false) {
         clearTimeout(this.statusTimer);
         this.status.textContent = text; this.status.hidden = false; this.status.dataset.error = String(error); this.onLayout();
+        if (error && this.visible) requestAnimationFrame(() => {
+            if (this.visible && this.status.textContent === text && this.status.dataset.error === 'true' && this.status.getClientRects().length)
+                this.status.scrollIntoView({block:'nearest'});
+        });
         if (!error) this.statusTimer = setTimeout(() => { this.status.hidden = true; this.onLayout(); }, 4000);
     }
     error(error) {
         const quota = error?.name === "QuotaExceededError" || error?.cause?.name === "QuotaExceededError";
-        this.message(quota ? "There isn’t enough local browser storage for this attachment. Free some space or choose a smaller file or video and try again." : error?.message || "This content could not be saved.", true);
+        const messages = {
+            NotReadableError: 'This file could not be read. Download or save a copy onto this device, then choose it again.',
+            NotFoundError: 'This file is no longer available. Download or save a local copy, then choose it again.',
+            SecurityError: 'This browser is blocking access to the file or local storage. Allow site storage or try a regular browser tab.',
+            DataCloneError: 'This file could not be saved. Download or save a copy onto this device, then choose it again.'
+        };
+        this.message(quota ? "There isn’t enough local browser storage for this attachment. Free some space or choose a smaller file or video and try again." : messages[error?.name] || messages[error?.cause?.name] || error?.message || "This content could not be saved.", true);
     }
     select(entry, visible) {
         clearTimeout(this.statusTimer);
         this.entryId = entry?.id || null; this.visible = visible;
         this.linkForm.hidden = this.notesForm.hidden = this.locationForm.hidden = true; this.status.hidden = true;
         this.locationInput.value='';this.locationInput.removeAttribute('aria-invalid');this.locationError.hidden=true;
-        this.quickUrl.value='';this.quickUrl.removeAttribute('aria-invalid');this.quickSave.hidden=true;
+        this.quickEditing=false;this.quickUrl.value='';this.quickUrl.removeAttribute('aria-invalid');this.quickSave.hidden=true;
         document.getElementById("content-file-limit").hidden = true;
         this.notes.value = this.content().notes.text;
         const draft=this.pendingDrafts.get(this.entryId);
@@ -198,11 +245,11 @@ class EntryContentInspector {
         this.locationInput.removeAttribute('aria-invalid');this.locationError.hidden=true;
         this.locationForm.hidden=false;this.renderLocation();this.locationInput.focus({preventScroll:true});
     }
-    cancelLocation() {
+    cancelLocation({restoreFocus=true}={}) {
         if(this.pendingDrafts.get(this.entryId))delete this.pendingDrafts.get(this.entryId).location;
         this.onAction();this.locationForm.hidden=true;this.locationInput.value='';this.locationError.hidden=true;
         this.locationInput.removeAttribute('aria-invalid');this.renderLocation();
-        document.getElementById(this.getEntry(this.entryId)?.location?'content-edit-location':'content-add-location').focus({preventScroll:true});
+        if(restoreFocus)document.getElementById(this.getEntry(this.entryId)?.location?'content-edit-location':'content-add-location').focus({preventScroll:true});
     }
     busy() {
         const busy = !!this.jobs.get(this.entryId);
@@ -225,19 +272,28 @@ class EntryContentInspector {
     editLink(link) {
         if (!this.entryId || this.jobs.get(this.entryId)) return;
         this.onAction();
-        this.editingLinkId = link?.id || null;
+        this.quickEditing=false;this.editingLinkId = link?.id || null;
         document.getElementById("content-link-url").value = link?.url || "";
         document.getElementById("content-link-title").value = link?.title || "";
         this.linkForm.hidden = false; this.renderBookmarkState();
         document.getElementById("content-link-url").focus({ preventScroll: true }); this.onLayout();
     }
-    chooseFiles({media=false} = {}) {
-        if (this.entryId && !this.jobs.get(this.entryId)) {
-            if (media) this.files.accept = '.jpg,.jpeg,.png,.webp,.mp4,.webm,.mov';
+    chooseFiles({media=false,source='files',entryId=this.entryId,onSelect=null} = {}) {
+        if (this.getEntry(entryId) && !this.jobs.get(entryId)) {
+            this.fileSelection = {entryId,onSelect};
+            // A different inspected body's job must not disable this destination.
+            this.files.disabled = false;
+            this.files.value = '';
+            this.files.removeAttribute('capture'); this.files.multiple = source !== 'camera';
+            if (source === 'camera') { this.files.accept = 'image/*'; this.files.setAttribute('capture','environment'); }
+            else if (source === 'gallery') this.files.accept = 'image/*,.heic,.heif';
+            else if (media) this.files.accept = '.jpg,.jpeg,.png,.webp,.heic,.heif,.mp4,.webm,.mov';
             else this.files.removeAttribute('accept');
-            this.files.setAttribute('aria-label', media ? 'Choose photos or videos' : 'Choose files');
+            this.files.setAttribute('aria-label', source === 'camera' ? 'Take Photo' : source === 'gallery' ? 'Photo Library / Gallery' : media ? 'Choose photos or videos' : 'Choose files');
             this.onAction(); document.getElementById("content-file-limit").hidden = false;
-            this.onLayout(); this.files.click();
+            this.onLayout();
+            try { this.files.click(); }
+            catch (error) { this.fileSelection = null; document.getElementById('content-file-limit').hidden = true; this.error(error); }
         }
     }
     editNotes() {
@@ -263,11 +319,26 @@ class EntryContentInspector {
         button.hidden = !text || !this.notesForm.hidden;
         document.getElementById("content-notes-empty").hidden = !!text || !this.notesForm.hidden;
     }
-    renderBookmarkState() { const empty=!this.content().links.length&&this.linkForm.hidden;this.quickBookmark.hidden=!empty;document.getElementById('content-add-bookmark').hidden=empty; }
+    addBookmark() {
+        if(!this.entryId||this.jobs.get(this.entryId))return;
+        this.onAction();this.quickEditing=true;this.linkForm.hidden=true;this.renderBookmarkState();
+        this.quickUrl.focus({preventScroll:true});this.onLayout();
+    }
+    cancelQuickBookmark({restoreFocus=true}={}) {
+        if(this.pendingDrafts.get(this.entryId))delete this.pendingDrafts.get(this.entryId).bookmark;
+        this.quickEditing=false;this.quickUrl.value='';this.quickUrl.removeAttribute('aria-invalid');this.quickSave.hidden=true;
+        this.renderBookmarkState();if(restoreFocus)document.getElementById('content-add-bookmark').focus({preventScroll:true});this.onLayout();
+    }
+    renderBookmarkState() {
+        this.quickBookmark.hidden=!this.quickEditing||!this.linkForm.hidden;
+        const editing=!this.quickBookmark.hidden||!this.linkForm.hidden;
+        document.getElementById('content-bookmarks-placeholder').hidden=editing;
+        document.getElementById('content-add-bookmark').hidden=editing;
+    }
     async saveBookmark(value,title='',editingId=null){
         this.onAction();const url=galaxyModel.webUrl(value);
         if(!url){this.message('Enter a valid website address, such as google.com or an HTTPS URL.',true);return false;}
-        const link={id:editingId||crypto.randomUUID(),url,...(title?{title}:{})};
+        const link={id:editingId||cosmifoldIds.uuid(),url,...(title?{title}:{})};
         const id=this.entryId;this.pendingDrafts.set(id,{...this.pendingDrafts.get(id),bookmark:{value,title,editingId}});
         try{await this.semantic(id,()=>this.save(id,current=>({...current,links:editingId?current.links.map(old=>old.id===link.id?link:old):[...current.links,link]})));delete this.pendingDrafts.get(id).bookmark;if(id===this.entryId)this.message('Bookmark saved.');return id===this.entryId;}
         catch(error){if(id===this.entryId)this.error(error);return false;}
@@ -387,8 +458,7 @@ class EntryContentInspector {
         else element.textContent = message;
         this.onLayout();
     }
-    upload(files) {
-        const id = this.entryId;
+    upload(files, id = this.entryId) {
         return this.job(id, async () => {
             for (const file of files) {
                 const { metadata, record } = await galaxyAttachmentFiles.prepare(file,id);

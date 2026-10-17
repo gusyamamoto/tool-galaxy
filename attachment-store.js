@@ -2,21 +2,24 @@
 const galaxyAttachmentFiles = {
     types: galaxyModel.filePolicy.previewTypes,
     async prepare(file, entryId) {
-        if (!file.name || file.name.length > 255) throw new Error("Choose a file with a shorter filename.");
+        if (!file.name) throw new Error('This file has no filename. Save a local copy with a name, then choose it again.');
+        if (file.name.length > 255) throw new Error("Choose a file with a shorter filename.");
         const policy = galaxyModel.filePolicy, extension = policy.extension(file.name);
         const mimeType = policy.validMime(file.type) ? file.type : 'application/octet-stream';
         if (policy.blocked(file.name,mimeType)) throw new Error('Executable files, installers, and scripts cannot be attached. Choose a document, project file, or archive instead.');
         const isVideo = policy.classify({filename:file.name,mimeType}).kind === 'video';
         const limit = isVideo ? galaxyModel.contentLimits.videoBytes : galaxyModel.contentLimits.fileBytes;
         if (file.size > limit) throw new Error(`This ${isVideo ? 'video' : 'file'} is too large. The ${isVideo ? 'local video' : 'per-file'} limit is ${limit / 1024 / 1024} MiB.`);
-        const id = crypto.randomUUID(), metadata = { id, kind: "upload", entryId, filename: file.name,
+        const id = cosmifoldIds.uuid(), metadata = { id, kind: "upload", entryId, filename: file.name,
             mimeType, extension, size: file.size, storageKey: id, createdAt: new Date().toISOString() };
         const record = { key: id, entryId, blob: new Blob([file], { type: mimeType }) };
         const {kind,renderType} = policy.classify(metadata);
         if (kind === 'pdf') {
             if (await file.slice(0, 5).text() !== "%PDF-") throw new Error("This file is not a valid PDF.");
         }
-        if (kind === 'image') {
+        const heif = ['image/heic','image/heif'].includes(renderType);
+        if (heif) await this.imagePreview(file, record, metadata);
+        if (kind === 'image' && !heif) {
             const bytes = new Uint8Array(await file.arrayBuffer()), view = new DataView(bytes.buffer);
             let width, height, orientation = 1;
             if (renderType === "image/png" && bytes.length >= 24 && bytes.slice(0,8).join() === "137,80,78,71,13,10,26,10") {
@@ -52,19 +55,40 @@ const galaxyAttachmentFiles = {
                 else if (type === "VP8L" && bytes[20] === 47) { const bits=view.getUint32(21,true);width=(bits&16383)+1;height=((bits>>>14)&16383)+1; }
             }
             if (orientation >= 5 && orientation <= 8) [width,height] = [height,width];
-            if (!width || !height || width*height > galaxyModel.contentLimits.imagePixels) throw new Error(`This image is invalid or exceeds the ${galaxyModel.contentLimits.imagePixels / 1000000} megapixel preview limit.`);
-            const ratio = Math.min(1, galaxyModel.contentLimits.thumbnailEdge / Math.max(width,height));
-            const bitmap = await createImageBitmap(file, { resizeWidth: Math.max(1,Math.round(width*ratio)), resizeHeight: Math.max(1,Math.round(height*ratio)), resizeQuality: "low" });
-            try {
-                const canvas = document.createElement("canvas");canvas.width=bitmap.width;canvas.height=bitmap.height;
-                canvas.getContext("2d").drawImage(bitmap,0,0);
-                record.thumbnail = await new Promise(resolve => canvas.toBlob(resolve,"image/webp",.8));
-                if (!record.thumbnail) throw new Error("Could not create this image preview.");
-                metadata.width=width;metadata.height=height;
-            } finally { bitmap.close(); }
+            if (!width || !height) throw new Error('This image has an invalid or unsupported header. Choose another copy of the photo.');
+            metadata.width=width;metadata.height=height;
+            // The pixel budget limits preview work, not original-file storage.
+            if (width*height <= galaxyModel.contentLimits.imagePixels) await this.imagePreview(file, record, metadata, {width,height});
         }
         if (kind === 'video') await this.videoPreview(record, metadata, renderType);
         return { metadata, record };
+    },
+    async imagePreview(file, record, metadata, dimensions = null) {
+        // Native decoding is optional. Never replace/re-encode the stored original.
+        let bitmap, timer, expired = false;
+        try {
+            // Contents needs enough source pixels for its compact tiles at phone DPR 2–3.
+            const edge = galaxyModel.contentLimits.imagePreviewEdge;
+            const ratio = dimensions ? Math.min(1,edge/Math.max(dimensions.width,dimensions.height)) : 1;
+            const options = dimensions ? {resizeWidth:Math.max(1,Math.round(dimensions.width*ratio)),resizeHeight:Math.max(1,Math.round(dimensions.height*ratio)),resizeQuality:'high'} : undefined;
+            const decoding = createImageBitmap(file, options).then(value => {
+                if (expired) { value.close(); return null; }
+                return value;
+            });
+            bitmap = await Promise.race([decoding,new Promise(resolve => {
+                timer = setTimeout(() => { expired = true; resolve(null); },4000);
+            })]);
+            if (!bitmap || !bitmap.width || !bitmap.height || bitmap.width*bitmap.height > galaxyModel.contentLimits.imagePixels) return;
+            const thumbnailRatio = Math.min(1,edge/Math.max(bitmap.width,bitmap.height));
+            const canvas = document.createElement('canvas');
+            canvas.width = Math.max(1,Math.round(bitmap.width*thumbnailRatio)); canvas.height = Math.max(1,Math.round(bitmap.height*thumbnailRatio));
+            const context = canvas.getContext('2d');
+            context.imageSmoothingEnabled = true; context.imageSmoothingQuality = 'high';
+            context.drawImage(bitmap,0,0,canvas.width,canvas.height);
+            const thumbnail = await new Promise(resolve => canvas.toBlob(resolve,'image/webp',.85));
+            if (thumbnail) { record.thumbnail = thumbnail; metadata.width = dimensions?.width || bitmap.width; metadata.height = dimensions?.height || bitmap.height; }
+        } catch { /* Preview failures never discard an accepted image's original bytes. */ }
+        finally { clearTimeout(timer); bitmap?.close(); }
     },
     async videoPreview(record, metadata, renderType) {
         // Best-effort local frame extraction. Unsupported codecs remain valid attachments.

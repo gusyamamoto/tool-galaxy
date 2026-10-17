@@ -39,7 +39,7 @@ function createUniverseRepository({persistence, canWrite = () => true}) {
         async replaceLocalBackup(source) {
             if(persistence.sample)throw new Error('Leave Sample mode to restore your Cosmos.');
             if(restoring||persistence.metadata.readRestoreJournal())throw new Error('Finish Restore recovery before continuing.');
-            const journal={version:1,id:crypto.randomUUID(),metadataText:source.metadataText,preferencesText:source.preferencesText,
+            const journal={version:1,id:cosmifoldIds.uuid(),metadataText:source.metadataText,preferencesText:source.preferencesText,
                 previous:persistence.metadata.captureRestoreState(),previousPreferences:persistence.preferences.readForBackup()};
             restoring=true;
             const rollback=()=>{

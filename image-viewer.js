@@ -83,8 +83,9 @@ class CosmifoldImageViewer {
         this.saveCopy.hidden = true; this.saveCopy.removeAttribute('href'); this.infoCopy.removeAttribute('href');
         this.previous.style.removeProperty('left'); this.next.style.removeProperty('right');
         if (this.url) URL.revokeObjectURL(this.url);
+        if (this.originalUrl) URL.revokeObjectURL(this.originalUrl);
         if (this.posterUrl) URL.revokeObjectURL(this.posterUrl);
-        this.url = this.posterUrl = null;
+        this.url = this.posterUrl = this.originalUrl = null;
     }
     clearFilmstrip() {
         this.thumbnailUrls.forEach(url => URL.revokeObjectURL(url)); this.thumbnailUrls.clear(); this.filmstrip.replaceChildren();
@@ -152,7 +153,10 @@ class CosmifoldImageViewer {
             const record = await this.store.get(metadata.storageKey);
             if (version !== this.version || !this.dialog.open) return;
             if (!record || record.entryId !== metadata.entryId) throw new Error('Attachment unavailable in this browser storage.');
+            // A persisted friendly HEIF preview can be read even without a HEIF decoder.
+            const preview = ['image/heic','image/heif'].includes(capability.renderType) && record.thumbnail;
             this.url = URL.createObjectURL(new Blob([record.blob],{type:capability.renderType}));
+            if (preview) { this.originalUrl = this.url; this.url = URL.createObjectURL(preview); }
             if (this.isPdf) {
                 this.external.href = this.url; this.pdfTools.hidden = false;
                 const supported = this.supportsPdf(); this.status.hidden = supported;
@@ -160,7 +164,7 @@ class CosmifoldImageViewer {
                 else this.status.textContent = 'This browser cannot display PDFs here. Open the document externally to read it.';
                 return;
             }
-            for (const link of [this.saveCopy,this.infoCopy]) { link.href=this.url;link.download=metadata.filename; }
+            for (const link of [this.saveCopy,this.infoCopy]) { link.href=this.originalUrl||this.url;link.download=metadata.filename; }
             if (capability.kind === 'video') {
                 this.video.preload = 'auto';
                 this.video.setAttribute('aria-label',`Video: ${metadata.filename}`);
@@ -180,8 +184,11 @@ class CosmifoldImageViewer {
             this.status.hidden = true; this.image.hidden = false; this.fitImage();
         } catch {
             if (version !== this.version || !this.dialog.open) return;
-            this.release(); this.status.hidden = false;
-            this.status.textContent = this.isPdf ? 'This PDF could not be opened. You can close the viewer and try again.' : 'This media could not be opened. It may be unavailable in this browser storage.';
+            const downloadable = !this.isPdf && this.saveCopy.hasAttribute('href');
+            if (downloadable) { this.image.hidden = true; this.saveCopy.hidden = false; }
+            else this.release();
+            this.status.hidden = false;
+            this.status.textContent = this.isPdf ? 'This PDF could not be opened. You can close the viewer and try again.' : downloadable ? 'Preview unavailable in this browser. Save a copy to open the original in another app.' : 'This media could not be opened. It may be unavailable in this browser storage.';
         }
     }
 }
