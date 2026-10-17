@@ -22,7 +22,7 @@ def run_reparent_drag_checks(*, cdp, evaluate, check, wait_for, add):
             evaluate("contextMenu.querySelector('[data-action=more]').click()")
         evaluate("contextMenu.querySelector('[data-action=move]').click()")
         check(evaluate(f'dialog.open&&editingId==={q(owner)}'),'Move starts through the existing management/form path')
-        evaluate(f'parentField.value={q(parent_id)};parentField.dispatchEvent(new Event("change"));form.requestSubmit()')
+        evaluate(f'moveDestinationPicker.select({q(parent_id)});form.requestSubmit()')
         wait_for('!dialog.open&&!formSaveBusy&&physics.settled')
         evaluate('applicationCommandTail')
         check(evaluate(f'entries.get({q(owner)}).parentId==={q(parent_id)}&&physics.particles.get({q(owner)}).parentId==={q(parent_id)}'),'confirmed move updates model and particle ancestry')

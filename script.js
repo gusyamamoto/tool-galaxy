@@ -1536,6 +1536,18 @@ function updateParentOptions(preferredId = parentField.value) {
     updateFormRole();
 }
 
+const moveDestinationSearch=document.getElementById('move-destination-search');
+const moveDestinationPicker=new MoveDestinationPicker({
+    list:document.getElementById('move-destination-results'),search:moveDestinationSearch,
+    universe:document.getElementById('move-to-universe'),current:document.getElementById('move-current-location'),
+    selection:document.getElementById('move-destination-selection'),confirm:submitButton,getEntries:()=>entries,
+    onSelect(id){
+        const parentId=id===undefined?entries.get(editingId)?.parentId||null:id;
+        parentField.replaceChildren(new Option(parentId?entries.get(parentId)?.name||'Unavailable destination':'Universe',parentId||''));
+        updateFormRole();clearFormError();
+    }
+});
+
 function beginCrudOperation() {
     cancelPendingBodyFocus();lastBodyTap=null;
     cancelCanvasTouches();
@@ -1747,6 +1759,10 @@ function openEntryForm(entry = null, parentId = null, contextual = false, mode =
     closeContentMenus();
     editingId = entry?.id || null;
     contextualParentId = contextual ? parentId : null;
+    const moving=!!entry&&mode==='move';
+    dialog.classList.toggle('move-destination-mode',moving);
+    document.getElementById('parent-select-controls').hidden=moving;
+    document.getElementById('move-destination-browser').hidden=!moving;
     creationContext.hidden = true;
     document.getElementById("parent-field").hidden = !entry || mode !== "move";
     document.getElementById("entry-info-fields").hidden = true;
@@ -1755,16 +1771,21 @@ function openEntryForm(entry = null, parentId = null, contextual = false, mode =
     fields.forEach((field) => field.setCustomValidity(""));
     clearFormError();
     document.getElementById("add-entry-title").textContent = entry ? mode === "move" ? "Move to…" : "Rename item" : "Add item";
-    submitButton.textContent = entry ? "Save" : "Add item";
+    submitButton.textContent = moving?'Move here':entry?'Save':'Add item';
+    submitButton.disabled=false;
     if (entry) {
         fields[0].value = entry.name;
         fields[1].value = entry.description;
         fields[2].value = entry.category;
     }
-    updateParentOptions(entry ? entry.parentId || "" : parentId || "");
+    if(moving){
+        document.getElementById('add-entry-title').textContent=`Move “${entry.name}” to…`;
+        moveDestinationPicker.open(entry.id);
+    }else updateParentOptions(entry ? entry.parentId || "" : parentId || "");
     document.getElementById('galaxy-starter-field').hidden=!!entry||!!parentField.value;
     starterDefaultName='';
     dialog.showModal();
+    if(moving)moveDestinationSearch.focus({preventScroll:true});
 }
 
 function createChildEntry(parentId) {
@@ -2012,6 +2033,10 @@ form.addEventListener("submit", async (event) => {
     event.preventDefault();
     if(formSaveBusy)return;
     clearFormError();
+    if(dialog.classList.contains('move-destination-mode')&&moveDestinationPicker.destinationId===undefined){
+        formError.textContent='Choose a destination.';formError.hidden=false;moveDestinationSearch.focus();return;
+    }
+    if(editingId&&!entries.has(editingId)){formError.textContent='This item is no longer available.';formError.hidden=false;return;}
     fields.forEach((field, index) => {
         field.setCustomValidity(index !== 0 || field.value.trim() ? "" : "Please enter a value.");
     });
@@ -2068,7 +2093,7 @@ form.addEventListener("submit", async (event) => {
             {selectionId:data.id,topologyChanged:creating||oldParentId!==data.parentId,reveal:creating||oldParentId!==data.parentId,preserveScroll:!creating,inspectorOpen:creating||!panel.hidden,persisted:true});
         dialog.close();restoreCrudFocus();finishCrudOperation();
     });}catch(error){formError.textContent=error.message;formError.hidden=false;}
-    finally{setFormBusy(false);if(dialog.open&&!formError.hidden)(fields[0].getClientRects().length?fields[0]:parentField).focus();}
+    finally{setFormBusy(false);if(dialog.open&&!formError.hidden)(fields[0].getClientRects().length?fields[0]:dialog.classList.contains('move-destination-mode')?moveDestinationSearch:parentField).focus();}
 
 });
 
