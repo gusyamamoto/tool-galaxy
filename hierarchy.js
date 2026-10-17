@@ -93,8 +93,8 @@ class NavigationSection {
 }
 
 class HierarchySidebar {
-    constructor({ host, onNavigate, onSelectionEmpty, onActivate, onMove, moveBlocked=()=>false, onDragEnd, onCreate, onRename, onRenameStart, onOpenPortal, onPortalMenu, portals = new Map(), onViewportChange, preferences }) {
-        Object.assign(this, { host, onNavigate, onSelectionEmpty, onActivate, onMove, moveBlocked, onDragEnd, onCreate, onRename, onRenameStart, onOpenPortal, onPortalMenu, portals, onViewportChange, preferences });
+    constructor({ host, onNavigate, onSelectionEmpty, onActivate, onMove, moveBlocked=()=>false, onDragEnd, onCreate, onMenu, onRename, onRenameStart, onOpenPortal, onPortalMenu, portals = new Map(), onViewportChange, preferences }) {
+        Object.assign(this, { host, onNavigate, onSelectionEmpty, onActivate, onMove, moveBlocked, onDragEnd, onCreate, onMenu, onRename, onRenameStart, onOpenPortal, onPortalMenu, portals, onViewportChange, preferences });
         this.sidebar = document.getElementById("hierarchy-sidebar");
         this.tree = document.getElementById("hierarchy-tree");
         this.toggle = document.getElementById("sidebar-toggle");
@@ -158,7 +158,9 @@ class HierarchySidebar {
     applyLayout() {
         const { min, max } = this.widthLimits();
         this.width = Math.max(Math.min(min, max), Math.min(max, this.width));
-        this.host.style.setProperty("--sidebar-width", `${this.width}px`);
+        // Leave room for both touch actions without squeezing deep item names.
+        // The saved desktop width remains unchanged.
+        this.host.style.setProperty("--sidebar-width", `${this.narrow ? Math.min(320,innerWidth-48) : this.width}px`);
         this.host.style.setProperty("--sidebar-space", `${this.collapsed || this.narrow ? 0 : this.width}px`);
         this.host.classList.toggle("sidebar-collapsed", this.collapsed);
         this.sidebar.hidden = this.collapsed;
@@ -209,7 +211,9 @@ class HierarchySidebar {
         const name = document.createElement("span"); name.className = "tree-name";
         const add = document.createElement("button"); add.type = "button"; add.className = "tree-add"; add.textContent = "+";
         add.setAttribute("aria-haspopup", "menu"); add.setAttribute("aria-controls", "add-menu"); add.setAttribute("aria-expanded", "false");
-        row.append(disclosure, icon, name, add);
+        const more = document.createElement('button'); more.type = 'button'; more.className = 'tree-more'; more.textContent = '…';
+        more.setAttribute('aria-haspopup', 'menu'); more.setAttribute('aria-controls', 'entry-context-menu'); more.setAttribute('aria-expanded', 'false');
+        row.append(disclosure, icon, name, add, more);
         row.addEventListener('pointerdown',event=>{
             this.moveOriginBlocked=event.button!==0||event.pointerType==='touch'||!!event.target.closest('button,input');
             if(event.button===0&&(event.ctrlKey||event.metaKey||event.shiftKey)&&!event.target.closest('button,input'))event.preventDefault();
@@ -235,6 +239,8 @@ class HierarchySidebar {
         disclosure.addEventListener("click", () => this.toggleBranch(id));
         add.addEventListener("focus", () => { this.activeId = id; this.updateTabStops(); });
         add.addEventListener("click", event => { event.stopPropagation(); this.onCreate(id, add); });
+        more.addEventListener('focus', () => { this.activeId = id; this.updateTabStops(); });
+        more.addEventListener('click', event => { event.stopPropagation(); this.onMenu?.(id, more); });
         this.rows.set(id, row); return row;
     }
     beginRename(id) {
@@ -307,7 +313,7 @@ class HierarchySidebar {
         const scroll = { top: this.tree.scrollTop, left: this.tree.scrollLeft };
         const focusedRow = document.activeElement?.closest(".hierarchy-row");
         const focused = focusedRow?.dataset.entryId || focusedRow?.dataset.portalId;
-        const focusedAction = document.activeElement?.closest('.tree-add,.tree-portal-actions,.tree-disclosure')?.className;
+        const focusedAction = document.activeElement?.closest('.tree-add,.tree-more,.tree-portal-actions,.tree-disclosure')?.className;
         this.visibleRows = cosmosHierarchy.visible(this.entries, this.index, this.expanded, this.portals);
         if(!this.keepMovedSelection)this.selection.visibleOnly(new Set(this.visibleRows.filter(row=>!row.kind).map(row=>row.id)));
         this.selectedId=this.selection.activeEntryId;
@@ -337,6 +343,7 @@ class HierarchySidebar {
                 const disclosure = row.querySelector(".tree-disclosure");
                 disclosure.disabled = !hasChildren; disclosure.ariaLabel = `${this.expanded.has(id) ? "Collapse" : "Expand"} ${entry.name}`;
                 const add = row.querySelector(".tree-add"); add.ariaLabel = add.title = `Add to ${entry.name}`;
+                const more = row.querySelector('.tree-more'); more.ariaLabel = more.title = `Actions for ${entry.name}`;
             }
             fragment.appendChild(row);
         });
@@ -352,7 +359,7 @@ class HierarchySidebar {
     updateTabStops() {
         this.visibleRows?.forEach(({ id }) => {
             const row = this.rows.get(id); row.tabIndex = id === this.activeId ? 0 : -1;
-            row.querySelector(".tree-add,.tree-portal-actions").tabIndex = id === this.activeId ? 0 : -1;
+            row.querySelectorAll('.tree-add,.tree-more,.tree-portal-actions').forEach(button => { button.tabIndex = id === this.activeId ? 0 : -1; });
         });
     }
     toggleBranch(id) {

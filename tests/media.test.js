@@ -1,7 +1,7 @@
 const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm'),path=require('node:path');
 const {test}=require('node:test'),{randomUUID}=require('node:crypto');
 const context=vm.createContext({URL,Blob,crypto:{randomUUID}});
-for(const file of ['model.js','attachment-store.js','persistence/local-metadata-store.js'])vm.runInContext(fs.readFileSync(path.join(__dirname,'..',file),'utf8'),context);
+for(const file of ['ids.js','model.js','attachment-store.js','persistence/local-metadata-store.js'])vm.runInContext(fs.readFileSync(path.join(__dirname,'..',file),'utf8'),context);
 const model=vm.runInContext('galaxyModel',context),files=vm.runInContext('galaxyAttachmentFiles',context),plain=x=>JSON.parse(JSON.stringify(x));
 // Codec/thumbnail behavior is exercised in the real-browser suite. This suite checks policy before decoding.
 files.videoPreview=async()=>{};

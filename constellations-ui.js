@@ -129,7 +129,7 @@ class ConstellationWorkspace {
         if(this.savingName)return;
         const name=document.getElementById('constellation-name').value.trim();if(!name||name.length>60){this.error('constellation-name-error','Enter a name of up to 60 characters.');return;}
         const old=this.collections.get(this.editingId);if(this.editingId&&!old){this.error('constellation-name-error','This Constellation no longer exists.');return;}
-        const collection=old?{...old,name}:{id:`constellation:${crypto.randomUUID()}`,name,memberEntryIds:[],createdAt:new Date().toISOString()};
+        const collection=old?{...old,name}:{id:`constellation:${cosmifoldIds.uuid()}`,name,memberEntryIds:[],createdAt:new Date().toISOString()};
         const nameInput=document.getElementById('constellation-name'),saveButton=document.getElementById('save-constellation-name');nameInput.disabled=saveButton.disabled=true;
         this.savingName=true;try {await this.commit(()=>{const current=this.collections.get(collection.id);const next=new Map(this.collections);next.set(collection.id,current?{...current,name}:collection);return next;});this.nameDialog.close();this.restoreFocus();
             // Creation is empty; the originating entity can then be added through

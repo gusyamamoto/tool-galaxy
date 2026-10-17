@@ -1,7 +1,7 @@
 const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm'),path=require('node:path');
 const {test}=require('node:test'),{randomUUID}=require('node:crypto');
 const context=vm.createContext({URL,Blob,crypto:{randomUUID}});
-for(const file of ['model.js','attachment-store.js'])vm.runInContext(fs.readFileSync(path.join(__dirname,'..',file),'utf8'),context);
+for(const file of ['ids.js','model.js','attachment-store.js'])vm.runInContext(fs.readFileSync(path.join(__dirname,'..',file),'utf8'),context);
 const model=vm.runInContext('galaxyModel',context),policy=model.filePolicy,prepare=vm.runInContext('galaxyAttachmentFiles.prepare.bind(galaxyAttachmentFiles)',context);
 const plain=value=>JSON.parse(JSON.stringify(value));
 function file(name,type='',bytes='Original bytes') {const blob=new Blob([bytes],{type});return Object.assign(blob,{name});}
