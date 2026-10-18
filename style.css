@@ -1131,7 +1131,7 @@ summary:focus-visible { outline: 1px solid #b9d0e9; outline-offset: 3px; }
     #mobile-body-contents .contents-chevron { width: 18px; height: 18px; transform: translateY(4px); }
     #mobile-body-name { display: block; flex: 1; min-width: 0; padding: 6px; line-height: 32px; font-size: 13px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
     #close-inspector-button .contents-close-mark { display: none; }
-    #close-inspector-button .contents-collapse-chevron { display: block; position: absolute; top: -4px; left: 50%; transform: translateX(-50%); width: 18px; height: 18px; }
+    #close-inspector-button .contents-collapse-chevron { display: block; position: absolute; top: 4px; left: 50%; transform: translateX(-50%); width: 18px; height: 18px; }
     #mobile-body-add, #mobile-body-more { font-size: 23px; }
     #add-menu.capture-menu { width: 192px; }
     .hierarchy-row.is-selected .tree-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -1168,7 +1168,6 @@ summary:focus-visible { outline: 1px solid #b9d0e9; outline-offset: 3px; }
     #entry-panel:has(#panel-rich-content:not([hidden])) { max-height: calc(var(--mobile-visible-height,100dvh) * .74); }
     /* Keep the handle's 44px target, without surplus header/section gutters. */
     #entry-panel:has(#panel-rich-content:not([hidden])) .content-panel-header { padding-block: 44px 0; margin-top: -12px; }
-    #entry-panel:has(#panel-rich-content:not([hidden])) .contents-collapse-chevron { top: 4px; }
     #entry-panel:has(#panel-rich-content:not([hidden])) .inspector-header { margin-bottom: 0; }
     #entry-panel:has(#panel-rich-content:not([hidden])) #panel-rich-content { margin-top: 0; }
     #panel-rich-content > section:nth-child(1 of :not([hidden])) { padding-top: 0; }

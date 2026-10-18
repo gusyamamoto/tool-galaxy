@@ -1,8 +1,8 @@
 // Visible viewport bounds account for browser chrome and the on-screen keyboard.
 function cosmosVisibleViewport(){const v=window.visualViewport;return {left:v?.offsetLeft||0,top:v?.offsetTop||0,width:v?.width||innerWidth,height:v?.height||innerHeight};}
-function positionCosmosMenu(menu,x,y,{above=null}={}) {
+function positionCosmosMenu(menu,x,y,{above=null,maxHeight=null}={}) {
     const v=cosmosVisibleViewport(),gap=8;
-    Object.assign(menu.style,{position:'fixed',right:'auto',bottom:'auto',maxWidth:`${v.width-gap*2}px`,maxHeight:`${v.height-gap*2}px`,overflowY:'auto'});
+    Object.assign(menu.style,{position:'fixed',right:'auto',bottom:'auto',maxWidth:`${v.width-gap*2}px`,maxHeight:`${Math.min(v.height-gap*2,maxHeight??Infinity)}px`,overflowY:'auto'});
     const rect=menu.getBoundingClientRect();
     const up=above!==null&&y+rect.height>v.top+v.height-gap&&above-rect.height>=v.top+gap;
     menu.style.left=`${Math.max(v.left+gap,Math.min(x,v.left+v.width-rect.width-gap))}px`;
@@ -289,7 +289,7 @@ class EntryContentInspector {
             else if (source === 'gallery') this.files.accept = 'image/*,.heic,.heif';
             else if (media) this.files.accept = '.jpg,.jpeg,.png,.webp,.heic,.heif,.mp4,.webm,.mov';
             else this.files.removeAttribute('accept');
-            this.files.setAttribute('aria-label', source === 'camera' ? 'Take Photo' : source === 'gallery' ? 'Photo Library / Gallery' : media ? 'Choose photos or videos' : 'Choose files');
+            this.files.setAttribute('aria-label', source === 'camera' ? 'Take Photo' : source === 'gallery' ? 'Photo Gallery' : media ? 'Choose photos or videos' : 'Choose files');
             this.onAction(); document.getElementById("content-file-limit").hidden = false;
             this.onLayout();
             try { this.files.click(); }
@@ -340,7 +340,7 @@ class EntryContentInspector {
         if(!url){this.message('Enter a valid website address, such as google.com or an HTTPS URL.',true);return false;}
         const link={id:editingId||cosmifoldIds.uuid(),url,...(title?{title}:{})};
         const id=this.entryId;this.pendingDrafts.set(id,{...this.pendingDrafts.get(id),bookmark:{value,title,editingId}});
-        try{await this.semantic(id,()=>this.save(id,current=>({...current,links:editingId?current.links.map(old=>old.id===link.id?link:old):[...current.links,link]})));delete this.pendingDrafts.get(id).bookmark;if(id===this.entryId)this.message('Bookmark saved.');return id===this.entryId;}
+        try{await this.semantic(id,()=>this.save(id,current=>({...current,links:editingId?current.links.map(old=>old.id===link.id?link:old):[...current.links,link]})));delete this.pendingDrafts.get(id).bookmark;if(id===this.entryId)this.message('Link saved.');return id===this.entryId;}
         catch(error){if(id===this.entryId)this.error(error);return false;}
     }
     button(text, action, label = text) {
@@ -372,10 +372,10 @@ class EntryContentInspector {
             url.textContent = `${address.hostname}${address.pathname === "/" ? "" : address.pathname}${address.search}`;
             url.title = link.url;
             actions.className = "content-row-actions";
-            actions.append(this.button("Edit", () => this.editLink(link), `Edit bookmark ${link.title || link.url}`), this.button("Remove", async () => {
-                try { const id=this.entryId;await this.semantic(id,()=>this.save(id,content=>({...content,links:content.links.filter(old=>old.id!==link.id)})));if(id!==this.entryId)return;this.renderLists(); this.message("Bookmark removed."); }
+            actions.append(this.button("Edit", () => this.editLink(link), `Edit link ${link.title || link.url}`), this.button("Remove", async () => {
+                try { const id=this.entryId;await this.semantic(id,()=>this.save(id,content=>({...content,links:content.links.filter(old=>old.id!==link.id)})));if(id!==this.entryId)return;this.renderLists(); this.message("Link removed."); }
                 catch (error) { this.error(error); }
-            }, `Remove bookmark ${link.title || link.url}`));
+            }, `Remove link ${link.title || link.url}`));
             info.className = "bookmark-info"; info.append(anchor, url);
             item.append(icon, info, this.itemMenu(actions, link.title || link.url)); links.append(item);
         });

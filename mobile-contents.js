@@ -93,6 +93,10 @@ class MobileContentsSheet {
         for(const [id,text] of [['bookmarks-heading',browsing?'Links':'Bookmarks'],['content-add-bookmark',browsing?'Add link…':'Paste a link…']]){
             const element=document.getElementById(id);if(element.textContent!==text)element.textContent=text;
         }
+        const quickUrl=document.getElementById('content-quick-bookmark-url'),addressLabel=browsing?'Link address':'Bookmark address';
+        const quickLabel=this.root.querySelector('label[for="content-quick-bookmark-url"]');
+        if(quickUrl.getAttribute('aria-label')!==addressLabel)quickUrl.setAttribute('aria-label',addressLabel);
+        if(quickLabel.textContent!==addressLabel)quickLabel.textContent=addressLabel;
         for(const [selector,desktop] of [['#content-notes-form button[type="submit"]','Save note'],['#content-link-form button[type="submit"]','Save bookmark'],['#content-quick-bookmark-save','Save bookmark'],['#content-location-form button[type="submit"]','Save location']]){
             const button=this.root.querySelector(selector),text=browsing?'Save':desktop;
             if(button.textContent!==text)button.textContent=text;

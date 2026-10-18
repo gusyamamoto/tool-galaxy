@@ -87,10 +87,12 @@ Run `node --test tests/duplicate-structure.test.js` and
 empty independent hierarchies, naming, persistence, recovery and Sample isolation.
 
 - **Add:** each hierarchy row has a small **+**, shown on hover/focus on desktop
-  and on the selected/focused row in the mobile drawer. It opens Add item, Add existing item, Add files, Add note and Add
-  bookmark for that row without selecting or navigating first. New Galaxy remains
+  and on the selected/focused row in the mobile drawer. Mobile offers Take Photo,
+  Photo Gallery and Add item; desktop retains Add item, contextual Paste,
+  Add files, Add note and Add bookmark for that row.
+  Opening the menu does not select or navigate first. New Galaxy remains
   under the Universe heading +; Search has no global contextual +.
-- **Add item:** use **+ → Add item** or the body's right-click menu. The parent
+- **Add item:** use **+ → Add item**. The parent
   is implicit and creation asks only for **Name**. Depth derives the internal
   Galaxy → Sun → Planet → Moon → Satellite → Astronaut visual role automatically;
   users never choose those roles. Enrich or move the item afterward.
@@ -133,7 +135,9 @@ empty independent hierarchies, naming, persistence, recovery and Sample isolatio
   page-local clipboard; Ctrl/Cmd+V uses a currently focused active item, while
   context-menu Paste uses the clicked destination. Inputs, Notes, inline rename,
   search and contenteditable text keep native browser clipboard behavior.
-  Paste offers **Make copies** or **Link existing items** once for the whole set.
+  Paste appears only with available copied items and storage: in mobile management
+  beside Copy, or desktop Add. Its existing confirmation offers **Make copies**
+  only. New linked placements are hidden on both desktop and mobile.
   Independent copies get fresh entry, bookmark, attachment and internal-placement
   IDs, remapped parents, deep-cloned content and separately owned file records.
   New records receive fresh creation timestamps; user metadata and file formats,
@@ -143,12 +147,10 @@ empty independent hierarchies, naming, persistence, recovery and Sample isolatio
   Original Constellation memberships/external appearances are not duplicated.
   Only links whose container and target both belong to the copied forest are
   remapped; external-target links inside that forest are conservatively omitted.
-  Link existing items uses the established leaf-placement architecture, adds no
-  canonical objects/content, and leaves the destination active. The clipboard
-  remains usable after Paste but resets on refresh; missing sources are ignored.
-  Existing Galaxy/ancestor leaf links remain supported; Paste rejects self,
-  direct-child and duplicate placements. This adds no Cut, OS clipboard
-  serialization or storage migration (v5 is unchanged).
+  Historical linked placements retain their established leaf-reference semantics.
+  The clipboard remains usable after Paste but resets on refresh; missing sources
+  are ignored. This adds no Cut, OS clipboard serialization or storage migration
+  (v5 is unchanged).
   **Duplicate structure** is a separate canonical-item context-menu command,
   after Paste. It asks for a new root name (with a selected "Name copy" default)
   and creates an independent empty hierarchy with fresh IDs. A Galaxy becomes a
@@ -159,7 +161,7 @@ empty independent hierarchies, naming, persistence, recovery and Sample isolatio
   preferences are excluded. Creation uses one metadata write before publishing
   the tree, then selects the new root and opens its empty Content panel. The
   command is disabled for multiple selected items and absent from linked-item
-  menus. It has no shortcut and leaves Copy/Paste's two choices unchanged.
+  menus. It has no shortcut and preserves independent Copy/Paste behavior.
   The small Cosmifold title stays above Search and three independently collapsible
   sections: Universe, Constellations and Archived Galaxies. Each heading and its
   chevron toggle only that section. Universe + opens the existing New Galaxy /
@@ -199,8 +201,9 @@ empty independent hierarchies, naming, persistence, recovery and Sample isolatio
 - **Body actions:** right-click a body or Galaxy name for management: Rename,
   Move to…, Add to Constellation, Copy, Duplicate structure and Delete item.
   Galaxy management also offers Archive Galaxy. The independent **+** menu adds
-  into that body. Mobile CB View uses quick menus with **More…** for full actions;
-  Menu View uses the full menus. Compact and Contents target the same body.
+  into that body. Mobile `…` opens full management directly; mobile `+` has only
+  Take Photo, Photo Gallery and Add item. Contents owns Files, Notes, Links and
+  Location entry. Compact, Contents and Menu View retain the same target semantics.
   Subtree confirmation remains. The menu stays inside the viewport, closes on outside clicks/Escape,
   and does not start dragging or camera focus. Shift+F10 opens it from a focused
   body; arrows/Home/End navigate its actions.
@@ -589,16 +592,12 @@ isolated test data. Before committing, inspect these three views at desktop/mobi
 sizes; create two collections with a shared entity; drag a highlighted body;
 remove a member; delete a collection/subtree; and refresh your own saved data.
 
-## Add existing item
+## Historical linked-item compatibility
 
-Use a sidebar row's **+ ? Add existing item** to make an item you already have
-available there too. The destination is known from the row; the compact picker
-browses the canonical hierarchy and searches by name with ancestry context.
-Select one item, then Add item. Selection can be reversed before confirmation
-and survives searching/expanding. Existing linked placements and ordinary items
-already under the destination are marked **Already here** and cannot be duplicated.
-Only canonical items appear as choices. Keyboard arrows, Space/Enter, Escape and
-comfortable touch targets follow the same pattern as the Constellation picker.
+New linked-item creation is hidden from desktop and mobile Add/Paste menus.
+The internal picker, placement handlers, model and storage remain supported for
+compatibility; no data migration is performed. Existing linked placements still
+load, render, navigate and survive backup/restore.
 
 Linked rows retain the distinct accretion-ring icon and the original's current
 name. Click/Enter navigates to the original Content panel through the existing
@@ -607,9 +606,9 @@ Constellation stays active. Row tooltips/accessibility labels say **Linked item*
 The row menu offers **Go to original** and **Remove from here**. Removal affects
 only the extra appearance; original Files, Notes, Bookmarks and memberships stay.
 Rename updates every appearance through the original stable ID. Move changes the
-canonical item's structural location; Add existing item keeps it in place.
-Sidebar item-dragging behavior remains unchanged; the explicit picker is the
-linking route. External file/URL drop and spring-loaded expansion are preserved.
+canonical item's structural location while historical references retain the same
+original identity. Sidebar item dragging, external file/URL drop and spring-loaded
+expansion are preserved.
 
 Internally these placements retain the existing Portal reference model in the
 version-5 snapshot's optional `portals` collection:
@@ -1266,8 +1265,8 @@ The quiet **? Help** beside Sample data at the bottom of the sidebar opens local
 Five short, collapsible topics cover Getting around, Organizing things,
 Moving & copying, Constellations, and Locations. All begin closed, so the first
 screen shows only the short intro and topic list. Small examples explain nested
-items and trip structure duplication. Copy, Link existing item and Duplicate
-structure have separate explanations. There is no startup tour,
+items and trip structure duplication. Independent Copy/Paste, Duplicate structure
+and cross-category Constellations have separate explanations. There is no startup tour,
 external documentation, dependency, or storage change.
 
 Help uses a compact dark modal on desktop and responsive sizing on phones, with

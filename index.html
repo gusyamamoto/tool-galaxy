@@ -181,18 +181,12 @@
 
         <div id="add-menu" role="menu" aria-label="Add" hidden>
             <button type="button" role="menuitem" data-add="camera" hidden>Take Photo</button>
-            <button type="button" role="menuitem" data-add="gallery" hidden>Photo Library / Gallery</button>
-            <button type="button" role="menuitem" data-add="capture-files" hidden>Files</button>
-            <button type="button" role="menuitem" data-add="quick-note" hidden>Quick note</button>
-            <span class="add-menu-separator" role="separator" hidden></span>
+            <button type="button" role="menuitem" data-add="gallery" hidden>Photo Gallery</button>
             <button id="add-child-button" type="button" role="menuitem">Add item</button>
-            <button type="button" role="menuitem" data-add="existing">Add existing item</button>
             <button type="button" role="menuitem" data-add="paste">Paste</button>
-            <span class="add-menu-separator" role="separator" hidden></span>
             <button type="button" role="menuitem" data-add="files">Add files</button>
             <button type="button" role="menuitem" data-add="note">Add note</button>
             <button type="button" role="menuitem" data-add="bookmark">Add bookmark</button>
-            <button type="button" role="menuitem" data-add="more" hidden>More…</button>
         </div>
 
         <div id="entry-context-menu" role="menu" aria-label="Item actions" hidden>
@@ -201,12 +195,13 @@
             <button type="button" role="menuitem" data-action="move">Move to…</button>
             <span class="add-menu-separator" role="separator" hidden></span>
             <button type="button" role="menuitem" data-action="constellation">Add to Constellation</button>
+            <span class="add-menu-separator" role="separator" data-mobile-only hidden></span>
             <button type="button" role="menuitem" data-action="copy">Copy</button>
+            <button type="button" role="menuitem" data-action="paste" hidden>Paste</button>
             <button type="button" role="menuitem" data-action="duplicate-structure">Duplicate structure</button>
             <span class="add-menu-separator" role="separator" hidden></span>
             <button type="button" role="menuitem" data-action="archive" data-galaxy-only hidden>Archive Galaxy</button>
             <button type="button" role="menuitem" data-action="delete">Delete item</button>
-            <button type="button" role="menuitem" data-action="more" hidden>More…</button>
             <button type="button" role="menuitem" data-action="open-portal" data-portal-action hidden>Go to original</button>
             <button type="button" role="menuitem" data-action="remove-portal" data-portal-action hidden>Remove from here</button>
             <button type="button" role="menuitem" data-action="collection-add" data-collection-context hidden>Add item</button>
@@ -348,32 +343,31 @@
                     <p>Scroll to zoom in and out, or pinch on touch screens. Smaller labels hide when you're far away; zoom closer to see more detail.</p>
                     <p>Drag empty space to move around. Double-click an item in the Cosmos, or double-tap on touch screens, to move closer. Click Universe in the sidebar to return to the big picture.</p>
                     <p>Search finds items by name across your active Cosmos and takes you directly to them.</p>
-                    <p>Right-click an item, or open its &bull;&bull;&bull; menu, for more actions.</p>
+                    <p>Right-click an item, or open its &bull;&bull;&bull; menu, to rename, move, copy or manage it.</p>
                 </div>
             </details>
             <details>
                 <summary>Organizing things</summary>
                 <div class="help-copy">
                     <p>Put related things inside other things. Use the + beside an item to add something inside it.</p>
+                    <p>On mobile, + offers Take Photo, Photo Gallery and Add item. Use Contents for files, notes, links and location.</p>
                     <pre aria-label="Example of items inside other items">Japan
   &rarr; Food
     &rarr; Restaurants
       &rarr; Reservations</pre>
                     <p>Just add things. Cosmifold automatically changes how they look as you go deeper. You don't need to choose whether something is a Sun, Planet or Moon.</p>
                     <p>Starting something new? Use the + beside Universe to create a Galaxy. Start blank, or choose a starter like Trip, Home project or Class / course.</p>
-                    <p>Select an item and use the right panel to keep its Files, Media, Notes, Bookmarks and Location together.</p>
+                    <p>Select an item and open Contents to keep its files, photos, notes, links and location together.</p>
                 </div>
             </details>
             <details>
                 <summary>Moving &amp; copying</summary>
                 <div class="help-copy">
                     <p>In the sidebar, Ctrl-click on Windows/Linux or Cmd-click on macOS selects individual items. Shift-click selects a range.</p>
-                    <p>Drag a sidebar item onto another to move it inside. If several are selected, dragging one moves the selected group together.</p>
-                    <p>Choose Copy, then Paste where you want it. Pick:</p>
+                    <p>Use an item's &bull;&bull;&bull; menu &rarr; Move to&hellip; to change where it lives. On desktop, you can also drag a sidebar item onto another to move it inside. If several are selected, dragging one moves the selected group together.</p>
+                    <p>Choose Copy, then Paste where you want an independent copy.</p>
                     <p><strong>Make a copy</strong><br>Creates an independent version. Changes to one won't affect the other.</p>
-                    <p><strong>Link existing item</strong><br>Shows the same item in another place too. Changes made in either place stay synced.</p>
-                    <p>Your Passport can live in Personal Documents and also appear in Japan Trip. It's still one Passport.</p>
-                    <p><strong>Duplicate structure</strong><br>Copies the organization but leaves the content behind. Choose a new name; Notes, Files, Media, Bookmarks and Locations aren't copied.</p>
+                    <p><strong>Duplicate structure</strong><br>Copies the organization but leaves the content behind. Choose a new name; notes, files, photos, links and locations aren't copied.</p>
                     <div class="help-structure-example" aria-label="Example of duplicating a trip's organization">
                         <pre>Mexico trip
   &rarr; Hotels
@@ -389,17 +383,18 @@
             <details>
                 <summary>Constellations</summary>
                 <div class="help-copy">
-                    <p>Putting things inside other things answers: <strong>"Where does this item live?"</strong></p>
-                    <p>A Constellation answers: <strong>"What things belong together?"</strong></p>
-                    <p>A restaurant might live inside Japan &rarr; Food, while also belonging to a "Favorites" Constellation.</p>
-                    <p>Constellations don't move or copy your items. They simply group related things across different parts of Cosmifold. Use the + beside Constellations to start one.</p>
+                    <p><strong>Universe = where something lives</strong><br><strong>Constellation = things you want to see together</strong></p>
+                    <p>A Constellation can connect celestial bodies from completely different parts of your Universe. For example, <strong>Favorites</strong> could include:</p>
+                    <ul><li>a recipe from Food</li><li>a workout from Fitness</li><li>a city from Travel</li><li>a playlist from Music</li></ul>
+                    <p>Each item stays in its original hierarchy location. Constellations don't move or duplicate it. The same celestial body can appear in one or more Constellations; changes still affect the original because it is the same item.</p>
+                    <p>Use the + beside Constellations to start one.</p>
                 </div>
             </details>
             <details>
                 <summary>Locations</summary>
                 <div class="help-copy">
                     <p>Add a place name or address in the right panel's Location section. Choose Open in Google Maps to see it on the map.</p>
-                    <p>Linked versions of the same item share the same Location.</p>
+                    <p>An item's Location stays the same wherever you view it, including in a Constellation.</p>
                 </div>
             </details>
         </div>
@@ -468,7 +463,7 @@
                 <span id="hierarchy-paste-copy-title" class="paste-choice-title">Make copies</span>
                 <span id="hierarchy-paste-copy-description" class="paste-choice-description">Create independent versions.</span>
             </button>
-            <button id="hierarchy-paste-link" class="paste-choice" type="button" aria-labelledby="hierarchy-paste-link-title" aria-describedby="hierarchy-paste-link-description">
+            <button id="hierarchy-paste-link" class="paste-choice" type="button" aria-labelledby="hierarchy-paste-link-title" aria-describedby="hierarchy-paste-link-description" hidden>
                 <span id="hierarchy-paste-link-title" class="paste-choice-title">Link existing items</span>
                 <span id="hierarchy-paste-link-description" class="paste-choice-description">Show these same items here too. Changes made in either place stay synced.</span>
             </button>

@@ -372,17 +372,16 @@ function openContextMenu(id, x, y, {surface='canvas'}={}) {
     renderBodyActions();
     positionContextMenu(x, y);
 }
-function renderBodyActions(full=false) {
-    const quick=hierarchySidebar.narrow&&hierarchySidebar.collapsed&&!full;
+function renderBodyActions() {
     const entry=entries.get(contextEntryId);
-    contextMenu.dataset.view=quick?'quick':'full';
+    contextMenu.dataset.view='full';
     contextMenu.querySelectorAll(':scope > button').forEach(button=>{
         const action=button.dataset.action;
         button.hidden=button.hasAttribute('data-portal-action')||button.hasAttribute('data-collection-context')||
             (button.hasAttribute('data-galaxy-only')&&entry.depth!==0)||
-            (quick?!['edit','constellation','more'].includes(action):action==='more');
+            (action==='paste'&&(!hierarchySidebar.narrow||!canPasteHierarchy(contextEntryId)));
     });
-    contextMenu.querySelectorAll(':scope > [role="separator"]').forEach(item=>item.hidden=quick);
+    contextMenu.querySelectorAll(':scope > [role="separator"]').forEach(item=>item.hidden=item.hasAttribute('data-mobile-only')&&!hierarchySidebar.narrow);
 }
 function toggleBodyActions(button,id,surface='canvas') {
     if(!contextMenu.hidden&&contextEntryId===id&&contextReturnFocus===button){closeContextMenu(true);return;}
@@ -392,7 +391,11 @@ function toggleBodyActions(button,id,surface='canvas') {
 }
 function positionBodyActions(button) {
     const rect=button.getBoundingClientRect();
-    positionCosmosMenu(contextMenu,rect.right-contextMenu.offsetWidth,rect.bottom+5,{above:rect.top-5});
+    const v=cosmosVisibleViewport();
+    // A full phone menu can be taller than either side of its trigger.
+    // Scroll it on the roomier side instead of covering the trigger with an action.
+    const maxHeight=hierarchySidebar.narrow?Math.max(rect.top-5-v.top-8,v.top+v.height-8-rect.bottom-5):null;
+    positionCosmosMenu(contextMenu,rect.right-contextMenu.offsetWidth,rect.bottom+5,{above:rect.top-5,maxHeight});
 }
 function positionContextMenu(x, y) {
     contextMenu.hidden = false;
@@ -442,14 +445,9 @@ contextMenu.addEventListener("click", event => {
         return;
     }
     if (!action || !entries.has(id)) return;
-    if(action==='more'){
-        const rect=contextMenu.getBoundingClientRect();renderBodyActions(true);
-        if(contextReturnFocus?.matches('#mobile-body-more,#entry-more-button,.tree-more')){positionBodyActions(contextReturnFocus);contextMenu.querySelector('button:not([hidden]):not(:disabled)').focus({preventScroll:true});}
-        else positionContextMenu(rect.left,rect.top);
-        return;
-    }
     if (action === 'constellation') { showConstellationMemberships(id); return; }
     if(action==='copy'){copyHierarchyItems(contextMenu.dataset.copySelection==='true'?hierarchySidebar.getSelectedEntryIds():[id]);closeContextMenu(true);return;}
+    if(action==='paste'){closeContextMenu(true);openHierarchyPaste(id);return;}
     if(action==='duplicate-structure'){if(hierarchySidebar.getSelectedEntryIds().length>1)return;closeContextMenu(true);openDuplicateStructure(id);return;}
     closeContextMenu(action === "delete");
     if (action === "move") openEntryForm(entries.get(id),null,false,'move');
@@ -1723,6 +1721,9 @@ function copyHierarchyItems(ids=hierarchySidebar.getSelectedEntryIds()) {
     if(count){const message=`Copied ${count} ${count===1?'item':'items'}`;actionStatus.textContent=message;actionStatus.hidden=false;setTimeout(()=>{if(actionStatus.textContent===message)actionStatus.hidden=true;},2500);}
     return count;
 }
+function canPasteHierarchy(id) {
+    return entries.has(id)&&hierarchyClipboard.roots(entries).length>0&&(sampleMode||storageAvailable)&&!deletionBusy&&!pasteBusy;
+}
 function openHierarchyPaste(id) {
     const roots=hierarchyClipboard.roots(entries);
     if(!roots.length||!entries.has(id)||(!sampleMode&&!storageAvailable)||deletionBusy||activeNodeDrags||hierarchySidebar.moveDrag||pasteBusy||document.querySelector('dialog[open]'))return;
@@ -1735,6 +1736,8 @@ function openHierarchyPaste(id) {
     document.getElementById('hierarchy-paste-link-title').textContent=roots.length===1?'Link existing item':'Link existing items';
     document.getElementById('hierarchy-paste-copy-description').textContent=roots.length===1?'Create an independent version.':'Create independent versions.';
     document.getElementById('hierarchy-paste-link-description').textContent=roots.length===1?'Show this same item here too. Changes made in either place stay synced.':'Show these same items here too. Changes made in either place stay synced.';
+    // MVP Paste offers independent copies; retain linked-placement internals.
+    pasteLink.hidden=true;
     pasteCopy.disabled=false;pasteLink.disabled=!!hierarchyClipboard.linkError(entries,portals,id,roots);pasteCancel.disabled=false;
     pasteStatus.hidden=true;pasteDialog.showModal();pasteCopy.focus();
 }
@@ -1868,23 +1871,16 @@ document.getElementById("change-creation-parent").addEventListener("click", () =
 
 const addMenu = document.getElementById("add-menu"), moreButton = document.getElementById("entry-more-button");
 let addMenuTargetId = null, addMenuTrigger = null;
-function renderAddMenu(full = false) {
+function renderAddMenu() {
     const mobile = hierarchySidebar.narrow;
-    const quick = mobile && hierarchySidebar.collapsed && !full;
-    addMenu.dataset.view = quick ? 'quick' : mobile ? 'full' : 'desktop';
+    addMenu.dataset.view = mobile ? 'quick' : 'desktop';
     addMenu.classList.toggle('capture-menu', mobile);
     addMenu.querySelectorAll('button').forEach(item => {
         const action = item.dataset.add;
         if (['camera','gallery'].includes(action)) item.hidden = !mobile;
-        else if (['quick-note','more'].includes(action)) item.hidden = !quick;
-        else if (action === 'capture-files') item.hidden = !mobile || quick;
-        else if (action === 'files') item.hidden = mobile;
-        else item.hidden = quick;
-        if (action === 'note') item.textContent = mobile ? 'Note' : 'Add note';
-        if (action === 'bookmark') item.textContent = mobile ? 'Bookmark' : 'Add bookmark';
-        if (action === 'paste') item.disabled=!hierarchyClipboard.roots(entries).length||(!sampleMode&&!storageAvailable);
+        else item.hidden = mobile && item !== addChildButton;
+        if (action === 'paste') item.hidden=mobile||!canPasteHierarchy(addMenuTargetId);
     });
-    addMenu.querySelectorAll('[role="separator"]').forEach(item => { item.hidden = !mobile || quick; });
     addMenu.setAttribute('aria-label', `Add to ${entries.get(addMenuTargetId).name}`);
     const rect = addMenuTrigger.getBoundingClientRect();
     positionCosmosMenu(addMenu,rect.left,rect.bottom+6,{above:rect.top-6});
@@ -1945,10 +1941,8 @@ addMenu.addEventListener("click", event => {
     const action = event.target.closest("[data-add]")?.dataset.add;
     const id = addMenuTargetId;
     if (!action || !entries.has(id)) return;
-    if (action === 'more') { renderAddMenu(true); return; }
     if (action === 'paste') {closeContentMenus();openHierarchyPaste(id);return;}
-    if(action==='existing'){closeContentMenus();openPortalDialog(id);return;}
-    openEntryContentAction(id, action === 'quick-note' ? 'note' : action);
+    openEntryContentAction(id, action);
 });
 function openEntryContentAction(id, action) {
     if (!entries.has(id)) return;
