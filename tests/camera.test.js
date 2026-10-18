@@ -33,6 +33,25 @@ function makeCamera() {
 
 function near(actual, expected) { assert.ok(Math.abs(actual - expected) < 1e-8, `${actual} != ${expected}`); }
 
+test('camera changes retain explicit manual ownership only until a programmatic operation replaces it',()=>{
+    const {camera,step,settle}=makeCamera(),changes=[];
+    camera.onChange=(view,meta)=>changes.push({scale:view.scale,...meta});
+    camera.zoomAt(100,100,.4,{source:'user-zoom'});step();
+    assert.equal(changes.at(-1).source,'user-zoom');
+    assert.equal(changes.at(-1).previousScale,1);
+    assert.ok(changes.at(-1).scale<changes.at(-1).previousScale);
+    camera.setView({x:0,y:0,scale:.2});settle();
+    assert.equal(changes.at(-1).source,'programmatic','pending wheel animation cannot taint navigation');
+    camera.setView({x:0,y:0,scale:.1},false,{source:'user-zoom'});
+    assert.equal(changes.at(-1).source,'user-zoom');assert.equal(changes.at(-1).previousScale,.2);
+    camera.stopAnimation();camera.panTo(20,20);
+    assert.equal(changes.at(-1).source,'programmatic');
+    camera.travelTo({x:10,y:30,scale:.08},{left:0,top:0,right:400,bottom:800});settle();
+    assert.equal(changes.at(-1).source,'navigation');
+    camera.setReducedMotion(true);camera.zoomAt(100,100,.5,{source:'user-zoom'});
+    assert.equal(changes.at(-1).source,'user-zoom','reduced motion still reports manual ownership');
+});
+
 test("world and screen conversions round-trip after zoom and pan", () => {
     const { camera } = makeCamera();
     camera.setView({ x: -120, y: 84, scale: 1.7 }, false);
@@ -150,6 +169,36 @@ test("Fit Galaxy handles distant bodies and avoids magnifying tiny galaxies", ()
     camera.fitBounds({ left: 10, right: 40, top: 20, bottom: 50 }, viewport);
     settle();
     assert.equal(camera.view.scale, 1);
+});
+
+test('native-pixel framing fits asymmetric world families with one screen-space gutter',()=>{
+    const {camera}=makeCamera(),viewport={left:12,right:378,top:24,bottom:510};
+    const points=[{x:0,y:0},{x:900,y:180},{x:1200,y:-100}];
+    const original=JSON.stringify(points);
+    const projected=scale=>({left:Math.min(...points.map(p=>p.x*scale-32)),right:Math.max(...points.map(p=>p.x*scale+32)),top:Math.min(...points.map(p=>p.y*scale-20)),bottom:Math.max(...points.map(p=>p.y*scale+44))});
+    const view=camera.projectedBoundsView(projected,viewport,{maxScale:.82});
+    camera.setView(view,false);const b=projected(view.scale);
+    assert.ok(b.left+view.x>=viewport.left+16-1e-6);assert.ok(b.right+view.x<=viewport.right-16+1e-6);
+    assert.ok(b.top+view.y>=viewport.top+16-1e-6);assert.ok(b.bottom+view.y<=viewport.bottom-16+1e-6);
+    assert.ok(view.scale>.2&&view.scale<.3,'one-sided family is not symmetrically doubled around its Sun');
+    assert.equal(JSON.stringify(points),original);
+});
+
+test('native framing includes arbitrarily distant descendants without a semantic scale floor',()=>{
+    const {camera}=makeCamera(),viewport={left:0,right:390,top:0,bottom:500};
+    const view=camera.projectedBoundsView(s=>({left:-4,right:1e7*s+4,top:-4,bottom:30}),viewport,{maxScale:.82});
+    assert.ok(view.scale>0&&view.scale<.0001);assert.equal(camera.minScale,view.scale);
+    camera.setView(view,false);assert.ok(camera.worldToScreen(1e7,0).x<=374);
+    const tiny=camera.projectedBoundsView(s=>({left:-10,right:s*20+10,top:-10,bottom:35}),viewport,{maxScale:.82});
+    assert.equal(tiny.scale,.82,'sparse systems preserve the existing system focus ceiling');
+});
+
+test('native framing defers unusable slivers and impossible pixel budgets without changing zoom limits',()=>{
+    const {camera}=makeCamera(),project=s=>({left:-40,right:s*200+40,top:-15,bottom:30}),min=camera.minScale;
+    assert.equal(camera.projectedBoundsView(project,{left:330,right:390,top:0,bottom:500}),undefined);
+    assert.equal(camera.projectedBoundsView(project,{left:0,right:390,top:0,bottom:60}),undefined);
+    assert.equal(camera.projectedBoundsView(()=>({left:0,right:1000,top:0,bottom:50}),{left:0,right:390,top:0,bottom:500}),undefined);
+    assert.equal(camera.minScale,min);
 });
 
 test("focus completion fires once after settling, including reduced motion, and interruption does not complete it", () => {

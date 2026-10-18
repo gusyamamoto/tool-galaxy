@@ -3,6 +3,8 @@ const cosmosView = {
     bodyCaps: { sun: 100, planet: 32, moon: 16, satellite: 12, astronaut: 8 },
     inspectionCaps: { satellite: 26, astronaut: 14 },
     visualScale: { sun: 1.5, planet: 1.3 },
+    overviewMinimum: { sun: 6, planet: 2.5 },
+    galaxyDiameter(scale) { return 14 + 8 * this.smooth(scale, .08, .58); },
     renderCap(role, scale) {
         const normal = this.bodyCaps[role] || Infinity;
         const close = this.inspectionCaps[role];
@@ -11,12 +13,24 @@ const cosmosView = {
         return normal + (close - normal) * this.smooth(scale, 3, 9);
     },
     renderedDiameter(role, diameter, scale, detail = 1) {
-        return Math.min(this.renderCap(role, scale), diameter * (this.visualScale[role] || 1) * scale * (.72 + detail * .28));
+        return Math.max(this.overviewMinimum[role] || 0,
+            Math.min(this.renderCap(role, scale), diameter * (this.visualScale[role] || 1) * scale * (.72 + detail * .28)));
     },
     tiers: { galaxy: .45, system: .58, close: .78 },
+    // A single orientation layer, or two adjacent layers during a handoff.
+    // Galaxy names yield near the Galaxy tier; Planet names begin emerging
+    // just before close. Deeper bands leave room to orient before yielding again.
+    // Body disclosure, explicit reveals and the Constellation lens are separate.
+    labelOrder: ['galaxy','sun','planet','moon','satellite','astronaut'],
+    labelHandoffs: [[.24,.42],[.64,1.12],[1.60,2.10],[2.70,3.60],[5,7]],
+    releasesOverviewSelection(scale, previousScale, source) {
+        // One-way release: no state is automatically restored on zoom-in, so
+        // boundary oscillation cannot toggle an old selection back on.
+        return source === 'user-zoom' && scale < previousScale && scale <= this.tiers.galaxy;
+    },
     fades: {
-        sun: [.43, .58], planet: [.58, .68], moon: [.68, .76], satellite: [.70, .79], astronaut: [.74, .86],
-        sunLabel: [.44, .58], planetLabel: [.66, .82], moonLabel: [.90, 1.12], satelliteLabel: [1.1, 2.7],
+        sun: [.04, .30], planet: [.08, .50], moon: [.14, .55], satellite: [.70, .79], astronaut: [.74, .86],
+        sunLabel: [.04, .26], planetLabel: [.20, .60], moonLabel: [.90, 1.12], satelliteLabel: [1.1, 2.7],
         astronautLabel: [2.7, 7], tethers: [.78, .96], guides: [.58, .78], clouds: [.38, .72]
     },
     smooth(scale, start, end) {
@@ -30,11 +44,15 @@ const cosmosView = {
         hash=(hash^(hash>>>13))>>>0;
         return hash/4294967296;
     },
-    labelDisclosure(role, scale, id) {
-        const range=this.fades[`${role}Label`];
-        if(!range)return 1;
-        const offset=this.disclosureOffset(id)*(role==='satellite'?.55:role==='astronaut'?1.5:0);
-        return this.smooth(scale,range[0]+offset,range[1]+offset);
+    labelDisclosure(role, scale, id, detail) {
+        if(detail?.labels[role])return detail.labels[role].opacity;
+        const index=this.labelOrder.indexOf(role);
+        if(index<0)return 1;
+        const enter=index ? this.smooth(scale,...this.labelHandoffs[index-1]) : 1;
+        const leave=index<this.labelHandoffs.length ? this.smooth(scale,...this.labelHandoffs[index]) : 0;
+        // Non-overlapping bands make each child's emergence exactly its
+        // parent's departure. No residual floors or ID-dependent layer timing.
+        return enter-leave;
     },
     deepTetherOpacity(scale, id, protectedRelationship=false) {
         if(protectedRelationship)return .25;
@@ -44,7 +62,18 @@ const cosmosView = {
     detail(scale) {
         const result = { tier: scale < this.tiers.galaxy ? "universe" : scale < this.tiers.system ? "galaxy" : scale < this.tiers.close ? "system" : "close" };
         Object.entries(this.fades).forEach(([name, range]) => { result[name] = this.smooth(scale, ...range); });
-        result.clouds = this.cloudOpacity(scale);
+        result.sun = .82 + .18 * result.sun;
+        result.planet = .58 + .42 * result.planet;
+        result.labels={};
+        this.labelOrder.forEach((role,index)=>{
+            const opacity=this.labelDisclosure(role,scale,'');
+            // Protected context ranks 0–3 remain first. Among ordinary names,
+            // the stronger envelope wins; exact crossover ties favor the parent.
+            result.labels[role]={opacity,priority:4+6*(1-opacity)+index*.001};
+        });
+        // Legacy cloud utilities remain available for historical/isolated tests;
+        // normal overview represents the actual root and its real descendants.
+        result.clouds = 0;
         return result;
     },
     // A temporary lens over normal role fades, never a replacement for them.

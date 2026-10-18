@@ -8,6 +8,24 @@ test('collision priority is deterministic, protected interactions always reveal 
     assert.deepEqual(resolve([label('a',0,0,0,true),label('b',0,0,1,true)]),[]);
     assert.deepEqual(resolve([label('b',90,0),label('a',0,0)]),[]);
 });
+
+test('envelope strength determines ordinary collision winners in both zoom directions',()=>{
+    vm.runInContext(fs.readFileSync(require('node:path').join(__dirname,'../cosmos-view.js'),'utf8'),c);
+    const view=vm.runInContext('cosmosView',c);
+    view.labelHandoffs.forEach(([start,end],index)=>{
+        const parent=view.labelOrder[index],child=view.labelOrder[index+1];
+        for(const t of [.1,.35,.65,.9,.65,.35,.1]){
+            const d=view.detail(start+(end-start)*t),winner=t<.5?parent:child,loser=t<.5?child:parent;
+            const items=[parent,child].map(id=>label(id,0,0,d.labels[id].priority));
+            const hidden=new Layout().resolve(items,0).hidden;
+            assert.ok(!hidden.has(winner)&&hidden.has(loser),`${winner} orients the handoff at ${t}`);
+            const protectedResult=new Layout().resolve([...items,label('search',0,0,2,true)],0);
+            assert.ok(!protectedResult.hidden.has('search'),'explicit search remains ahead of ordinary envelopes');
+            assert.ok(protectedResult.hidden.has(parent)&&protectedResult.hidden.has(child));
+        }
+    });
+});
+
 test('overlap tolerance and delayed restoration avoid alternating labels as physics drifts',()=>{
     const layout=new Layout(),run=(x,time)=>layout.resolve([label('a',0,0,4),label('b',x,0,9)],time);
     assert.ok(run(10,0).hidden.has('b'));assert.ok(run(78,10).hidden.has('b'));

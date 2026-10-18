@@ -231,12 +231,19 @@ def main():
     args.add_argument("--mobile-attachment-only", action="store_true", help="Check native file-input results, unavailable UUID/preview APIs, original storage and visible file errors")
     args.add_argument("--image-preview-only", action="store_true", help="Check image preview resolution at phone DPR 3, desktop and full-image viewing")
     args.add_argument("--mobile-body-only", action="store_true", help="Check body taps/drags keep mobile Contents closed and explicit preview opening")
+    args.add_argument("--contents-browse-only", action="store_true", help="Check mobile Compact/Contents, inline add/save, page swipes and canvas inspection")
+    args.add_argument("--mobile-fit-only", action="store_true", help="Check whole-system mobile framing in actual Compact/Contents/sidebar canvas bounds")
     args.add_argument("--contents-swipe-only", action="store_true", help="Check mobile card/sheet swipes, native scrolling and independent controls")
     args.add_argument("--mobile-footer-only", action="store_true", help="Check compact mobile sidebar utilities, disclosure and desktop layout")
     args.add_argument("--bookmark-entry-only", action="store_true", help="Check on-demand inline bookmark creation, validation, cancellation and editing")
     args.add_argument("--body-actions-only", action="store_true", help="Check body management menus, quick/full identity, Move to and relocated Paste")
     args.add_argument("--reparent-drag-only", action="store_true", help="Check native drag continuity after confirmed Move to and subsequent layout")
     args.add_argument("--move-destination-only", action="store_true", help="Check Move hierarchy/search destinations, guards, confirmation and responsive large-tree layout")
+    args.add_argument("--render-viewport-only", action="store_true", help="Check pass-local viewport sampling, fresh resize/UI bounds and unchanged zoom projection")
+    args.add_argument("--render-visibility-only", action="store_true", help="Check offscreen rendering suppression, reveal exceptions, boundary re-entry and SVG geometry")
+    args.add_argument("--real-body-overview-only", action="store_true", help="Check continuous real-body overview, root interaction, labels, simplification and actual-body Fit bounds")
+    args.add_argument("--semantic-handoff-only", action="store_true", help="Check user-only overview deselection and hierarchical label handoff in isolated dense mobile/desktop scenes")
+    args.add_argument("--semantic-handoff-size", type=int, choices=[150,325], default=150, help="Disposable semantic-handoff fixture size (one native-input fixture per isolated Chrome profile)")
     args.add_argument("--compatibility-only", action="store_true", help="Check legitimate broad-file v5 data and unchanged corruption protection")
     args.add_argument("--saved-snapshot", type=Path, help="Read a saved snapshot into an isolated test profile; never change the original browser data")
     args.add_argument("--sidebar-sections-only", action="store_true", help="Check independent navigation sections, heading creation, Archive restore and Sample utility")
@@ -441,10 +448,11 @@ def main():
 
         def aligned():
             return evaluate("""lines.every(({from,to,element})=>{
+                if(element.dataset.renderSkipped==='true')return true;
                 const m=hierarchyLayer.getScreenCTM();return [[from,'x1','y1'],[to,'x2','y2']].every(([id,x,y])=>{
                     const p=new DOMPoint(+element.getAttribute(x),+element.getAttribute(y)).matrixTransform(m);
                     const entry=entries.get(id),r=nodes.get(id).getBoundingClientRect();
-                    const center=entry.depth===0&&element.dataset.kind==='hierarchy'?camera.worldToScreen(entry.x,entry.y):{x:r.x+r.width/2,y:r.y+r.height/2};
+                    const center=nodes.get(id).dataset.renderSkipped==='true'?camera.worldToScreen(entry.x,entry.y):{x:r.x+r.width/2,y:r.y+r.height/2};
                     return Math.hypot(p.x-center.x,p.y-center.y)<0.2;
                 });
             })""")
@@ -953,6 +961,38 @@ def main():
             run_mobile_footer_checks(cdp=cdp,evaluate=evaluate,check=check,wait_for=wait_for,add=add,shot=shot,baseline=options.capture_baseline)
             print(f'{count} mobile footer browser checks passed',flush=True);return
 
+        if options.render_viewport_only:
+            from render_viewport_browser import run_render_viewport_checks
+            def shot(name):
+                if screenshot_dir:
+                    result=cdp.call('Page.captureScreenshot',format='png',captureBeyondViewport=False);(screenshot_dir/(name+'.png')).write_bytes(base64.b64decode(result['data']))
+            run_render_viewport_checks(cdp=cdp,evaluate=evaluate,check=check,wait_for=wait_for,add=add,shot=shot)
+            print(f'{count} viewport-render browser checks passed',flush=True);return
+
+        if options.render_visibility_only:
+            from render_visibility_browser import run_render_visibility_checks
+            def shot(name):
+                if screenshot_dir:
+                    result=cdp.call('Page.captureScreenshot',format='png',captureBeyondViewport=False);(screenshot_dir/(name+'.png')).write_bytes(base64.b64decode(result['data']))
+            run_render_visibility_checks(cdp=cdp,evaluate=evaluate,check=check,wait_for=wait_for,add=add,shot=shot)
+            print(f'{count} visibility-render browser checks passed',flush=True);return
+
+        if options.semantic_handoff_only:
+            from semantic_handoff_browser import run_semantic_handoff_checks
+            def shot(name):
+                if screenshot_dir:
+                    result=cdp.call('Page.captureScreenshot',format='png',captureBeyondViewport=False);(screenshot_dir/(name+'.png')).write_bytes(base64.b64decode(result['data']))
+            run_semantic_handoff_checks(cdp=cdp,evaluate=evaluate,check=check,wait_for=wait_for,shot=shot,size=options.semantic_handoff_size)
+            print(f'{count} semantic-handoff browser checks passed',flush=True);return
+
+        if options.real_body_overview_only:
+            from real_body_overview_browser import run_real_body_overview_checks
+            def shot(name):
+                if screenshot_dir:
+                    result=cdp.call('Page.captureScreenshot',format='png',captureBeyondViewport=False);(screenshot_dir/(name+'.png')).write_bytes(base64.b64decode(result['data']))
+            run_real_body_overview_checks(cdp=cdp,evaluate=evaluate,check=check,wait_for=wait_for,shot=shot)
+            print(f'{count} real-body overview browser checks passed',flush=True);return
+
         if options.move_destination_only:
             from move_destination_browser import run_move_destination_checks
             def shot(name):
@@ -961,7 +1001,15 @@ def main():
             run_move_destination_checks(cdp=cdp,evaluate=evaluate,check=check,wait_for=wait_for,add=add,shot=shot)
             print(f'{count} Move destination browser checks passed',flush=True);return
 
-        if options.contents_swipe_only:
+        if options.mobile_fit_only:
+            from mobile_fit_browser import run_mobile_fit_checks
+            def shot(name):
+                if screenshot_dir:
+                    result=cdp.call('Page.captureScreenshot',format='png',captureBeyondViewport=False);(screenshot_dir/(name+'.png')).write_bytes(base64.b64decode(result['data']))
+            run_mobile_fit_checks(cdp=cdp,evaluate=evaluate,check=check,wait_for=wait_for,shot=shot)
+            print(f'{count} mobile Fit browser checks passed',flush=True);return
+
+        if options.contents_swipe_only or options.contents_browse_only:
             from mobile_contents_browser import run_contents_swipe_checks
             def shot(name):
                 if screenshot_dir:
@@ -1795,19 +1843,22 @@ def main():
             wait_for('selectedNode.getAnimations().length===0')
             evaluate('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))')
             check(evaluate("getComputedStyle(selectedNode).outlineStyle==='none'&&getComputedStyle(selectedNode.querySelector('.node-label')).fontWeight==='700'"),'selected Galaxy uses stronger text without a selection rectangle')
-            check(evaluate(f"getComputedStyle(regions.get({json.dumps(g)})).filter==='brightness(1.2)'&&[...regions].filter(([id])=>id!=={json.dumps(g)}).every(([,r])=>getComputedStyle(r).filter==='none')"),'only the selected Galaxy cloud receives a restrained 20 percent brightness lift')
+            check(evaluate("regions.size===0&&!!selectedNode.querySelector('.galaxy-core')&&getComputedStyle(selectedNode.querySelector('.galaxy-core')).backgroundImage!=='none'&&getComputedStyle(selectedNode).pointerEvents!=='none'"),'selected Galaxy retains its real core and interaction without a cloud substitute')
             shot('galaxy-selected')
             evaluate(f"selectEntry(entries.get({json.dumps(leaf)}),nodes.get({json.dumps(leaf)}),{{reframe:false}})")
             check(evaluate(f"getComputedStyle(nodes.get({json.dumps(g)}).querySelector('.node-label')).fontWeight==='600'"),'deselected Galaxy retains its normal title weight')
-            check(evaluate("[...regions.values()].every(r=>getComputedStyle(r).filter==='none')"),'selecting a descendant restores normal cloud brightness')
+            check(evaluate(f"regions.size===0&&!nodes.get({json.dumps(g)}).classList.contains('selected')&&!!nodes.get({json.dumps(g)}).querySelector('.galaxy-core')"),'selecting a descendant clears root selection and retains the normal core')
             shot('galaxy-deselected')
+            # Compare explicit Fit commands against the same settled world,
+            # rather than two positions along the post-Restore simulation.
+            wait_for('physics.settled');evaluate('physics.pause()')
             evaluate("contentInspector.editNotes();contentInspector.notes.value='Keep Universe draft';camera.setView({...camera.view,scale:1.6},false)")
             owner=evaluate("JSON.stringify({selected:selectedNode.dataset.entryId,panel:panel.hidden,owner:contentInspector.entryId,draft:contentInspector.notes.value,editing:contentInspector.notesForm.hidden,lens:activeConstellationId})")
             click_selector('#universe-home');wait_camera()
             check(evaluate('camera.view.scale')<1.6 and evaluate('!hierarchySidebar.universeSection.collapsed'),'Universe label returns to overview without collapsing the tree')
             check(evaluate("JSON.stringify({selected:selectedNode.dataset.entryId,panel:panel.hidden,owner:contentInspector.entryId,draft:contentInspector.notes.value,editing:contentInspector.notesForm.hidden,lens:activeConstellationId})")==owner,'Universe overview preserves Content selection, draft and Constellation state')
             home_view=evaluate('JSON.stringify(camera.view)');click_selector('#canvas-fit');wait_camera()
-            check(evaluate('JSON.stringify(camera.view)')==home_view,'sidebar Universe and canvas Fit converge on the same overview')
+            check(evaluate('JSON.stringify(camera.view)')==home_view,'sidebar Universe and canvas Fit converge on the same overview: '+json.dumps(dict(home=json.loads(home_view),current=evaluate('camera.view'),physics=evaluate('({paused:physics.paused,settled:physics.settled,alpha:physics.simulation.alpha(),commands:applicationCommandsPending})'))))
             for key_value,key_code,vk in [('Enter','Enter',13),(' ','Space',32)]:
                 evaluate("camera.setView({...camera.view,scale:1.6},false);document.getElementById('universe-home').focus()")
                 cdp.call('Input.dispatchKeyEvent',type='keyDown',key=key_value,code=key_code,windowsVirtualKeyCode=vk,text='\r' if vk==13 else ' ')
@@ -1829,7 +1880,7 @@ def main():
             evaluate('addEntryButton.click()');check(evaluate('dialog.open'),'mobile Universe + remains available while the section is collapsed');evaluate('cancelEntryForm()')
             wait_for('physics.settled');wait_camera();evaluate('physics.pause();saveGalaxy()');raw=evaluate("localStorage.getItem('galaxy:user-data')");pref_raw=evaluate("localStorage.getItem('galaxy:navigation-ui')")
             evaluate("document.getElementById('sample-utility').open=true;loadSampleButton.click()");wait_for("typeof sampleMode!=='undefined'&&sampleMode&&document.readyState==='complete'");load();wait_camera()
-            check(evaluate("document.getElementById('sample-utility').open&&sampleControls.classList.contains('sample-active')"),'Sample mode opens only its dedicated utility area')
+            check(evaluate("document.getElementById('sample-utility').open===!hierarchySidebar.narrow&&sampleControls.classList.contains('sample-active')"),'Sample mode keeps mobile utilities collapsed and desktop disclosure open')
             evaluate('hierarchySidebar.universeSection.toggle.click();archivedSection.setCollapsed(false)')
             check(evaluate("localStorage.getItem('galaxy:user-data')")==raw and evaluate("localStorage.getItem('galaxy:navigation-ui')")==pref_raw,'Sample section interactions preserve both saved data and real navigation preferences')
             evaluate('removeSampleButton.click()');wait_for("typeof sampleMode!=='undefined'&&!sampleMode&&document.readyState==='complete'");load();wait_camera()
@@ -1887,7 +1938,7 @@ def main():
             check(evaluate(f"!archiveDialog.open&&archivedGalaxies.has({json.dumps(g)})&&!entries.has({json.dumps(g)})&&!nodes.has({json.dumps(owner)})&&!hierarchySidebar.index.roots.includes({json.dumps(g)})"),'archive removes the whole deep Galaxy from active canvas, physics and sidebar')
             check(evaluate('JSON.stringify(camera.view)')==view,'archive keeps the camera stable')
             check(evaluate('archivePositionsAfter')==other_positions,'archive does not relocate unrelated Galaxies or bodies')
-            check(evaluate("!!document.querySelector('.galaxy-archive-echo canvas')&&!!document.querySelector('.galaxy-archive-echo .entry-node')&&!!document.querySelector('.galaxy-archive-core')"),'implosion captures the cloud, visible bodies and a restrained dark center')
+            check(evaluate("!document.querySelector('.galaxy-archive-echo canvas')&&!!document.querySelector('.galaxy-archive-echo .galaxy-core')&&!!document.querySelector('.galaxy-archive-echo .entry-node')&&!!document.querySelector('.galaxy-archive-core')"),'implosion captures real Galaxy/body markers and a restrained dark center without cloud artwork')
             check(evaluate("[...archiveMotion.transitions][0].animations[0].effect.getTiming().duration===780"),'normal gravitational collapse is bounded to 780ms')
             check(evaluate("!!document.querySelector('.galaxy-energy-ring path')&&!!document.querySelector('.galaxy-energy-core')&&[...archiveMotion.transitions][0].animations.length===4"),'collapse uses bounded curved arcs, luminous concentration and a tiny dark point without particles')
             evaluate("window.archiveFrames=[...archiveMotion.transitions][0].animations[0].effect.getKeyframes();[...archiveMotion.transitions][0].animations.forEach(a=>a.pause())")
@@ -1925,7 +1976,7 @@ def main():
             check(evaluate(f"entries.has({json.dumps(owner)})&&!archivedGalaxies.has({json.dumps(g)})&&hierarchySidebar.index.roots.includes({json.dumps(g)})"),'Restore returns the canonical deep hierarchy and normal Galaxy row')
             check(evaluate(f"JSON.stringify(entries.get({json.dumps(owner)}).content)")==content and evaluate('JSON.stringify(camera.view)')==view,'Restore preserves content and camera')
             check(evaluate('restoreStart')==archived_position,'restored Galaxy starts at its exact saved overview position: '+str(evaluate('restoreStart'))+' vs '+str(archived_position))
-            check(evaluate("(()=>{const r=[...archiveMotion.transitions].find(r=>r.kind==='restore'),bands=r?.layer.querySelectorAll('.galaxy-restore-band');return bands?.length>=3&&r.animations.some(a=>a.effect.getTiming().delay===70)&&r.animations.some(a=>a.effect.getTiming().delay===112)&&Math.max(...r.animations.map(a=>a.effect.getTiming().delay+a.effect.getTiming().duration))===560;})()"),'restore expands outward in staged cloud/Sun/Planet groups over 560ms instead of one uniform fade')
+            check(evaluate("(()=>{const r=[...archiveMotion.transitions].find(r=>r.kind==='restore'),bands=r?.layer.querySelectorAll('.galaxy-restore-band');return bands?.length>=3&&r.animations.some(a=>a.effect.getTiming().delay===70)&&r.animations.some(a=>a.effect.getTiming().delay===112)&&Math.max(...r.animations.map(a=>a.effect.getTiming().delay+a.effect.getTiming().duration))===560;})()"),'restore expands outward in staged real-body groups over 560ms instead of one uniform fade')
             evaluate("[...archiveMotion.transitions].find(r=>r.kind==='restore')?.animations.forEach(a=>{a.pause();a.currentTime=270})")
             shot('restore-emergence')
             evaluate('camera.setView({...camera.view,x:camera.view.x+1},false)')
@@ -1937,7 +1988,8 @@ def main():
             cdp.call('Emulation.setDeviceMetricsOverride',width=390,height=844,deviceScaleFactor=1,mobile=False);cdp.call('Emulation.setTouchEmulationEnabled',enabled=True,maxTouchPoints=2)
             evaluate('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');time.sleep(.2)
             evaluate(f"window.dispatchEvent(new Event('resize'));selectEntry(entries.get({json.dumps(g)}),nodes.get({json.dumps(g)}),{{reframe:false}});setInspectorOpen(true);document.getElementById('entry-more-button').click()")
-            click_selector('#archive-galaxy-button');check(evaluate('archiveDialog.open'),'mobile Contents More opens the same Galaxy archive confirmation')
+            if evaluate("contextMenu.dataset.view==='quick'"):click_selector('#entry-context-menu [data-action=more]')
+            click_selector('#entry-context-menu [data-action=archive]');check(evaluate('archiveDialog.open'),'mobile Contents More opens the same Galaxy archive confirmation')
             shot('archive-confirmation-mobile')
             check(evaluate("(()=>{const r=archiveDialog.getBoundingClientRect();return r.width<=innerWidth-24&&r.height<=innerHeight-24&&document.getElementById('confirm-archive-galaxy').getBoundingClientRect().height>=44})()"),'mobile confirmation fits with comfortable touch actions')
             cdp.call('Emulation.setEmulatedMedia',features=[{'name':'prefers-reduced-motion','value':'reduce'}]);wait_for('archiveMotion.reduced')
@@ -4016,7 +4068,7 @@ def main():
                     check_rendered("activeConstellationId==='sample-constellation-trip'&&!activeConstellationMembers.has('sample-moon-0-1-0')&&!nodes.get('sample-moon-0-1-0').inert&&parseFloat(getComputedStyle(nodes.get('sample-moon-0-1-0')).opacity)>.98&&parseFloat(getComputedStyle(nodes.get('sample-moon-0-1-0').querySelector('.node-label')).opacity)>.98",'selected unrelated entry can stand out with normal content without becoming a collection entry')
                     check(evaluate('JSON.stringify(camera.view)')==view and evaluate('JSON.stringify([...constellations.values()])')==refs,'inspection changes neither collection references nor the current camera')
                     visible=evaluate("(()=>{const result=[];for(const scale of [.2,.58,.68,.8,1]){camera.setView({...camera.view,scale},false);result.push(Object.fromEntries(['sun','planet','moon','satellite','astronaut'].map(role=>[role,[...nodes].filter(([id,n])=>!activeConstellationMembers.has(id)&&!n.classList.contains('constellation-inspected')&&n.dataset.role===role&&n.dataset.semanticHidden==='false').length])));}return result;})()")
-                    check(visible[0]['sun']==0 and visible[1]['sun']>0 and visible[1]['planet']==0 and visible[2]['planet']>0 and visible[2]['moon']==0 and visible[3]['moon']>0 and visible[4]['astronaut']>0,'zooming inward progressively restores Suns, Planets, Moons and deeper entries at existing role thresholds')
+                    check(visible[0]['sun']==0 and visible[0]['planet']==0 and visible[1]['sun']>0 and visible[1]['planet']>0 and visible[1]['moon']>0 and visible[1]['satellite']==0 and visible[2]['satellite']==0 and visible[3]['satellite']>0 and visible[4]['astronaut']>0,'Constellation context keeps its far-zoom suppression and restores real Sun/Planet/Moon structure before deep detail')
                     evaluate("focusEntry('sample-moon-0-1-0')");wait_camera()
                     click_selector('.entry-node[data-entry-id="sample-moon-0-1-0"]');wait_camera()
                     check(evaluate("activeConstellationId==='sample-constellation-trip'&&selectedNode.dataset.entryId==='sample-moon-0-1-0'") and evaluate('JSON.stringify([...constellations.values()])')==refs,'canvas non-Constellation entry clicks inspect normally without deactivating or joining the collection')
@@ -4030,7 +4082,7 @@ def main():
                     draft_view=evaluate('JSON.stringify(camera.view)')
                     click_selector('#deactivate-constellation-button')
                     check(evaluate("activeConstellationId===null&&!panel.hidden&&contentInspector.entryId==='sample-moon-0-1-0'&&constellationOverlay.edges.length===0&&!contentInspector.notesForm.hidden&&contentInspector.notes.value==='Unsaved lens draft'") and evaluate('JSON.stringify(camera.view)')==draft_view,'compact active-indicator × preserves selected Contents, its note draft and the camera while deactivating')
-                    check_rendered("activeConstellationGalaxyIds.size===0&&[...nodes.values()].every(n=>!n.classList.contains('constellation-galaxy-context'))&&[...entries.values()].filter(e=>e.depth===0).every(e=>nodes.get(e.id).labelOpacity===1)",'deactivation clears Galaxy overrides and restores normal eligibility under the density layer')
+                    check_rendered("activeConstellationGalaxyIds.size===0&&[...nodes.values()].every(n=>!n.classList.contains('constellation-galaxy-context'))&&[...entries.values()].filter(e=>e.depth===0).every(e=>{const n=nodes.get(e.id);return n.labelOpacity===(n.classList.contains('temporarily-revealed')?1:cosmosView.labelDisclosure('galaxy',camera.view.scale,e.id,semanticDetail))})",'deactivation clears Galaxy overrides and restores normal hierarchy-label eligibility under the density layer')
                     evaluate("activateConstellation('sample-constellation-trip')");wait_camera()
                     click_selector('#close-inspector-button')
                     check(evaluate('activeConstellationId===null&&panel.hidden'),'overview header × explicitly deactivates and closes the overview')
@@ -5535,8 +5587,7 @@ def main():
         cdp.call('Page.reload');load()
         check(evaluate("JSON.stringify([...entries.values()].map(e=>[e.id,galaxyAppearance.resolve(e)]))")==styles, "all deterministic identities survive refresh")
         check(evaluate(f"entries.get({json.dumps(d6)}).depth===6 && entries.get({json.dumps(t1)}).parentId==={json.dumps(m1)}"), "deep ancestry persists after refresh")
-        wait_for("[...regions.values()].every(r=>r.dataset.cloudReady==='true')")
-        check(evaluate("[...regions.values()].every(r=>r.tagName==='CANVAS' && r.cloudDraws===1) && [...entries.values()].filter(e=>e.depth===0).every(e=>nodes.get(e.id).dataset.body==='galaxy')"), "Galaxies render as cached procedural regions rather than spherical bodies")
+        check(evaluate("regions.size===0&&galaxyAppearance.cloudCache.size===0&&[...entries.values()].filter(e=>e.depth===0).every(e=>nodes.get(e.id).dataset.body==='galaxy'&&!!nodes.get(e.id).querySelector('.galaxy-core'))"), "Galaxies render as real core anchors without cloud canvases")
 
         evaluate("camera.setView({x:-900,y:-700,scale:.1},false);searchField.value='slow SIMMER';searchField.dispatchEvent(new Event('input'))")
         check(evaluate(f"nodes.get({json.dumps(d6)}).classList.contains('search-match') && galaxyModel.ancestors(entries,{json.dumps(d6)}).every(e=>nodes.get(e.id).classList.contains('search-ancestor'))"), "deep search reveals all intermediate ancestry before focus")
@@ -5608,11 +5659,11 @@ def main():
                 check(aligned(),prefix+' hierarchy endpoints align at '+level)
                 check(visible_guides()==0,prefix+' has no blanket orbit rings at '+level)
                 if level=='universe':
-                    check(evaluate("[...entries.values()].filter(e=>e.depth>0).every(e=>getComputedStyle(nodes.get(e.id)).opacity==='0')"),prefix+' Universe hides lower detail')
+                    check(evaluate("(()=>{const d=cosmosView.detail(camera.view.scale);return d.sun>=.82&&d.planet>=.58&&d.clouds===0&&d.satellite===0&&d.astronaut===0})()"),prefix+' Universe keeps real Sun/Planet structure and suppresses deep detail')
                 if level=='galaxy':
                     check(evaluate(f"parseFloat(getComputedStyle(nodes.get({json.dumps(sun_id)})).opacity)>.9 && getComputedStyle(nodes.get({json.dumps(satellite_id)})).opacity==='0'"),prefix+' Galaxy emphasizes Suns and simplifies deep detail')
                 if level=='close':
-                    check(evaluate(f"semanticDetail[entries.get({json.dumps(satellite_id)}).role+'Label']>.9"),prefix+' close zoom makes local labels eligible under density handling')
+                    check(evaluate("cosmosView.labelOrder.filter(r=>semanticDetail.labels[r].opacity>0).length<=2&&semanticDetail.labels.planet.opacity>0&&semanticDetail.labels.moon.opacity>0"),prefix+' close zoom uses only the adjacent Planet/Moon label handoff')
                 if screenshot_dir:
                     result=cdp.call('Page.captureScreenshot',format='png',captureBeyondViewport=False)
                     (screenshot_dir/f'{prefix}-{level}.png').write_bytes(base64.b64decode(result['data']))
@@ -5633,7 +5684,7 @@ def main():
 
         capture_levels('normal',g2,s3,p1,t1)
         evaluate('clearSelection();fitGalaxy()');wait_camera()
-        check(evaluate("(()=>{const b=galaxyBounds(),a=camera.worldToScreen(b.left,b.top),z=camera.worldToScreen(b.right,b.bottom);return a.x>=physics.bounds.left+31&&a.y>=physics.bounds.top+31&&z.x<=physics.bounds.right-31&&z.y<=physics.bounds.bottom-31;})()"), "Fit Galaxy includes regions and descendants beside the panel")
+        check(evaluate("(()=>{const b=galaxyBounds(),a=camera.worldToScreen(b.left,b.top),z=camera.worldToScreen(b.right,b.bottom);return a.x>=physics.bounds.left+31&&a.y>=physics.bounds.top+31&&z.x<=physics.bounds.right-31&&z.y<=physics.bounds.bottom-31;})()"), "Universe Fit includes actual roots and descendants beside the panel")
         evaluate('window.zoomBefore=camera.view.scale');mouse('mouseWheel',600,500,deltaX=0,deltaY=-120);wait_camera()
         check(evaluate('camera.view.scale>zoomBefore'), "wheel zoom works after deep focus")
         evaluate('window.panBefore={...camera.view}');mouse('mousePressed',1030,880,button='left',clickCount=1);mouse('mouseMoved',1060,900,button='left',buttons=1);mouse('mouseReleased',1060,900,button='left',clickCount=1)

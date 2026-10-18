@@ -3,19 +3,95 @@ const { test } = require('node:test');
 function load() { const context = vm.createContext({}); vm.runInContext(fs.readFileSync(path.join(__dirname, '../cosmos-view.js'), 'utf8'), context); return vm.runInContext('cosmosView', context); }
 const plain = value => JSON.parse(JSON.stringify(value));
 
-test('deep label and tether disclosure is staggered, gradual and presentation-only',()=>{
-    const view=load(),ids=Array.from({length:40},(_,i)=>`sample-stress-astronaut-${String(i).padStart(2,'0')}`);
-    for(const role of ['satellite','astronaut'])for(const id of ids){
-        let last=0;
-        for(let scale=.8;scale<=12;scale+=.02){const opacity=view.labelDisclosure(role,scale,id);assert.ok(opacity>=last&&opacity<=1);assert.ok(opacity-last<.03);last=opacity;}
-        assert.equal(view.labelDisclosure(role,.9,id),0);assert.equal(view.labelDisclosure(role,12,id),1);
+test('adjacent label envelopes share bounded smooth handoffs and leave dominant orientation bands',()=>{
+    const view=load(),roles=Array.from(view.labelOrder);
+    const maxStep=.001*1.5/Math.min(...view.labelHandoffs.map(([start,end])=>end-start))+1e-9;
+    const plateaus=[[.02,'galaxy'],[.24,'galaxy'],[.6,'sun'],[1.3,'planet'],[2.4,'moon'],[4,'satellite'],[9,'astronaut']];
+    for(const [scale,dominant] of plateaus){
+        const d=view.detail(scale);
+        for(const role of roles)assert.equal(d.labels[role].opacity,role===dominant?1:0,`${role} at ${scale}`);
     }
-    assert.equal(view.labelDisclosure('astronaut',1.8,ids[0]),0);
-    assert.ok(new Set(ids.map(id=>view.labelDisclosure('astronaut',5,id))).size>10,'individual labels do not reveal as one batch');
-    assert.equal(view.deepTetherOpacity(1.8,ids[0]),0);assert.equal(view.deepTetherOpacity(12,ids[0]),.14);
-    assert.equal(view.deepTetherOpacity(.9,ids[0],true),.25);
+    view.labelHandoffs.forEach(([start,end],index)=>{
+        const parent=roles[index],child=roles[index+1];
+        for(const [scale,a,b] of [[start,1,0],[(start+end)/2,.5,.5],[end,0,1]]){
+            assert.ok(Math.abs(view.labelDisclosure(parent,scale,'x')-a)<1e-12);
+            assert.ok(Math.abs(view.labelDisclosure(child,scale,'x')-b)<1e-12);
+        }
+        assert.equal(view.labelDisclosure(child,start-.001,'x'),0,'no early child crowding');
+        assert.equal(view.labelDisclosure(parent,end+.001,'x'),0,'no persistent parent floor');
+    });
+    for(let scale=.001;scale<12;scale+=.003){
+        const detail=view.detail(scale),visible=roles.filter(r=>detail.labels[r].opacity>0);
+        assert.ok(visible.length<=2,'only adjacent orientation layers overlap');
+        if(visible.length===2)assert.equal(roles.indexOf(visible[1])-roles.indexOf(visible[0]),1);
+        assert.ok(Math.abs(roles.reduce((sum,r)=>sum+detail.labels[r].opacity,0)-1)<1e-12);
+        for(const role of roles){
+            const value=view.labelDisclosure(role,scale,'test',detail);
+            assert.ok(value>=0&&value<=1);
+            assert.equal(value,view.labelDisclosure(role,scale,'another-id'),'ordinary timing belongs to the layer, not the individual name');
+            assert.ok(Math.abs(value-view.labelDisclosure(role,scale+.001,'test'))<maxStep,'smoothstep slope stays bounded across band edges');
+        }
+    }
     assert.deepEqual(plain(view.tiers),{galaxy:.45,system:.58,close:.78});
-    assert.equal(view.constellationVisibility(1.6,'astronaut',{member:true}).label,1,'existing Constellation label behavior is preserved');
+    assert.equal(view.labelDisclosure('sun',view.tiers.system,'x'),1);
+    assert.ok(view.labelDisclosure('planet',view.tiers.close,'x')>0);
+});
+
+test('Galaxy yields sooner while earlier Planet emergence stays secondary and deeper envelopes remain unchanged',()=>{
+    const view=load(),opacity=(role,s)=>view.labelDisclosure(role,s,'x');
+    assert.equal(opacity('galaxy',.24),1);
+    assert.ok(opacity('galaxy',.30)<1&&opacity('sun',.30)>0);
+    assert.equal(opacity('galaxy',.42),0);
+    assert.equal(opacity('sun',.42),1);
+    assert.equal(opacity('sun',.6),1);
+    assert.equal(opacity('planet',.64),0);
+    assert.ok(opacity('planet',.70)>0&&opacity('planet',.70)<.05,'new earlier emergence is subtle');
+    assert.ok(opacity('planet',.78)>0&&opacity('planet',.78)<.25);
+    assert.ok(opacity('planet',.84)>.18&&opacity('planet',.84)<.5,'useful earlier without taking over');
+    assert.ok(opacity('sun',.84)>opacity('planet',.84));
+    assert.equal(opacity('planet',1.12),1);
+    assert.equal(opacity('planet',1.60),1);
+    assert.deepEqual(plain(view.labelHandoffs.slice(2)),[[1.60,2.10],[2.70,3.60],[5,7]]);
+});
+
+test('semantic strength ranks names before density suppression, while explicit context stays first',()=>{
+    const view=load();
+    for(let scale=.01;scale<10;scale+=.01){
+        const d=view.detail(scale);
+        for(const a of view.labelOrder)for(const b of view.labelOrder){
+            assert.ok(d.labels[a].priority>=4);
+            if(d.labels[a].opacity>d.labels[b].opacity+.001)assert.ok(d.labels[a].priority<d.labels[b].priority);
+        }
+    }
+});
+
+test('reverse and rapidly changing zoom evaluate exactly the same stateless envelopes',()=>{
+    const view=load(),scales=Array.from({length:180},(_,i)=>.02+i*.05);
+    const expected=new Map(scales.map(scale=>[scale,JSON.stringify(view.detail(scale).labels)]));
+    for(const scale of [...scales,...scales.slice().reverse(),.24,7,.4,2,.31,9,.6]){
+        const detail=JSON.stringify(view.detail(scale).labels);
+        assert.equal(detail,expected.get(scale)??JSON.stringify(load().detail(scale).labels));
+    }
+});
+
+test('deep tether staggering and established Constellation lens remain independent of ordinary envelopes',()=>{
+    const view=load(),id='sample-stress-astronaut-00';
+    assert.equal(view.deepTetherOpacity(1.8,id),0);assert.equal(view.deepTetherOpacity(12,id),.14);
+    assert.equal(view.deepTetherOpacity(.9,id,true),.25);
+    assert.equal(view.constellationVisibility(1.6,'astronaut',{member:true}).label,1);
+    assert.equal(view.constellationVisibility(.8,'sun',{priority:true}).label,1);
+    assert.equal(view.labelDisclosure('astronaut',4,id),0);
+    assert.equal(view.labelDisclosure('satellite',9,id),0);
+});
+
+test('only a decreasing user-owned zoom in overview releases focus, with no automatic re-selection rule',()=>{
+    const view=load();
+    assert.equal(view.releasesOverviewSelection(.45,.46,'user-zoom'),true);
+    assert.equal(view.releasesOverviewSelection(.2,.21,'user-zoom'),true);
+    for(const source of ['programmatic','navigation',undefined])assert.equal(view.releasesOverviewSelection(.2,1,source),false);
+    assert.equal(view.releasesOverviewSelection(.451,.5,'user-zoom'),false);
+    assert.equal(view.releasesOverviewSelection(.46,.44,'user-zoom'),false);
+    assert.equal(view.releasesOverviewSelection(.44,.44,'user-zoom'),false);
 });
 
 test('screen diameters plateau independently by role while semantic detail keeps revealing', () => {
@@ -52,7 +128,8 @@ test('detail inspection scales smoothly without changing normal caps or larger r
 test('Constellation lens keeps bodies distinct from labels and restores non-entry context through normal role fades', () => {
     const view = load(), roles = ['galaxy', 'sun', 'planet', 'moon', 'satellite', 'astronaut'];
     for (const role of roles) {
-        assert.deepEqual(plain(view.constellationVisibility(.2, role, { member: true })), { body: 1, label: 0 });
+        const label=role==='sun'?view.detail(.2).sunLabel:role==='planet'?view.detail(.2).planetLabel:0;
+        assert.deepEqual(plain(view.constellationVisibility(.2, role, { member: true })), { body: 1, label });
         assert.deepEqual(plain(view.constellationVisibility(.2, role)), { body: 0, label: 0 });
         assert.deepEqual(plain(view.constellationVisibility(.2, role, { priority: true })), { body: 1, label: 1 });
         let previous = 0;
@@ -65,21 +142,36 @@ test('Constellation lens keeps bodies distinct from labels and restores non-entr
     }
     assert.ok(view.constellationVisibility(.6, 'sun').body > 0);
     assert.equal(view.constellationVisibility(.6, 'planet').body > 0, true);
-    assert.equal(view.constellationVisibility(.6, 'moon').body, 0);
-    assert.ok(view.constellationVisibility(.7, 'planet').body > view.constellationVisibility(.7, 'moon').body);
+    assert.ok(view.constellationVisibility(.4, 'planet').body > view.constellationVisibility(.4, 'moon').body);
 });
 
-test('each zoom tier summarizes the intended hierarchy without residual body opacity', () => {
+test('overview keeps Suns and Planets present while deeper roles remain selective', () => {
     const view = load();
-    for (const [scale, tier, visible] of [[.10, 'universe', []], [.58, 'system', ['sun']], [.68, 'system', ['sun', 'planet']], [.80, 'close', ['sun', 'planet', 'moon', 'satellite']]]) {
+    for (const [scale, tier] of [[.02,'universe'],[.10,'universe'],[.58,'system'],[.68,'system'],[.80,'close']]) {
         const detail = view.detail(scale);
         assert.equal(detail.tier, tier);
-        for (const role of ['sun', 'planet', 'moon', 'satellite']) assert.equal(detail[role], visible.includes(role) ? 1 : 0);
+        assert.ok(detail.sun>=.82&&detail.sun<=1);assert.ok(detail.planet>=.58&&detail.planet<=1);
+        assert.equal(detail.clouds,0,'normal presentation never substitutes cloud artwork');
     }
+    assert.equal(view.detail(.1).moon,0);assert.ok(view.detail(.3).moon>0&&view.detail(.3).moon<1);
+    assert.equal(view.detail(.55).moon,1);assert.equal(view.detail(.68).satellite,0);
     assert.equal(view.detail(.3).guides, 0); assert.equal(view.detail(1.1).clouds, 0);
     assert.equal(view.detail(.5).tier, 'galaxy');
-    assert.ok(view.detail(.72).moon > 0 && view.detail(.72).moon < 1);
     assert.ok(view.detail(.76).satellite > .7);
+});
+
+test('overview diameter floors and Galaxy root are continuous without enlarging close bodies',()=>{
+    const view=load();
+    assert.equal(view.renderedDiameter('sun',52,.001,view.detail(.001).sun),6);
+    assert.equal(view.renderedDiameter('planet',28.6,.001,view.detail(.001).planet),2.5);
+    let last={};
+    for(let scale=.001;scale<=1.2;scale+=.001){
+        const values={galaxy:view.galaxyDiameter(scale),sun:view.renderedDiameter('sun',52,scale,view.detail(scale).sun),planet:view.renderedDiameter('planet',28.6,scale,view.detail(scale).planet)};
+        for(const [role,size] of Object.entries(values)){assert.ok(size>0&&size>=(last[role]||0));if(last[role])assert.ok(size-last[role]<.2);}
+        last=values;
+    }
+    assert.equal(view.galaxyDiameter(.001),14);assert.equal(view.galaxyDiameter(1),22);
+    assert.equal(view.renderedDiameter('sun',52,1),78);assert.equal(view.renderedDiameter('planet',28.6,1),32);
 });
 
 test('body, label and cloud fades are continuous at tier boundaries and monotonic while zooming out', () => {

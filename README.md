@@ -8,13 +8,19 @@ For Cloudflare Pages with staged GitHub integration and `main` deployments, see
 [Static hosting](docs/static-hosting.md). Hosting keeps data browser-local;
 localhost data does not automatically appear at the hosted address.
 
+Current mobile navigation uses **Compact ↔ Contents** with an adaptive-height,
+four-page Contents sheet. Real bodies remain in overview; Galaxy roots use small
+cores rather than cloud substitution. See [current rendering/label policy](docs/mobile-zoom-performance.md),
+[Contents behavior](docs/mobile-contents-browse.md), [mobile family framing](docs/mobile-system-framing.md)
+and [final branch validation](docs/mobile-zoom-final-review.md).
+
 **Backup**, near Help in the sidebar, downloads one unencrypted `.cosmifold`
 file containing saved data, uploaded files/media and thumbnails. It is local and
 read-only. **Restore backup** validates a selected file, previews its contents,
 then asks before replacing this browser's Cosmos. See [Local backup](docs/local-backup.md).
 
 Each canonical item can have one optional **Location**, shown after Bookmarks
-in the Content panel. Use the section's + to enter a place name or address;
+in the Content panel. Tap **Add location…** to enter a place name or address;
 Enter/Save stores trimmed text, and Escape/Cancel keeps the previous value.
 Edit and Remove stay beside the saved location. Removal follows the same
 immediate pattern as bookmarks and affects only Location.
@@ -51,7 +57,7 @@ the user-named Galaxy. Roles come from depth; all items remain freely editable.
 | Photos / inspiration | Inspiration | Travel, Home, Style, Food, Other ideas | 11 |
 
 On desktop, supported files or web addresses can be dropped onto a body, Galaxy
-cloud or canonical sidebar row. A quiet outline marks the target. Files reuse
+core or canonical sidebar row. A quiet outline marks the target. Files reuse
 the existing validation, IndexedDB/attachment-store transaction and cleanup;
 addresses reuse bookmark normalization. Drops select/show the destination
 without camera framing, changing physics, or altering an active Constellation.
@@ -190,11 +196,11 @@ empty independent hierarchies, naming, persistence, recovery and Sample isolatio
   opens its menu without opening a closed drawer or shifting the camera. Opening
   Contents measures available space without changing the camera;
   it waits for drag release before opening if a pointer is held.
-- **Body actions:** right-click a body, Galaxy name or cloud for Add item,
-  Add to Constellation, Rename and Delete item. The sidebar row **+** keeps the
-  complete organization/content shortcuts, including Add existing item. Item-level
-  sidebar context menus also expose it; all canvas and Galaxy-level context menus
-  omit this advanced placement action.
+- **Body actions:** right-click a body or Galaxy name for management: Rename,
+  Move to…, Add to Constellation, Copy, Duplicate structure and Delete item.
+  Galaxy management also offers Archive Galaxy. The independent **+** menu adds
+  into that body. Mobile CB View uses quick menus with **More…** for full actions;
+  Menu View uses the full menus. Compact and Contents target the same body.
   Subtree confirmation remains. The menu stays inside the viewport, closes on outside clicks/Escape,
   and does not start dragging or camera focus. Shift+F10 opens it from a focused
   body; arrows/Home/End navigate its actions.
@@ -219,12 +225,12 @@ empty independent hierarchies, naming, persistence, recovery and Sample isolatio
   matches and their ancestry reveal even at Universe zoom. Choose a result to select it, open Contents and
   smoothly focus. Contents includes clickable ancestor names. Arrow Down reaches
   results, Enter selects the first match, Escape dismisses results.
-- **Explore:** wheel zoom toward the cursor, drag space to pan, Fit Galaxy to
-  include all regions and content beside the panel. Galaxy/Sun search frames its
-  region/system; deeper search focuses the body at a useful close scale.
-  Single-click a Galaxy name or cloud to frame its systems, then a Sun or its
-  name to frame that system. Focus uses eased camera motion and viewport padding;
-  Sun framing centers the Sun. Dragging suppresses the following focus click.
+- **Explore:** wheel zoom toward the cursor, drag space to pan, and use Fit for
+  the whole Universe. On mobile, a single body tap selects; explicit double-tap
+  or navigation frames a parent's canonical family in the exposed canvas, with
+  leaf inspection retaining its close target. Contents stays open on its current
+  page when switching bodies. Desktop retains its established focus commands.
+  Focus uses eased camera motion; dragging suppresses the following focus click.
 - **Drag:** celestial bodies flow naturally. Dragging influences a preferred
   parent-relative angle and gently bounded orbital region. An extreme drop
   returns gradually toward its parent; release preserves inertia. There are no
@@ -257,13 +263,13 @@ open drafts, active collection lenses and camera state are preserved. Positions,
 relative layout preferences, appearance and branch expansion state are retained;
 restored bodies start at saved positions, then use normal soft settling.
 
-Archive takes a lightweight presentation snapshot of the visible cloud and bodies.
-A 780ms gravitational collapse contracts and gently curves the cloud/body group
+Archive takes a lightweight presentation snapshot of the visible Galaxy core and bodies.
+A 780ms gravitational collapse contracts and gently curves the body group
 inward, with two thin curved energy arcs. Brightness concentrates into a 22px
 luminous core, then compresses into a 10px dark point which disappears. Labels
 and hit areas are excluded; there are no particles, flashes, shake or live blur
 filters. Other Galaxies and saved coordinates do not participate. Restore takes
-560ms: a point and expanding arcs precede an outward cloud materialization, then
+560ms: a point and expanding arcs precede the real Galaxy marker, then
 Sun/Planet/Moon/Satellite/Astronaut groups emerge progressively into their saved
 positions and crossfade to the normally settling live bodies. Reduced motion uses
 a 110ms archive fade/scale-down and a 140ms restore fade/scale-up without energy
@@ -286,9 +292,9 @@ desktop retains its faster row +. Empty Bookmarks accepts a URL directly in
 “Paste a link…”: Enter saves, or use the small Save action shown for valid URLs.
 Titles are optional; untitled bookmarks display their domain. Existing bookmarks
 retain the read-first list and secondary edit/remove actions. Storage stays v5.
-On mobile the empty bookmark field has a 38px visual height with 16px text, inside
-a 44px padded tap area. Empty-section spacing is tighter, with no Save action
-space until a valid URL is entered. Desktop field sizing remains unchanged.
+Mobile Links begins with **Add link…**, which reveals a full-width 16px input
+above **Save / Cancel**. Common text actions have contained surfaces and centered
+labels in 44px targets. Desktop field sizing remains unchanged.
 
 Wheel zoom uses normalized pixel deltas with a 0.0024 response (previously
 0.0018), a 1.15 multiplier for Ctrl-wheel trackpad pinch, and a capped 0.42
@@ -304,8 +310,8 @@ Reduced motion makes focus navigation immediate.
 The visual hierarchy refinement adds closer inspection targets: Moon 180%,
 Satellite 220%, Astronaut/deeper 240%. The upper zoom limit is now 300% (previously
 240%), leaving headroom after deep focus. Wheel/trackpad gain, pinch midpoint
-anchoring, interruption and Fit remain unchanged. Galaxy cloud/label fading,
-label collision suppression and Constellation visibility keep their existing rules.
+anchoring and interruption retain their established rules. Current body/label
+overview and mobile family framing are documented in the rendering section below.
 `python tests/browser-check.py --body-hierarchy-only --screenshots` checks native
 sizes and fixed-scale overview/system/deep desktop and phone views;
 `--body-hierarchy-baseline` captures matching views before tuning.
@@ -318,10 +324,10 @@ compact at 32px wide by 44px high. Portal and Constellation actions remain visib
 Chevron glyphs rotate inside their hit areas so expanded branches do not overlap
 neighboring icons/text. Closing navigation clears all floating menus.
 
-Content sheets use their natural content height with compact mobile spacing:
-empty/light entries occupy roughly 38–45% of the tested portrait viewports;
-moderate content grows naturally and long content caps at 74% of the available
-visual viewport. The sticky header and internal scrolling remain. The active
+Mobile Contents uses intrinsic active-page height with a 200px minimum capped by
+the prior Browse maximum: `min(max(280px, visibleHeight × .38), visibleHeight × .60)`.
+Overflow scrolls between the header and the persistent Files/Notes/Links/Location
+dock. There is no third Full state. The active
 Constellation strip has less surrounding spacing while retaining 44px touch
 targets. Constellation overviews retain their 58dvh portrait / 72dvh short
 landscape limits. Sheets scroll independently from the
@@ -398,8 +404,8 @@ in. Deactivation changes logical state immediately and fades a noninteractive
 echo for 140ms. Only newly created bodies materialize (220ms). Newly added Files
 settle (180ms), and successful removal can leave a 150ms filename echo outside
 the authoritative list; animations never delay file transactions or failures.
-Astronaut figures use a tiny drag/release orientation response. Galaxy focus may
-produce a relative opacity breath of at most 8% for 260ms when its cloud is visible.
+Astronaut figures use a tiny drag/release orientation response. Galaxy cloud-focus
+pulses are not part of the current real-core presentation.
 
 Successful canonical deletion captures one inert rendered-body snapshot, then
 commits the existing deletion and cleanup immediately. The snapshot alone
@@ -1055,80 +1061,43 @@ Bodies and names are projected into unscaled screen layers. Dimensions and fonts
 are repainted at native resolution during zoom. Body centers project in quarter-
 pixel steps to avoid repainting imperceptible settling movement; world/camera
 coordinates stay exact and SVG endpoints remain within 0.18px of body centers. Only SVG hierarchy paths/orbit guides
-use the scaled world transform. Existing defined spherical shading/seeded texture
-and restrained Sun glow remain. Procedural Galaxy SVG regions are built once per
-identity; their names stay in the native text layer.
-Galaxy clouds use soft, overlapping gradient concentrations in six deterministic
-territory silhouettes: wispy, bloom, cluster, double-lobed, crescent and diffuse.
-There are no spiral arms, central starbursts, hard containers or bright dust dots. Each
-deterministic visual is smoothed once into a cached 512px canvas and reused;
-cloud opacity uses a squared smooth fade, normally from 0.38 to 0.72 (previously
-0.58–0.95). Universe opacity stays 0.92; by system view clouds are very faint and
-close detail hides them completely. Each cloud adapts to usable `physics.bounds`
-after the sidebar/inspector, plus its projected width/height relative to that
-canvas. A short canvas side of 420–900px smoothly advances fade onset by up to
-0.03 and completion by up to 0.04. Projected coverage from 0.8–2.2 canvas lengths
-advances completion by another 0.04. This uses size, never position or overlap:
-panning/floating cannot pulse opacity. Existing footprint dead bands/easing
-stabilize size changes. Galaxy names, breadcrumbs and sidebar identity remain
-independent of cloud opacity. No body fade ranges or tier boundaries change.
-`cosmos-view.js` derives visual footprints from normal parent-relative positions
-of contained Suns and descendants, including the Galaxy anchor. For presentation
-only, distant offsets are limited to 1.4 times the preferred band plus local
-clearance (40% of the system envelope +60px for Suns; body radius +32px deeper).
-This bounds a temporary outlier without changing physics or saved coordinates;
-its movable subtree keeps its normal local shape. Universe Fit includes actual
-coordinates of distant dragged bodies while they gradually return.
-Bounds have 35%
-soft margin plus 144px; empty regions have a 320×280px minimum. Measurements run
-at most four times per second while floating. Root translation carries the cloud
-immediately; local footprint changes ease over 650ms, with small-change dead
-zones (1.5% center / 4% size, at least 16 world pixels). Projected sizes round to
-4px and translations to half-pixels to avoid paint churn. Fixed-size canvas
-surfaces are projected with transforms; their backing pixels never resize or
-redraw during motion/zoom. Visible clouds may reuse a compositor layer during
-motion; hidden clouds receive no hint. A 160×140px screen minimum keeps small Galaxies legible
-at fitted Universe zoom. Galaxy and Sun focus frame normal member positions
-with 36px viewport padding, capped at 58% and 82% respectively. Sun bounds are
-symmetric around the Sun. Very large systems or narrow viewports can require a
-lower fitted scale. Galaxy names remain native,
-14–16px, high contrast and anchored over their cloud.
-Offscreen bodies/clouds are hidden from paint and compositor hints; their world
-positions and physics continue normally. Invisible hierarchy lines use
-`display:none` while retaining their derived hierarchy edges and coordinates.
-Surface noise fields use seeded procedural textures, generated lazily in idle
-time for visible natural bodies from 68% zoom. Reusable 64–1024px tiers match physical display
-pixels; grain, terrain and stable orientation share one overlay. This avoids filter rasterization
-and oversized texture sampling during motion/display-scale changes. Translucent
-highlights/shadows avoid a live blend group, and short blob URLs keep large image
-data out of mutable inline styles. Spherical lighting, edges, rings and labels
-remain native.
+use the scaled world transform. Close-view spherical shading, seeded texture
+and restrained Sun glow remain. Galaxy roots are 14–22px native core anchors,
+with 14–16px names anchored below their actual positions. No cloud canvas,
+footprint substitution or large invisible cloud hit territory is created.
 
-| Scale | Priority |
+Each render pass snapshots viewport dimensions before writes. Ordinary offscreen
+visual subtrees skip transforms, textures and relationship geometry; every entry,
+DOM identity and physics particle remains. Re-entry projects current coordinates
+immediately. Selection, search/focus, dragging and Constellation context retain
+protected rendering. Crossing relationship segments remain eligible.
+
+Suns and Planets retain 6px/2.5px overview size floors and .82/.58 minimum body
+opacity; Moons fade across .14–.55, Satellites across .70–.79 and deep items across
+.74–.86. Low zoom removes costly surface decoration; close view restores it.
+Label orientation follows adjacent complementary smoothstep envelopes:
+
+| Label handoff | Scale |
 | --- | --- |
-| Below 0.45 | Universe: Galaxy clouds/names; Suns begin a soft fade at 0.43 |
-| 0.45–0.58 | Galaxy: Suns and Sun names; deeper levels hidden |
-| 0.58–0.78 | Solar system: Planets, then Moons and Satellites appear |
-| 0.78+ | Close: complete hierarchy bodies by 0.79; labels finish slightly later |
+| Galaxy → Sun | .24–.42 |
+| Sun → Planet | .64–1.12 |
+| Planet → Moon | 1.60–2.10 |
+| Moon → Satellite | 2.70–3.60 |
+| Satellite → deeper items | 5–7 |
 
-Visibility uses smoothstep windows across tier boundaries, plus native size
-interpolation from 72% to 100% and a short opacity transition. Body fade ranges:
-Sun **0.43–0.58**, Planet **0.58–0.68**, Moon **0.68–0.76**, Satellite
-**0.70–0.79**. Label fades: Planet **0.62–0.72**, Moon **0.73–0.83**, Satellite
-**0.76–0.88**. No body has a residual opacity floor. Invisible bodies become
-inert so they cannot intercept dragging, clicks or keyboard focus; their physics
-continues normally. Context dimming multiplies visibility instead of overriding
-semantic hiding. Hidden clouds/bodies receive no compositor hint or texture work.
+The existing density/collision resolver suppresses overlap using those strengths.
+Explicit interaction/search and Constellation context retain their exceptions.
+Manual outward zoom at/below .45 releases ordinary selection, emphasis and the
+Compact card; zooming inward does not reselect. Open Contents/active edits retain
+ownership. Programmatic focus/navigation is protected.
 
-Selection and ancestry highlighting never override scale-based hiding. Open
-search results temporarily reveal matches/ancestry; focus reveals only its target
-and ancestors during camera navigation. This explicit reveal ends when the
-transition settles, including reduced motion, and is cleared immediately by
-manual wheel zoom, panning, dragging, Fit, or search dismissal. Search text and
-selection are preserved. Reopening search or focusing again can reveal a deep
-entry again. Ordinary
-hierarchy lines are invisible. Deep selected ancestry, stretched selected
-branches and dragging may show very subtle context lines.
+Mobile parent framing uses actual canonical world positions, including distant
+and manual/pinned descendants, with one responsive screen-space gutter. The
+current visual viewport, safe areas, sidebar, Compact and Contents determine the
+usable rectangle. Leaf inspection and the overall Universe Fit remain distinct.
+No positions, hierarchy, simulation forces or saved placements are rewritten.
+Desktop keeps its established focus path. Full policy, historical measurements
+and performance limits are in [mobile zoom performance](docs/mobile-zoom-performance.md).
 
 `appearance.js` hashes stable IDs (FNV-1a) and resolves optional overrides:
 
@@ -1221,11 +1190,11 @@ Use `--extremes-only` to isolate the two extreme-return cases and their recovery
 `python tests/browser-check.py --migration-only` additionally exercises a full
 saved v4 family with soft positions/pins, invalid records and future-version
 overwrite protection.
-`python tests/browser-check.py --cloud-fade-only --screenshots` checks early fade
-on desktop, laptop and narrow canvas with sidebar/inspector open, strong Universe
-clouds, faint system clouds, independent Galaxy identity, smooth actual zoom in/
-out, translation stability and cached pixel reuse. It retains comparison views
-and measured opacity values.
+Current overview checks use `python -B tests/browser-check.py --real-body-overview-only`;
+label/deselection checks use `--semantic-handoff-only`. Rendering contracts use
+`--render-viewport-only` and `--render-visibility-only`. The old `--cloud-fade-only`
+and `--visual-only` options are historical baseline diagnostics, not current
+release checks; use a matching historical `--site-root` when investigating them.
 
 `python tests/browser-check.py --navigation-only --screenshots` checks all three
 contextual creation paths through depth six, synchronized tree/body/search
@@ -1243,39 +1212,25 @@ Motion/settling assertions remain in the physics and full browser regressions.
 `python tests/browser-check.py --performance-only` profiles active/idle rendering,
 display-scale changes and individual paint layers using the isolated sample.
 Add `--software-rendering` to profile without GPU compositing separately.
-`python tests/browser-check.py --visual-only --screenshots` checks the 187-entry
-nebula sample, all zoom tiers, zooming both directions, deep selection/search,
-Food/Work/Travel zoom-out without deselection, Galaxy cloud/name and Sun
-body/name clicks, all four artificial Satellite silhouettes, interrupted focus,
-an extreme Planet drop, stable appearances after an actual reload, cached images,
-a dragged Sun's cloud containment and Galaxy-view motion cost. It also captures the
-refined local hierarchy, two- and eight-Planet systems, and sparse-system drag recovery.
-The full regression checks normal-view motion and projection budgets.
-The refinement is checked by unit, interface, navigation, migration, full-browser
-and focused visual suites. Interface checks cover panel behavior, gesture stability, control placement
-and layouts from 320px mobile to large desktop.
-The full regression measures baseline motion and reports display-scale stress
-separately; the focused visual suite measures Galaxy-cloud motion. Headless
-timings depend on the machine. Verify motion on a native high-DPI display too.
+The retained `--visual-only` driver describes the former cloud substitution and
+belongs to historical baseline comparisons. Current release validation uses the
+real-body overview, label handoff, Contents, family-framing and regression suites
+listed in [the final review](docs/mobile-zoom-final-review.md). No physical-device
+frame rate is inferred from headless measurements.
 
 Tests cover generic/deep/cyclic trees, old schema backups including quota failures,
 relative-position migration, deterministic/overridden appearance, local forces,
 release inertia, overlapping siblings, legacy pin normalization, native zoom rendering, every body
 drag, CRUD/reparenting, deep search, responsive controls and sample isolation.
 
-Before committing, try the new Universe→Galaxy→Sun navigation with your own data,
-check migrated My Galaxy organization, drag parents/children at several zoom
-levels and refresh. Verify that formerly pinned bodies move naturally while their
-content and hierarchy survive. Focus Food, Work and Travel, zoom to 80%, then back
-to Universe without changing selection; every descendant should fade. Search a
-deep Astronaut and repeat, including interrupting its focus transition. Check
-name/cloud/Sun clicks, far-drop recovery, sparse/wide systems, and stable Satellite
-variants after reload. Verify Galaxy region prominence and the quieter
-orbital guides on your display. Compare two- and eight-Planet families, and
-check Moon/Satellite clearance and label readability on mobile. Very deep/wide
-trees have larger footprints, so Fit may zoom far out. Galaxy clouds are spatial
-cues rather than hard containers or an astronomical simulation. Large production
-datasets beyond this sample still need profiling. An appearance picker is deferred.
+Before committing, try Universe / Galaxy / Sun navigation with local data,
+drag parents/children and refresh. On a phone, manually zoom outward and confirm
+ordinary selection/Compact clears; zooming inward must not reselect. Open Contents
+and repeat focus on a Sun and a Planet/Moon with descendants, including a distant
+manual child, then rotate. Check actual-core/name targeting, adjacent label
+handoffs, sparse/dense families and continued playful movement. Deep/wide families
+can honestly require a wide camera scale. Larger production datasets still need
+device profiling; an appearance picker remains deferred.
 Before committing the interface changes, also check long names and deep branches
 in your own hierarchy; create children through the contextual + and right-click;
 collapse/reopen and resize the sidebar; toggle each section and close/reopen Contents;
