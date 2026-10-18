@@ -55,6 +55,7 @@ const zoomLevel = document.getElementById("zoom-level");
 const hierarchyLayer = document.getElementById("hierarchy-paths");
 const panel = document.getElementById("entry-panel");
 let mobileContents=null, usableCanvasBounds=null;
+const selectedTitleEditors=[];
 const panelName = document.getElementById("panel-name");
 const entryActions = document.getElementById("entry-actions");
 const editEntryButton = document.getElementById("edit-entry-button");
@@ -154,6 +155,16 @@ const hierarchySidebar = new HierarchySidebar({ host: galaxy, preferences: persi
     portals, onOpenPortal: id => openPortal(id), onPortalMenu: (id, x, y) => openPortalContextMenu(id, x, y),
     onViewportChange: animate => crudActive || panelChangeActive ? updateGraphViewport() : navigationViewportChanged(animate) });
 const hierarchyClipboard=new HierarchyClipboard();
+let firstItemCreated=persistence.preferences.load().firstItemCreated===true;
+function syncFirstUse(initial=false) {
+    const hasContent=entries.size>0||archivedEntries.size>0;
+    if(!sampleMode&&storageAvailable&&hasContent&&!firstItemCreated){
+        firstItemCreated=true;persistence.preferences.update({firstItemCreated:true}).catch(()=>{});
+    }
+    const firstUse=!sampleMode&&storageAvailable&&!hasContent&&!firstItemCreated;
+    document.getElementById('first-use-cue').hidden=!firstUse;
+    if(initial&&firstUse){hierarchySidebar.setCollapsed(false);hierarchySidebar.universeSection.setCollapsed(false);}
+}
 const pasteDialog=document.getElementById('hierarchy-paste-dialog'),pasteCopy=document.getElementById('hierarchy-paste-copy'),pasteLink=document.getElementById('hierarchy-paste-link'),pasteCancel=document.getElementById('hierarchy-paste-cancel'),pasteStatus=document.getElementById('hierarchy-paste-status');
 let pasteDestination=null,pasteBusy=false,pasteReturnFocus=null,pasteCommitted=false;
 const structureDialog=document.getElementById('duplicate-structure-dialog'),structureForm=document.getElementById('duplicate-structure-form'),structureName=document.getElementById('duplicate-structure-name'),structureError=document.getElementById('duplicate-structure-error');
@@ -432,8 +443,7 @@ contextMenu.addEventListener("click", event => {
     const action = event.target.closest("button")?.dataset.action, id = contextEntryId;
     if(contextCollectionId){
         const collectionId=contextCollectionId;closeContextMenu(true);
-        if(action==='collection-add')constellationWorkspace.openPicker(collectionId);
-        else if(action==='collection-rename')constellationWorkspace.openName(collectionId);
+        if(action==='collection-rename')constellationWorkspace.openName(collectionId);
         else if(action==='collection-delete')constellationWorkspace.openDelete(collectionId);
         return;
     }
@@ -669,8 +679,7 @@ function openCollectionContextMenu(id,x,y,trigger){
     contextMenu.setAttribute('aria-label',`Actions for Constellation ${collection.name}`);
     document.getElementById('context-entry-name').textContent=collection.name;
     document.getElementById('constellation-memberships').hidden=true;
-    const touch=window.matchMedia('(hover: none), (pointer: coarse), (max-width: 760px)').matches;
-    contextMenu.querySelectorAll(':scope > button').forEach(button=>button.hidden=!button.hasAttribute('data-collection-context')||(button.dataset.action==='collection-add'&&!touch));
+    contextMenu.querySelectorAll(':scope > button').forEach(button=>button.hidden=!button.hasAttribute('data-collection-context'));
     contextMenu.querySelectorAll(':scope > [role="separator"]').forEach(item=>item.hidden=true);
     positionContextMenu(x,y);
 }
@@ -831,7 +840,7 @@ function initializeGalaxy() {
 
     if (saved?.needsCanonicalSave) graphNeedsSave = true;
     const records = saved?.entries || [];
-    (sampleMode || (saved && !saved.legacy) ? [] : initialEntries).forEach((initialEntry) => {
+    (saved?.legacy&&!sampleMode ? initialEntries : []).forEach((initialEntry) => {
         const stored = records.find((entry) => entry?.id === initialEntry.id);
         const entry = galaxyModel.normalizeEntry({ ...initialEntry, ...stored }) ||
             galaxyModel.normalizeEntry(initialEntry);
@@ -919,6 +928,7 @@ function refreshPanelHierarchy(entry) {
     panelName.textContent=entry.name;
     const add = document.getElementById('entry-add-button');
     add.setAttribute('aria-label', `Add to ${entry.name}`); add.title = `Add to ${entry.name}`;
+    add.setAttribute('aria-haspopup','menu');add.setAttribute('aria-controls','add-menu');
     document.getElementById('archive-galaxy-button').hidden=entry.depth!==0;
     panelAncestry.replaceChildren();
     [...galaxyModel.ancestors(entries,entry.id)].reverse().forEach(ancestor=>{
@@ -963,7 +973,7 @@ function closeInspector(restoreFocus = false) {
 document.getElementById("close-inspector-button").addEventListener("click", () => {
     const wasOverview=constellationOverview;
     if (wasOverview) exitConstellation({ restorePanel: false });
-    if(!wasOverview&&mobileContents?.mobile&&hierarchySidebar.collapsed)mobileContents.transition('compact');
+    if(!wasOverview&&mobileContents?.mobile&&hierarchySidebar.collapsed)mobileContents.collapse();
     else closeInspector(true);
 });
 
@@ -1212,6 +1222,7 @@ function updateGraphViewport() {
     document.getElementById('mobile-body-contents').setAttribute('aria-expanded', String(!panel.hidden));
     document.getElementById('entry-more-button').setAttribute('aria-controls',constellationOverview?'entry-actions':'entry-context-menu');
     mobileContents?.sync({mobile:hierarchySidebar.narrow,open:!panel.hidden,available:!constellationOverview});
+    selectedTitleEditors.forEach(editor=>editor.sync());
     const rect = galaxy.getBoundingClientRect(), narrow=hierarchySidebar.narrow;
     const viewportStyle=getComputedStyle(galaxy);
     const insets=narrow?Object.fromEntries(['top','right','bottom','left'].map(edge=>[edge,parseFloat(viewportStyle.getPropertyValue('--canvas-safe-'+edge))||0])):{};
@@ -1543,6 +1554,7 @@ function updateHierarchyPaths(viewport = readRenderViewport()) {
 }
 
 function rebuildHierarchyPaths() {
+    syncFirstUse();
     hierarchyLayer.replaceChildren();
     lines.length = 0;
     galaxyModel.buildHierarchyEdges(entries).forEach(edge => {
@@ -1914,7 +1926,10 @@ moreButton.addEventListener("click", () => {
     else {moreButton.setAttribute('aria-controls','entry-context-menu');toggleBodyActions(moreButton,contentInspector.entryId);}
 });
 document.getElementById('mobile-body-add').addEventListener('click', event => toggleContentMenu(addMenu, event.currentTarget, selectedNode?.dataset.entryId));
-document.getElementById('entry-add-button').addEventListener('click', event => toggleContentMenu(addMenu, event.currentTarget, contentInspector.entryId));
+document.getElementById('entry-add-button').addEventListener('click', event => {
+    if(constellationOverview)constellationWorkspace.openPicker(activeConstellationId);
+    else toggleContentMenu(addMenu, event.currentTarget, contentInspector.entryId);
+});
 document.getElementById('mobile-body-more').addEventListener('click', event => {
     toggleBodyActions(event.currentTarget,selectedNode?.dataset.entryId);
 });
@@ -1932,6 +1947,12 @@ mobileContents=new MobileContentsSheet({panel,card:document.getElementById('mobi
         if(state==='compact')closeInspector(true);
         else {setInspectorOpen(true);panel.scrollTop=0;updateGraphViewport();}
     }});
+for(const title of [document.getElementById('mobile-body-name'),panelName])selectedTitleEditors.push(new SelectedTitleRename({
+    title,getEntry:()=>entries.get(selectedNode?.dataset.entryId),
+    enabled:()=>hierarchySidebar.narrow&&!constellationOverview&&!!selectedNode&&!document.querySelector('dialog[open]'),
+    onSave:renameEntry,onLayout(){closeContentMenus();closeContextMenu();cancelPendingBodyFocus();camera.stopAnimation();updateGraphViewport();}
+}));
+decorateInlineActions(document);
 addChildButton.addEventListener("click", () => {
     const id = addMenuTargetId;
     closeContentMenus();
@@ -2271,7 +2292,7 @@ document.getElementById('archive-galaxy-form').addEventListener('submit',async e
     }
     if(contentInspector.hasJobs(ids)){showArchiveError('Wait for the current file action to finish before archiving.');return;}
     if(ids.has(contentInspector.entryId)&&(!contentInspector.notesForm.hidden||!contentInspector.linkForm.hidden||!contentInspector.locationForm.hidden)){
-        showArchiveError('Save or cancel the open note, bookmark or location before archiving.');return;
+        showArchiveError('Save or cancel the open note, link or location before archiving.');return;
     }
     const record={galaxyId:root.id,archivedAt:new Date().toISOString(),expandedIds:[...hierarchySidebar.expanded].filter(id=>ids.has(id))};
     const snapshot=getGalaxySnapshot();
@@ -2538,7 +2559,10 @@ document.addEventListener("pointerdown", (event) => {
 });
 
 initializeGalaxy();
+syncFirstUse(true);
 const sampleUtility = document.getElementById('sample-utility');
+// Explicit Sample mode remains available to development/tests via its URL.
+sampleUtility.hidden=!sampleMode;
 hierarchySidebar.mobileQuery.addEventListener('change', event => {
     if (event.matches) sampleUtility.open = false;
 });

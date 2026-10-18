@@ -13,7 +13,7 @@ def run_mobile_capture_checks(*, cdp, evaluate, check, wait_for, load, add, sele
     # validation, repository transaction and IndexedDB storage below.
     evaluate("""window.capturePickers=[];contentInspector.files.click=function(){capturePickers.push({accept:this.getAttribute('accept'),capture:this.getAttribute('capture'),multiple:this.multiple,label:this.getAttribute('aria-label')});};""")
     evaluate(f"toggleContentMenu(addMenu,hierarchySidebar.rows.get({json.dumps(owner)}).querySelector('.tree-add'),{json.dumps(owner)})")
-    check(evaluate("[...addMenu.querySelectorAll('button:not([hidden])')].map(b=>b.textContent).join('|')==='Add item|Add files|Add note|Add bookmark'"), 'desktop Add retains core actions without linked-item creation or empty-clipboard Paste')
+    check(evaluate("[...addMenu.querySelectorAll('button:not([hidden])')].map(b=>b.textContent).join('|')==='Add item|Add files|Add note|Add link'"), 'desktop Add retains core actions without linked-item creation or empty-clipboard Paste')
     evaluate("addMenu.querySelector('[data-add=files]').click()")
     check(evaluate("capturePickers.at(-1).accept===null&&capturePickers.at(-1).capture===null&&capturePickers.at(-1).multiple"), 'desktop Files keeps the ordinary multiple-file picker')
     evaluate("contentInspector.files.dispatchEvent(new Event('cancel'));closeInspector()")
@@ -60,7 +60,7 @@ def run_mobile_capture_checks(*, cdp, evaluate, check, wait_for, load, add, sele
     check(evaluate("addMenu.hidden&&document.activeElement.id==='entry-add-button'&&document.activeElement.getAttribute('aria-expanded')==='false'"), 'Contents menu Escape restores its header + and clears expanded state')
     tap('#entry-add-button'); tap('#entry-add-button')
     check(evaluate('addMenu.hidden'), 'Contents + toggles the shared Add menu closed on a second tap')
-    check(evaluate("['files','media','bookmark','location'].every((kind,i)=>document.getElementById('content-add-'+kind).textContent===['Add file','Add media','Add link…','Add location…'][i])"), 'mobile section entry points use the approved explicit add wording')
+    check(evaluate("['files','media','bookmark','location'].every((kind,i)=>document.getElementById('content-add-'+kind).textContent===['Add file…','Add media','Add link…','Add location…'][i])"), 'mobile section entry points use the approved explicit add wording')
     shot('mobile-capture-390-contents-header')
     tap('#content-browse-add-file')
     check(evaluate("capturePickers.at(-1).accept===null&&capturePickers.at(-1).capture===null&&capturePickers.at(-1).multiple&&addMenu.hidden&&!panel.hidden"), 'Add file retains its original section-specific picker without opening the body Add menu')
@@ -138,7 +138,7 @@ def run_mobile_capture_checks(*, cdp, evaluate, check, wait_for, load, add, sele
     evaluate('imageViewer.dialog.close()')
     evaluate("contentInspector.upload([new File(['blocked'],'unsafe.exe',{type:'image/jpeg'})])")
     wait_for('contentInspector.jobs.size===0')
-    check(evaluate("contentInspector.content().attachments.length===1&&contentInspector.status.textContent.includes('Executable')"), 'capture does not bypass executable restrictions; failure leaves existing photo intact')
+    check(evaluate("contentInspector.content().attachments.length===1&&!contentInspector.status.hidden&&contentInspector.status.dataset.error==='true'&&contentInspector.status.textContent.includes('Executable')"), 'capture does not bypass executable restrictions; failure leaves existing photo intact')
     # Unsupported native HEIF decode must remain a recoverable original.
     evaluate("window.originalBitmap=createImageBitmap;window.createImageBitmap=()=>Promise.reject(Error('unsupported HEIF'));contentInspector.upload([new File(['original HEIF bytes'],'original.heic',{type:'image/heic'})])")
     wait_for('contentInspector.jobs.size===0&&contentInspector.content().attachments.length===2')

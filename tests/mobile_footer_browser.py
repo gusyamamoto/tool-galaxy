@@ -84,18 +84,14 @@ def run_mobile_footer_checks(*, cdp, evaluate, check, wait_for, add, shot, basel
                     check(all(row is None for row in grid['rows'][1:]),'collapsed branch hides descendants without flattening them: '+label)
                 shot('navigation-grid-'+label+('-expanded' if expanded else '-collapsed'))
             check(layout['footer']['height']<=52,'utilities occupy one compact row: '+label)
-            check(all(layout[key]['height']>=44 and layout[key]['width']>=44 for key in ['help','backup','account','sample']),'all utility targets remain at least 44px: '+label)
-            check(len({layout[key]['y'] for key in ['help','backup','account','sample']})==1,'Help, Backup, Account and development disclosure share one row: '+label)
+            check(all(layout[key]['height']>=44 and layout[key]['width']>=44 for key in ['help','backup','account']),'all utility targets remain at least 44px: '+label)
+            check(len({layout[key]['y'] for key in ['help','backup','account']})==1,'Help, Backup and Account share one row: '+label)
             check(layout['collections']['bottom']<=layout['footer']['y'],'footer does not overlap Constellations: '+label)
-            check(evaluate("getComputedStyle(document.querySelector('.sample-utility-label')).display==='none'&&!document.getElementById('sample-utility').open"),'Sample data is absent from primary footer labels and starts behind disclosure: '+label)
+            check(evaluate("sampleUtility.hidden&&!sampleUtility.checkVisibility()"),'normal footer exposes no development disclosure: '+label)
             for selector,dialog,close in [('#help-button','help-dialog','#close-help-button'),('#backup-button','backup-dialog','#cancel-backup'),('#account-button','account-dialog','#account-close')]:
                 tap(selector);wait_for(f"document.getElementById('{dialog}').open")
                 check(evaluate(f"document.getElementById('{dialog}').open"),'existing utility dialog opens via touch '+selector+': '+label)
                 tap(close);wait_for(f"!document.getElementById('{dialog}').open")
-            tap('#sample-utility summary');wait_for("document.getElementById('sample-utility').open")
-            check(evaluate("""(()=>{const c=document.getElementById('sample-controls').getBoundingClientRect(),s=hierarchySidebar.sidebar.getBoundingClientRect(),f=document.getElementById('sidebar-utilities').getBoundingClientRect(),b=document.getElementById('load-sample-button').getBoundingClientRect();return c.width>0&&c.left>=s.left&&c.right<=s.right&&c.top>=s.top&&c.bottom<=f.top&&b.height>=44&&b.top>=0&&b.bottom<=innerHeight;})()"""),'existing sample controls open above footer and remain reachable: '+label)
-            shot('footer-development-'+label)
-            tap('#sample-utility summary');wait_for("!document.getElementById('sample-utility').open")
             # Short landscape retains the existing scrollable drawer. Reach its
             # end to include the footer's bottom margin, not just the last button.
             evaluate('hierarchySidebar.sidebar.scrollTop=hierarchySidebar.sidebar.scrollHeight')
@@ -105,8 +101,8 @@ def run_mobile_footer_checks(*, cdp, evaluate, check, wait_for, add, shot, basel
         else:
             evaluate(f"{json.dumps(branch)}.forEach(id=>hierarchySidebar.expanded.add(id));hierarchySidebar.render()")
             marker_scale(label,False)
-            check(layout['help']['y']<layout['backup']['y']<layout['account']['y']<layout['sample']['y'],'desktop keeps its stacked utilities')
-            check(evaluate("getComputedStyle(document.querySelector('.sample-utility-label')).display!=='none'&&getComputedStyle(document.querySelector('.sample-utility-overflow')).display==='none'"),'desktop retains Sample data disclosure label')
+            check(layout['help']['y']<layout['backup']['y']<layout['account']['y'],'desktop keeps its stacked utilities')
+            check(evaluate("sampleUtility.hidden&&!sampleUtility.checkVisibility()"),'desktop normal footer also hides development controls')
     if not baseline:
         personal=evaluate("localStorage.getItem('galaxy:user-data')")
         evaluate('loadSampleButton.click()')

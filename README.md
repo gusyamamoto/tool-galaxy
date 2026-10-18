@@ -19,7 +19,7 @@ file containing saved data, uploaded files/media and thumbnails. It is local and
 read-only. **Restore backup** validates a selected file, previews its contents,
 then asks before replacing this browser's Cosmos. See [Local backup](docs/local-backup.md).
 
-Each canonical item can have one optional **Location**, shown after Bookmarks
+Each canonical item can have one optional **Location**, shown after Links
 in the Content panel. Tap **Add location…** to enter a place name or address;
 Enter/Save stores trimmed text, and Escape/Cancel keeps the previous value.
 Edit and Remove stay beside the saved location. Removal follows the same
@@ -61,7 +61,7 @@ core or canonical sidebar row. A quiet outline marks the target. Files reuse
 the existing validation, IndexedDB/attachment-store transaction and cleanup;
 addresses reuse bookmark normalization. Drops select/show the destination
 without camera framing, changing physics, or altering an active Constellation.
-The Files and Bookmarks actions remain the keyboard/mobile alternatives.
+The Files and Links actions remain the keyboard/mobile alternatives.
 During an external file/link drag, holding over a collapsed canonical sidebar
 row for 600ms spring-opens it without selecting it or moving the camera. Repeat
 to browse deeper; branches remain open in the ordinary sidebar expansion state.
@@ -89,7 +89,7 @@ empty independent hierarchies, naming, persistence, recovery and Sample isolatio
 - **Add:** each hierarchy row has a small **+**, shown on hover/focus on desktop
   and on the selected/focused row in the mobile drawer. Mobile offers Take Photo,
   Photo Gallery and Add item; desktop retains Add item, contextual Paste,
-  Add files, Add note and Add bookmark for that row.
+  Add files, Add note and Add link for that row.
   Opening the menu does not select or navigate first. New Galaxy remains
   under the Universe heading +; Search has no global contextual +.
 - **Add item:** use **+ → Add item**. The parent
@@ -174,9 +174,11 @@ empty independent hierarchies, naming, persistence, recovery and Sample isolatio
   The generic More container, sidebar Fit, permanent count/zoom diagnostics and
   pan/zoom instructions are removed. Canvas Fit uses the same existing handler;
   internal count/zoom elements remain hidden for debug/test access. A separate,
-  quiet Sample data disclosure at the bottom exposes Load Sample when requested
-  and opens automatically in Sample mode with Leave Sample. Sample changes never
-  write real data or navigation preferences.
+  development-only Sample utility is hidden in normal navigation. Explicit
+  `?sample=large` mode retains Load/Leave Sample for local testing, without
+  writing real data or navigation preferences. A genuinely new, empty Universe
+  opens navigation with a subtle Start here cue beside Universe +. No starter
+  or Sample data is created automatically; the cue retires after the first item.
   Toggle navigation beside the title to reclaim canvas space; a small reopen
   control remains when it is closed. Drag its
   right edge to resize, or focus the separator and use Left/Right/Home/End.
@@ -191,7 +193,7 @@ empty independent hierarchies, naming, persistence, recovery and Sample isolatio
   name, **•••** beside the title, and Close at the top-right. Long breadcrumb names
   use ellipsis; deep paths keep all clickable ancestors available through horizontal
   scrolling, initially showing the nearest ancestors. Media appears when photos/videos are attached, followed
-  by Files, read-first Notes and Bookmarks. Item management is
+  by Files, read-first Notes and Links. Item management is
   available under **••• → Rename**, **Move / change parent**, and **Delete item**.
   On mobile it becomes a bottom sheet; opening navigation closes it, and selecting
   from navigation switches back to Contents. Right-click updates selection and
@@ -289,15 +291,15 @@ display and with a large real Galaxy before committing.
 ## Mobile interaction polish
 
 Navigation is labeled **Universe**; the canonical hierarchy is unchanged. On
-touch layouts each Constellation row has one overflow button for Add entry,
-Rename and Delete Constellation. The section-level creation + remains, and
-desktop retains its faster row +. Empty Bookmarks accepts a URL directly in
-“Paste a link…”: Enter saves, or use the small Save action shown for valid URLs.
-Titles are optional; untitled bookmarks display their domain. Existing bookmarks
-retain the read-first list and secondary edit/remove actions. Storage stays v5.
-Mobile Links begins with **Add link…**, which reveals a full-width 16px input
-above **Save / Cancel**. Common text actions have contained surfaces and centered
-labels in 44px targets. Desktop field sizing remains unchanged.
+all layouts each Constellation row exposes a direct **+** for the existing staged
+member picker, alongside management **…** for Rename/Delete. Mobile
+Constellation detail shares Contents' adaptive sheet cap and safe-area handling.
+Empty Files, Notes, Links and Location use direct **Add file…**, **Add note…**,
+**Add link…** and **Add location…** rows. Inline editors share explicit
+**Save / Cancel** actions. Keyboard-open mobile layouts scroll the fields while
+keeping actions above the keyboard; extremely short keyboard viewports temporarily
+hide page tabs. Internal bookmark fields, validation and v5 storage are unchanged.
+See [first-user readiness](docs/first-user-readiness.md) for the focused checks.
 
 Wheel zoom uses normalized pixel deltas with a 0.0024 response (previously
 0.0018), a 1.15 multiplier for Ctrl-wheel trackpad pinch, and a capped 0.42
@@ -330,7 +332,9 @@ neighboring icons/text. Closing navigation clears all floating menus.
 Mobile Contents uses intrinsic active-page height with a 200px minimum capped by
 the prior Browse maximum: `min(max(280px, visibleHeight × .38), visibleHeight × .60)`.
 Overflow scrolls between the header and the persistent Files/Notes/Links/Location
-dock. There is no third Full state. The active
+dock. Mobile inline editors use accessible checkmark/cross Save/Cancel controls
+inside their field container; selected Preview/Contents titles support guarded
+tap-to-rename through the existing rename validation. The active
 Constellation strip has less surrounding spacing while retaining 44px touch
 targets. Constellation overviews retain their 58dvh portrait / 72dvh short
 landscape limits. Sheets scroll independently from the
@@ -650,7 +654,7 @@ Every canonical entry, at every depth, can hold an optional `content` object:
 ```
 
 The contextual **Content panel** shows Media (when photos/videos are attached),
-Files, Notes and Bookmarks. Media is one dark inset observation surface with a
+Files, Notes and Links. Media is one dark inset observation surface with a
 fine border and quiet corner marks. One attachment uses a compact 148px-high wide
 preview; multiple attachments use an orderly two-column layout with 104px previews.
 There are no generated image labels, captions or filename rows. Video previews show
@@ -659,11 +663,11 @@ dimensions and video duration remain secondary in the unified viewer's Info.
 PDFs, Office documents, archives, text and other generic attachments stay in Files.
 This uses the same attachment metadata and binary store. Media is hidden when empty;
 other empty sections remain quiet. Sidebar + retains
-the universal contextual Add menu. Media, Files and Bookmarks have a quiet heading
-`+` shortcut; clicking **No notes** opens the single existing note editor. These
-reuse `chooseFiles()`, `editNotes()` and `editLink()`, targeting the selected
-canonical entry even after Portal navigation. Heading shortcuts appear on desktop
-section hover/focus and use small icons with padded 44px targets on mobile.
+the universal contextual Add menu. Empty Files, Notes, Links and Location have
+visible direct-entry rows; no hover is needed. These reuse `chooseFiles()`,
+`editNotes()` and the existing link/location editors for the selected canonical
+item, including after historical linked-item navigation. Populated Files retain
+an add row; Media retains its existing section action.
 They preserve the active Constellation, camera, physics heat and memberships;
 storage remains unchanged. Existing Notes have a small edit icon, and files/bookmarks have overflow actions
 instead of permanent management buttons. These actions remain visible on touch
@@ -1261,7 +1265,7 @@ mobile targets, preference reloads and the isolated Sample utility.
 
 ### Help
 
-The quiet **? Help** beside Sample data at the bottom of the sidebar opens local Help.
+The quiet **? Help** beside Backup and Account at the bottom of the sidebar opens local Help.
 Five short, collapsible topics cover Getting around, Organizing things,
 Moving & copying, Constellations, and Locations. All begin closed, so the first
 screen shows only the short intro and topic list. Small examples explain nested

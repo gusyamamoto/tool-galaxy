@@ -135,7 +135,7 @@ def run_body_actions_checks(*, cdp, evaluate, check, wait_for, add, shot):
     evaluate(f'openContextMenu({q(root)},300,150)')
     check(labels()==full[:-1]+['Archive Galaxy','Delete item'],'full Galaxy management preserves Archive Galaxy')
     evaluate(f'copyHierarchyItems([{q(other)}]);closeContextMenu();toggleContentMenu(addMenu,moreButton,{q(owner)})')
-    check(evaluate("[...addMenu.querySelectorAll('button:not([hidden])')].map(b=>b.textContent).join('|')==='Add item|Paste|Add files|Add note|Add bookmark'"),'desktop Add retains independent-copy Paste without linked-item creation')
+    check(evaluate("[...addMenu.querySelectorAll('button:not([hidden])')].map(b=>b.textContent).join('|')==='Add item|Paste|Add files|Add note|Add link'"),'desktop Add retains independent-copy Paste without linked-item creation')
     shot('desktop-add-mvp')
     evaluate("addMenu.querySelector('[data-add=paste]').click()")
     check(evaluate('pasteDialog.open&&pasteLink.hidden&&!pasteCopy.disabled&&!/Link existing|Portal/.test(pasteDialog.innerText)'), 'desktop Paste offers only the existing independent-copy confirmation after a mobile opening')

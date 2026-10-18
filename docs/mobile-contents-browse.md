@@ -3,13 +3,17 @@
 Mobile has two persistent presentation states over the existing inspector:
 
 - **Compact:** the selected-body card. Body taps select without opening Contents. Its centered upward chevron or an upward swipe opens Contents.
-- **Contents / Browse:** a content-sized sheet with a Files / Notes / Links / Location dock. Its centered downward chevron or an eligible downward swipe returns to Compact.
+- **Contents / Browse:** a content-sized sheet with a Files / Notes / Links / Location dock. Its centered downward chevron or a downward header swipe returns to Compact.
 
-There is no mobile Full state or expand-to-Full control. Add, edit and save stay in Contents, on the active page and inspected body; opening a form can naturally grow the same sheet within its cap. Overflow scrolls within the page. Existing dedicated image/file viewers remain available; notes use the existing inline editor. Desktop keeps its complete inspector and original section order, actions and wording.
+Compact and Contents are the only mobile states. Add, edit and save stay on the
+active page and inspected body. Contents always uses adaptive medium-height
+sizing and internal overflow; there is no separate workspace control. Existing
+dedicated image/file viewers remain available. Desktop keeps its complete
+inspector and section order, with shared Links terminology and Save/Cancel text.
 
 Contents uses intrinsic active-page height, with a 200px minimum (limited by the maximum on short screens). Its maximum retains the previous Browse height: `min(max(280px, visibleHeight × .38), visibleHeight × .60)`. Empty pages release the unused canvas; saved content and editors grow the sheet only as needed. Beyond the cap, content scrolls while the header and dock remain outside the scroller. The visual viewport/keyboard changes the available height without adding another presentation state.
 
-Pages align their content to the top, using the same 24px heading and 44px add row. A sheet-border ResizeObserver refreshes shared usable-canvas geometry after page/body switches, content changes and late media loads; it never writes a height or triggers camera framing. There is no resize animation or continuous sizing loop. The bottom dock remains 45px including its divider, with 44px hit targets around a lighter 32px active surface and unchanged 12px labels. The sheet retains a 4px bottom gutter or the full device safe-area inset, whichever is larger. Desktop and Compact spacing are unchanged.
+Pages align their content to the top, using the same 24px heading and 44px add row. A sheet-border ResizeObserver refreshes shared usable-canvas geometry after page/body switches, content changes and late media loads; it never writes a height or triggers camera framing. Intrinsic adaptive sizing has no resize animation or continuous sizing loop. The bottom dock remains 45px including its divider, with 44px hit targets around a lighter 32px active surface and unchanged 12px labels. The sheet retains a 4px bottom gutter or the full device safe-area inset, whichever is larger. Desktop and Compact spacing are unchanged.
 
 ## Pages and controls
 
@@ -26,7 +30,14 @@ The active Browse page persists across body selection and sheet transitions. Tap
 
 Files presents existing attachments and Media under one heading, reusing the file picker and attachment pipeline. The celestial-body Add menu still supplies Take Photo, Photo Library / Gallery and Files with their existing routing. Notes opens the existing single-note editor, including when a note already exists. Links uses the existing bookmark input with its Paste-a-link placeholder and validation. Location reuses its entry and saved-location controls. Entry forms replace their add row while active; saved content retains its existing edit/remove behavior. There are no new content types or mobile storage models.
 
-Mobile editors use generic **Save / Cancel** labels. Save, Cancel, Edit and Remove share 44px targets, 5px corners, 12px text and 8px/12px padding. A faint 1px edge, shaded surface, inset highlight and small shadow give secondary actions a contained button feel; Save has stronger surface/edge emphasis and Remove a muted destructive text color. Labels use explicit flex centering in both axes, including saved Link menu actions and populated Location controls. Action rows use an 8px gap; Google Maps remains a link. Fields are full-width, border-box and at least 16px text; the quick Link form places its field above its buttons. Other action rows wrap safely. Links keeps **Add link…** and **Paste a link…** entry wording; Location keeps **Add location…** and **Place or address**. Desktop restores its original contextual save wording and layout.
+Mobile editors use accessible **Save / Cancel** checkmark/cross actions within
+the field container. Their 44px targets remain outside the text scroller in a
+reserved 88px column; inputs and textareas never run underneath them. Notes,
+Link add/edit and Location use the same geometry and focus treatment. Existing
+validation and persistence handlers remain, and Google Maps stays a link.
+Desktop retains its contained Save/Cancel text buttons. Selected mobile titles
+also support inline rename through this action treatment, with an 8px clean-tap
+guard and the existing rename validation. Canvas/tree labels are unchanged.
 
 Compact and Contents share the `cb-action-button` treatment: 44px tap targets around 36px visible surfaces, with identical centered 18px SVG plus/three-dot icons, 6px pair spacing and subtle border/focus/active treatment. Mobile icon geometry does not depend on glyph baselines or letter spacing. Desktop retains its original text glyphs and styling. Names truncate before the buttons; centered sheet chevrons remain separate controls. Menu contents and semantics are unchanged.
 
@@ -34,7 +45,7 @@ Compact and Contents share the `cb-action-button` treatment: 44px tap targets ar
 
 Gestures originate only on the compact card or inspector. The existing 10px dead zone, 1.5 axis ratio and 64px completion distance remain. A clear horizontal swipe on noninteractive Browse content selects the adjacent page without wrapping. Dock taps also reach every page; arrow keys, Home and End navigate the dock.
 
-Buttons, links, inputs, media controls and editable fields own their gestures. The sheet chevrons are exceptions for vertical gestures only. Nested horizontal scrollers own horizontal motion. Upward motion inside open Contents scrolls or does nothing on the handle; it cannot expand to another state. Downward collapse requires relevant scrollers to be at the top, including the page scroller when starting on the handle. Ambiguous motion, multitouch, cancellation, selection/state changes and desktop input do not complete sheet gestures. Short opening/closing animations respect reduced motion.
+Buttons, links, inputs, media controls and editable fields own their gestures. The sheet chevrons are exceptions for navigation gestures only. Nested horizontal scrollers own horizontal motion. Vertical content-origin gestures always belong to scrolling, including at the top of the content. Compact's upward handle swipe opens normal Contents; normal Contents' downward header swipe returns directly to Compact. Upward Contents swipes do nothing. Selected-title tap detection yields to movement; active title editor fields/actions own their gestures. Header gestures do not depend on the separate content scroller's position. Active editors retain their field/list/blank-space gesture ownership. Ambiguous motion, multitouch, cancellation, selection/state changes and desktop input do not complete sheet gestures. Short opening/closing animations respect reduced motion.
 
 ## Bounds for later framing work
 

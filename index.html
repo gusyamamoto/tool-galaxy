@@ -56,7 +56,7 @@
                 </div>
             </div>
             <section id="universe-section" aria-labelledby="universe-heading">
-                <header class="sidebar-section-header"><h2 id="universe-heading" class="sidebar-section-title universe-heading-controls"><button id="universe-toggle" class="sidebar-section-toggle" type="button" aria-controls="hierarchy-tree" aria-expanded="true" aria-label="Collapse Universe"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m6 4 4 4-4 4"/></svg></button><button id="universe-home" class="sidebar-section-toggle" type="button" aria-label="Return to Universe overview">Universe</button></h2><button id="add-entry-button" type="button" class="collection-add" aria-label="New Galaxy" title="New Galaxy">+</button></header>
+                <header class="sidebar-section-header"><h2 id="universe-heading" class="sidebar-section-title universe-heading-controls"><button id="universe-toggle" class="sidebar-section-toggle" type="button" aria-controls="hierarchy-tree" aria-expanded="true" aria-label="Collapse Universe"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m6 4 4 4-4 4"/></svg></button><button id="universe-home" class="sidebar-section-toggle" type="button" aria-label="Return to Universe overview">Universe</button></h2><span id="first-use-cue" hidden>Start here</span><button id="add-entry-button" type="button" class="collection-add" aria-label="New Galaxy" title="New Galaxy">+</button></header>
                 <div id="hierarchy-tree" role="tree" aria-label="Cosmos Universe navigation"></div>
             </section>
             <section id="constellations-section" aria-labelledby="constellations-heading">
@@ -71,7 +71,7 @@
             <button id="help-button" type="button" aria-label="Help" title="Help" aria-haspopup="dialog" aria-controls="help-dialog"><span aria-hidden="true">?</span> Help</button>
             <button id="backup-button" type="button" title="Back up Cosmifold" aria-haspopup="dialog" aria-controls="backup-dialog">Backup</button>
             <button id="account-button" type="button" aria-haspopup="dialog" aria-controls="account-dialog">Sign in</button>
-            <details id="sample-utility">
+            <details id="sample-utility" hidden>
                 <summary><span class="sample-utility-label">Sample data</span><span class="sample-utility-overflow"><span aria-hidden="true">⋯</span><span class="visually-hidden">Development tools</span></span></summary>
                 <aside id="sample-controls" aria-label="Sample controls">
                     <span><strong id="sample-mode-label">Sample data</strong> <span id="sample-mode-count">Example items</span></span>
@@ -111,38 +111,37 @@
                     <ul id="content-media"></ul>
                 </section>
                 <section id="content-files-section" class="contents-section" data-contents-page="files" aria-labelledby="files-heading">
-                    <header class="content-heading"><h3 id="files-heading">Files</h3><button id="content-add-files" class="quiet-icon content-section-add content-section-action" type="button" aria-label="Add file" title="Add file">Add file</button></header>
+                    <header class="content-heading"><h3 id="files-heading">Files</h3></header>
                     <button id="content-browse-add-file" class="contents-page-add" type="button" hidden>Add file…</button>
                     <input id="content-files" type="file" multiple hidden aria-label="Choose files">
                     <ul id="content-attachments"></ul>
-                    <p id="content-files-empty" class="content-empty">No files</p>
+                    <p id="content-files-empty" class="content-empty"><button id="content-add-files" class="contents-page-add content-inline-entry" type="button">Add file…</button></p>
                     <small id="content-file-limit" hidden></small>
                 </section>
                 <section id="content-notes-section" class="contents-section" data-contents-page="notes" aria-labelledby="notes-heading">
                     <header class="content-heading"><h3 id="notes-heading">Notes</h3><button id="content-edit-notes" class="quiet-icon" type="button" aria-label="Edit note" title="Edit note" hidden><svg viewBox="0 0 20 20" aria-hidden="true"><path d="m12 4 4 4M4 12l9-9a2 2 0 0 1 3 3l-9 9-4 1z"/></svg></button></header>
                     <button id="content-browse-add-note" class="contents-page-add" type="button" hidden>Add note…</button>
-                    <button id="content-notes-empty" class="content-empty content-empty-action" type="button" aria-label="Add note" title="Add note">No notes</button>
+                    <button id="content-notes-empty" class="content-empty content-empty-action content-inline-entry" type="button" aria-label="Add note" title="Add note">Add note…</button>
                     <p id="content-notes-view" hidden></p>
-                    <form id="content-notes-form" hidden>
+                    <form id="content-notes-form" class="inline-editor" hidden><div class="inline-editor-fields">
                     <label class="visually-hidden" for="content-notes">Notes</label>
-                    <textarea id="content-notes" rows="4" placeholder="Write a note"></textarea>
-                    <div class="content-row-actions"><button type="submit">Save note</button><button id="content-cancel-notes" type="button">Cancel</button></div>
+                    <textarea id="content-notes" rows="4" placeholder="Write a note…"></textarea>
+                    </div><div class="content-row-actions inline-editor-actions"><button type="submit">Save</button><button id="content-cancel-notes" type="button">Cancel</button></div>
                     </form>
                 </section>
                 <section id="content-links-section" class="content-inline-section contents-section" data-contents-page="links" aria-labelledby="bookmarks-heading">
-                <header class="content-heading"><h3 id="bookmarks-heading">Bookmarks</h3></header>
+                <header class="content-heading"><h3 id="bookmarks-heading">Links</h3></header>
                 <ul id="content-links"></ul>
-                <p id="content-bookmarks-placeholder" class="content-empty"><button id="content-add-bookmark" class="content-inline-entry contents-page-add" type="button">Paste a link…</button></p>
-                <form id="content-bookmarks-empty" class="quick-bookmark" hidden>
-                    <label for="content-quick-bookmark-url" class="visually-hidden">Bookmark address</label>
-                    <input id="content-quick-bookmark-url" type="text" inputmode="url" required maxlength="2048" placeholder="Paste a link..." autocomplete="url" aria-label="Bookmark address">
-                    <button id="content-quick-bookmark-save" type="submit" hidden>Save bookmark</button>
-                    <button id="content-cancel-quick-bookmark" type="button">Cancel</button>
+                <p id="content-bookmarks-placeholder" class="content-empty"><button id="content-add-bookmark" class="content-inline-entry contents-page-add" type="button">Add link…</button></p>
+                <form id="content-bookmarks-empty" class="quick-bookmark inline-editor" hidden><div class="inline-editor-fields">
+                    <label for="content-quick-bookmark-url" class="visually-hidden">Link address</label>
+                    <input id="content-quick-bookmark-url" type="text" inputmode="url" required maxlength="2048" placeholder="Paste a link…" autocomplete="url" aria-label="Link address">
+                    </div><div class="content-row-actions inline-editor-actions"><button id="content-quick-bookmark-save" type="submit">Save</button><button id="content-cancel-quick-bookmark" type="button">Cancel</button></div>
                 </form>
-                <form id="content-link-form" hidden>
-                    <label for="content-link-url">Address</label><input id="content-link-url" type="text" inputmode="url" required maxlength="2048" placeholder="example.com" autocomplete="url">
+                <form id="content-link-form" class="inline-editor" hidden><div class="inline-editor-fields">
+                    <label for="content-link-url">Address</label><input id="content-link-url" type="text" inputmode="url" required maxlength="2048" placeholder="Paste a link…" autocomplete="url">
                     <label for="content-link-title">Title (optional)</label><input id="content-link-title" type="text" maxlength="200">
-                    <div class="content-row-actions"><button type="submit">Save bookmark</button><button id="content-cancel-link" type="button">Cancel</button></div>
+                    </div><div class="content-row-actions inline-editor-actions"><button type="submit">Save</button><button id="content-cancel-link" type="button">Cancel</button></div>
                 </form>
                 </section>
                 <section id="content-location-section" data-contents-page="location" class="content-inline-section contents-section" aria-labelledby="location-heading">
@@ -156,10 +155,10 @@
                             <button id="content-remove-location" type="button">Remove</button>
                         </div>
                     </div>
-                    <form id="content-location-form" hidden>
+                    <form id="content-location-form" class="inline-editor" hidden><div class="inline-editor-fields">
                         <label for="content-location-input">Place or address</label>
-                        <input id="content-location-input" type="text" required maxlength="1000" autocomplete="off">
-                        <div class="content-row-actions"><button type="submit">Save location</button><button id="content-cancel-location" type="button">Cancel</button></div>
+                        <input id="content-location-input" type="text" required maxlength="1000" autocomplete="off" placeholder="Place or address…">
+                        </div><div class="content-row-actions inline-editor-actions"><button type="submit">Save</button><button id="content-cancel-location" type="button">Cancel</button></div>
                         <p id="content-location-error" role="status" hidden></p>
                     </form>
                 </section>
@@ -174,7 +173,6 @@
             <section id="constellation-content" hidden aria-label="Items in this Constellation">
                 <h3>In this Constellation</h3><ul id="constellation-member-list"></ul>
                 <p id="constellation-members-empty" class="content-empty">No items yet</p>
-                <button id="panel-add-member" type="button">+ Add item</button>
             </section>
             <p id="entry-action-status" role="status" hidden></p>
         </aside>
@@ -186,7 +184,7 @@
             <button type="button" role="menuitem" data-add="paste">Paste</button>
             <button type="button" role="menuitem" data-add="files">Add files</button>
             <button type="button" role="menuitem" data-add="note">Add note</button>
-            <button type="button" role="menuitem" data-add="bookmark">Add bookmark</button>
+            <button type="button" role="menuitem" data-add="bookmark">Add link</button>
         </div>
 
         <div id="entry-context-menu" role="menu" aria-label="Item actions" hidden>
@@ -204,7 +202,6 @@
             <button type="button" role="menuitem" data-action="delete">Delete item</button>
             <button type="button" role="menuitem" data-action="open-portal" data-portal-action hidden>Go to original</button>
             <button type="button" role="menuitem" data-action="remove-portal" data-portal-action hidden>Remove from here</button>
-            <button type="button" role="menuitem" data-action="collection-add" data-collection-context hidden>Add item</button>
             <button type="button" role="menuitem" data-action="collection-rename" data-collection-context hidden>Rename</button>
             <button type="button" role="menuitem" data-action="collection-delete" data-collection-context hidden>Delete Constellation</button>
             <div id="constellation-memberships" hidden></div>
@@ -505,6 +502,7 @@
     <script src="account-startup.js"></script>
     <script src="clipboard.js"></script>
     <script src="mobile-contents.js"></script>
+    <script src="inline-editing.js"></script>
     <script src="startup.js"></script>
 </body>
 </html>
