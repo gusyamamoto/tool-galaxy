@@ -213,7 +213,8 @@ class HierarchySidebar {
         add.setAttribute("aria-haspopup", "menu"); add.setAttribute("aria-controls", "add-menu"); add.setAttribute("aria-expanded", "false");
         const more = document.createElement('button'); more.type = 'button'; more.className = 'tree-more'; more.textContent = '…';
         more.setAttribute('aria-haspopup', 'menu'); more.setAttribute('aria-controls', 'entry-context-menu'); more.setAttribute('aria-expanded', 'false');
-        row.append(disclosure, icon, name, add, more);
+        const slot=document.createElement("span");slot.className="tree-disclosure-slot";slot.append(disclosure);
+        row.append(slot, icon, name, add, more);
         row.addEventListener('pointerdown',event=>{
             this.moveOriginBlocked=event.button!==0||event.pointerType==='touch'||!!event.target.closest('button,input');
             if(event.button===0&&(event.ctrlKey||event.metaKey||event.shiftKey)&&!event.target.closest('button,input'))event.preventDefault();

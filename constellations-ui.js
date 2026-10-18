@@ -11,7 +11,6 @@ class ConstellationWorkspace {
         document.addEventListener('pointerdown',event=>{document.querySelectorAll('#constellation-content .content-item-menu[open]').forEach(menu=>{if(!menu.contains(event.target))menu.open=false;});});
         this.picker=document.getElementById('constellation-picker-dialog');this.deleteDialog=document.getElementById('delete-constellation-dialog');
         document.getElementById('new-constellation-button').addEventListener('click',()=>this.openName());
-        document.getElementById('panel-add-member').addEventListener('click',()=>this.openPicker(this.getActive()));
         document.getElementById('rename-constellation-button').addEventListener('click',()=>this.openName(this.getActive()));
         document.getElementById('delete-constellation-button').addEventListener('click',()=>this.openDelete(this.getActive()));
         document.getElementById('constellation-name-form').addEventListener('submit',async event=>{event.preventDefault();await this.saveName();});
@@ -88,6 +87,8 @@ class ConstellationWorkspace {
         const focusId=focused?.dataset.entryId,focusIndex=focused?[...memberList.children].indexOf(focused):-1;
         const focusMenu=focused?.querySelector('details')?.contains(document.activeElement);
         document.getElementById('panel-name').textContent=collection.name;
+        const add=document.getElementById('entry-add-button');add.ariaLabel=add.title=`Add item to ${collection.name}`;
+        add.setAttribute('aria-haspopup','dialog');add.setAttribute('aria-controls','constellation-picker-dialog');
         const panelKind=document.getElementById('panel-kind');panelKind.textContent='Constellation';panelKind.hidden=false;
         const closeButton=document.getElementById('close-inspector-button');closeButton.setAttribute('aria-label','Deactivate Constellation');closeButton.title='Deactivate Constellation';
         document.getElementById('panel-ancestry').hidden=true;document.getElementById('panel-rich-content').hidden=true;
@@ -107,7 +108,7 @@ class ConstellationWorkspace {
         const empty=document.getElementById('constellation-members-empty');empty.hidden=visibleCount>0;
         empty.textContent=archivedCount?'These items are in archived Galaxies. Restore them from Archived Galaxies in the sidebar.':'No items yet';
         if(focusId){const row=[...list.children].find(row=>row.dataset.entryId===focusId)||list.children[Math.min(focusIndex,list.children.length-1)];
-            (row?.querySelector(focusMenu?'summary':'.constellation-member-name')||document.getElementById('panel-add-member')).focus({preventScroll:true});}
+            (row?.querySelector(focusMenu?'summary':'.constellation-member-name')||document.getElementById('entry-add-button')).focus({preventScroll:true});}
         this.onLayout();
     }
     path(id){return [...galaxyModel.ancestors(this.entries,id)].reverse().map(entry=>entry.name).join(' › ')||'Universe';}

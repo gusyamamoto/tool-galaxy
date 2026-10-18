@@ -52,7 +52,7 @@ def run_bookmark_entry_checks(*,cdp,evaluate,check,wait_for,add,shot,baseline=Fa
             check(all(all(abs(row[key]-first[key])<.6 for key in ['labelToRow','rowHeight','textLeft']) and row['font']==first['font'] for row in rhythm),'all four pages share heading/add-row rhythm and typography: '+label)
             check(first['rowHeight']>=44,'shared add rows retain comfortable touch targets: '+label)
             evaluate("mobileContents.setPage('links')")
-        expected='Add link…' if mobile else 'Paste a link…'
+        expected='Add link…'
         check(evaluate(f"contentInspector.quickBookmark.hidden&&contentInspector.linkForm.hidden&&document.getElementById('content-add-bookmark').textContent==={json.dumps(expected)}&&!document.getElementById('content-bookmarks-placeholder').hidden&&contentInspector.quickUrl.getClientRects().length===0"),'collapsed link entry stays lightweight without an unused input: '+label)
         check(evaluate("document.querySelectorAll('.content-inline-section > header button').length===0&&document.getElementById('content-add-location').textContent==='Add location…'"),'inline entry has no separate header Add controls: '+label)
         tap('#content-add-bookmark')

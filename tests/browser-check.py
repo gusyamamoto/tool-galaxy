@@ -177,6 +177,7 @@ def find_browser():
 def main():
     args = argparse.ArgumentParser()
     args.add_argument("--screenshots", action="store_true")
+    args.add_argument("--first-user-readiness-only", action="store_true", help="Check empty startup, stable hierarchy gutters, Constellation add/sizing, shared editors and keyboard viewport")
     args.add_argument("--auth-only", action="store_true", help="Check independent account flows, pending/error/recovery, local data and Backup/Restore isolation")
     args.add_argument("--cloud-boundary-only", action="store_true", help="Mocked development-only identity/Universe/REST/GraphQL privacy boundary")
     args.add_argument("--cloud-concurrency-only", action="store_true", help="Two-origin mocked Phase B revision/idempotency/cache fencing diagnostic")
@@ -231,6 +232,7 @@ def main():
     args.add_argument("--mobile-attachment-only", action="store_true", help="Check native file-input results, unavailable UUID/preview APIs, original storage and visible file errors")
     args.add_argument("--image-preview-only", action="store_true", help="Check image preview resolution at phone DPR 3, desktop and full-image viewing")
     args.add_argument("--mobile-body-only", action="store_true", help="Check body taps/drags keep mobile Contents closed and explicit preview opening")
+    args.add_argument("--mobile-inline-editors-only", action="store_true", help="Check two-state Contents, inline mobile actions and tap-safe selected-title rename")
     args.add_argument("--contents-browse-only", action="store_true", help="Check mobile Compact/Contents, inline add/save, page swipes and canvas inspection")
     args.add_argument("--mobile-fit-only", action="store_true", help="Check whole-system mobile framing in actual Compact/Contents/sidebar canvas bounds")
     args.add_argument("--contents-swipe-only", action="store_true", help="Check mobile card/sheet swipes, native scrolling and independent controls")
@@ -316,6 +318,7 @@ def main():
         origin = f"http://{'localhost' if options.static_hosting_only else '127.0.0.1'}:{server.server_port}"
         page_url = (options.site_root.resolve() / 'index.html').as_uri() if options.file_protocol else origin
         seed_condition = "location.protocol === 'file:'" if options.file_protocol else f"location.origin === {json.dumps(origin)}"
+        if options.first_user_readiness_only:seed_condition="false"
         legacy = {
             "version": 2,
             "entries": [
@@ -429,7 +432,7 @@ def main():
         def click_selector(selector, button='left'):
             # Labels can overlap the centers of nearby bodies. Use a point that
             # actually hits the requested element, rather than its neighbour.
-            point=evaluate(f"(()=>{{const selector={json.dumps(selector)},element=document.querySelector(selector),r=element.getBoundingClientRect();for(const fy of [.5,.25,.75,.1,.9])for(const fx of [.5,.25,.75,.1,.9]){{const x=r.x+r.width*fx,y=r.y+r.height*fy;if(document.elementFromPoint(x,y)?.closest(selector)===element)return {{x,y}};}}return {{x:r.x+r.width/2,y:r.y+r.height/2}};}})()")
+            point=evaluate(f"(()=>{{const selector={json.dumps(selector)},element=document.querySelector(selector);for(const target of [element,...element.querySelectorAll('.node-label')]){{const r=target.getBoundingClientRect();for(const fy of [.5,.25,.75,.1,.9])for(const fx of [.5,.25,.75,.1,.9]){{const x=r.x+r.width*fx,y=r.y+r.height*fy;if(document.elementFromPoint(x,y)?.closest(selector)===element)return {{x,y}};}}}}const r=element.getBoundingClientRect();return {{x:r.x+r.width/2,y:r.y+r.height/2}};}})()")
             if '.tree-add' in selector:
                 mouse('mouseMoved',**point)
             mouse('mousePressed',**point,button=button,clickCount=1)
@@ -472,6 +475,13 @@ def main():
 
         cdp.call("Page.navigate", url=page_url)
         load()
+        if options.first_user_readiness_only:
+            from first_user_readiness_browser import run_readiness_checks
+            def shot(name):
+                if screenshot_dir:
+                    result=cdp.call('Page.captureScreenshot',format='png',captureBeyondViewport=False);(screenshot_dir/(name+'.png')).write_bytes(base64.b64decode(result['data']))
+            run_readiness_checks(cdp=cdp,evaluate=evaluate,check=check,wait_for=wait_for,load=load,add=add,shot=shot)
+            print(f'{count} first-user readiness browser checks passed',flush=True);return
         if options.compatibility_only:
             expected = json.loads(old_raw)
             check(evaluate('storageAvailable&&storageStatus.hidden'), 'legitimate persisted v5 generic attachments launch without a warning')
@@ -1009,6 +1019,14 @@ def main():
             run_mobile_fit_checks(cdp=cdp,evaluate=evaluate,check=check,wait_for=wait_for,shot=shot)
             print(f'{count} mobile Fit browser checks passed',flush=True);return
 
+        if options.mobile_inline_editors_only:
+            from mobile_inline_editors_browser import run_inline_checks
+            def shot(name):
+                if screenshot_dir:
+                    result=cdp.call('Page.captureScreenshot',format='png',captureBeyondViewport=False);(screenshot_dir/(name+'.png')).write_bytes(base64.b64decode(result['data']))
+            run_inline_checks(cdp=cdp,e=evaluate,check=check,wait_for=wait_for,add=add,shot=shot)
+            print(f'{count} mobile inline editor browser checks passed',flush=True);return
+
         if options.contents_swipe_only or options.contents_browse_only:
             from mobile_contents_browser import run_contents_swipe_checks
             def shot(name):
@@ -1225,7 +1243,7 @@ def main():
                     result=cdp.call('Page.captureScreenshot',format='png',captureBeyondViewport=False);(screenshot_dir/(name+'.png')).write_bytes(base64.b64decode(result['data']))
             g=add('Photo trip');item=add('Photos',g);other=add('Keep',g)
             wait_for('physics.settled');wait_camera();evaluate('physics.pause()')
-            check(evaluate("!!document.getElementById('help-button').closest('#sidebar-utilities')&&!document.querySelector('.sidebar-brand #help-button')&&!!document.getElementById('sample-utility').closest('#sidebar-utilities')"),'Help is discoverable beside the separate bottom Sample utility')
+            check(evaluate("!!document.getElementById('help-button').closest('#sidebar-utilities')&&!document.querySelector('.sidebar-brand #help-button')&&!!document.getElementById('sample-utility').closest('#sidebar-utilities')"),'Help remains directly accessible in the bottom utility area')
             shot('usability-sidebar')
             click_selector('#help-button');check(evaluate("document.getElementById('help-dialog').open"),'bottom Help opens its existing modal');key('Escape','Escape');wait_for("!document.getElementById('help-dialog').open")
             check(evaluate("document.activeElement.id==='help-button'"),'Help returns focus to its new bottom trigger')
@@ -1437,7 +1455,7 @@ def main():
 
         if options.deep_readability_only:
             original=evaluate("localStorage.getItem('galaxy:user-data')")
-            evaluate("document.getElementById('sample-utility').open=true");click_selector('#load-sample-button')
+            evaluate('loadSampleButton.click()')
             wait_for("typeof sampleMode!=='undefined'&&sampleMode&&entries.size===282")
             evaluate('physics.pause();physics.simulation.tick(450);physics.onTick(physics.particles)')
             geometry=evaluate('JSON.stringify([...physics.particles].map(([id,n])=>[id,n.x,n.y,n.radius,n.orbitRadius,n.familyFootprint,n.softBandIndex]))')
@@ -1480,7 +1498,7 @@ def main():
         if options.territory_review_only or options.close_tuning_only or options.band_corridors_only:
             baseline=options.capture_baseline
             real_raw=evaluate("localStorage.getItem('galaxy:user-data')")
-            evaluate("document.getElementById('sample-utility').open=true");click_selector('#load-sample-button')
+            evaluate('loadSampleButton.click()')
             wait_for("document.readyState==='complete'&&typeof sampleMode!=='undefined'&&sampleMode&&entries.size===282")
             evaluate('physics.pause();physics.simulation.tick(450);physics.onTick(physics.particles)')
             def shot(name):
@@ -1632,7 +1650,7 @@ def main():
 
         if options.body_size_review_only:
             real_raw=evaluate("localStorage.getItem('galaxy:user-data')")
-            evaluate("document.getElementById('sample-utility').open=true");click_selector('#load-sample-button')
+            evaluate('loadSampleButton.click()')
             wait_for("document.readyState==='complete'&&typeof sampleMode!=='undefined'&&sampleMode&&entries.size===282")
             evaluate('physics.pause();physics.simulation.tick(250);physics.onTick(physics.particles)')
             frozen=evaluate('JSON.stringify([...physics.particles].map(([id,n])=>[id,n.x,n.y,n.orbitRadius,n.softBandIndex]))')
@@ -1676,7 +1694,7 @@ def main():
             evaluate("contentInspector.upload([new File(['Personal attachment marker'],'personal-marker.txt',{type:'text/plain'})])");wait_for('contentInspector.jobs.size===0')
             personal_key=evaluate('contentInspector.content().attachments[0].storageKey')
             evaluate('saveGalaxy()');real_raw=evaluate("localStorage.getItem('galaxy:user-data')")
-            evaluate("document.getElementById('sample-utility').open=true");click_selector('#load-sample-button')
+            evaluate('loadSampleButton.click()')
             wait_for("document.readyState==='complete'&&typeof sampleMode!=='undefined'&&sampleMode&&entries.size===282")
             check(evaluate(f"!entries.has({json.dumps(marker)})&&entries.size===282"),'Sample enters cleanly with 282 temporary canonical items')
             for kind,total,parent in [('planet',25,'sample-sun-0'),('satellite',30,'sample-moon-0-0-0'),('astronaut',40,'sample-satellite-0-0-0-0')]:
@@ -2145,7 +2163,7 @@ def main():
             evaluate(f"closeContextMenu();selectEntry(entries.get({json.dumps(target)}),nodes.get({json.dumps(target)}),{{reframe:false}})")
             open_picker()
             check(evaluate(f"portalDialog.matches(':modal')&&portalParentId==={json.dumps(parent)}&&portalTargetId===null&&document.getElementById('create-portal').disabled&&document.activeElement.id==='portal-parent-search'"),'retained internal compatibility picker is focused and destination-bound')
-            check(evaluate("[...addMenu.querySelectorAll('button:not([hidden])')].map(b=>b.textContent).join('|')==='Add item|Add files|Add note|Add bookmark'"),'desktop retains organization/content shortcuts and hides empty-clipboard Paste')
+            check(evaluate("[...addMenu.querySelectorAll('button:not([hidden])')].map(b=>b.textContent).join('|')==='Add item|Add files|Add note|Add link'"),'desktop retains organization/content shortcuts and hides empty-clipboard Paste')
             check(evaluate("portalPicker.list.getAttribute('role')==='tree'&&[...portalPicker.list.querySelectorAll('[data-entry-id]')].every(n=>entries.has(n.dataset.entryId))"),'default picker browses canonical hierarchy and excludes linked placements')
             check(evaluate(f"portalPicker.rows.get({json.dumps(existing)}).choice.getAttribute('aria-disabled')==='true'&&portalPicker.rows.get({json.dumps(existing)}).added.textContent==='Already here'"),'canonical children already in the destination are marked and cannot be duplicated')
             check(evaluate('JSON.stringify(camera.view)')==view and evaluate('selectedNode.dataset.entryId')==selected,'opening and browsing preserve camera, selection and active content')
@@ -3012,7 +3030,8 @@ def main():
             evaluate('loadSampleButton.click()');wait_for("typeof sampleMode!=='undefined'&&sampleMode&&document.readyState==='complete'");load();wait_camera();evaluate('physics.pause()')
             entry='sample-planet-2-0'
             def size():
-                return evaluate("({height:panel.getBoundingClientRect().height,viewport:cosmosVisibleViewport().height,scroll:panel.scrollHeight,client:panel.clientHeight})")
+                wait_for('contentInspector.jobs.size===0');evaluate('new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))')
+                return evaluate("({height:panel.getBoundingClientRect().height,viewport:cosmosVisibleViewport().height,scroll:mobileContents.root.scrollHeight,client:mobileContents.root.clientHeight,cap:parseFloat(getComputedStyle(panel).maxHeight)})")
             def shot(name):
                 if screenshot_dir:
                     result=cdp.call('Page.captureScreenshot',format='png',captureBeyondViewport=False);(screenshot_dir/(name+'.png')).write_bytes(base64.b64decode(result['data']))
@@ -3023,24 +3042,24 @@ def main():
                 cdp.call('Emulation.setTouchEmulationEnabled',enabled=True,maxTouchPoints=1)
                 evaluate("window.dispatchEvent(new Event('resize'))");time.sleep(.2);wait_camera()
                 evaluate(f"exitConstellation();focusEntry({json.dumps(entry)});void 0");wait_camera();evaluate('physics.pause()')
-                evaluate("contentInspector.save(contentInspector.entryId,galaxyModel.emptyContent());contentInspector.select(entries.get(contentInspector.entryId),true);panel.scrollTop=0")
+                evaluate("(async()=>{await contentInspector.save(contentInspector.entryId,galaxyModel.emptyContent());contentInspector.select(entries.get(contentInspector.entryId),true);panel.scrollTop=0;mobileContents.setPage('files')})()")
                 view=evaluate('JSON.stringify(camera.view)');empty=size()
-                check(.30<=empty['height']/empty['viewport'] and empty['height']<=min(500,empty['viewport']*.74)+1 if height>500 else empty['height']<=empty['viewport']*.74+1,'empty sheet fits the shared 44px section rhythm and leaves at least a quarter of the Cosmos visible: '+label+' '+str(empty))
+                check(empty['height']>=min(200,empty['cap']) and empty['height']<=empty['cap']+1 and empty['height']<=empty['viewport']*.60+1,'empty adaptive sheet respects the existing Contents cap and visible canvas: '+label+' '+str(empty))
                 shot('sheet-empty-'+label)
-                evaluate("contentInspector.save(contentInspector.entryId,{...contentInspector.content(),notes:{format:'plain',text:'Marinate overnight for better results.'}});contentInspector.select(entries.get(contentInspector.entryId),true)")
-                note=size();check(note['height']<=min(empty['height']+44,note['viewport']*.74)+1,'one short note remains within the existing sheet cap: '+label+' '+str(note))
+                evaluate("(async()=>{await contentInspector.save(contentInspector.entryId,{...contentInspector.content(),notes:{format:'plain',text:'Marinate overnight for better results.'}});contentInspector.select(entries.get(contentInspector.entryId),true)})()")
+                evaluate("mobileContents.setPage('notes')");note=size();check(note['height']<=note['cap']+1,'one short note remains within the existing sheet cap: '+label+' '+str(note))
                 evaluate("contentInspector.upload([new File(['Recipe'],'recipe.txt',{type:'text/plain'}),new File(['Packing'],'packing.txt',{type:'text/plain'})]);void 0");wait_for('contentInspector.jobs.size===0')
-                evaluate("contentInspector.save(contentInspector.entryId,{...contentInspector.content(),links:Array.from({length:4},(_,i)=>({id:'size-link-'+i,url:'https://example.com/'+i,title:'Bookmark '+i}))});contentInspector.select(entries.get(contentInspector.entryId),true)")
-                moderate=size();check(moderate['height']>=empty['height'] and moderate['scroll']>empty['scroll'] and moderate['height']<=moderate['viewport']*.74+1,'files/bookmarks grow naturally or scroll when already capped: '+label)
+                evaluate("(async()=>{await contentInspector.save(contentInspector.entryId,{...contentInspector.content(),links:Array.from({length:4},(_,i)=>({id:'size-link-'+i,url:'https://example.com/'+i,title:'Bookmark '+i}))});contentInspector.select(entries.get(contentInspector.entryId),true)})()")
+                evaluate("mobileContents.setPage('links')");moderate=size();check(moderate['height']>=empty['height'] and moderate['scroll']>empty['scroll'] and moderate['height']<=moderate['cap']+1,'files/links grow naturally or scroll when already capped: '+label+' '+str({'empty':empty,'moderate':moderate}))
                 shot('sheet-moderate-'+label)
-                evaluate("contentInspector.save(contentInspector.entryId,{...contentInspector.content(),notes:{format:'plain',text:('Long note line\\n').repeat(80)}});contentInspector.select(entries.get(contentInspector.entryId),true);panel.scrollTop=0")
-                long=size();check(abs(long['height']-long['viewport']*.74)<2 and long['scroll']>long['client']+100,'long content caps at 74 percent and scrolls internally: '+label)
-                evaluate('panel.scrollTop=140');check(evaluate("panel.querySelector('.content-panel-header').getBoundingClientRect().top>=panel.getBoundingClientRect().top-1&&document.getElementById('close-inspector-button').getBoundingClientRect().bottom<panel.getBoundingClientRect().bottom"),'header and close remain reachable while scrolling: '+label)
+                evaluate("(async()=>{await contentInspector.save(contentInspector.entryId,{...contentInspector.content(),notes:{format:'plain',text:('Long note line\\n').repeat(80)}});contentInspector.select(entries.get(contentInspector.entryId),true);panel.scrollTop=0;mobileContents.setPage('files')})()")
+                evaluate("mobileContents.setPage('notes')");long=size();check(abs(long['height']-long['cap'])<2 and long['scroll']>long['client']+100,'long active page respects the Contents cap and scrolls internally: '+label)
+                evaluate('mobileContents.root.scrollTop=140');check(evaluate("panel.querySelector('.content-panel-header').getBoundingClientRect().top>=panel.getBoundingClientRect().top-1&&document.getElementById('close-inspector-button').getBoundingClientRect().bottom<panel.getBoundingClientRect().bottom"),'header and close remain reachable while scrolling: '+label)
                 check(evaluate('JSON.stringify(camera.view)')==view,'content sizing and scrolling preserve camera: '+label)
-                evaluate("activateConstellation('sample-constellation-trip')");wait_camera();evaluate(f"selectEntry(entries.get({json.dumps(entry)}),nodes.get({json.dumps(entry)}),{{reframe:false}});physics.pause();contentInspector.save(contentInspector.entryId,galaxyModel.emptyContent());contentInspector.select(entries.get(contentInspector.entryId),true);panel.scrollTop=0")
+                evaluate("activateConstellation('sample-constellation-trip')");wait_camera();evaluate(f"(async()=>{{selectEntry(entries.get({json.dumps(entry)}),nodes.get({json.dumps(entry)}),{{reframe:false}});physics.pause();await contentInspector.save(contentInspector.entryId,galaxyModel.emptyContent());contentInspector.select(entries.get(contentInspector.entryId),true);panel.scrollTop=0;mobileContents.setPage('files')}})()")
                 check(evaluate("activeConstellationId==='sample-constellation-trip'&&!document.getElementById('active-constellation-indicator').hidden&&document.getElementById('deactivate-constellation-button').getBoundingClientRect().height>=44&&getComputedStyle(document.getElementById('active-constellation-indicator')).marginBottom==='4px'"),'active strip stays clear with compact spacing and touch targets: '+label)
                 shot('sheet-active-'+label)
-                evaluate("contentInspector.editNotes();window.sheetViewportDescriptor=Object.getOwnPropertyDescriptor(window,'visualViewport')")
+                evaluate("mobileContents.setPage('notes');contentInspector.editNotes();window.sheetViewportDescriptor=Object.getOwnPropertyDescriptor(window,'visualViewport')")
                 view=evaluate('JSON.stringify(camera.view)')
                 evaluate(f"Object.defineProperty(window,'visualViewport',{{configurable:true,value:{{width:{width},height:{height}*.6,offsetTop:0,offsetLeft:0}}}});mobileViewportChanged()")
                 shot('sheet-keyboard-'+label)
@@ -3082,12 +3101,12 @@ def main():
                 evaluate("window.dispatchEvent(new Event('resize'))")
                 time.sleep(.2);wait_camera()
                 evaluate('hierarchySidebar.setCollapsed(false)');time.sleep(.25);wait_camera()
-                check(evaluate("getComputedStyle(document.getElementById('new-constellation-button')).display!=='none'&&[...document.querySelectorAll('.constellation-row')].every(r=>getComputedStyle(r.querySelector('.collection-add')).display==='none'&&r.querySelector('.collection-more').getBoundingClientRect().width>=44)"),'mobile rows have one overflow while section creation + remains: '+label)
+                check(evaluate("getComputedStyle(document.getElementById('new-constellation-button')).display!=='none'&&[...document.querySelectorAll('.constellation-row')].every(r=>r.querySelector('.collection-add').getBoundingClientRect().width>=44&&r.querySelector('.collection-more').getBoundingClientRect().width>=44)"),'mobile rows expose independent Add and management controls: '+label)
                 check(evaluate("getComputedStyle(document.getElementById('canvas-zoom-controls')).display==='none'"),'desktop zoom controls stay hidden on phones: '+label)
                 tap(f'[data-constellation-id="{collection}"] .collection-more')
-                check(evaluate("!contextMenu.hidden&&[...contextMenu.querySelectorAll(':scope>button:not([hidden])')].map(b=>b.textContent).join('|')==='Add item|Rename|Delete Constellation'"),'mobile overflow groups Add/Rename/Delete: '+label)
-                tap('#entry-context-menu [data-action="collection-add"]')
-                check(evaluate(f"constellationWorkspace.picker.open&&constellationWorkspace.pickerId==={json.dumps(collection)}&&constellationWorkspace.pickerList.getAttribute('role')==='tree'"),'overflow Add reuses the staged hierarchy picker: '+label)
+                check(evaluate("!contextMenu.hidden&&[...contextMenu.querySelectorAll(':scope>button:not([hidden])')].map(b=>b.textContent).join('|')==='Rename|Delete Constellation'"),'mobile overflow contains management only: '+label)
+                evaluate('closeContextMenu()');tap(f'[data-constellation-id="{collection}"] .collection-add')
+                check(evaluate(f"constellationWorkspace.picker.open&&constellationWorkspace.pickerId==={json.dumps(collection)}&&constellationWorkspace.pickerList.getAttribute('role')==='tree'"),'row Add reuses the staged hierarchy picker: '+label)
                 tap('#close-constellation-picker')
                 tap(f'[data-constellation-id="{collection}"] .collection-more');tap('#entry-context-menu [data-action="collection-delete"]')
                 check(evaluate("constellationWorkspace.deleteDialog.matches(':modal')") and evaluate("(()=>{const r=constellationWorkspace.deleteDialog.getBoundingClientRect();return r.left>=0&&r.right<=innerWidth&&r.bottom<=innerHeight})()"),'overflow Delete retains centered viewport-safe confirmation: '+label)
@@ -3466,7 +3485,7 @@ def main():
                 check(evaluate('hierarchySidebar.collapsed'),'Escape closes the drawer without starting another interaction: '+label)
                 tap('#sidebar-toggle');tap('[data-constellation-id="sample-constellation-techniques"] .constellation-open');wait_camera();evaluate('physics.pause()')
                 check(evaluate("activeConstellationId==='sample-constellation-techniques'&&!document.getElementById('constellation-content').hidden") and fits('#entry-panel'),'Constellation overview uses the same bottom sheet: '+label)
-                tap('#panel-add-member');check(evaluate("constellationWorkspace.picker.open") and fits('#constellation-picker-dialog'),'touch Add entry uses the existing bounded picker: '+label)
+                tap('#entry-add-button');check(evaluate("constellationWorkspace.picker.open") and fits('#constellation-picker-dialog'),'touch Add entry uses the existing bounded picker: '+label)
                 tap('#close-constellation-picker');evaluate('physics.pause()')
                 tap('#constellation-member-list .constellation-member-name');wait_camera();evaluate('physics.pause()')
                 check(evaluate("activeConstellationId==='sample-constellation-techniques'&&!document.getElementById('active-constellation-indicator').hidden&&!contentInspector.root.hidden"),'touch entry inspection preserves the persistent lens: '+label)
@@ -3846,9 +3865,9 @@ def main():
             evaluate("physics.pause();window.shortcutPickerClicks=0;window.shortcutPickerOwner=null;contentInspector.files.addEventListener('click',event=>{event.preventDefault();shortcutPickerClicks++;shortcutPickerOwner=contentInspector.entryId})")
             view=evaluate('JSON.stringify(camera.view)');refs=evaluate('JSON.stringify([...constellations.values()])');alpha=evaluate('physics.simulation.alpha()')
             mouse('mouseMoved',x=15,y=15)
-            check(evaluate("getComputedStyle(document.getElementById('content-add-files')).opacity==='0'&&getComputedStyle(document.getElementById('content-add-bookmark')).opacity==='1'"),'desktop keeps Files action quiet and bookmark entry directly visible')
+            check(evaluate("getComputedStyle(document.getElementById('content-add-files')).opacity==='1'&&getComputedStyle(document.getElementById('content-add-bookmark')).opacity==='1'"),'desktop exposes Files and Links empty entry actions without hover')
             evaluate("document.getElementById('content-add-files').focus({preventScroll:true})")
-            check(evaluate("getComputedStyle(document.getElementById('content-add-files')).opacity==='1'&&document.activeElement.ariaLabel==='Add file'&&document.activeElement.textContent==='Add file'"),'explicit Add file action is keyboard reachable and becomes visible on focus')
+            check(evaluate("getComputedStyle(document.getElementById('content-add-files')).opacity==='1'&&document.activeElement.id==='content-add-files'&&document.activeElement.textContent==='Add file\u2026'"),'explicit Add file row is visible and keyboard reachable')
             click_selector('#content-add-files')
             check(evaluate(f"shortcutPickerClicks===1&&shortcutPickerOwner==={json.dumps(first)}&&!document.getElementById('content-file-limit').hidden"),'Files + invokes the existing canonical-entry file picker')
             upload=profile/'shortcut.txt';upload.write_text('Direct shortcut file',encoding='utf-8')
@@ -3873,7 +3892,7 @@ def main():
             wait_for('contentInspector.jobs.size===0&&contentInspector.linkForm.hidden&&contentInspector.content().links.length===2')
             check(evaluate("contentInspector.linkForm.hidden&&contentInspector.content().links[1].url==='https://google.com/'&&document.querySelectorAll('#content-links a')[1].textContent==='Direct bookmark'"),'bookmark shortcut retains URL normalization and read-first display')
             evaluate('openSelectedRowAdd();addMenu.querySelector("[data-add=note]").click()')
-            check(evaluate("!contentInspector.notesForm.hidden&&contentInspector.notes.value==='Direct note'&&[...addMenu.querySelectorAll('button:not([hidden])')].map(b=>b.dataset.add||'child').join(',')==='child,existing,paste,files,note,bookmark'"),'left row + continues to provide all existing contextual Add actions')
+            check(evaluate("!contentInspector.notesForm.hidden&&contentInspector.notes.value==='Direct note'&&[...addMenu.querySelectorAll('button:not([hidden])')].map(b=>b.dataset.add||'child').join(',')==='child,files,note,bookmark'"),'left row + continues to provide all existing contextual Add actions')
             evaluate("document.getElementById('content-cancel-notes').click()")
             check(evaluate(f"activeConstellationId==={json.dumps(lens)}&&!document.getElementById('active-constellation-indicator').hidden") and evaluate('JSON.stringify([...constellations.values()])')==refs and evaluate('JSON.stringify(camera.view)')==view and evaluate('physics.simulation.alpha()')==alpha,'direct and sidebar content actions preserve lens, memberships, camera and physics heat')
             evaluate(f"openPortalDialog({json.dumps(place)});portalPicker.select({json.dumps(second)});document.getElementById('portal-form').requestSubmit();physics.pause()")
@@ -3885,8 +3904,12 @@ def main():
             cdp.call('Emulation.setDeviceMetricsOverride',width=390,height=844,deviceScaleFactor=1,mobile=False)
             cdp.call('Emulation.setTouchEmulationEnabled',enabled=True,maxTouchPoints=1);time.sleep(.2);wait_camera()
             evaluate('setInspectorOpen(true);panel.scrollTop=0');view=evaluate('JSON.stringify(camera.view)');alpha=evaluate('physics.simulation.alpha()')
-            check(evaluate("['content-add-files','content-add-bookmark'].every(id=>{const n=document.getElementById(id),r=n.getBoundingClientRect();return getComputedStyle(n).opacity==='1'&&r.width>=32&&r.height>=32})&&document.getElementById('content-notes-empty').getBoundingClientRect().height>=32"),'touch actions use padded targets while their icons stay small')
+            evaluate("mobileContents.setPage('files')")
+            check(evaluate("document.getElementById('content-browse-add-file').getBoundingClientRect().height>=44"),'mobile direct Files row retains its touch target')
             def tap(selector):
+                selector={'#content-add-files':'#content-browse-add-file','#content-notes-empty':'#content-browse-add-note'}.get(selector,selector)
+                page=evaluate(f"document.querySelector({json.dumps(selector)})?.closest('[data-contents-page]')?.dataset.contentsPage")
+                if page:evaluate(f"mobileContents.setPage({json.dumps(page)})")
                 evaluate(f"document.querySelector({json.dumps(selector)}).scrollIntoView({{block:'nearest'}})")
                 point=evaluate(f"(()=>{{const r=document.querySelector({json.dumps(selector)}).getBoundingClientRect();return{{x:r.x+r.width/2,y:r.y+r.height/2}}}})()")
                 cdp.call('Input.dispatchTouchEvent',type='touchStart',touchPoints=[point]);cdp.call('Input.dispatchTouchEvent',type='touchEnd',touchPoints=[])
@@ -3997,7 +4020,7 @@ def main():
             evaluate(f"physics.beginDrag({json.dumps(planet)});physics.moveDrag({json.dumps(planet)},entries.get({json.dumps(planet)}).x+12,entries.get({json.dumps(planet)}).y+8);renderGraph()")
             check(overlay_aligned() and evaluate(f"activeConstellationId==={json.dumps(c1)}"),'overlay follows live dragged positions without leaving collection mode')
             evaluate(f"physics.endDrag({json.dumps(planet)},true);physics.pause()")
-            click_selector('#panel-add-member')
+            click_selector('#entry-add-button')
             check(evaluate(f"constellationWorkspace.pickerId==={json.dumps(c1)}"),'right-panel Add member reuses the same picker')
             evaluate("document.getElementById('close-constellation-picker').click();physics.pause()")
             view=evaluate('JSON.stringify(camera.view)');member(c1,unrelated)
@@ -4124,7 +4147,7 @@ def main():
                     click_selector('#close-inspector-button')
                     check(evaluate('activeConstellationId===null&&panel.hidden'),'overview header × explicitly deactivates and closes the overview')
                     evaluate("activateConstellation('sample-constellation-trip');camera.setView(tripFramedView,false)");wait_camera()
-                    check(evaluate("!document.getElementById('constellation-count').textContent.includes('member')&&document.getElementById('constellation-count').textContent==='4 items'&&document.querySelector('#constellation-content h3').textContent==='In this Constellation'&&document.getElementById('panel-add-member').textContent==='+ Add item'&&document.getElementById('constellation-members-empty').textContent==='No items yet'&&[...document.querySelectorAll('[aria-label],[title]')].every(n=>!(/\\bmembers?\\b/i.test((n.getAttribute('aria-label')||'')+' '+(n.title||''))))"),'visible and accessible Constellation wording uses Entries, Add entry and In this Constellation')
+                    check(evaluate("!document.getElementById('constellation-count').textContent.includes('member')&&document.getElementById('constellation-count').textContent==='4 items'&&document.querySelector('#constellation-content h3').textContent==='In this Constellation'&&document.getElementById('entry-add-button').getAttribute('aria-haspopup')==='dialog'&&document.getElementById('constellation-members-empty').textContent==='No items yet'&&[...document.querySelectorAll('[aria-label],[title]')].every(n=>!(/\\bmembers?\\b/i.test((n.getAttribute('aria-label')||'')+' '+(n.title||''))))"),'visible and accessible Constellation wording uses Entries, Add entry and In this Constellation')
                 shot(group+'-desktop')
             point=evaluate("(()=>{const n=nodes.get('sample-satellite-2-0-0-0'),r=n.getBoundingClientRect();return{x:r.x+r.width/2,y:r.y+r.height/2}})()")
             mouse('mousePressed',**point,button='left',clickCount=1)
@@ -4144,10 +4167,10 @@ def main():
             point=evaluate("(()=>{const r=document.getElementById('constellations-toggle').getBoundingClientRect();return{x:r.x+r.width/2,y:r.y+r.height/2}})()")
             cdp.call('Input.dispatchTouchEvent',type='touchStart',touchPoints=[point]);cdp.call('Input.dispatchTouchEvent',type='touchEnd',touchPoints=[])
             check(evaluate('!constellationWorkspace.list.hidden'),'touch chevron expands the section without navigation')
-            check(evaluate("getComputedStyle(document.getElementById('new-constellation-button')).opacity==='1'&&[...document.querySelectorAll('.constellation-row')].every(r=>getComputedStyle(r.querySelector('.collection-add')).display==='none'&&r.querySelector('.collection-more').getBoundingClientRect().width>=44)"),'section + stays visible while mobile rows use one overflow action')
+            check(evaluate("getComputedStyle(document.getElementById('new-constellation-button')).opacity==='1'&&[...document.querySelectorAll('.constellation-row')].every(r=>r.querySelector('.collection-add').getBoundingClientRect().width>=44&&r.querySelector('.collection-more').getBoundingClientRect().width>=44)"),'section and row Add controls stay visible alongside management')
             point=evaluate("(()=>{const r=document.querySelector('[data-constellation-id=\"sample-constellation-trip\"] .collection-more').getBoundingClientRect();return{x:r.x+r.width/2,y:r.y+r.height/2}})()")
             cdp.call('Input.dispatchTouchEvent',type='touchStart',touchPoints=[point]);cdp.call('Input.dispatchTouchEvent',type='touchEnd',touchPoints=[])
-            wait_for("!contextMenu.hidden");context_add=evaluate("(()=>{const r=contextMenu.querySelector('[data-action=collection-add]').getBoundingClientRect();return{x:r.x+r.width/2,y:r.y+r.height/2}})()")
+            wait_for("!contextMenu.hidden");evaluate('closeContextMenu()');context_add=evaluate("(()=>{const r=document.querySelector('[data-constellation-id=sample-constellation-trip] .collection-add').getBoundingClientRect();return{x:r.x+r.width/2,y:r.y+r.height/2}})()")
             cdp.call('Input.dispatchTouchEvent',type='touchStart',touchPoints=[context_add]);cdp.call('Input.dispatchTouchEvent',type='touchEnd',touchPoints=[])
             wait_for("constellationWorkspace.picker.open")
             check(evaluate("constellationWorkspace.pickerId==='sample-constellation-trip'&&constellationWorkspace.picker.getBoundingClientRect().width<=innerWidth-16"),'touch row + opens a bounded responsive member picker for that collection')
@@ -4443,7 +4466,7 @@ def main():
             check(evaluate(f"getComputedStyle(document.querySelector({json.dumps(selector)})).opacity==='1'"),'row hover reveals the right-aligned +')
             before=evaluate('JSON.stringify({id:selectedNode.dataset.entryId,tree:hierarchySidebar.selectedId,view:camera.view,panel:panel.hidden})')
             click_selector(selector)
-            check(evaluate(f"addMenuTargetId==={json.dumps(target)} && [...addMenu.querySelectorAll('button:not([hidden])')].map(b=>b.textContent).join('|')==='Add item|Add files|Add note|Add bookmark'"),'row + retains desktop actions for its own row and hides empty-clipboard Paste')
+            check(evaluate(f"addMenuTargetId==={json.dumps(target)} && [...addMenu.querySelectorAll('button:not([hidden])')].map(b=>b.textContent).join('|')==='Add item|Add files|Add note|Add link'"),'row + retains desktop actions for its own row and hides empty-clipboard Paste')
             check(evaluate('JSON.stringify({id:selectedNode.dataset.entryId,tree:hierarchySidebar.selectedId,view:camera.view,panel:panel.hidden})')==before,'opening row + does not select, focus-navigate or reframe the body')
             cdp.call('Input.dispatchKeyEvent',type='keyDown',key='Escape',code='Escape',windowsVirtualKeyCode=27)
             check(evaluate(f"addMenu.hidden && document.activeElement===document.querySelector({json.dumps(selector)}) && getComputedStyle(document.activeElement).opacity==='1'"),'Escape restores visible keyboard focus to the originating row +')
@@ -4498,7 +4521,7 @@ def main():
                 for role in ['Planet','Moon','Satellite','Astronaut','Astronaut']:
                     parent=chain[-1]
                     evaluate(f"selectEntry(entries.get({json.dumps(parent)}),nodes.get({json.dumps(parent)}));openSelectedRowAdd()")
-                    check(evaluate("[...addMenu.querySelectorAll('button:not([hidden])')].map(b=>b.textContent).join('|')==='Add item|Add files|Add note|Add bookmark' && addMenuTargetId===selectedNode.dataset.entryId"),'row + offers hierarchy and content actions for its own item')
+                    check(evaluate("[...addMenu.querySelectorAll('button:not([hidden])')].map(b=>b.textContent).join('|')==='Add item|Add files|Add note|Add link' && addMenuTargetId===selectedNode.dataset.entryId"),'row + offers hierarchy and content actions for its own item')
                     click_selector('#add-child-button')
                     check(evaluate(f"document.getElementById('add-entry-title').textContent==='Add item' && submitButton.textContent==='Create item' && document.getElementById('entry-info-fields').hidden && document.getElementById('parent-field').hidden && creationContext.hidden && roleField.hidden"),f'quick Add {role} only shows Name')
                     evaluate(f"fields[0].value='Organizer {role}';form.requestSubmit();physics.pause()")
@@ -4511,10 +4534,10 @@ def main():
                 check(evaluate(f"selectedNode.dataset.entryId==={json.dumps(child)} && hierarchySidebar.selectedId==={json.dumps(child)}"),'breadcrumb uses existing ancestor focus and synchronizes selection')
                 evaluate(f"hierarchySidebar.rows.get({json.dumps(deepest)}).querySelector('.tree-name').click()");wait_camera();evaluate('physics.pause()')
                 check(evaluate(f"selectedNode.dataset.entryId==={json.dumps(deepest)} && contentInspector.entryId==={json.dumps(deepest)}"),'sidebar name selects the body and displays its contents')
-                evaluate(f"focusEntry({json.dumps(owner)})");wait_camera();evaluate('physics.pause();closeInspector()')
+                evaluate(f"focusEntry({json.dumps(owner)})");wait_camera();evaluate('physics.pause();closeInspector()');wait_camera()
                 before=evaluate('JSON.stringify(camera.view)')
                 click_selector(f'.entry-node[data-entry-id="{owner}"]')
-                check(evaluate(f"!panel.hidden && contentInspector.entryId==={json.dumps(owner)} && hierarchySidebar.selectedId==={json.dumps(owner)}"),'Cosmos selection opens matching contents and sidebar selection')
+                check(evaluate(f"!panel.hidden && contentInspector.entryId==={json.dumps(owner)} && hierarchySidebar.selectedId==={json.dumps(owner)}"),'Cosmos selection opens matching contents and sidebar selection: '+json.dumps(evaluate(f"(()=>{{const n=nodes.get({json.dumps(owner)}),r=n.getBoundingClientRect();return {{rect:r.toJSON(),hit:document.elementFromPoint(r.x+r.width/2,r.y+r.height/2)?.outerHTML?.slice(0,180),selected:selectedNode?.dataset.entryId,inspected:contentInspector.entryId,panelHidden:panel.hidden,activeNodeDrags,narrow:hierarchySidebar.narrow}}}})()")))
                 check(evaluate('JSON.stringify(camera.view)')==before,'reopening contents through body selection does not move camera')
                 click_selector('#entry-more-button')
                 check(evaluate("!contextMenu.hidden && [...contextMenu.querySelectorAll(':scope > button:not([hidden])')].map(b=>b.textContent).join('|')==='Rename|Move to…|Add to Constellation|Copy|Duplicate structure|Archive Galaxy|Delete item'"),'Galaxy More retains full management including Archive without permanent metadata')
@@ -4560,18 +4583,17 @@ def main():
                 def shot(name):
                     if screenshot_dir:
                         result=cdp.call('Page.captureScreenshot',format='png',captureBeyondViewport=False);(screenshot_dir/(name+'.png')).write_bytes(base64.b64decode(result['data']))
-                check(evaluate("document.querySelectorAll('.content-section-add:not(#content-add-media)').length===1&&document.getElementById('content-media-section').hidden&&document.getElementById('content-notes-empty').tagName==='BUTTON'&&document.getElementById('content-edit-notes').hidden&&contentInspector.notesForm.hidden&&contentInspector.linkForm.hidden&&document.getElementById('content-file-limit').hidden"),'read state has only compact section shortcuts, without permanent editing forms or technical upload information')
-                check(evaluate("document.getElementById('content-files-empty').textContent==='No files'&&document.getElementById('content-notes-empty').textContent==='No notes'&&contentInspector.quickBookmark.hidden&&document.getElementById('content-add-bookmark').textContent==='Paste a link…'"),'empty content sections stay quiet with a lightweight bookmark entry row')
+                check(evaluate("!document.querySelector('#content-files-section header button')&&document.getElementById('content-media-section').hidden&&document.getElementById('content-notes-empty').tagName==='BUTTON'&&document.getElementById('content-edit-notes').hidden&&contentInspector.notesForm.hidden&&contentInspector.linkForm.hidden&&document.getElementById('content-file-limit').hidden"),'read state has only compact section shortcuts, without permanent editing forms or technical upload information')
+                check(evaluate("document.getElementById('content-files-empty').textContent==='Add file…'&&document.getElementById('content-notes-empty').textContent==='Add note…'&&contentInspector.quickBookmark.hidden&&document.getElementById('content-add-bookmark').textContent==='Add link…'"),'empty content sections stay quiet with a lightweight bookmark entry row')
                 check(evaluate("!document.querySelector('.sidebar-controls .tree-add,.sidebar-controls #add-entry-button') && [...hierarchySidebar.tree.children].every(row=>row.querySelector('.tree-add'))"),'contextual + lives on tree rows rather than beside Search')
                 check(evaluate("!hierarchySidebar.sidebar.contains(document.getElementById('canvas-fit')) && !!addEntryButton.closest('#universe-section')"),'canvas Fit and Universe creation have separate clear homes')
                 before=evaluate('JSON.stringify(camera.view)');alpha=evaluate('physics.simulation.alpha()')
                 evaluate('openSelectedRowAdd()')
                 cdp.call('Input.dispatchKeyEvent',type='keyDown',key='ArrowDown',code='ArrowDown',windowsVirtualKeyCode=40)
-                cdp.call('Input.dispatchKeyEvent',type='keyDown',key='ArrowDown',code='ArrowDown',windowsVirtualKeyCode=40)
                 check(evaluate('document.activeElement.dataset.add==="files"'),'contextual + menu supports keyboard navigation to content actions')
                 cdp.call('Input.dispatchKeyEvent',type='keyDown',key='Escape',code='Escape',windowsVirtualKeyCode=27)
                 check(evaluate('addMenu.hidden && document.activeElement===hierarchySidebar.rows.get(selectedNode.dataset.entryId).querySelector(".tree-add") && !panel.hidden'),'Add menu Escape returns focus to the row action without closing Contents')
-                chain_test=[owner]
+                chain_test=[add('Workspace creation root')]
                 for role in ['Sun','Planet','Moon','Satellite','Astronaut','Astronaut']:
                     evaluate(f"selectEntry(entries.get({json.dumps(chain_test[-1])}),nodes.get({json.dumps(chain_test[-1])}));openSelectedRowAdd();addChildButton.click()")
                     check(evaluate("document.activeElement===fields[0]"),f'Add {role} autofocuses Name')
@@ -4763,7 +4785,10 @@ def main():
                 check(evaluate("[panelName,moreButton,document.getElementById('close-inspector-button')].every(e=>{const r=e.getBoundingClientRect(),p=panel.getBoundingClientRect();return r.top>=p.top&&r.bottom<=p.bottom&&r.width>0})"),'mobile Content header remains reachable while scrolling files')
                 if options.workspace_only:
                     touch_before=evaluate('JSON.stringify(camera.view)')
-                    check(evaluate("getComputedStyle(document.querySelector('#content-links summary')).opacity==='1' && getComputedStyle(document.getElementById('content-edit-notes')).opacity==='1' && document.getElementById('content-edit-notes').getBoundingClientRect().width>=44"),'mobile edit and overflow affordances stay discoverable with comfortable touch targets')
+                    evaluate("mobileContents.setPage('notes')")
+                    check(evaluate("document.getElementById('content-browse-add-note').hidden&&!contentInspector.notesView.hidden&&contentInspector.notesView.tabIndex===0"),'mobile Notes edit entry stays discoverable on its page')
+                    evaluate("mobileContents.setPage('links');document.querySelector('#content-links summary').scrollIntoView({block:'nearest'});new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))")
+                    check(evaluate("getComputedStyle(document.querySelector('#content-links summary')).opacity==='1'&&document.querySelector('#content-links summary').getBoundingClientRect().width>=44"),'mobile Link overflow retains its comfortable target on the active page')
                     point=evaluate("(()=>{const r=document.querySelector('#content-links summary').getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()")
                     cdp.call('Input.dispatchTouchEvent',type='touchStart',touchPoints=[point]);cdp.call('Input.dispatchTouchEvent',type='touchEnd',touchPoints=[])
                     wait_for("document.querySelector('#content-links details').open")
@@ -4774,9 +4799,17 @@ def main():
                     check(evaluate('JSON.stringify(camera.view)')==touch_before,'mobile bookmark management preserves camera state')
                 evaluate('hierarchySidebar.setCollapsed(false)');wait_camera();evaluate('physics.pause()')
                 mobile_view=evaluate('JSON.stringify(camera.view)')
-                click_selector('.hierarchy-row.is-selected .tree-add');click_selector('#add-menu [data-add=note]')
-                check(evaluate('hierarchySidebar.collapsed && !panel.hidden && !contentInspector.notesForm.hidden'),'mobile + switches from hierarchy drawer to on-demand Notes editor')
-                check(evaluate('JSON.stringify(camera.view)')==mobile_view,'mobile contextual content creation preserves camera while switching drawers')
+                evaluate("document.querySelector('.hierarchy-row.is-selected .tree-add').scrollIntoView({block:'nearest'});new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))")
+                click_selector('.hierarchy-row.is-selected .tree-add');wait_for('!addMenu.hidden')
+                check(evaluate("[...addMenu.querySelectorAll('button:not([hidden])')].map(b=>b.dataset.add||'child').join('|')==='camera|gallery|child'"),'mobile row Add retains the current capture/create menu')
+                cdp.call('Input.dispatchKeyEvent',type='keyDown',key='Escape',code='Escape',windowsVirtualKeyCode=27)
+                click_selector('.hierarchy-row.is-selected .tree-name');wait_camera()
+                check(evaluate('hierarchySidebar.collapsed&&panel.hidden'),'mobile hierarchy selection retains Compact instead of implicitly opening Contents')
+                click_selector('#mobile-body-contents');wait_for('!panel.hidden')
+                evaluate("mobileContents.setPage('notes')");mobile_view=evaluate('JSON.stringify(camera.view)')
+                click_selector('#content-notes-view' if evaluate('!!contentInspector.content().notes.text') else '#content-browse-add-note')
+                check(evaluate('!panel.hidden&&!contentInspector.notesForm.hidden'),'explicit mobile Contents Note entry opens the shared inline editor')
+                check(evaluate('JSON.stringify(camera.view)')==mobile_view,'inline Note entry preserves the camera')
                 evaluate('document.getElementById("content-cancel-notes").click()')
                 cdp.call('Input.dispatchKeyEvent',type='keyDown',key='Escape',code='Escape',windowsVirtualKeyCode=27)
                 check(evaluate('panel.hidden'),'mobile Escape closes the Content sheet')
@@ -5104,8 +5137,7 @@ def main():
             evaluate('physics.pause();if(graphNeedsSave)saveGalaxy()')
             real_snapshot=evaluate("localStorage.getItem('galaxy:user-data')")
             preference=evaluate("localStorage.getItem('galaxy:navigation-ui')")
-            evaluate("document.getElementById('sample-utility').open=true")
-            click_selector('#load-sample-button')
+            evaluate('loadSampleButton.click()')
             wait_for("document.readyState==='complete' && typeof sampleMode!=='undefined' && sampleMode");load();wait_camera()
             evaluate('physics.pause()')
             check(evaluate('panel.hidden && entries.size===282'),'Sample opens into a clean canvas without a permanent inspector')

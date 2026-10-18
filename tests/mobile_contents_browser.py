@@ -99,17 +99,17 @@ def run_contents_swipe_checks(*,cdp,evaluate,check,wait_for,add,shot):
         choose(1);tap('#contents-tab-links');tap('#content-add-bookmark',scroll=True)
         def check_text_buttons(selector,label):
             metrics=e("""[...document.querySelectorAll("""+q(selector)+""")].filter(b=>b.getClientRects().length).map(b=>{
-                const s=getComputedStyle(b),r=b.getBoundingClientRect(),range=document.createRange();range.selectNodeContents(b);const t=range.getBoundingClientRect();
-                return {text:b.textContent,height:r.height,width:r.width,align:s.alignItems,justify:s.justifyContent,textAlign:s.textAlign,display:s.display,border:s.borderTopWidth,shadow:s.boxShadow,surface:s.backgroundImage,
+                const s=getComputedStyle(b),r=b.getBoundingClientRect(),range=document.createRange();range.selectNodeContents(b);const form=b.closest('form.inline-editor'),t=form?b.querySelector('svg').getBoundingClientRect():range.getBoundingClientRect();
+                return {text:b.textContent,height:r.height,width:r.width,align:s.alignItems,justify:form?s.justifyItems:s.justifyContent,textAlign:s.textAlign,display:s.display,border:s.borderTopWidth,shadow:s.boxShadow,surface:s.backgroundImage,inline:!!form,frame:form&&getComputedStyle(form).borderTopWidth==='1px',accessible:!form||b.ariaLabel===b.textContent&&getComputedStyle(b.querySelector('span')).display==='none',
                     dx:(t.left+t.right-r.left-r.right)/2,dy:(t.top+t.bottom-r.top-r.bottom)/2,contained:t.left>=r.left&&t.right<=r.right&&t.top>=r.top&&t.bottom<=r.bottom};})""")
             # Grid/flex parents blockify an inline-flex child's computed display.
-            check(bool(metrics) and all(m['height']>=44 and m['display'] in ['flex','inline-flex'] and m['align']==m['justify']==m['textAlign']=='center' and abs(m['dx'])<=.75 and abs(m['dy'])<=1.5 and m['contained'] for m in metrics),'text is centered and contained in '+label+': '+tag+' '+json.dumps(metrics))
-            check(all(m['border']=='1px' and m['shadow']!='none' and 'linear-gradient' in m['surface'] for m in metrics),'contained surfaces retain subtle depth in '+label+': '+tag)
+            check(bool(metrics) and all(m['height']>=44 and m['display'] in ['grid','flex','inline-flex'] and m['align']==m['justify']==m['textAlign']=='center' and abs(m['dx'])<=.75 and abs(m['dy'])<=1.5 and m['contained'] and m['accessible'] for m in metrics),'visible icon/text is centered and accessible in '+label+': '+tag+' '+json.dumps(metrics))
+            check(all(m['frame'] if m['inline'] else m['border']=='1px' and m['shadow']!='none' and 'linear-gradient' in m['surface'] for m in metrics),'actions retain their inline-editor frame or populated contained surface: '+label+': '+tag)
         def form_metrics(form,input_selector):
-            return e("""(()=>{const f=document.querySelector("""+q(form)+"""),i=document.querySelector("""+q(input_selector)+"""),r=i.getBoundingClientRect(),p=panel.getBoundingClientRect(),buttons=[...f.querySelectorAll('button')].filter(b=>b.getClientRects().length);return {fits:r.left>=p.left+12&&r.right<=p.right-12&&f.scrollWidth<=f.clientWidth+1,font:parseFloat(getComputedStyle(i).fontSize),stacked:buttons.every(b=>b.getBoundingClientRect().top>=r.bottom+7),actions:buttons.map(b=>{const s=getComputedStyle(b);return {text:b.textContent,height:b.getBoundingClientRect().height,border:s.borderTopWidth,radius:s.borderRadius,padding:s.padding,font:s.fontSize,bg:s.backgroundColor}})};})()""")
+            return e("""(()=>{const f=document.querySelector("""+q(form)+"""),i=document.querySelector("""+q(input_selector)+"""),r=i.getBoundingClientRect(),p=panel.getBoundingClientRect(),a=f.querySelector('.inline-editor-actions').getBoundingClientRect(),buttons=[...f.querySelectorAll('button')].filter(b=>b.getClientRects().length);return {fits:r.left>=p.left+12&&r.right<=p.right-12&&f.scrollWidth<=f.clientWidth+1,font:parseFloat(getComputedStyle(i).fontSize),inline:r.right<=a.left+1&&a.top>=f.getBoundingClientRect().top&&a.bottom<=f.getBoundingClientRect().bottom+1,actions:buttons.map(b=>{const s=getComputedStyle(b);return {text:b.textContent,height:b.getBoundingClientRect().height,border:s.borderTopWidth,radius:s.borderRadius,padding:s.padding,font:s.fontSize,bg:s.backgroundColor}})};})()""")
         e("contentInspector.quickUrl.value='https://example.com/adaptive/'+innerWidth;contentInspector.quickUrl.dispatchEvent(new Event('input',{bubbles:true}))")
         quick=form_metrics('#content-bookmarks-empty','#content-quick-bookmark-url')
-        check(quick['fits'] and quick['font']>=16 and quick['stacked'] and [b['text'] for b in quick['actions']]==['Save','Cancel'],'Link field fills its own row above Save/Cancel: '+tag+' '+json.dumps(quick))
+        check(quick['fits'] and quick['font']>=16 and quick['inline'] and [b['text'] for b in quick['actions']]==['Save','Cancel'],'Link field reserves a safe inline Save/Cancel column: '+tag+' '+json.dumps(quick))
         check_text_buttons('#content-bookmarks-empty button','Link add actions')
         shot('contents-link-form-'+tag)
         # Save with the native Enter convention, then edit/remove through existing handlers.
@@ -119,7 +119,7 @@ def run_contents_swipe_checks(*,cdp,evaluate,check,wait_for,add,shot):
         check(e("!!document.querySelector('#content-links a')&&!document.getElementById('content-bookmarks-placeholder').hidden"),'Enter saves Link and restores lightweight add row: '+tag)
         e('contentInspector.editLink(contentInspector.content().links[0])')
         full=form_metrics('#content-link-form','#content-link-title')
-        check(full['fits'] and full['font']>=16 and full['stacked'] and [b['text'] for b in full['actions']]==['Save','Cancel'],'saved Link editing uses full-width fields and generic actions: '+tag)
+        check(full['fits'] and full['font']>=16 and full['inline'] and [b['text'] for b in full['actions']]==['Save','Cancel'],'saved Link editing uses the same reserved inline actions: '+tag)
         check_text_buttons('#content-link-form button','Link edit actions')
         tap('#content-cancel-link',scroll=True)
         tap('#content-links summary',scroll=True)
@@ -133,7 +133,7 @@ def run_contents_swipe_checks(*,cdp,evaluate,check,wait_for,add,shot):
         check(e('contentInspector.quickBookmark.hidden'),'Escape returns Link entry to compact state: '+tag)
         tap('#contents-tab-location');tap('#content-add-location',scroll=True)
         location=form_metrics('#content-location-form','#content-location-input')
-        check(location['fits'] and location['font']>=16 and location['stacked'] and [b['text'] for b in location['actions']]==['Save','Cancel'],'Location follows the same full-width field/action layout: '+tag)
+        check(location['fits'] and location['font']>=16 and location['inline'] and [b['text'] for b in location['actions']]==['Save','Cancel'],'Location follows the same inline field/action layout: '+tag)
         check_text_buttons('#content-location-form button','Location add actions')
         shot('contents-location-form-'+tag)
         e("contentInspector.locationInput.value='Library, reading room';contentInspector.locationForm.requestSubmit()")
@@ -143,15 +143,15 @@ def run_contents_swipe_checks(*,cdp,evaluate,check,wait_for,add,shot):
         check_text_buttons('.location-actions button','populated Location actions')
         check(e("(()=>{const a=document.getElementById('content-location-maps'),s=getComputedStyle(a);return a.tagName==='A'&&!!a.href&&s.backgroundImage==='none'&&s.boxShadow==='none'&&s.textDecorationLine.includes('underline')})()"),'Google Maps remains a plain link action: '+tag)
         saved=e("['content-edit-location','content-remove-location'].map(id=>{const b=document.getElementById(id),s=getComputedStyle(b);return {text:b.textContent,height:b.getBoundingClientRect().height,border:s.borderTopWidth,radius:s.borderRadius,padding:s.padding,font:s.fontSize,bg:s.backgroundColor}})")
-        check(all(all(b[k]==quick['actions'][1][k] for k in ['height','border','radius','padding','font','bg']) for b in saved),'saved Edit/Remove share the neutral Cancel treatment: '+tag+' '+json.dumps(saved))
+        check(all(b['height']>=44 and b['border']=='1px' for b in saved),'populated Edit/Remove retain contained 44px controls: '+tag+' '+json.dumps(saved))
         tap('#content-edit-location',scroll=True)
         check_text_buttons('#content-location-form button','Location edit actions')
         tap('#content-cancel-location',scroll=True)
         check(e("contentInspector.locationForm.hidden&&entries.get(browseIds[1]).location.text==='Library, reading room'"),'Location Cancel preserves saved data: '+tag)
         tap('#content-remove-location',scroll=True);wait_for('!entries.get(browseIds[1]).location')
-        tap('#contents-tab-notes');tap('#content-browse-add-note',scroll=True)
+        tap('#contents-tab-notes');tap('#content-notes-view' if e('!!contentInspector.content().notes.text') else '#content-browse-add-note',scroll=True)
         notes=form_metrics('#content-notes-form','#content-notes')
-        check(notes['fits'] and notes['font']>=16 and notes['stacked'] and [b['text'] for b in notes['actions']]==['Save','Cancel'],'Notes editor fits and uses the shared generic actions: '+tag)
+        check(notes['fits'] and notes['font']>=16 and notes['inline'] and [b['text'] for b in notes['actions']]==['Save','Cancel'],'Notes editor fits and uses the shared inline actions: '+tag)
         check_text_buttons('#content-notes-form button','shared Notes actions')
         check(all(all(b[k]==quick['actions'][i][k] for k in ['height','border','radius','padding','font','bg']) for actions in [location['actions'],notes['actions'],full['actions']] for i,b in enumerate(actions)),'Save/Cancel geometry and styling match across editors: '+tag)
         tap('#content-cancel-notes',scroll=True)
@@ -190,13 +190,16 @@ def run_contents_swipe_checks(*,cdp,evaluate,check,wait_for,add,shot):
         row_metrics=[]
         for page,selector,title,action in [('files','#content-browse-add-file','FILES','Add file…'),('notes','#content-browse-add-note','NOTES','Add note…'),('links','#content-add-bookmark','LINKS','Add link…'),('location','#content-add-location','LOCATION','Add location…')]:
             e(f"mobileContents.setPage({q(page)})")
+            if page=='notes':
+                check(e('mobileContents.noteAdd.hidden&&!contentInspector.notesView.hidden&&contentInspector.notesView.tabIndex===0'),'populated Notes uses saved text rather than a redundant add row: '+tag)
+                continue
             row_metrics.append(e("(()=>{const a=document.querySelector("+q(selector)+"),s=a.closest('section'),h=s.querySelector('h3'),r=a.getBoundingClientRect(),hr=h.getBoundingClientRect(),st=getComputedStyle(a);return {label:h.textContent.toUpperCase(),action:a.textContent,left:r.left,height:r.height,gap:r.top-hr.bottom,font:[st.fontSize,st.fontWeight,st.color]};})()"))
             check(row_metrics[-1]['label']==title and row_metrics[-1]['action']==action,'page uses consistent title and add wording: '+page+' '+tag)
         first=row_metrics[0]
         check(all(all(abs(row[key]-first[key])<.6 for key in ['left','height','gap']) and row['font']==first['font'] for row in row_metrics),'all pages align heading, 44px add row and typography: '+tag+' '+json.dumps(row_metrics))
         e("mobileContents.setPage('files');window.browsePickerClick=contentInspector.files.click;window.browsePickerCount=0;contentInspector.files.click=()=>browsePickerCount++")
         # A form left on another page must not promote or redirect later file layouts.
-        e("window.adaptiveFilesHeight=panel.offsetHeight;mobileContents.setPage('notes');document.getElementById('content-browse-add-note').click();mobileContents.setPage('files')")
+        e("window.adaptiveFilesHeight=panel.offsetHeight;mobileContents.setPage('notes');document.getElementById('content-notes-view').click();mobileContents.setPage('files')")
         check(e('panel.offsetHeight===adaptiveFilesHeight'),'an editor on an inactive page does not inflate Files: '+tag)
         tap('#content-browse-add-file')
         check(e('browsePickerCount===1&&contentInspector.fileSelection.entryId===browseIds[0]'),'Files add row routes through the existing picker for the same CB: '+tag)
@@ -229,14 +232,12 @@ def run_contents_swipe_checks(*,cdp,evaluate,check,wait_for,add,shot):
         check(e("mobileContents.page==='location'&&mobileContents.state==='browse'"),'ambiguous gesture changes neither page nor state: '+tag)
         swipe(point('#content-location-section .content-heading'),dx=30)
         check(e("mobileContents.page==='location'"),'short horizontal motion does not change page: '+tag)
-        # There is no Full state: upward motion on the open handle is inert.
+        # Handle navigation has only Compact and Contents.
         e('mobileContents.root.scrollTop=0')
-        sheet_height=e('panel.getBoundingClientRect().height')
         swipe(point('#close-inspector-button path'),dy=-90)
-        check(e("mobileContents.state==='browse'&&mobileContents.page==='location'&&panel.dataset.contentsState==='browse'&&usableCanvasBounds.contentsState==='browse'"),'upward sheet swipe cannot enter a third state: '+tag)
-        check(e("!document.getElementById('expand-contents-button')&&!document.getElementById('browse-close-button')"),'obsolete Full controls are removed: '+tag)
+        check(e("mobileContents.state==='browse'&&mobileContents.page==='location'&&panel.dataset.contentsState==='browse'&&usableCanvasBounds.contentsState==='browse'"),'upward Contents handle swipe does not expand or navigate: '+tag)
         e("mobileContents.transition('full')")
-        check(e("mobileContents.state==='browse'"),'obsolete Full transition is rejected: '+tag)
+        check(e("mobileContents.state==='browse'"),'obsolete Full navigation transition is rejected: '+tag)
         swipe(point('#close-inspector-button path'),dy=90);state('compact')
         check(e("selectedNode.dataset.entryId===browseIds[3]&&mobileContents.page==='location'"),'Contents down-swipe returns to compact without changing identity/page: '+tag)
         swipe(point('#mobile-body-contents'),dy=-90);state('browse')
@@ -258,7 +259,7 @@ def run_contents_swipe_checks(*,cdp,evaluate,check,wait_for,add,shot):
         e("contentInspector.quickUrl.value='https://example.com/'+innerWidth;contentInspector.quickUrl.dispatchEvent(new Event('input',{bubbles:true}));contentInspector.quickBookmark.requestSubmit()")
         wait_for('contentInspector.content().links.length>0&&contentInspector.quickBookmark.hidden')
         check(e("mobileContents.state==='browse'&&mobileContents.page==='links'&&contentInspector.entryId===browseIds[3]&&!!document.querySelector('#content-links a')"),'link save retains CB, page, Contents and the saved link: '+tag)
-        tap('#contents-tab-notes');tap('#content-browse-add-note',scroll=True)
+        tap('#contents-tab-notes');tap('#content-notes-view' if e('!!contentInspector.content().notes.text') else '#content-browse-add-note',scroll=True)
         check(e("mobileContents.state==='browse'&&document.activeElement===contentInspector.notes"),'Notes reuses its inline edit form in Contents: '+tag)
         e(f"contentInspector.notes.value={q('Saved '+tag)};contentInspector.notesForm.requestSubmit()")
         wait_for(f"entries.get(browseIds[3]).content.notes.text==={q('Saved '+tag)}&&contentInspector.notesForm.hidden")
@@ -281,7 +282,9 @@ def run_contents_swipe_checks(*,cdp,evaluate,check,wait_for,add,shot):
         tap('#contents-tab-notes');choose(0)
         e('document.getElementById("panel-rich-content").scrollTop=60')
         swipe(point('#close-inspector-button path'),dy=90)
-        check(e("mobileContents.state==='browse'&&mobileContents.page==='notes'"),'sheet handle cannot bypass nested content scroll-top guard: '+tag)
+        state('compact')
+        check(e("mobileContents.page==='notes'"),'intentional header collapse is independent of content scroll: '+tag)
+        swipe(point('#mobile-body-contents'),dy=-90);state('browse')
         e('document.getElementById("panel-rich-content").scrollTop=0')
         for dy,dx,cancel in [(30,0,False),(20,80,False),(95,0,True)]:
             swipe(point('#close-inspector-button path'),dy=dy,dx=dx,cancel=cancel)
@@ -349,8 +352,8 @@ def run_contents_swipe_checks(*,cdp,evaluate,check,wait_for,add,shot):
     e('setInspectorOpen(true);physics.pause()')
     check(e("mobileContents.mobile===false&&document.getElementById('contents-dock').hidden&&getComputedStyle(document.querySelector('.contents-close-mark')).display!=='none'&&getComputedStyle(document.querySelector('.contents-collapse-chevron')).display==='none'"),'desktop keeps close mark and no mobile dock')
     check(e("[...document.querySelectorAll('#panel-rich-content > [data-contents-page]')].every(s=>s.dataset.pageHidden==='false')&&getComputedStyle(panel).paddingTop==='16px'&&getComputedStyle(panel).paddingBottom==='16px'"),'desktop retains full section stack and original inspector spacing')
-    check(e("mobileContents.root.querySelector('[data-contents-page]').id==='content-media-section'&&document.getElementById('bookmarks-heading').textContent==='Bookmarks'&&document.getElementById('content-add-bookmark').textContent==='Paste a link…'&&document.getElementById('content-browse-add-file').hidden&&document.getElementById('content-browse-add-note').hidden&&getComputedStyle(document.getElementById('content-add-files')).display!=='none'"),'desktop restores Media-first order, bookmark wording and original Add controls')
-    check(e("document.querySelector('#content-notes-form button[type=submit]').textContent==='Save note'&&document.querySelector('#content-link-form button[type=submit]').textContent==='Save bookmark'&&document.getElementById('content-quick-bookmark-save').textContent==='Save bookmark'&&document.querySelector('#content-location-form button[type=submit]').textContent==='Save location'&&getComputedStyle(contentInspector.quickBookmark).display==='none'&&getComputedStyle(contentInspector.notes).fontSize==='12px'"),'desktop restores contextual save wording and original field typography')
+    check(e("mobileContents.root.querySelector('[data-contents-page]').id==='content-media-section'&&document.getElementById('bookmarks-heading').textContent==='Links'&&document.getElementById('content-add-bookmark').textContent==='Add link\u2026'&&document.getElementById('content-browse-add-file').hidden===!document.getElementById('content-files-empty').hidden&&document.getElementById('content-browse-add-note').hidden&&!document.querySelector('#content-files-section header button')"),'desktop retains Media-first order, Links terminology and the matching empty/populated file add row')
+    check(e("[...document.querySelectorAll('.inline-editor-actions button[type=submit]')].every(b=>b.textContent==='Save')&&[...document.querySelectorAll('.inline-editor-actions button[type=button]')].every(b=>b.textContent==='Cancel')&&getComputedStyle(contentInspector.quickBookmark).display==='none'&&getComputedStyle(contentInspector.notes).fontSize==='12px'"),'desktop uses shared explicit Save/Cancel while preserving field typography')
     check(e("[...document.querySelectorAll('.cb-action-icon')].every(i=>getComputedStyle(i).display==='none')&&getComputedStyle(document.querySelector('#entry-more-button .cb-action-legacy')).display!=='none'&&document.getElementById('entry-more-button').getBoundingClientRect().width===28&&getComputedStyle(document.getElementById('entry-more-button')).letterSpacing==='1px'"),'desktop retains its existing glyph, spacing and 28px action button')
     shot('contents-desktop')
     swipe(point('#panel-name'),dy=90)

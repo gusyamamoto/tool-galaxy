@@ -1,0 +1,106 @@
+"""First-use/editor presentation in a disposable local browser profile."""
+import json
+
+
+def run_readiness_checks(*, cdp, evaluate, check, wait_for, load, add, shot):
+    e=evaluate;q=json.dumps
+    def frame():e('new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))')
+    def viewport(width,height=844):
+        cdp.call('Emulation.setDeviceMetricsOverride',width=width,height=height,deviceScaleFactor=1,mobile=width<1000)
+        cdp.call('Emulation.setTouchEmulationEnabled',enabled=width<1000,maxTouchPoints=5)
+        frame()
+    def reload():
+        e('window.readinessReloadMarker=true');cdp.call('Page.reload');wait_for("typeof readinessReloadMarker==='undefined'&&document.readyState==='complete'&&typeof physics!=='undefined'");load();wait_for('camera.frame===null');e('physics.pause()');frame()
+    def inspect(entry,page='files'):
+        e(f'closeContextMenu();selectEntry(entries.get({q(entry)}),nodes.get({q(entry)}),{{openInspector:true,reframe:false}});mobileContents.setPage({q(page)});panel.scrollTop=0')
+        frame()
+    viewport(390);e('localStorage.clear()');reload()
+    check(e('entries.size===0&&nodes.size===0&&!sampleMode&&!hierarchySidebar.collapsed'), 'fresh mobile Universe stays empty and opens navigation')
+    check(e('!document.getElementById("first-use-cue").hidden&&!hierarchySidebar.universeSection.collapsed'), 'first-use cue points to expanded Universe Add')
+    check(e('document.getElementById("sample-utility").hidden'), 'normal sidebar has no Sample utility')
+    shot('readiness-empty-390')
+    root=add('First Galaxy');wait_for('!formSaveBusy');e('applicationCommandTail')
+    check(e('document.getElementById("first-use-cue").hidden&&persistence.preferences.load().firstItemCreated===true'), 'first real Galaxy retires the cue in navigation preferences')
+    e('hierarchySidebar.setCollapsed(true)');reload()
+    check(e('hierarchySidebar.collapsed&&document.getElementById("first-use-cue").hidden'), 'existing content retains sidebar preference and no cue returns')
+    sibling=add('Childless Galaxy');sun=add('System',root);leaf=add('Leaf',sun);parent=add('Parent',sun);deep=add('Deep',parent)
+    wait_for('physics.settled');e('physics.pause()')
+    for width,height in [(360,800),(390,844),(430,932),(844,390),(1440,1000)]:
+        viewport(width,height);e('closeInspector();hierarchySidebar.setCollapsed(false);entries.forEach(item=>hierarchySidebar.expanded.add(item.id));hierarchySidebar.render()');frame()
+        def x(entry):return e(f'hierarchySidebar.rows.get({q(entry)}).querySelector(".tree-name").getBoundingClientRect().left')
+        check(x(root)==x(sibling) and x(leaf)==x(parent), f'{width}: childless and parent siblings share the exact name column')
+        before=x(sibling);add('First child '+str(width),sibling)
+        e('closeInspector();hierarchySidebar.setCollapsed(false);hierarchySidebar.render()');frame()
+        check(x(sibling)==before, f'{width}: first child does not shift parent')
+        check(x(deep)>x(parent)>x(sun)>x(root), f'{width}: depth retains progressive indentation')
+    viewport(1440,1000);inspect(leaf)
+    check(e("['content-add-files','content-notes-empty','content-add-bookmark','content-add-location'].map(id=>document.getElementById(id).textContent).join('|')==='Add file…|Add note…|Add link…|Add location…'"), 'desktop has four direct empty-row Add actions')
+    check(e("document.getElementById('bookmarks-heading').textContent==='Links'&&!document.getElementById('content-files-section').querySelector('header button')"), 'desktop uses Links without hover-only file-header action')
+    rhythm=e("['content-add-files','content-notes-empty','content-add-bookmark','content-add-location'].map(id=>{const b=document.getElementById(id),r=b.getBoundingClientRect(),h=b.closest('section').querySelector('.content-heading').getBoundingClientRect();return [r.height,r.top-h.bottom,r.left]})")
+    check(all(value==rhythm[0] for value in rhythm),'desktop empty sections share header/row spacing and left alignment')
+    e("window.pickerClicks=0;contentInspector.files.click=()=>pickerClicks++;document.getElementById('content-add-files').click();contentInspector.files.dispatchEvent(new Event('cancel'))")
+    check(e('pickerClicks===1'), 'empty file action opens shared picker directly')
+    editors=[('notes','content-notes-empty','content-notes-form','content-notes','content-cancel-notes'),('links','content-add-bookmark','content-bookmarks-empty','content-quick-bookmark-url','content-cancel-quick-bookmark'),('location','content-add-location','content-location-form','content-location-input','content-cancel-location')]
+    styles=[]
+    for page,action,form,field,cancel in editors:
+        e(f'document.getElementById({q(action)}).click()');frame()
+        check(e(f'document.activeElement.id==={q(field)}&&!document.getElementById({q(form)}).hidden'), 'desktop '+page+' focuses its editor')
+        check(e(f'[...document.getElementById({q(form)}).querySelectorAll(".inline-editor-actions button")].map(b=>b.textContent).join("|")==="Save|Cancel"'), 'desktop '+page+' has explicit Save then Cancel')
+        styles.append(e(f'[...document.getElementById({q(form)}).querySelectorAll(".inline-editor-actions button")].map(b=>{{const s=getComputedStyle(b);return [s.height,s.padding,s.borderRadius,s.backgroundImage,s.display,s.alignItems,s.justifyContent]}})'))
+        e(f'document.getElementById({q(cancel)}).click()')
+    check(all(value==styles[0] for value in styles), 'desktop editor actions share sizing, alignment and primary/secondary styles')
+    shot('readiness-desktop-empty')
+    e('constellationWorkspace.openName();document.getElementById("constellation-name").value="Favorites";document.getElementById("constellation-name-form").requestSubmit()')
+    wait_for('!constellationWorkspace.nameDialog.open');collection=e('[...constellations.keys()][0]')
+    viewport(390);e('closeInspector();hierarchySidebar.setCollapsed(false);constellationWorkspace.collapsed=false;constellationWorkspace.applySectionState()')
+    e(f'document.querySelector("[data-constellation-id="+CSS.escape({q(collection)})+"] .collection-add").click()')
+    check(e(f'constellationWorkspace.picker.open&&constellationWorkspace.pickerId==={q(collection)}'), 'row + directly opens existing membership picker')
+    e('document.getElementById("close-constellation-picker").click()')
+    e(f'openCollectionContextMenu({q(collection)},100,150)')
+    check(e("[...contextMenu.querySelectorAll(':scope>button:not([hidden])')].map(b=>b.textContent).join('|')==='Rename|Delete Constellation'"), 'Constellation management has Rename/Delete without redundant Add')
+    e('closeContextMenu()')
+    for width,height in [(360,800),(390,844),(430,932),(844,390)]:
+        viewport(width,height);e(f'activeConstellationId==={q(collection)}?showConstellationOverview():activateConstellation({q(collection)})');wait_for('camera.frame===null');frame()
+        short=e('panel.getBoundingClientRect().height');shot('readiness-constellation-empty-'+str(width))
+        check(e('panel.dataset.mobileSheet==="true"&&panel.getBoundingClientRect().height<=parseFloat(getComputedStyle(panel).maxHeight)+1'), f'{width}: small Constellation uses adaptive sheet cap')
+        e(f'(async()=>{{for(const id of [...entries.keys()].slice(0,4))await constellationWorkspace.setMember({q(collection)},id,true)}})()');frame()
+        grown=e('panel.getBoundingClientRect().height');print('Constellation heights '+str(width)+': '+q({'empty':short,'fourMembers':grown}),flush=True)
+        check(grown>short or e('panel.getBoundingClientRect().height>=parseFloat(getComputedStyle(panel).maxHeight)-1'), f'{width}: members grow sheet naturally')
+        e(f'(async()=>{{for(const id of entries.keys())await constellationWorkspace.setMember({q(collection)},id,true)}})()');frame()
+        check(e("(()=>{const r=document.getElementById('constellation-content');return panel.getBoundingClientRect().height<=parseFloat(getComputedStyle(panel).maxHeight)+1&&r.scrollHeight>r.clientHeight&&getComputedStyle(r).overflowY==='auto'})()"), f'{width}: large sheet caps and scrolls internally')
+        shot('readiness-constellation-populated-'+str(width))
+        cap=e('getComputedStyle(panel).maxHeight');inspect(leaf)
+        check(e('getComputedStyle(panel).maxHeight')==cap, f'{width}: Constellation and Contents share height cap')
+        shot('readiness-sheet-'+str(width))
+        e(f'(async()=>{{for(const id of [...constellations.get({q(collection)}).memberEntryIds])await constellationWorkspace.setMember({q(collection)},id,false)}})()')
+    e(f'(async()=>{{await contentInspector.save({q(leaf)},c=>({{...c,links:[{{id:"keyboard-link",url:"https://example.com/",title:"Original title"}}]}}))}})()')
+    keyboard_editors=editors+[('links','edit-existing','content-link-form','content-link-title','content-cancel-link')]
+    # Exercise the same CSS safe-area fallback used by the existing Contents suite.
+    e("(async()=>{const css=await(await fetch('style.css')).text();window.readinessSafeArea=document.createElement('style');readinessSafeArea.textContent=css.replace(/env\\(safe-area-inset-(bottom|left|right)\\)/g,'24px');document.head.append(readinessSafeArea)})()")
+    e('window.readinessViewport=window.visualViewport')
+    for width,layout_height,visible in [(360,800,320),(390,844,350),(430,932,380),(844,390,190)]:
+        viewport(width,layout_height)
+        for page,action,form,field,cancel in keyboard_editors:
+            inspect(leaf,page)
+            if action=='edit-existing':e('contentInspector.editLink(contentInspector.content().links[0])')
+            else:e(f'document.getElementById({q(action)}).click()')
+            e(f'document.getElementById({q(field)}).value='+q('Long editable content. '*160 if page=='notes' else 'https://example.com' if page=='links' else 'Place or address'))
+            e(f'Object.defineProperty(window,"visualViewport",{{configurable:true,value:{{offsetLeft:0,offsetTop:12,width:{width},height:{visible}}}}});mobileViewportChanged()');frame()
+            bounds=e(f"""(()=>{{const f=document.getElementById({q(form)}),a=f.querySelector('.inline-editor-actions').getBoundingClientRect(),v=cosmosVisibleViewport();return {{top:a.top,bottom:a.bottom,limit:v.top+v.height,fields:f.querySelector('.inline-editor-fields').getBoundingClientRect().height,buttons:[...f.querySelectorAll('.inline-editor-actions button')].map(b=>{{const r=b.getBoundingClientRect();return {{h:r.height,hit:b.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2))}}}})}}}})()""")
+            check(bounds['top']>=12 and bounds['bottom']<=bounds['limit']+1 and bounds['fields']>=32 and all(b['h']>=44 and b['hit'] for b in bounds['buttons']), f'{width}/{page}: explicit actions above keyboard: '+q(bounds))
+            if page=='notes':
+                check(e('contentInspector.notes.scrollHeight>contentInspector.notes.clientHeight&&getComputedStyle(contentInspector.notes).overflowY==="auto"'),f'{width}: long note scrolls internally')
+                e("mobileContents.setPage('files')");frame()
+                check(e('Math.abs(parseFloat(getComputedStyle(panel).maxHeight)-Math.min(Math.max(280,cosmosVisibleViewport().height*.38),cosmosVisibleViewport().height*.60))<1'),f'{width}: inactive note draft does not expand another page above its cap')
+                e("mobileContents.setPage('notes')");frame()
+            check(e('parseFloat(getComputedStyle(panel).paddingBottom)>=24'),f'{width}/{form}: keyboard preserves safe-area padding')
+            shot('readiness-keyboard-'+str(width)+'-'+form)
+            e(f'document.getElementById({q(cancel)}).click();Object.defineProperty(window,"visualViewport",{{configurable:true,value:readinessViewport}});mobileViewportChanged()');frame()
+    e('readinessSafeArea.remove()')
+    from mobile_editor_visibility_browser import run_editor_visibility_checks
+    run_editor_visibility_checks(cdp=cdp,e=e,check=check,wait_for=wait_for,frame=frame,viewport=viewport,inspect=inspect,leaf=leaf,collection=collection,shot=shot)
+    e('physics.pause();graphNeedsSave=false;closeInspector();hierarchySidebar.setCollapsed(true);localStorage.setItem("galaxy:user-data",JSON.stringify({version:5,entries:[],layout:[],connections:[],portals:[],constellations:[]}))');reload()
+    check(e('entries.size===0&&hierarchySidebar.collapsed&&document.getElementById("first-use-cue").hidden'), 'previously begun empty workspace has no returning cue or forced navigation')
+    e('loadSampleButton.click()');wait_for("document.readyState==='complete'&&sampleMode&&entries.size===282");load()
+    check(e('sampleMode&&entries.size===282'), 'explicit internal Sample loader still works')
+    check(not cdp.errors,'no readiness browser exceptions: '+q(cdp.errors))

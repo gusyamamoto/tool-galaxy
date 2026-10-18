@@ -1,12 +1,13 @@
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm'),path=require('node:path');
 const context=vm.createContext({});vm.runInContext(fs.readFileSync(path.join(__dirname,'../mobile-contents.js'),'utf8'),context);
 const Sheet=vm.runInContext('MobileContentsSheet',context),plain=x=>JSON.parse(JSON.stringify(x));
-test('mobile transitions have only Compact and Contents with no further expansion',()=>{
+test('persistent mobile navigation remains Compact and Contents; legacy Full is rejected',()=>{
     assert.equal(Sheet.nextState('compact',1),'browse');assert.equal(Sheet.nextState('browse',1),'browse');
     assert.equal(Sheet.nextState('browse',-1),'compact');assert.equal(Sheet.nextState('compact',-1),'compact');
     const sheet=Object.create(Sheet.prototype);sheet.state='browse';sheet.enabled=()=>true;
     sheet.transition('full');assert.equal(sheet.state,'browse');
 });
+
 test('gesture axes need clear intent and preserve the existing dead zone',()=>{
     assert.equal(Sheet.direction(4,4),null);assert.equal(Sheet.direction(80,20),'horizontal');
     assert.equal(Sheet.direction(-80,20),'horizontal');assert.equal(Sheet.direction(20,-80),'vertical');

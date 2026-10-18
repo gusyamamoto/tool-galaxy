@@ -57,6 +57,15 @@ class EntryContentInspector {
         this.quickSave=document.getElementById('content-quick-bookmark-save');
         this.files = document.getElementById("content-files");
         this.status = document.getElementById("content-status");
+        this.onLayout=()=>{
+            // Editor feedback shares its field scroller; a previous success/error
+            // must not consume the composer's minimum field/action space.
+            const editing=this.root.closest('#entry-panel')?.dataset.contentsState==='browse'
+                ?this.root.querySelector('[data-page-hidden="false"] .inline-editor:not([hidden])'):null;
+            const target=editing?.querySelector('.inline-editor-fields')||this.root;
+            if(this.status.parentElement!==target)target.append(this.status);
+            onLayout();
+        };
         this.jobs = new Map(); this.urls = new Set(); this.generation = 0; this.entryId = null; this.previewLoads = 0;
         this.downloadUrls = new Map();this.pendingDrafts=new Map();
         this.setupFileDetails();
@@ -72,10 +81,11 @@ class EntryContentInspector {
                 const text=this.notes.value;this.pendingDrafts.set(id,{...this.pendingDrafts.get(id),notes:text});
                 await this.semantic(id,()=>this.save(id,content=>({...content,notes:{format:'plain',text}})));
                 const draft=this.pendingDrafts.get(id);if(draft)delete draft.notes;
-                if(id===this.entryId){this.notesForm.hidden = true; this.renderNotes(); this.message("Note saved.");}
+                if(id===this.entryId){this.notesForm.hidden = true; this.renderNotes(); this.clearMessage();}
             }
             catch (error) { if(id===this.entryId)this.error(error); }
         });
+        this.setupNoteEditing();
         this.notesView.addEventListener('change',async event=>{
             const checkbox=event.target.closest('input[data-note-line]');
             if(!checkbox||this.jobs.get(this.entryId))return;
@@ -100,7 +110,7 @@ class EntryContentInspector {
                 this.linkForm.hidden=true;this.renderLists();
             }
         });
-        this.quickUrl.addEventListener('input',()=>{this.quickSave.hidden=!galaxyModel.webUrl(this.quickUrl.value);this.quickUrl.removeAttribute('aria-invalid');});
+        this.quickUrl.addEventListener('input',()=>{this.quickSave.hidden=false;this.quickUrl.removeAttribute('aria-invalid');});
         document.getElementById('content-cancel-quick-bookmark').addEventListener('click',()=>this.cancelQuickBookmark());
         this.quickBookmark.addEventListener('keydown',event=>{
             if(event.key==='Escape'){event.preventDefault();event.stopPropagation();this.cancelQuickBookmark();}
@@ -160,11 +170,14 @@ class EntryContentInspector {
         });
     }
     content(id = this.entryId) { return this.getEntry(id)?.content || galaxyModel.emptyContent(); }
+    clearMessage() {
+        clearTimeout(this.statusTimer);this.status.textContent='';this.status.hidden=true;this.onLayout();
+    }
     message(text, error = false) {
         clearTimeout(this.statusTimer);
         this.status.textContent = text; this.status.hidden = false; this.status.dataset.error = String(error); this.onLayout();
         if (error && this.visible) requestAnimationFrame(() => {
-            if (this.visible && this.status.textContent === text && this.status.dataset.error === 'true' && this.status.getClientRects().length)
+            if (this.visible && this.status.parentElement===this.root && this.status.textContent === text && this.status.dataset.error === 'true' && this.status.getClientRects().length)
                 this.status.scrollIntoView({block:'nearest'});
         });
         if (!error) this.statusTimer = setTimeout(() => { this.status.hidden = true; this.onLayout(); }, 4000);
@@ -184,7 +197,7 @@ class EntryContentInspector {
         this.entryId = entry?.id || null; this.visible = visible;
         this.linkForm.hidden = this.notesForm.hidden = this.locationForm.hidden = true; this.status.hidden = true;
         this.locationInput.value='';this.locationInput.removeAttribute('aria-invalid');this.locationError.hidden=true;
-        this.quickEditing=false;this.quickUrl.value='';this.quickUrl.removeAttribute('aria-invalid');this.quickSave.hidden=true;
+        this.quickEditing=false;this.quickUrl.value='';this.quickUrl.removeAttribute('aria-invalid');this.quickSave.hidden=false;
         document.getElementById("content-file-limit").hidden = true;
         this.notes.value = this.content().notes.text;
         const draft=this.pendingDrafts.get(this.entryId);
@@ -214,7 +227,7 @@ class EntryContentInspector {
                 const text=this.locationInput.value;this.pendingDrafts.set(id,{...this.pendingDrafts.get(id),location:text});
                 await this.semantic(id,()=>this.saveLocation(id,{text}));delete this.pendingDrafts.get(id).location;
                 if(id!==this.entryId)return;
-                this.locationForm.hidden=true;this.renderLocation();this.message('Location saved.');
+                this.locationForm.hidden=true;this.renderLocation();this.clearMessage();
                 document.getElementById('content-edit-location').focus({preventScroll:true});
             }catch(error){
                 if(id!==this.entryId)return;
@@ -243,7 +256,7 @@ class EntryContentInspector {
         if(!this.entryId||this.jobs.get(this.entryId))return;
         this.onAction();this.locationInput.value=this.getEntry(this.entryId)?.location?.text||'';
         this.locationInput.removeAttribute('aria-invalid');this.locationError.hidden=true;
-        this.locationForm.hidden=false;this.renderLocation();this.locationInput.focus({preventScroll:true});
+        this.locationForm.hidden=false;this.renderLocation();this.focusEditor(this.locationInput);
     }
     cancelLocation({restoreFocus=true}={}) {
         if(this.pendingDrafts.get(this.entryId))delete this.pendingDrafts.get(this.entryId).location;
@@ -265,9 +278,18 @@ class EntryContentInspector {
     async job(id, operation) {
         if (this.jobs.get(id)) { this.message("Wait for the current file action to finish.", true); return; }
         this.onAction(); this.jobs.set(id, 1); this.busy();
-        try { await operation(); if (id === this.entryId) { this.renderLists(); this.message("File action completed."); } }
+        try { await operation(); if (id === this.entryId) { this.renderLists(); this.clearMessage(); } }
         catch (error) { if (id === this.entryId) { this.renderLists(); this.error(error); } }
         finally { this.jobs.delete(id); this.busy(); }
+    }
+    focusEditor(input) {
+        this.onLayout();
+        if(this.root.closest('#entry-panel')?.dataset.contentsState==='browse') {
+            // A previous list scroll must not carry the new composer offscreen.
+            this.root.scrollTop=0;
+            input.focus({preventScroll:true});
+            input.scrollIntoView({block:'nearest',inline:'nearest'});
+        } else input.focus({preventScroll:true});
     }
     editLink(link) {
         if (!this.entryId || this.jobs.get(this.entryId)) return;
@@ -276,7 +298,7 @@ class EntryContentInspector {
         document.getElementById("content-link-url").value = link?.url || "";
         document.getElementById("content-link-title").value = link?.title || "";
         this.linkForm.hidden = false; this.renderBookmarkState();
-        document.getElementById("content-link-url").focus({ preventScroll: true }); this.onLayout();
+        this.focusEditor(document.getElementById('content-link-url'));
     }
     chooseFiles({media=false,source='files',entryId=this.entryId,onSelect=null} = {}) {
         if (this.getEntry(entryId) && !this.jobs.get(entryId)) {
@@ -296,12 +318,39 @@ class EntryContentInspector {
             catch (error) { this.fileSelection = null; document.getElementById('content-file-limit').hidden = true; this.error(error); }
         }
     }
+    setupNoteEditing() {
+        // Saved Notes are a mobile edit target, but scrolling, text selection and
+        // checklist controls keep their own gestures. Desktop keeps its Edit action.
+        const mobile=()=>this.root.closest('#entry-panel')?.dataset.contentsState==='browse';
+        const pointers=new Set();let tap=null;
+        document.addEventListener('pointerdown',event=>{
+            pointers.add(event.pointerId);tap=null;
+            if(pointers.size===1&&event.isPrimary&&event.button===0&&mobile()&&this.notesView.contains(event.target)&&!event.target.closest('input,label,a,button'))
+                tap={id:this.entryId,x:event.clientX,y:event.clientY,scroll:this.root.scrollTop};
+        },true);
+        document.addEventListener('pointermove',event=>{
+            if(tap&&Math.hypot(event.clientX-tap.x,event.clientY-tap.y)>8)tap=null;
+        },true);
+        document.addEventListener('pointerup',event=>{pointers.delete(event.pointerId);if(tap)tap.released=true;},true);
+        document.addEventListener('pointercancel',event=>{pointers.delete(event.pointerId);tap=null;},true);
+        window.addEventListener('blur',()=>{pointers.clear();tap=null;});
+        this.notesView.addEventListener('click',event=>{
+            if(!mobile()||event.target.closest('input,label,a,button'))return;
+            const clean=event.detail===0||tap?.released&&tap.id===this.entryId&&tap.scroll===this.root.scrollTop&&!window.getSelection()?.toString();
+            tap=null;if(clean)this.editNotes();
+        });
+        this.notesView.addEventListener('keydown',event=>{
+            if(mobile()&&event.target===this.notesView&&['Enter',' '].includes(event.key)){
+                event.preventDefault();this.editNotes();
+            }
+        });
+    }
     editNotes() {
         if (!this.entryId || this.jobs.get(this.entryId)) return;
         this.onAction();
         if (this.notesForm.hidden) this.notes.value = this.content().notes.text;
         this.notesForm.hidden = false; this.renderNotes();
-        this.notes.focus({ preventScroll: true }); this.onLayout();
+        this.focusEditor(this.notes);
     }
     renderNotes() {
         const text = this.content().notes.text;
@@ -315,18 +364,22 @@ class EntryContentInspector {
             checkbox.ariaLabel=checklist.label||'Checklist item';description.textContent=checklist.label;label.append(checkbox,description);this.notesView.append(label);
         });
         this.notesView.hidden = !text || !this.notesForm.hidden;
+        const mobile=this.root.closest('#entry-panel')?.dataset.contentsState==='browse';
+        this.notesView.tabIndex=mobile&&!this.notesView.hidden?0:-1;
+        if(mobile)this.notesView.setAttribute('aria-label','Edit note');else this.notesView.removeAttribute('aria-label');
+        document.getElementById('content-browse-add-note').hidden=!!text||!this.notesForm.hidden||!mobile;
         const button = document.getElementById("content-edit-notes");
         button.hidden = !text || !this.notesForm.hidden;
         document.getElementById("content-notes-empty").hidden = !!text || !this.notesForm.hidden;
     }
     addBookmark() {
         if(!this.entryId||this.jobs.get(this.entryId))return;
-        this.onAction();this.quickEditing=true;this.linkForm.hidden=true;this.renderBookmarkState();
-        this.quickUrl.focus({preventScroll:true});this.onLayout();
+        this.onAction();this.quickSave.hidden=false;this.quickEditing=true;this.linkForm.hidden=true;this.renderBookmarkState();
+        this.focusEditor(this.quickUrl);
     }
     cancelQuickBookmark({restoreFocus=true}={}) {
         if(this.pendingDrafts.get(this.entryId))delete this.pendingDrafts.get(this.entryId).bookmark;
-        this.quickEditing=false;this.quickUrl.value='';this.quickUrl.removeAttribute('aria-invalid');this.quickSave.hidden=true;
+        this.quickEditing=false;this.quickUrl.value='';this.quickUrl.removeAttribute('aria-invalid');this.quickSave.hidden=false;
         this.renderBookmarkState();if(restoreFocus)document.getElementById('content-add-bookmark').focus({preventScroll:true});this.onLayout();
     }
     renderBookmarkState() {
@@ -340,7 +393,7 @@ class EntryContentInspector {
         if(!url){this.message('Enter a valid website address, such as google.com or an HTTPS URL.',true);return false;}
         const link={id:editingId||cosmifoldIds.uuid(),url,...(title?{title}:{})};
         const id=this.entryId;this.pendingDrafts.set(id,{...this.pendingDrafts.get(id),bookmark:{value,title,editingId}});
-        try{await this.semantic(id,()=>this.save(id,current=>({...current,links:editingId?current.links.map(old=>old.id===link.id?link:old):[...current.links,link]})));delete this.pendingDrafts.get(id).bookmark;if(id===this.entryId)this.message('Link saved.');return id===this.entryId;}
+        try{await this.semantic(id,()=>this.save(id,current=>({...current,links:editingId?current.links.map(old=>old.id===link.id?link:old):[...current.links,link]})));delete this.pendingDrafts.get(id).bookmark;if(id===this.entryId)this.clearMessage();return id===this.entryId;}
         catch(error){if(id===this.entryId)this.error(error);return false;}
     }
     button(text, action, label = text) {
