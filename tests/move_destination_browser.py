@@ -29,7 +29,6 @@ def run_move_destination_checks(*, cdp, evaluate, check, wait_for, add, shot):
 
     def open_move():
         evaluate(f"closeContentMenus();closeContextMenu();openContextMenu({q(owner)},200,150)")
-        if evaluate("contextMenu.dataset.view==='quick'"):evaluate("contextMenu.querySelector('[data-action=more]').click()")
         evaluate("contextMenu.querySelector('[data-action=move]').click()")
         wait_for('dialog.open')
 

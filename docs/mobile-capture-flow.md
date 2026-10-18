@@ -38,34 +38,35 @@ touch targets. The compact card and desktop spacing are unchanged.
 In short phone landscape, the drawer scrolls and reserves a usable tree height
 so expanded collections/utilities cannot squeeze capture rows out of view.
 
-Mobile CB View (sidebar closed) offers Take Photo, Photo Library / Gallery,
-Quick note and More…. Quick note opens the existing note editor. More… expands
-the same menu for the same destination, without opening the sidebar or changing
-selection. Reopening `+` returns to the quick menu.
-
-Mobile Menu View (sidebar open) offers the full menu: Take Photo, Photo Library /
-Gallery, Files; Add item, Add existing item, Paste; Note, Bookmark. Separators group
-capture, organization and writing actions. The full menu is also available via
-More… in CB View. Both use the existing item-actions menu surface, typography,
-single-column rows and touch spacing. Desktop retains its existing Add actions
-and drag/drop paths, with Paste relocated into the full Add menu.
+Mobile Add uses the same three actions from the compact card, Contents header,
+and sidebar rows: Take Photo, Photo Gallery, Add item. There is no More step or
+expanded mobile Add menu. Contents owns general Files, Notes, Links and Location
+entry. Desktop keeps Add item, contextual Paste, Add files,
+Add note and Add bookmark. Both menus retain the approved surface and row styles.
 
 ## Body management menus
 
-`+` adds into the destination body; `…` manages the body itself. CB View exposes
-exactly Rename, Add to Constellation and More…. More expands the full menu for
-the retained body: Rename, Move to…, Add to Constellation, Copy, Duplicate
-structure, Delete item. Galaxies also retain Archive Galaxy before Delete item.
-Menu View opens the full menu directly. Preview, Contents-header, sidebar and
-canvas actions share the same canonical body menu; desktop uses its full version.
+Mobile `…` opens full management directly for its retained body: Rename,
+Move to…, divider, Add to Constellation, divider, Copy, Duplicate structure,
+divider, Delete item. Galaxies retain Archive Galaxy immediately before Delete.
+Preview, Contents header and sidebar share this menu. Desktop retains its full
+management menu and existing grouping.
 Linked-item and Constellation overview actions retain their separate meanings.
-The two full-menu dividers use the existing Add-menu separator treatment.
 
-Add item and Add files were removed from body management. Paste now appears in
-the full Add menu (disabled when no valid internal clipboard source exists).
-It opens the same copy/link confirmation dialog bound to the Add destination;
-quick Add choices, existing keyboard shortcuts and copy/link semantics are
-unchanged. This does not introduce any new linking mechanism.
+Paste is omitted when there are no surviving copied roots, the destination is
+unavailable, or storage is unavailable. Mobile shows contextual Paste beside Copy
+in management; its existing confirmation offers independent copies only.
+Desktop keeps contextual Paste in Add with the same independent-copy confirmation.
+Keyboard shortcuts use the same dialog. No permanently disabled Paste row is shown.
+The full mobile menu scrolls above or below its trigger on short screens so a
+second tap cannot hit an action covering that trigger.
+
+New linked-item creation is hidden on desktop and mobile: no Add existing item
+in Add, and no Link existing item choice in Paste. Internal placement support
+is retained for compatibility, without a storage migration.
+Existing placements still load, render, navigate to their canonical body, expose
+Go to original / Remove from here, and survive backup/restore. Model, repository,
+IDs and stored records are unchanged.
 
 Move to… keeps the existing confirmation form and save/publish path, with a
 shared collapsible hierarchy and case-insensitive name search in place of the
@@ -101,25 +102,23 @@ response and existing parent-relative placement invalidation are unchanged.
 The native drag regression checks settled screen/world coordinates, repeated
 Move/drag, manual placement, descendants and desktop mouse input.
 
-Mobile full Contents exposes a body-level `+` beside the existing `…` in its
-title row. Preview and Contents-header `+` share the same Add menu and context
-rules: sidebar closed gives the four quick choices; sidebar open gives the full
-menu; More… expands it without changing the destination. The Contents button
-targets the canonical body currently shown by the inspector, not a section.
-It is absent from Constellation overview and desktop title rows.
+Mobile Contents exposes a body-level `+` beside `…` in its title row.
+Compact and Contents use identical mobile menus bound to the canonical body
+currently shown, never a section. The Contents Add button is absent from
+Constellation overview and desktop title rows.
 
 Files and Media retain explicitly labelled section actions. Bookmarks and
 Location use lightweight inline entry rows, never a bare `+` that can be
 mistaken for the primary body-level Add button.
 
-All three capture choices synchronously open the existing file input from the
-user gesture, with the exact destination ID retained until selection/cancellation:
+Both quick-photo actions and Contents Files synchronously open the existing file
+input from the user gesture, retaining the exact destination until selection/cancellation:
 
 | Choice | Input configuration |
 | --- | --- |
-| Photo Library / Gallery | `accept="image/*,.heic,.heif"`, multiple, no capture attribute |
+| Photo Gallery | `accept="image/*,.heic,.heif"`, multiple, no capture attribute |
 | Take Photo | `accept="image/*"`, `capture="environment"`, single file |
-| Files | No accept/capture filter, multiple |
+| Contents Files / Add file | No accept/capture filter, multiple |
 
 Every opening resets the previous input configuration. Cancellation clears the
 picker destination without opening Contents or changing metadata. Selection opens

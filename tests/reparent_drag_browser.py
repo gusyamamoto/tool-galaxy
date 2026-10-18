@@ -18,8 +18,6 @@ def run_reparent_drag_checks(*, cdp, evaluate, check, wait_for, add):
 
     def move_to(parent_id):
         evaluate(f"closeInspector();closeContentMenus();closeContextMenu();window.retainedEntry=entries.get({q(owner)});window.retainedDOM=nodes.get({q(owner)});window.retainedParticle=physics.particles.get({q(owner)});window.moveStart={{x:retainedEntry.x,y:retainedEntry.y}};openContextMenu({q(owner)},200,180)")
-        if evaluate("contextMenu.dataset.view==='quick'"):
-            evaluate("contextMenu.querySelector('[data-action=more]').click()")
         evaluate("contextMenu.querySelector('[data-action=move]').click()")
         check(evaluate(f'dialog.open&&editingId==={q(owner)}'),'Move starts through the existing management/form path')
         evaluate(f'moveDestinationPicker.select({q(parent_id)});form.requestSubmit()')
