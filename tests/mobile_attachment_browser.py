@@ -35,6 +35,7 @@ def run_mobile_attachment_checks(*, cdp, evaluate, check, wait_for, add, select)
             open_picker(source)
             cdp.call('DOM.setFileInputFiles',nodeId=input_node,files=[str(files/name)])
             completed();count+=1
+            check(evaluate(f"mobileContents.state==='browse'&&mobileContents.page==='files'&&contentInspector.entryId==={json.dumps(owner)}&&panel.dataset.contentsState==='browse'"), f'{source}: real file-input save retains Contents, Files and its original CB')
             check(evaluate(f'contentInspector.content().attachments.length==={count}'), f'{source}: real input change reaches the model without randomUUID or an image decoder')
             check(evaluate(f"(async()=>{{const f=contentInspector.content().attachments.at(-1),r=await attachmentStore.get(f.storageKey);return f.filename==={json.dumps(name)}&&r.entryId==={json.dumps(owner)}&&r.blob.size===f.size&&btoa(String.fromCharCode(...new Uint8Array(await r.blob.arrayBuffer())))==={json.dumps(base64.b64encode((files/name).read_bytes()).decode())};}})()"), f'{source}: exact original bytes and filename reach real IndexedDB')
             check(evaluate("contentInspector.files.value===''&&document.querySelectorAll('#content-media > li,#content-attachments > li').length===contentInspector.content().attachments.length"), f'{source}: input resets for reuse and UI displays the committed attachment')

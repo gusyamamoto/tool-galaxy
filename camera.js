@@ -14,6 +14,7 @@ class GraphCamera {
         this.lastTime = null;
         this.reducedMotion = false;
         this.travel = null;
+        this.changeSource = 'programmatic';
     }
 
     screenToWorld(x, y) {
@@ -24,24 +25,28 @@ class GraphCamera {
         return { x: x * this.view.scale + this.view.x, y: y * this.view.scale + this.view.y };
     }
 
-    zoomAt(x, y, factor) {
+    zoomAt(x, y, factor, { source = 'programmatic' } = {}) {
         if (this.travel) this.stopAnimation();
         const anchor = this.screenToWorld(x, y);
         const scale = Math.max(this.minScale, Math.min(this.maxScale, this.target.scale * factor));
-        this.setView({ x: x - anchor.x * scale, y: y - anchor.y * scale, scale });
+        this.setView({ x: x - anchor.x * scale, y: y - anchor.y * scale, scale }, true, { source });
     }
 
-    setView(view, animate = true) {
+    setView(view, animate = true, { source = 'programmatic' } = {}) {
         if (this.travel) this.stopAnimation();
         this.target = { ...view, scale: Math.max(this.minScale, Math.min(this.maxScale, view.scale)) };
         if (!animate || this.reducedMotion) {
+            const previousScale = this.view.scale;
             const target = this.target;
             this.stopAnimation();
             this.target = target;
             this.view = { ...target };
-            this.onChange(this.view);
+            this.changeSource = source;
+            this.onChange(this.view, { source, previousScale });
             this.onRest();
-        } else if (this.frame === null) {
+        } else {
+            this.changeSource = source;
+            if (this.frame !== null) return;
             this.lastTime = null;
             this.frame = this.requestFrame((time) => this.tick(time));
         }
@@ -49,6 +54,7 @@ class GraphCamera {
 
     tick(time) {
         if (this.travel) { this.tickTravel(time); return; }
+        const previousScale = this.view.scale;
         const elapsed = this.lastTime === null ? 16 : Math.min(64, time - this.lastTime);
         this.lastTime = time;
         const blend = 1 - Math.exp(-elapsed / 55);
@@ -58,7 +64,7 @@ class GraphCamera {
         const settled = Math.abs(this.target.scale - this.view.scale) < 0.0001 &&
             Math.hypot(this.target.x - this.view.x, this.target.y - this.view.y) < 0.05;
         if (settled) this.view = { ...this.target };
-        this.onChange(this.view);
+        this.onChange(this.view, { source: this.changeSource, previousScale });
         this.frame = settled ? null : this.requestFrame((nextTime) => this.tick(nextTime));
         if (settled) this.onRest();
     }
@@ -69,6 +75,7 @@ class GraphCamera {
         this.frame = null;
         this.lastTime = null;
         this.travel = null;
+        this.changeSource = 'programmatic';
         this.target = { ...this.view };
     }
 
@@ -98,6 +105,31 @@ class GraphCamera {
         if (view) this.setView(view, options.animate ?? true);
     }
 
+    // Native-size bodies and text do not scale like world-space coordinates.
+    // Callers project their frozen geometry arithmetically, never via DOM reads.
+    projectedBoundsView(boundsAtScale, viewport, { padding = 16, maxScale = 1 } = {}) {
+        const width=viewport.right-viewport.left,height=viewport.bottom-viewport.top;
+        // A sidebar/keyboard can leave a sliver: defer rather than fly away.
+        if(width<120||height<96||!Number.isFinite(maxScale)||maxScale<=0)return;
+        const pad=Math.min(padding,width*.08,height*.08);
+        const valid=b=>b&&[b.left,b.right,b.top,b.bottom].every(Number.isFinite);
+        const fits=b=>valid(b)&&b.right-b.left<=width-2*pad&&b.bottom-b.top<=height-2*pad;
+        let scale=maxScale,bounds=boundsAtScale(scale);
+        if(!fits(bounds)){
+            if(!fits(boundsAtScale(0)))return;
+            let low=0,high=maxScale;
+            for(let i=0;i<40;i++){
+                const middle=(low+high)/2;
+                if(fits(boundsAtScale(middle)))low=middle;else high=middle;
+            }
+            scale=low;bounds=boundsAtScale(scale);
+        }
+        if(!(scale>0)||!fits(bounds))return;
+        this.minScale=Math.min(this.minScale,scale);
+        return {x:(viewport.left+viewport.right-bounds.left-bounds.right)/2,
+            y:(viewport.top+viewport.bottom-bounds.top-bounds.bottom)/2,scale};
+    }
+
     // Animated navigation uses the same view, frame loop and completion callback.
     // Interpolate the world point at the usable viewport center, so zooming out
     // establishes the route rather than introducing an unrelated translation.
@@ -123,6 +155,7 @@ class GraphCamera {
     }
 
     tickTravel(time) {
+        const previousScale = this.view.scale;
         const travel = this.travel;
         if (travel.started === null) travel.started = time;
         const t = Math.max(0, Math.min(1, (time - travel.started) / travel.duration));
@@ -139,7 +172,7 @@ class GraphCamera {
         this.view = t === 1 ? { ...this.target } : { x: travel.center.x - x * scale, y: travel.center.y - y * scale, scale };
         if (t === 1) { this.travel = null; this.frame = null; }
         else this.frame = this.requestFrame(nextTime => this.tick(nextTime));
-        this.onChange(this.view);
+        this.onChange(this.view, { source: 'navigation', previousScale });
         if (t === 1) this.onRest({travel:true});
     }
 

@@ -47,7 +47,9 @@ class GalaxyArchiveMotion {
             group.append(canvas); points.push({ x: rect.left-viewport.left+rect.width/2, y: rect.top-viewport.top+rect.height/2 });
         }
         for (const node of bodyNodes) {
-            if (node.dataset.body === 'galaxy' || node.dataset.culled === 'true' || node.dataset.semanticHidden === 'true') continue;
+            // The real Galaxy marker now supplies the root's visual snapshot,
+            // including empty Galaxies that no longer have a cloud canvas.
+            if (node.dataset.culled === 'true' || node.dataset.semanticHidden === 'true') continue;
             const style = getComputedStyle(node);
             if (Number(style.opacity) < .02) continue;
             const rect = node.getBoundingClientRect();
@@ -60,6 +62,7 @@ class GalaxyArchiveMotion {
                 width: `${rect.width}px`, height: `${rect.height}px`, transform: 'none', opacity: style.opacity,
                 outline: 'none', transition: 'none', pointerEvents: 'none' });
             copy.style.setProperty('--surface-detail', style.getPropertyValue('--surface-detail') || '1');
+            copy.style.setProperty('--overview-decoration', style.getPropertyValue('--overview-decoration') || '1');
             group.append(copy); points.push({ x: rect.left-viewport.left+rect.width/2, y: rect.top-viewport.top+rect.height/2 });
         }
         if (!points.length) return null;

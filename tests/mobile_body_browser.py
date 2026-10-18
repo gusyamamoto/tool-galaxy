@@ -61,6 +61,7 @@ def run_mobile_body_checks(*, cdp, evaluate, check, wait_for, add, click_selecto
         check(selected(second) and evaluate(f'!panel.hidden&&contentInspector.entryId==={json.dumps(second)}'), 'explicit expand chevron opens exactly the selected body: '+label)
         wait_for("panel.getAnimations().every(a=>a.playState==='finished')")
         tap('#close-inspector-button')
+        wait_for('panel.hidden')
         check(selected(second) and evaluate("panel.hidden&&document.getElementById('mobile-body-actions').getClientRects().length>0"), 'closing Contents restores preview and retains selected body: '+label)
         shot('mobile-body-'+label)
 

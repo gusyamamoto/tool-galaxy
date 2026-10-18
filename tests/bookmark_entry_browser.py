@@ -7,6 +7,10 @@ def run_bookmark_entry_checks(*,cdp,evaluate,check,wait_for,add,shot,baseline=Fa
     wait_for('physics.settled');evaluate('physics.pause()')
 
     def tap(selector):
+        if mobile:
+            selector={'#content-notes-empty':'#content-browse-add-note','#content-add-files':'#content-browse-add-file'}.get(selector,selector)
+            page=evaluate(f"document.querySelector({json.dumps(selector)})?.closest('[data-contents-page]')?.dataset.contentsPage")
+            if page:evaluate(f"mobileContents.setPage({json.dumps(page)})")
         evaluate(f"document.querySelector({json.dumps(selector)}).scrollIntoView({{block:'nearest'}});new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))")
         p=evaluate(f"(()=>{{const r=document.querySelector({json.dumps(selector)}).getBoundingClientRect();return {{x:r.x+r.width/2,y:r.y+r.height/2}};}})()")
         if mobile:
@@ -31,22 +35,24 @@ def run_bookmark_entry_checks(*,cdp,evaluate,check,wait_for,add,shot,baseline=Fa
         evaluate(f"hierarchySidebar.setCollapsed(true);focusEntry({json.dumps(owner)},{{openInspector:true}})")
         wait_for('camera.frame===null')
         evaluate(f"(async()=>{{await contentInspector.save({json.dumps(owner)},current=>({{...current,links:[]}}));await contentInspector.saveLocation({json.dumps(owner)},null);contentInspector.select(entries.get({json.dumps(owner)}),true);setInspectorOpen(true);physics.pause();panel.scrollTop=0;}})()")
+        if mobile:evaluate("mobileContents.setPage('links')")
         evaluate('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))')
         print('Inline entry layout '+label+': '+json.dumps(evaluate("(()=>{const s=document.querySelector('[aria-labelledby=bookmarks-heading]').getBoundingClientRect(),l=document.getElementById('content-location-section').getBoundingClientRect();return {bookmarks:s.height,location:l.height,panelHeight:panel.clientHeight};})()")),flush=True)
         shot('bookmarks-empty-'+label)
         if baseline:continue
         if mobile:
-            rhythm=evaluate("""['#content-files-empty','#content-notes-empty','#content-add-bookmark','#content-add-location'].map(selector=>{
-                const row=document.querySelector(selector),section=row.closest('section'),s=section.getBoundingClientRect(),r=row.getBoundingClientRect(),h=section.querySelector('h3').getBoundingClientRect(),range=document.createRange();range.selectNodeContents(row);const text=range.getBoundingClientRect(),style=getComputedStyle(row);
-                return {selector,sectionHeight:s.height,labelTop:h.top-s.top,labelHeight:h.height,labelToText:text.top-h.bottom,textBottomToDivider:s.bottom-1-text.bottom,rowHeight:r.height,textLeft:text.left,font:[style.fontSize,style.fontWeight,style.lineHeight,style.color],decoration:style.textDecorationLine};
-            })""")
+            rhythm=[]
+            for page,selector in [('files','#content-browse-add-file'),('notes','#content-browse-add-note'),('links','#content-add-bookmark'),('location','#content-add-location')]:
+                evaluate(f"mobileContents.setPage({json.dumps(page)})")
+                rhythm.append(evaluate("(()=>{const row=document.querySelector("+json.dumps(selector)+"),r=row.getBoundingClientRect(),h=row.closest('section').querySelector('h3').getBoundingClientRect(),style=getComputedStyle(row);return {rowHeight:r.height,textLeft:r.left,labelToRow:r.top-h.bottom,font:[style.fontSize,style.fontWeight,style.lineHeight,style.color]};})()"))
             print('Empty Contents rhythm '+label+': '+json.dumps(rhythm),flush=True)
             first=rhythm[0]
-            check(all(all(abs(row[key]-first[key])<.6 for key in ['sectionHeight','labelTop','labelHeight','labelToText','textBottomToDivider','rowHeight','textLeft']) and row['font']==first['font'] for row in rhythm),'all four sections share label/row/divider rhythm and muted typography: '+label)
-            check(evaluate("document.getElementById('content-files-empty').tagName==='P'&&!document.getElementById('content-files-empty').hasAttribute('tabindex')&&getComputedStyle(document.getElementById('content-notes-empty')).textDecorationLine==='none'"),'No files remains non-interactive and No notes loses its underline: '+label)
-            check(evaluate("(()=>{const a=document.getElementById('content-add-files').getBoundingClientRect(),h=document.getElementById('files-heading').getBoundingClientRect();return a.width>=44&&a.height>=44&&Math.abs(a.top+a.height/2-h.top-h.height/2)<.6})()"),'Add file retains its aligned header position and comfortable touch target: '+label)
-        check(evaluate("contentInspector.quickBookmark.hidden&&contentInspector.linkForm.hidden&&document.getElementById('content-add-bookmark').textContent==='Paste a link…'&&!document.getElementById('content-bookmarks-placeholder').hidden&&contentInspector.quickUrl.getClientRects().length===0"),'collapsed Bookmarks has a lightweight Paste a link row without an unused input: '+label)
-        check(evaluate("""(()=>{const a=document.getElementById('content-add-bookmark'),b=document.getElementById('content-add-location'),keys=['fontSize','fontWeight','color','paddingTop','paddingBottom','minHeight'],gap=e=>e.getBoundingClientRect().top-e.closest('section').querySelector('header').getBoundingClientRect().bottom;return document.querySelectorAll('.content-inline-section > header button').length===0&&keys.every(k=>getComputedStyle(a)[k]===getComputedStyle(b)[k])&&Math.abs(gap(a)-gap(b))<.6&&b.textContent==='Add location…';})()"""),'both sections share inline-row styling and spacing with no header Add controls: '+label)
+            check(all(all(abs(row[key]-first[key])<.6 for key in ['labelToRow','rowHeight','textLeft']) and row['font']==first['font'] for row in rhythm),'all four pages share heading/add-row rhythm and typography: '+label)
+            check(first['rowHeight']>=44,'shared add rows retain comfortable touch targets: '+label)
+            evaluate("mobileContents.setPage('links')")
+        expected='Add link…' if mobile else 'Paste a link…'
+        check(evaluate(f"contentInspector.quickBookmark.hidden&&contentInspector.linkForm.hidden&&document.getElementById('content-add-bookmark').textContent==={json.dumps(expected)}&&!document.getElementById('content-bookmarks-placeholder').hidden&&contentInspector.quickUrl.getClientRects().length===0"),'collapsed link entry stays lightweight without an unused input: '+label)
+        check(evaluate("document.querySelectorAll('.content-inline-section > header button').length===0&&document.getElementById('content-add-location').textContent==='Add location…'"),'inline entry has no separate header Add controls: '+label)
         tap('#content-add-bookmark')
         check(evaluate("!contentInspector.quickBookmark.hidden&&document.activeElement===contentInspector.quickUrl&&contentInspector.linkForm.hidden&&!document.querySelector('dialog[open]')"),'Paste a link immediately focuses inline URL entry: '+label)
         shot('bookmarks-entry-'+label)
@@ -108,7 +114,9 @@ def run_bookmark_entry_checks(*,cdp,evaluate,check,wait_for,add,shot,baseline=Fa
         check(evaluate(f"entries.get({json.dumps(owner)}).location.text==='Library'&&contentInspector.locationForm.hidden"),'Location Escape preserves the saved value: '+label)
         shot('inline-entry-saved-'+label)
         if mobile:
-            check(evaluate("['content-add-bookmark','content-add-files','content-edit-location'].every(id=>document.getElementById(id).getBoundingClientRect().height>=44)"),'inline rows and saved-location controls retain comfortable touch targets: '+label)
+            for page,selector in [('links','#content-add-bookmark'),('files','#content-browse-add-file'),('location','#content-edit-location')]:
+                evaluate(f"mobileContents.setPage({json.dumps(page)})")
+                check(evaluate(f"document.querySelector({json.dumps(selector)}).getBoundingClientRect().height>=44"),'entry and saved-location touch target '+page+': '+label)
     if not baseline:
         cdp.call('Page.reload');wait_for('document.readyState==="complete"&&typeof contentInspector!=="undefined"')
         check(evaluate(f"entries.get({json.dumps(owner)}).content.links.length===1&&entries.get({json.dumps(owner)}).content.links[0].title==='Reading list'"),'saved bookmark survives a real local reload')

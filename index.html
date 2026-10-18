@@ -30,8 +30,8 @@
         <div id="mobile-body-actions" role="group" aria-label="Selected item" hidden>
             <button id="mobile-body-contents" type="button" aria-label="Expand contents" aria-controls="entry-panel" aria-expanded="false"><svg class="contents-chevron" aria-hidden="true" viewBox="0 0 16 16"><path d="m4 10 4-4 4 4"/></svg></button>
             <span id="mobile-body-name"></span>
-            <button id="mobile-body-add" type="button" aria-label="Add content" aria-haspopup="menu" aria-controls="add-menu" aria-expanded="false">+</button>
-            <button id="mobile-body-more" type="button" aria-label="Item actions" aria-haspopup="menu" aria-controls="entry-context-menu" aria-expanded="false">…</button>
+            <button id="mobile-body-add" class="cb-action-button" type="button" aria-label="Add content" aria-haspopup="menu" aria-controls="add-menu" aria-expanded="false"><span class="cb-action-legacy" aria-hidden="true">+</span><svg class="cb-action-icon" aria-hidden="true" viewBox="0 0 20 20"><path d="M10 4.5v11M4.5 10h11" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button>
+            <button id="mobile-body-more" class="cb-action-button" type="button" aria-label="Item actions" aria-haspopup="menu" aria-controls="entry-context-menu" aria-expanded="false"><span class="cb-action-legacy" aria-hidden="true">…</span><svg class="cb-action-icon" aria-hidden="true" viewBox="0 0 20 20"><circle cx="4.5" cy="10" r="1.2"/><circle cx="10" cy="10" r="1.2"/><circle cx="15.5" cy="10" r="1.2"/></svg></button>
         </div>
 
         <button id="sidebar-toggle" type="button" aria-controls="hierarchy-sidebar" aria-expanded="true" title="Hide navigation" aria-label="Hide navigation"><svg aria-hidden="true" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M10 4v16"/></svg></button>
@@ -91,8 +91,8 @@
             <div class="panel-content">
                 <h2 id="panel-name">Select an item</h2>
             <div class="content-header-actions">
-                <button id="entry-add-button" type="button" aria-label="Add content to this item" title="Add content" aria-haspopup="menu" aria-controls="add-menu" aria-expanded="false">+</button>
-                <button id="entry-more-button" type="button" aria-label="More actions" title="More actions" aria-haspopup="menu" aria-controls="entry-context-menu" aria-expanded="false">•••</button>
+                <button id="entry-add-button" class="cb-action-button" type="button" aria-label="Add content to this item" title="Add content" aria-haspopup="menu" aria-controls="add-menu" aria-expanded="false"><span class="cb-action-legacy" aria-hidden="true">+</span><svg class="cb-action-icon" aria-hidden="true" viewBox="0 0 20 20"><path d="M10 4.5v11M4.5 10h11" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button>
+                <button id="entry-more-button" class="cb-action-button" type="button" aria-label="More actions" title="More actions" aria-haspopup="menu" aria-controls="entry-context-menu" aria-expanded="false"><span class="cb-action-legacy" aria-hidden="true">•••</span><svg class="cb-action-icon" aria-hidden="true" viewBox="0 0 20 20"><circle cx="4.5" cy="10" r="1.2"/><circle cx="10" cy="10" r="1.2"/><circle cx="15.5" cy="10" r="1.2"/></svg></button>
                 <div id="entry-actions" role="menu" aria-label="Item actions" hidden>
                     <button id="edit-entry-button" type="button" role="menuitem">Rename</button>
                     <button id="move-entry-button" type="button" role="menuitem">Move to…</button>
@@ -106,19 +106,21 @@
             <p id="constellation-count" hidden></p>
             </div>
             <section id="panel-rich-content" aria-label="Contents">
-                <section id="content-media-section" aria-labelledby="media-heading" hidden>
+                <section id="content-media-section" data-contents-page="files" aria-labelledby="media-heading" hidden>
                     <header class="content-heading"><h3 id="media-heading">Media</h3><button id="content-add-media" class="quiet-icon content-section-add content-section-action" type="button" aria-label="Add media" title="Add media">Add media</button></header>
                     <ul id="content-media"></ul>
                 </section>
-                <section class="contents-section" aria-labelledby="files-heading">
+                <section id="content-files-section" class="contents-section" data-contents-page="files" aria-labelledby="files-heading">
                     <header class="content-heading"><h3 id="files-heading">Files</h3><button id="content-add-files" class="quiet-icon content-section-add content-section-action" type="button" aria-label="Add file" title="Add file">Add file</button></header>
+                    <button id="content-browse-add-file" class="contents-page-add" type="button" hidden>Add file…</button>
                     <input id="content-files" type="file" multiple hidden aria-label="Choose files">
                     <ul id="content-attachments"></ul>
                     <p id="content-files-empty" class="content-empty">No files</p>
                     <small id="content-file-limit" hidden></small>
                 </section>
-                <section class="contents-section" aria-labelledby="notes-heading">
+                <section id="content-notes-section" class="contents-section" data-contents-page="notes" aria-labelledby="notes-heading">
                     <header class="content-heading"><h3 id="notes-heading">Notes</h3><button id="content-edit-notes" class="quiet-icon" type="button" aria-label="Edit note" title="Edit note" hidden><svg viewBox="0 0 20 20" aria-hidden="true"><path d="m12 4 4 4M4 12l9-9a2 2 0 0 1 3 3l-9 9-4 1z"/></svg></button></header>
+                    <button id="content-browse-add-note" class="contents-page-add" type="button" hidden>Add note…</button>
                     <button id="content-notes-empty" class="content-empty content-empty-action" type="button" aria-label="Add note" title="Add note">No notes</button>
                     <p id="content-notes-view" hidden></p>
                     <form id="content-notes-form" hidden>
@@ -127,10 +129,10 @@
                     <div class="content-row-actions"><button type="submit">Save note</button><button id="content-cancel-notes" type="button">Cancel</button></div>
                     </form>
                 </section>
-                <section class="content-inline-section contents-section" aria-labelledby="bookmarks-heading">
+                <section id="content-links-section" class="content-inline-section contents-section" data-contents-page="links" aria-labelledby="bookmarks-heading">
                 <header class="content-heading"><h3 id="bookmarks-heading">Bookmarks</h3></header>
                 <ul id="content-links"></ul>
-                <p id="content-bookmarks-placeholder" class="content-empty"><button id="content-add-bookmark" class="content-inline-entry" type="button">Paste a link…</button></p>
+                <p id="content-bookmarks-placeholder" class="content-empty"><button id="content-add-bookmark" class="content-inline-entry contents-page-add" type="button">Paste a link…</button></p>
                 <form id="content-bookmarks-empty" class="quick-bookmark" hidden>
                     <label for="content-quick-bookmark-url" class="visually-hidden">Bookmark address</label>
                     <input id="content-quick-bookmark-url" type="text" inputmode="url" required maxlength="2048" placeholder="Paste a link..." autocomplete="url" aria-label="Bookmark address">
@@ -143,9 +145,9 @@
                     <div class="content-row-actions"><button type="submit">Save bookmark</button><button id="content-cancel-link" type="button">Cancel</button></div>
                 </form>
                 </section>
-                <section id="content-location-section" class="content-inline-section contents-section" aria-labelledby="location-heading">
+                <section id="content-location-section" data-contents-page="location" class="content-inline-section contents-section" aria-labelledby="location-heading">
                     <header class="content-heading"><h3 id="location-heading">Location</h3></header>
-                    <p id="content-location-empty" class="content-empty"><button id="content-add-location" class="content-inline-entry" type="button">Add location…</button></p>
+                    <p id="content-location-empty" class="content-empty"><button id="content-add-location" class="content-inline-entry contents-page-add" type="button">Add location…</button></p>
                     <div id="content-location-view" hidden>
                         <p id="content-location-text"></p>
                         <div class="content-row-actions location-actions">
@@ -163,6 +165,12 @@
                 </section>
                 <p id="content-status" role="status" aria-live="polite" hidden></p>
             </section>
+            <nav id="contents-dock" role="tablist" aria-label="Contents sections" hidden>
+                <button id="contents-tab-files" type="button" role="tab" data-page="files" aria-controls="content-media-section content-files-section" aria-selected="true">Files</button>
+                <button id="contents-tab-notes" type="button" role="tab" data-page="notes" aria-controls="content-notes-section" aria-selected="false" tabindex="-1">Notes</button>
+                <button id="contents-tab-links" type="button" role="tab" data-page="links" aria-controls="content-links-section" aria-selected="false" tabindex="-1">Links</button>
+                <button id="contents-tab-location" type="button" role="tab" data-page="location" aria-controls="content-location-section" aria-selected="false" tabindex="-1">Location</button>
+            </nav>
             <section id="constellation-content" hidden aria-label="Items in this Constellation">
                 <h3>In this Constellation</h3><ul id="constellation-member-list"></ul>
                 <p id="constellation-members-empty" class="content-empty">No items yet</p>
@@ -501,6 +509,7 @@
     <script src="account-ui.js"></script>
     <script src="account-startup.js"></script>
     <script src="clipboard.js"></script>
+    <script src="mobile-contents.js"></script>
     <script src="startup.js"></script>
 </body>
 </html>
