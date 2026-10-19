@@ -115,6 +115,7 @@ let layout = new Map();
 // Starter IDs never grant special permissions or deletion protection.
 const starterIds = new Set(initialEntries.map((entry) => entry.id));
 const nodes = new Map();
+let terminalLabelIds = new Set();
 const lines = [];
 const orbitGuides = [];
 let hoveredSystemId = null;
@@ -653,7 +654,7 @@ function requestLabelLayout(force=false) {
             // two-line names. Preserve the collision tolerance and hysteresis;
             // reserve two screen pixels around these local detail labels.
             if(entry.role==='astronaut')rect={left:rect.left-2,top:rect.top-2,right:rect.right+2,bottom:rect.bottom+2};
-            const ordinaryRank=activeConstellationMembers.size?rank[entry.role]:semanticDetail.labels[entry.role].priority;
+            const ordinaryRank=activeConstellationMembers.size?rank[entry.role]:cosmosView.labelPriority(entry.role,node.labelOpacity);
             candidates.push({id,rect,protected:protectedLabel,priority:selected?0:interactive?1:search?2:node.classList.contains('selected-ancestor')?3:ordinaryRank-(activeConstellationMembers.has(id) ? .25 : 0)});
         });offsets.forEach(({label,x,y})=>{const old=label.edgeOffset;if(old?.x===x&&old.y===y||!old&&x===0&&y===0)return;label.edgeOffset={x,y};label.style.setProperty('--label-edge-x',`${x}px`);label.style.setProperty('--label-edge-y',`${y}px`);});
         return {candidates,labels};
@@ -1419,7 +1420,13 @@ function renderNode(entry, node, viewport = readRenderViewport()) {
     setRenderClass(node, 'constellation-galaxy-context', galaxyContext);
     setRenderClass(node, 'constellation-inspected', lens && priority);
     setRenderClass(node, 'constellation-label-hidden', lens && visibility.label < .02);
-    node.labelOpacity=visibility?visibility.label:revealed?1:cosmosView.labelDisclosure(entry.role,camera.view.scale,entry.id,semanticDetail);
+    node.labelOpacity=visibility?visibility.label:revealed?1:cosmosView.labelDisclosure(entry.role,camera.view.scale,entry.id,semanticDetail,terminalLabelIds.has(entry.id));
+    // Only terminal branches override shared role opacity. The lens and all
+    // explicit reveal/priority rules retain their existing ownership.
+    if(!lens&&terminalLabelIds.has(entry.id)){
+        const value=String(node.labelOpacity);
+        if(node.style.getPropertyValue('--terminal-label-opacity')!==value)node.style.setProperty('--terminal-label-opacity',value);
+    }else if(node.style.getPropertyValue('--terminal-label-opacity'))node.style.removeProperty('--terminal-label-opacity');
     const diameter = entry.depth === 0 ? cosmosView.galaxyDiameter(camera.view.scale) : cosmosView.renderedDiameter(entry.role, getNodeRadius(entry) * 2,
         Math.max(camera.view.scale, lens && (activeConstellationMembers.has(entry.id) || priority) ? .38 : revealed ? .35 : 0),
         revealed || lens && activeConstellationMembers.has(entry.id) ? 1 : semanticDetail[entry.role]);
@@ -1554,6 +1561,7 @@ function updateHierarchyPaths(viewport = readRenderViewport()) {
 }
 
 function rebuildHierarchyPaths() {
+    terminalLabelIds=cosmosView.terminalLabelIds(entries);
     syncFirstUse();
     hierarchyLayer.replaceChildren();
     lines.length = 0;
