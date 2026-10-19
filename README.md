@@ -4,7 +4,12 @@ A 2.5D universe for organizing trips, recipes, photos, projects and other items.
 install/build step: serve this directory with `python -m http.server 8000` and
 open `http://localhost:8000`. Use the same browser, address and port for saved data.
 
-For Cloudflare Pages with staged GitHub integration and `main` deployments, see
+For the first **local-only public staging** deployment, follow
+[Staging readiness](docs/staging-readiness.md). Publish the prepared `staging-site/`
+artifact, not this working directory; it excludes diagnostics/evidence and leaves
+accounts unconfigured. No build framework, cloud activation or migration is needed.
+
+For the earlier Cloudflare Pages plan with GitHub integration and `main` deployments, see
 [Static hosting](docs/static-hosting.md). Hosting keeps data browser-local;
 localhost data does not automatically appear at the hosted address.
 

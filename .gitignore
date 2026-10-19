@@ -24,3 +24,6 @@
 # Reproducible Python bytecode; preserve existing local caches.
 /tests/__pycache__/
 /scripts/__pycache__/
+
+# Reproducible, runtime-only public staging artifact (never the working tree).
+/staging-site/

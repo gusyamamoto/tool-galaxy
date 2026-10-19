@@ -48,7 +48,7 @@ class CosmifoldAccountUI {
         (['signIn','signUp','reset'].includes(this.mode)?this.email:this.mode==='newPassword'?this.password:this.submit.hidden?this.cancel:this.submit).focus();
     }
     update(state){
-        this.button.textContent=state.user?'Account':'Sign in';
+        this.button.textContent=state.user||!state.available?'Account':'Sign in';
         if(state.recovery&&!this.previousRecovery){this.recoveryRequested=true;setTimeout(()=>{
             if(this.dialog.open){this.show('newPassword');this.focus();this.recoveryRequested=false;}else this.openRecovery();
         },0);}
