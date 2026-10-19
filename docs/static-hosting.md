@@ -1,5 +1,11 @@
 # Static hosting for Cosmifold
 
+For the current first external-test staging build, use
+[Staging readiness](staging-readiness.md). That local-only artifact excludes
+diagnostics/retained evidence and uses unconfigured Auth. The root-publication and
+Git deployment instructions below describe the earlier hosting plan; do not use
+them to publish the current working tree or activate accounts for this staging test.
+
 This phase prepares Cosmifold to run at a normal HTTPS web address. It does **not** make your data cloud data: each browser still stores its own Cosmos and files locally. There is no Cosmos backend, upload service or cross-device sync. The later optional [Auth foundation](auth-foundation.md) is separate from this hosting milestone and does not move data.
 
 Nothing has been deployed or connected by this branch. The instructions below describe the staged GitHub connection and deployment to perform only after review.

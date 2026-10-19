@@ -182,6 +182,7 @@ def main():
     args.add_argument("--cloud-boundary-only", action="store_true", help="Mocked development-only identity/Universe/REST/GraphQL privacy boundary")
     args.add_argument("--cloud-concurrency-only", action="store_true", help="Two-origin mocked Phase B revision/idempotency/cache fencing diagnostic")
     args.add_argument("--cloud-recovery-only", action="store_true", help="Mocked Phase C reload/original-operation/same-origin recovery diagnostic")
+    args.add_argument("--staging-only", action="store_true", help="Check the prepared offline staging artifact without Auth stubs, including persistence and startup failures")
     args.add_argument("--static-hosting-only", action="store_true", help="Audit static assets, hosting headers, browser requests, CSP, refresh and origin-isolated persistence")
     args.add_argument("--awaitable-only", action="store_true", help="Deterministic pending/rejected command, draft, publication and ordering checks")
     args.add_argument("--backup-dialog-only", action="store_true", help="Focused Backup/Restore layout, renamed-file validation, picker, download and keyboard checks")
@@ -271,6 +272,10 @@ def main():
     args.add_argument("--sizes-only", action="store_true", help="Check desktop/mobile native sizes without repeating drag cases")
     args.add_argument("--extremes-only", action="store_true", help="Check only extreme Planet/Moon recovery in the arrangement suite")
     options = args.parse_args()
+    if options.staging_only:
+        auth = (options.site_root / 'auth-config.js').read_text(encoding='utf-8')
+        if auth != "// Public staging is local-only: no Auth SDK/session or remote account requests.\nconst cosmifoldAuthConfig = Object.freeze({});\n":
+            args.error('--staging-only requires the prepared, Auth-unconfigured staging artifact')
     browser = find_browser()
     temp_root = Path(tempfile.gettempdir()).resolve()
     handler=QuietHandler
@@ -313,13 +318,13 @@ def main():
         cdp = CDP(page["webSocketDebuggerUrl"])
         cdp.call("Page.enable")
         cdp.call("Runtime.enable")
-        if options.static_hosting_only or options.backup_only or options.restore_only or options.auth_only or options.cloud_boundary_only or options.cloud_concurrency_only or options.cloud_recovery_only:
+        if options.staging_only or options.static_hosting_only or options.backup_only or options.restore_only or options.auth_only or options.cloud_boundary_only or options.cloud_concurrency_only or options.cloud_recovery_only:
             cdp.call('Network.enable');cdp.call('Log.enable')
         cdp.call("Emulation.setDeviceMetricsOverride", width=1440, height=1000, deviceScaleFactor=1, mobile=False)
-        origin = f"http://{'localhost' if options.static_hosting_only else '127.0.0.1'}:{server.server_port}"
+        origin = f"http://{'localhost' if options.static_hosting_only or options.staging_only else '127.0.0.1'}:{server.server_port}"
         page_url = (options.site_root.resolve() / 'index.html').as_uri() if options.file_protocol else origin
         seed_condition = "location.protocol === 'file:'" if options.file_protocol else f"location.origin === {json.dumps(origin)}"
-        if options.first_user_readiness_only:seed_condition="false"
+        if options.first_user_readiness_only or options.staging_only:seed_condition="false"
         legacy = {
             "version": 2,
             "entries": [
@@ -339,13 +344,14 @@ def main():
         # Every browser suite uses an isolated Auth fixture, never the configured
         # production project's SDK/session. Account checks install their richer
         # fake after this baseline on later reloads. Shipped code is unchanged.
-        cdp.call('Page.addScriptToEvaluateOnNewDocument', source="""
-            document.addEventListener('load', event=>{
-                if(event.target.tagName==='SCRIPT'&&event.target.src.endsWith('/services/supabase-auth.js')&&!['/dev/cloud-boundary-diagnostic.html','/dev/cloud-concurrency-diagnostic.html','/dev/cloud-recovery-diagnostic.html'].includes(location.pathname)){
-                    createSupabaseAuthAdapter=()=>({available:false,async initialize(){return {user:null}},dispose(){}});
-                }
-            },true);
-        """)
+        if not options.staging_only:
+            cdp.call('Page.addScriptToEvaluateOnNewDocument', source="""
+                document.addEventListener('load', event=>{
+                    if(event.target.tagName==='SCRIPT'&&event.target.src.endsWith('/services/supabase-auth.js')&&!['/dev/cloud-boundary-diagnostic.html','/dev/cloud-concurrency-diagnostic.html','/dev/cloud-recovery-diagnostic.html'].includes(location.pathname)){
+                        createSupabaseAuthAdapter=()=>({available:false,async initialize(){return {user:null}},dispose(){}});
+                    }
+                },true);
+            """)
         cdp.call("Page.addScriptToEvaluateOnNewDocument", source=f"""
             if ({seed_condition} && !sessionStorage.getItem('seeded')) {{
                 localStorage.setItem('galaxy:user-data',{json.dumps(old_raw)});
@@ -358,7 +364,9 @@ def main():
             document.addEventListener('DOMContentLoaded',()=>{{if(window===window.top&&typeof physics!=='undefined')physics.setReducedMotion(false)}});
             window.openSelectedRowAdd=()=>hierarchySidebar.rows.get(selectedNode.dataset.entryId).querySelector('.tree-add').click();
         """)
-        if options.static_hosting_only:
+        if options.staging_only:
+            cdp.call("Network.setBlockedURLs", urls=["https://*", "http://*.supabase.co/*"])
+        if options.static_hosting_only or options.staging_only:
             cdp.call('Page.addScriptToEvaluateOnNewDocument',source="window.hostingViolations=[];document.addEventListener('securitypolicyviolation',e=>hostingViolations.push({directive:e.effectiveDirective,blocked:e.blockedURI}));")
 
         def evaluate(code):
@@ -476,6 +484,11 @@ def main():
 
         cdp.call("Page.navigate", url=page_url)
         load()
+        if options.staging_only:
+            from staging_browser import run_staging_checks
+            run_staging_checks(cdp=cdp,evaluate=evaluate,check=check,wait_for=wait_for,add=add,load=load,origin=origin,site_root=options.site_root,asset_files=static_asset_files,cdp_class=CDP,debug_port=debug_port)
+            print(f'{count} staging browser checks passed; origin={origin}',flush=True);return
+
         if options.first_user_readiness_only:
             from first_user_readiness_browser import run_readiness_checks
             def shot(name):
