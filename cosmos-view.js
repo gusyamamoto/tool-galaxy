@@ -17,7 +17,8 @@ const cosmosView = {
             Math.min(this.renderCap(role, scale), diameter * (this.visualScale[role] || 1) * scale * (.72 + detail * .28)));
     },
     tiers: { galaxy: .45, system: .58, close: .78 },
-    // A single orientation layer, or two adjacent layers during a handoff.
+    // Continuing branches use one layer, or two adjacent layers in a handoff.
+    // Terminal branches retain their entrance beyond the final local handoff.
     // Galaxy names yield near the Galaxy tier; Planet names begin emerging
     // just before close. Deeper bands leave room to orient before yielding again.
     // Body disclosure, explicit reveals and the Constellation lens are separate.
@@ -44,11 +45,31 @@ const cosmosView = {
         hash=(hash^(hash>>>13))>>>0;
         return hash/4294967296;
     },
-    labelDisclosure(role, scale, id, detail) {
-        if(detail?.labels[role])return detail.labels[role].opacity;
+    // Disposable branch metadata over canonical parent IDs. A bottom-up pass
+    // also handles same-role descendants at the deepest supported levels.
+    terminalLabelIds(entries) {
+        const ranks=new Map(this.labelOrder.map((role,index)=>[role,index]));
+        const pending=new Map(), deepest=new Map(), queue=[], terminal=new Set();
+        entries.forEach(entry=>{pending.set(entry.id,0);deepest.set(entry.id,ranks.get(entry.role)??-1);});
+        entries.forEach(entry=>{if(pending.has(entry.parentId))pending.set(entry.parentId,pending.get(entry.parentId)+1);});
+        pending.forEach((count,id)=>{if(!count)queue.push(id);});
+        for(let i=0;i<queue.length;i++){
+            const id=queue[i],entry=entries.get(id),rank=ranks.get(entry.role)??-1;
+            if(rank>=0&&deepest.get(id)===rank)terminal.add(id);
+            if(!pending.has(entry.parentId))continue;
+            deepest.set(entry.parentId,Math.max(deepest.get(entry.parentId),deepest.get(id)));
+            const remaining=pending.get(entry.parentId)-1;pending.set(entry.parentId,remaining);
+            if(!remaining)queue.push(entry.parentId);
+        }
+        return terminal;
+    },
+    labelPriority(role, opacity) { return 4+6*(1-opacity)+this.labelOrder.indexOf(role)*.001; },
+    labelDisclosure(role, scale, id, detail, terminal=false) {
+        if(detail?.labels[role])return terminal?detail.labels[role].terminalOpacity:detail.labels[role].opacity;
         const index=this.labelOrder.indexOf(role);
         if(index<0)return 1;
         const enter=index ? this.smooth(scale,...this.labelHandoffs[index-1]) : 1;
+        if(terminal)return enter;
         const leave=index<this.labelHandoffs.length ? this.smooth(scale,...this.labelHandoffs[index]) : 0;
         // Non-overlapping bands make each child's emergence exactly its
         // parent's departure. No residual floors or ID-dependent layer timing.
@@ -69,7 +90,8 @@ const cosmosView = {
             const opacity=this.labelDisclosure(role,scale,'');
             // Protected context ranks 0–3 remain first. Among ordinary names,
             // the stronger envelope wins; exact crossover ties favor the parent.
-            result.labels[role]={opacity,priority:4+6*(1-opacity)+index*.001};
+            const terminalOpacity=index?this.smooth(scale,...this.labelHandoffs[index-1]):1;
+            result.labels[role]={opacity,terminalOpacity,priority:this.labelPriority(role,opacity)};
         });
         // Legacy cloud utilities remain available for historical/isolated tests;
         // normal overview represents the actual root and its real descendants.

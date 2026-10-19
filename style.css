@@ -412,12 +412,12 @@ button:disabled { opacity: 0.45; cursor: default; }
 .entry-node[data-body="moon"] { --body-render-scale: var(--moon-render-scale, 1); opacity: calc(var(--moon-detail, 1)*var(--context-opacity, 1)); --texture-opacity: .85; }
 .entry-node[data-body="satellite"] { --body-render-scale: var(--satellite-render-scale, 1); opacity: calc(var(--satellite-detail, 1)*var(--context-opacity, 1)); --texture-opacity: .65; }
 .entry-node[data-body="astronaut"] { --body-render-scale: var(--astronaut-render-scale, 1); opacity: calc(var(--astronaut-detail, 0)*var(--context-opacity, 1)); }
-.entry-node[data-body="planet"] .node-label { font-size: 10px; opacity: var(--planet-label-detail, 1); }
-.entry-node[data-body="moon"] .node-label { opacity: var(--moon-label-detail, 1); }
-.entry-node[data-body="satellite"] .node-label { opacity: var(--detail-label-opacity, var(--satellite-label-detail, 1)); }
-.entry-node[data-body="astronaut"] .node-label { opacity: var(--detail-label-opacity, var(--astronaut-label-detail, 0)); }
+.entry-node[data-body="planet"] .node-label { font-size: 10px; opacity: var(--terminal-label-opacity, var(--planet-label-detail, 1)); }
+.entry-node[data-body="moon"] .node-label { opacity: var(--terminal-label-opacity, var(--moon-label-detail, 1)); }
+.entry-node[data-body="satellite"] .node-label { opacity: var(--terminal-label-opacity, var(--detail-label-opacity, var(--satellite-label-detail, 1))); }
+.entry-node[data-body="astronaut"] .node-label { opacity: var(--terminal-label-opacity, var(--detail-label-opacity, var(--astronaut-label-detail, 0))); }
 .entry-node[data-body="sun"] .node-label { font-size: 10px; }
-.entry-node[data-body="sun"] .node-label { opacity: var(--sun-label-detail,1); }
+.entry-node[data-body="sun"] .node-label { opacity: var(--terminal-label-opacity, var(--sun-label-detail,1)); }
 .node-hit-area { position: absolute; left: 50%; top: 50%; width: max(24px,100%); height: max(24px,100%); transform: translate(-50%,-50%); border-radius: 50%; background: transparent; }
 @media (pointer: coarse) { .node-hit-area { width: max(44px,100%); height: max(44px,100%); } }
 #galaxy .node-label[data-density-hidden="true"] { opacity: 0 !important; pointer-events: none; }
@@ -469,7 +469,7 @@ button:disabled { opacity: 0.45; cursor: default; }
 /* A modest core target must not cover neighboring systems with a 44px span. */
 #galaxy #nodes-layer .entry-node[data-body="galaxy"] .node-hit-area { width: max(20px,100%); height: max(20px,100%); }
 #galaxy .entry-node[data-body="galaxy"]::before, #galaxy .entry-node[data-body="galaxy"]::after { content: none; }
-#galaxy .entry-node[data-body="galaxy"] .node-label { left: calc(50% + var(--label-edge-x, 0px)); top: calc(100% + 4px + var(--label-edge-y, 0px)); width: max-content; max-width: 180px; font-size: var(--galaxy-label-size, 16px); line-height: 1.25; font-weight: 600; letter-spacing: .035em; opacity: var(--galaxy-label-detail, 1); color: hsl(var(--body-hue) 30% 92%); text-shadow: 0 1px 4px #02040a, 0 0 10px #02040ae6; }
+#galaxy .entry-node[data-body="galaxy"] .node-label { left: calc(50% + var(--label-edge-x, 0px)); top: calc(100% + 4px + var(--label-edge-y, 0px)); width: max-content; max-width: 180px; font-size: var(--galaxy-label-size, 16px); line-height: 1.25; font-weight: 600; letter-spacing: .035em; opacity: var(--terminal-label-opacity, var(--galaxy-label-detail, 1)); color: hsl(var(--body-hue) 30% 92%); text-shadow: 0 1px 4px #02040a, 0 0 10px #02040ae6; }
 #galaxy #nodes-layer .entry-node[data-body="galaxy"]:is(.selected,:focus-visible) { outline: none; }
 #galaxy #nodes-layer .entry-node[data-body="galaxy"].selected .node-label { color: hsl(var(--body-hue) 65% 98.5%); font-weight: 700; }
 #galaxy #nodes-layer .entry-node[data-body="galaxy"]:focus-visible .node-label { text-decoration: underline; text-decoration-color: #b9d0e9; text-underline-offset: 4px; }

@@ -245,6 +245,7 @@ def main():
     args.add_argument("--render-visibility-only", action="store_true", help="Check offscreen rendering suppression, reveal exceptions, boundary re-entry and SVG geometry")
     args.add_argument("--real-body-overview-only", action="store_true", help="Check continuous real-body overview, root interaction, labels, simplification and actual-body Fit bounds")
     args.add_argument("--semantic-handoff-only", action="store_true", help="Check user-only overview deselection and hierarchical label handoff in isolated dense mobile/desktop scenes")
+    args.add_argument("--terminal-labels-only", action="store_true", help="Check branch-local terminal labels, hierarchy invalidation, density and same-scale panning")
     args.add_argument("--semantic-handoff-size", type=int, choices=[150,325], default=150, help="Disposable semantic-handoff fixture size (one native-input fixture per isolated Chrome profile)")
     args.add_argument("--compatibility-only", action="store_true", help="Check legitimate broad-file v5 data and unchanged corruption protection")
     args.add_argument("--saved-snapshot", type=Path, help="Read a saved snapshot into an isolated test profile; never change the original browser data")
@@ -986,6 +987,14 @@ def main():
                     result=cdp.call('Page.captureScreenshot',format='png',captureBeyondViewport=False);(screenshot_dir/(name+'.png')).write_bytes(base64.b64decode(result['data']))
             run_render_visibility_checks(cdp=cdp,evaluate=evaluate,check=check,wait_for=wait_for,add=add,shot=shot)
             print(f'{count} visibility-render browser checks passed',flush=True);return
+
+        if options.terminal_labels_only:
+            from terminal_labels_browser import run_terminal_label_checks
+            def shot(name):
+                if screenshot_dir:
+                    result=cdp.call('Page.captureScreenshot',format='png',captureBeyondViewport=False);(screenshot_dir/(name+'.png')).write_bytes(base64.b64decode(result['data']))
+            run_terminal_label_checks(cdp=cdp,evaluate=evaluate,check=check,wait_for=wait_for,add=add,shot=shot)
+            print(f'{count} terminal-label browser checks passed',flush=True);return
 
         if options.semantic_handoff_only:
             from semantic_handoff_browser import run_semantic_handoff_checks
