@@ -5,7 +5,7 @@ class ConstellationWorkspace {
         this.list=document.getElementById('constellation-list');this.nameDialog=document.getElementById('constellation-name-dialog');
         this.sectionToggle=document.getElementById('constellations-toggle');
         const preference=preferences.load();
-        this.collapsed=typeof preference.constellationsCollapsed==='boolean'?preference.constellationsCollapsed:null;
+        this.collapsed=typeof preference.constellationsCollapsed==='boolean'?preference.constellationsCollapsed:true;
         this.hasHadCollections=preference.constellationsSeen===true;this.initialized=false;
         this.sectionToggle.addEventListener('click',()=>{this.collapsed=!this.collapsed;this.applySectionState();this.saveSectionPreference();this.onLayout();});
         document.addEventListener('pointerdown',event=>{document.querySelectorAll('#constellation-content .content-item-menu[open]').forEach(menu=>{if(!menu.contains(event.target))menu.open=false;});});
@@ -59,8 +59,8 @@ class ConstellationWorkspace {
         this.sectionToggle.ariaLabel=this.sectionToggle.title=`${this.collapsed?'Expand':'Collapse'} Constellations`;
     }
     renderSidebar(){
-        if(!this.initialized){this.initialized=true;this.hasHadCollections=this.hasHadCollections||this.collections.size>0;this.collapsed=this.collapsed??this.collections.size===0;}
-        else if(!this.hasHadCollections&&this.collections.size>0){this.hasHadCollections=true;this.collapsed=false;this.saveSectionPreference();}
+        if(!this.initialized){this.initialized=true;this.hasHadCollections=this.hasHadCollections||this.collections.size>0;}
+        else if(!this.hasHadCollections&&this.collections.size>0){this.hasHadCollections=true;this.saveSectionPreference();}
         this.applySectionState();
         const scroll=this.list.scrollTop,focused=document.activeElement?.closest('[data-constellation-id]'),action=document.activeElement?.dataset.collectionAction;
         const focusId=focused?.dataset.constellationId;this.list.replaceChildren();

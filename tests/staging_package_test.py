@@ -17,7 +17,7 @@ class StagingPackageTests(unittest.TestCase):
             output = Path(directory) / 'site'
             files = staging.prepare(output)
             self.assertEqual(sorted(p.relative_to(output).as_posix() for p in output.rglob('*') if p.is_file()), files)
-            self.assertTrue({'index.html', 'startup.js', 'script.js', 'ids.js', 'vendor/LICENSES.txt'} <= set(files))
+            self.assertTrue({'index.html', 'startup.js', 'script.js', 'task-views.js', 'sidebar-split.js', 'task-lists.js', 'ids.js', 'vendor/LICENSES.txt'} <= set(files))
             self.assertFalse(any(p.startswith(('dev/', 'tests/', 'docs/', 'scripts/', 'supabase/', '.git/', 'delayed-')) for p in files))
             self.assertFalse(any('cloud-' in p for p in files))
             self.assertEqual((output / 'auth-config.js').read_text(), staging.STAGING_AUTH)

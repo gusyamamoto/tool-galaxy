@@ -67,6 +67,7 @@ def run_staging_checks(*,cdp,evaluate,check,wait_for,add,load,origin,site_root,a
         mobile=width<1000
         cdp.call('Emulation.setDeviceMetricsOverride',width=width,height=height,deviceScaleFactor=1,mobile=mobile)
         cdp.call('Emulation.setTouchEmulationEnabled',enabled=mobile,maxTouchPoints=2)
+        wait_for(f'hierarchySidebar.narrow==={str(mobile).lower()}')
         e(f"hierarchySidebar.setCollapsed(true);selectEntry(entries.get({q(body)}),nodes.get({q(body)}),{{openInspector:true,reframe:false}});physics.pause()")
         check(e('panel.dataset.contentsState')==('browse' if mobile else 'desktop'),f'{width}: existing mobile/desktop Contents model preserved')
         check(e("document.getElementById('sample-utility').getClientRects().length===0"),f'{width}: Sample data stays out of normal UI')

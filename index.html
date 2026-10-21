@@ -32,6 +32,10 @@
             <span id="mobile-body-name"></span>
             <button id="mobile-body-add" class="cb-action-button" type="button" aria-label="Add content" aria-haspopup="menu" aria-controls="add-menu" aria-expanded="false"><span class="cb-action-legacy" aria-hidden="true">+</span><svg class="cb-action-icon" aria-hidden="true" viewBox="0 0 20 20"><path d="M10 4.5v11M4.5 10h11" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button>
             <button id="mobile-body-more" class="cb-action-button" type="button" aria-label="Item actions" aria-haspopup="menu" aria-controls="entry-context-menu" aria-expanded="false"><span class="cb-action-legacy" aria-hidden="true">…</span><svg class="cb-action-icon" aria-hidden="true" viewBox="0 0 20 20"><circle cx="4.5" cy="10" r="1.2"/><circle cx="10" cy="10" r="1.2"/><circle cx="15.5" cy="10" r="1.2"/></svg></button>
+            <div id="mobile-task-quick" hidden>
+                <label id="mobile-task-control"><input id="mobile-task-done" type="checkbox"> <span>Done</span></label>
+                <span id="mobile-task-progress" role="status" hidden></span>
+            </div>
         </div>
 
         <button id="sidebar-toggle" type="button" aria-controls="hierarchy-sidebar" aria-expanded="true" title="Hide navigation" aria-label="Hide navigation"><svg aria-hidden="true" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M10 4v16"/></svg></button>
@@ -55,14 +59,32 @@
             </div>
                 </div>
             </div>
+            <div id="sidebar-panes">
             <section id="universe-section" aria-labelledby="universe-heading">
                 <header class="sidebar-section-header"><h2 id="universe-heading" class="sidebar-section-title universe-heading-controls"><button id="universe-toggle" class="sidebar-section-toggle" type="button" aria-controls="hierarchy-tree" aria-expanded="true" aria-label="Collapse Universe"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m6 4 4 4-4 4"/></svg></button><button id="universe-home" class="sidebar-section-toggle" type="button" aria-label="Return to Universe overview">Universe</button></h2><span id="first-use-cue" hidden>Start here</span><button id="add-entry-button" type="button" class="collection-add" aria-label="New Galaxy" title="New Galaxy">+</button></header>
                 <div id="hierarchy-tree" role="tree" aria-label="Cosmos Universe navigation"></div>
+            </section>
+            <div id="sidebar-pane-splitter" role="separator" aria-orientation="horizontal" aria-label="Resize Universe and secondary sidebar sections" aria-controls="universe-section sidebar-secondary-views" tabindex="-1" hidden></div>
+            <div id="sidebar-secondary-views">
+            <section id="tasks-section" aria-labelledby="tasks-heading" hidden>
+                <header class="sidebar-section-header"><h2 id="tasks-heading" class="sidebar-section-title"><button id="tasks-toggle" class="sidebar-section-toggle" type="button" aria-controls="tasks-view" aria-expanded="true"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m6 4 4 4-4 4"/></svg><span>Tasks</span></button></h2></header>
+                <div id="tasks-view">
+                    <div id="tasks-active-group">
+                        <button id="tasks-active-toggle" class="sidebar-section-toggle tasks-group-toggle" type="button" aria-expanded="true" aria-controls="tasks-active"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m6 4 4 4-4 4"/></svg><span>Active</span></button>
+                        <ul id="tasks-active" aria-label="Active Task Lists"></ul>
+                    </div>
+                    <div id="tasks-completed-group">
+                        <button id="tasks-completed-toggle" class="sidebar-section-toggle tasks-group-toggle" type="button" aria-expanded="false" aria-controls="tasks-completed"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m6 4 4 4-4 4"/></svg><span>Completed</span></button>
+                        <ul id="tasks-completed" aria-label="Completed Task Lists" hidden></ul>
+                    </div>
+                </div>
             </section>
             <section id="constellations-section" aria-labelledby="constellations-heading">
                 <header class="sidebar-section-header"><h2 id="constellations-heading" class="sidebar-section-title"><button id="constellations-toggle" class="sidebar-section-toggle" type="button" aria-label="Collapse Constellations" aria-controls="constellation-list" aria-expanded="true"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m6 4 4 4-4 4"/></svg><span>Constellations</span></button></h2><button id="new-constellation-button" type="button" class="collection-add" aria-label="Create Constellation" title="Create Constellation">+</button></header>
                 <ul id="constellation-list" aria-label="Constellations"></ul>
             </section>
+            </div>
+            </div>
             <section id="archived-galaxies" aria-labelledby="archived-galaxies-heading" hidden>
                 <header class="sidebar-section-header"><h2 id="archived-galaxies-heading" class="sidebar-section-title"><button id="archived-galaxies-toggle" class="sidebar-section-toggle" type="button" aria-label="Expand Archived Galaxies" aria-controls="archived-galaxy-list" aria-expanded="false"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m6 4 4 4-4 4"/></svg><span>Archived Galaxies <span id="archived-galaxy-count"></span></span></button></h2></header>
                 <ul id="archived-galaxy-list" aria-label="Archived Galaxies" hidden></ul>
@@ -106,6 +128,12 @@
             <p id="constellation-count" hidden></p>
             </div>
             <section id="panel-rich-content" aria-label="Contents">
+                <section id="content-task-section" aria-labelledby="task-heading" hidden>
+                    <h3 id="task-heading">Task</h3>
+                    <label id="content-task-control"><input id="content-task-done" type="checkbox"> <span>Done</span></label>
+                    <div id="content-task-progress" hidden><p id="content-task-count" role="status"></p><progress id="content-task-meter" aria-label="Task progress" max="1" value="0"></progress></div>
+                    <p id="content-task-error" role="alert" hidden></p>
+                </section>
                 <section id="content-media-section" data-contents-page="files" aria-labelledby="media-heading" hidden>
                     <header class="content-heading"><h3 id="media-heading">Media</h3><button id="content-add-media" class="quiet-icon content-section-add content-section-action" type="button" aria-label="Add media" title="Add media">Add media</button></header>
                     <ul id="content-media"></ul>
@@ -181,6 +209,7 @@
             <button type="button" role="menuitem" data-add="camera" hidden>Take Photo</button>
             <button type="button" role="menuitem" data-add="gallery" hidden>Photo Gallery</button>
             <button id="add-child-button" type="button" role="menuitem">Add item</button>
+            <button type="button" role="menuitem" data-add="task-list">Add task list</button>
             <button type="button" role="menuitem" data-add="paste">Paste</button>
             <button type="button" role="menuitem" data-add="files">Add files</button>
             <button type="button" role="menuitem" data-add="note">Add note</button>
@@ -189,6 +218,8 @@
 
         <div id="entry-context-menu" role="menu" aria-label="Item actions" hidden>
             <span id="context-entry-name" class="context-entry-name" aria-hidden="true"></span>
+            <button type="button" role="menuitem" data-action="add-child" data-desktop-only hidden>Add item</button>
+            <button type="button" role="menuitem" data-action="add-task-list" data-desktop-only hidden>Add task list</button>
             <button type="button" role="menuitem" data-action="edit">Rename</button>
             <button type="button" role="menuitem" data-action="move">Move to…</button>
             <span class="add-menu-separator" role="separator" hidden></span>
@@ -198,6 +229,7 @@
             <button type="button" role="menuitem" data-action="paste" hidden>Paste</button>
             <button type="button" role="menuitem" data-action="duplicate-structure">Duplicate structure</button>
             <span class="add-menu-separator" role="separator" hidden></span>
+            <button type="button" role="menuitem" data-action="hide-from-tasks" data-tasks-action hidden>Hide from Tasks</button>
             <button type="button" role="menuitem" data-action="archive" data-galaxy-only hidden>Archive Galaxy</button>
             <button type="button" role="menuitem" data-action="delete">Delete item</button>
             <button type="button" role="menuitem" data-action="open-portal" data-portal-action hidden>Go to original</button>
@@ -216,6 +248,10 @@
 
             <div id="entry-name-field"><label for="entry-name">Name</label>
             <input id="entry-name" name="name" type="text" maxlength="60" required autofocus>
+            </div>
+            <div id="task-list-fields" hidden><label for="task-list-tasks">Tasks</label>
+                <textarea id="task-list-tasks" rows="5" placeholder="Buy flight&#10;Book hotel&#10;Rent car&#10;Buy eSIM" aria-describedby="task-list-help"></textarea>
+                <p id="task-list-help">One task per line. You can add more later.</p>
             </div>
             <div id="galaxy-starter-field" hidden><label for="galaxy-starter">Start with</label><select id="galaxy-starter" name="starter"></select></div>
             <div id="entry-info-fields" hidden>
@@ -333,67 +369,79 @@
     <dialog id="help-dialog" aria-labelledby="help-title" aria-describedby="help-intro">
         <header class="help-header"><h2 id="help-title">Help</h2><button id="close-help-button" type="button" aria-label="Close Help" title="Close Help" autofocus>&times;</button></header>
         <div class="help-topics">
-            <p id="help-intro" class="help-intro">A few quick answers to help you get around Cosmifold.</p>
-            <details>
-                <summary>Getting around</summary>
-                <div class="help-copy">
-                    <p>Scroll to zoom in and out, or pinch on touch screens. Smaller labels hide when you're far away; zoom closer to see more detail.</p>
-                    <p>Drag empty space to move around. Double-click an item in the Cosmos, or double-tap on touch screens, to move closer. Click Universe in the sidebar to return to the big picture.</p>
-                    <p>Search finds items by name across your active Cosmos and takes you directly to them.</p>
-                    <p>Right-click an item, or open its &bull;&bull;&bull; menu, to rename, move, copy or manage it.</p>
-                </div>
-            </details>
-            <details>
-                <summary>Organizing things</summary>
-                <div class="help-copy">
-                    <p>Put related things inside other things. Use the + beside an item to add something inside it.</p>
-                    <p>On mobile, + offers Take Photo, Photo Gallery and Add item. Use Contents for files, notes, links and location.</p>
-                    <pre aria-label="Example of items inside other items">Japan
-  &rarr; Food
-    &rarr; Restaurants
-      &rarr; Reservations</pre>
-                    <p>Just add things. Cosmifold automatically changes how they look as you go deeper. You don't need to choose whether something is a Sun, Planet or Moon.</p>
-                    <p>Starting something new? Use the + beside Universe to create a Galaxy. Start blank, or choose a starter like Trip, Home project or Class / course.</p>
-                    <p>Select an item and open Contents to keep its files, photos, notes, links and location together.</p>
-                </div>
-            </details>
-            <details>
-                <summary>Moving &amp; copying</summary>
-                <div class="help-copy">
-                    <p>In the sidebar, Ctrl-click on Windows/Linux or Cmd-click on macOS selects individual items. Shift-click selects a range.</p>
-                    <p>Use an item's &bull;&bull;&bull; menu &rarr; Move to&hellip; to change where it lives. On desktop, you can also drag a sidebar item onto another to move it inside. If several are selected, dragging one moves the selected group together.</p>
-                    <p>Choose Copy, then Paste where you want an independent copy.</p>
-                    <p><strong>Make a copy</strong><br>Creates an independent version. Changes to one won't affect the other.</p>
-                    <p><strong>Duplicate structure</strong><br>Copies the organization but leaves the content behind. Choose a new name; notes, files, photos, links and locations aren't copied.</p>
-                    <div class="help-structure-example" aria-label="Example of duplicating a trip's organization">
-                        <pre>Mexico trip
-  &rarr; Hotels
-  &rarr; Restaurants
-  &rarr; Transport</pre>
-                        <pre>Japan trip
-  &rarr; Hotels
-  &rarr; Restaurants
-  &rarr; Transport</pre>
+            <div class="help-opening">
+                <section aria-labelledby="help-start-title">
+                    <h3 id="help-start-title">Getting started</h3>
+                    <p id="help-intro">Cosmifold is a visual place to organize the things in your life.</p>
+                    <p>Create an Item, then add other Items inside it to build your Universe.</p>
+                </section>
+                <section aria-labelledby="help-hints-title">
+                    <h3 id="help-hints-title">A few things to know</h3>
+                    <dl class="help-hints">
+                        <div><dt>+ Add something</dt><dd>Add an Item, Task List or content where you are working.</dd></div>
+                        <div><dt>&hellip; Manage something</dt><dd>Rename, move, duplicate or delete the Item you are working with.</dd></div>
+                        <div><dt>Tap or click an Item</dt><dd>Select it to move through your Universe.</dd></div>
+                        <div><dt>Contents</dt><dd>Keep Files, Notes, Links and Location inside an Item.</dd></div>
+                        <div><dt>Task Lists</dt><dd>Choose Add task list for a checklist. Find your lists under Tasks later.</dd></div>
+                    </dl>
+                </section>
+            </div>
+            <section class="help-deeper" aria-labelledby="help-deeper-title">
+                <h3 id="help-deeper-title">Need more help?</h3>
+                <details id="help-navigation">
+                    <summary>Navigating</summary>
+                    <div class="help-copy">
+                        <p>Tap or click an Item to select it. Zoom to move through levels, or use the sidebar to navigate directly. Search helps when you forget where something lives; Fit returns to an overview.</p>
+                        <p>On desktop, right-click for management actions. On mobile, use &hellip;.</p>
                     </div>
-                </div>
-            </details>
-            <details>
-                <summary>Constellations</summary>
-                <div class="help-copy">
-                    <p><strong>Universe = where something lives</strong><br><strong>Constellation = things you want to see together</strong></p>
-                    <p>A Constellation can connect celestial bodies from completely different parts of your Universe. For example, <strong>Favorites</strong> could include:</p>
-                    <ul><li>a recipe from Food</li><li>a workout from Fitness</li><li>a city from Travel</li><li>a playlist from Music</li></ul>
-                    <p>Each item stays in its original hierarchy location. Constellations don't move or duplicate it. The same celestial body can appear in one or more Constellations; changes still affect the original because it is the same item.</p>
-                    <p>Use the + beside Constellations to start one.</p>
-                </div>
-            </details>
-            <details>
-                <summary>Locations</summary>
-                <div class="help-copy">
-                    <p>Add a place name or address in the right panel's Location section. Choose Open in Google Maps to see it on the map.</p>
-                    <p>An item's Location stays the same wherever you view it, including in a Constellation.</p>
-                </div>
-            </details>
+                </details>
+                <details id="help-organizing">
+                    <summary>Adding &amp; organizing Items</summary>
+                    <div class="help-copy"><p>Items can contain other Items, creating branches. For example, put Japan inside Travel and Tokyo inside Japan. Select an Item and use + to add something inside it.</p></div>
+                </details>
+                <details id="help-contents">
+                    <summary>Contents</summary>
+                    <div class="help-copy"><p>Each Item can hold Files, Notes, Links and Location. On mobile, Preview is the quick view. Swipe up to open Contents, then swipe down to return.</p></div>
+                </details>
+                <details id="help-tasks">
+                    <summary>Task Lists &amp; Tasks</summary>
+                    <div class="help-copy">
+                        <p>A Task List is a special Item. Only the Items directly inside it are tasks. Tasks can hold Files, Notes, Links and Location, but cannot contain child Items.</p>
+                        <p>Check Done to complete a task. Completing tasks brings them to life and updates the Task List's progress. Uncheck Done to undo it.</p>
+                        <p>Under Tasks, <strong>Active</strong> shows lists with unfinished work; <strong>Completed</strong> shows finished lists.</p>
+                        <p><strong>Hide from Tasks</strong> removes a completed list from this view only. It remains in the Universe. If it becomes unfinished, it returns to Active automatically.</p>
+                    </div>
+                </details>
+                <details id="help-search">
+                    <summary>Search</summary>
+                    <div class="help-copy"><p>Use Search when you know what you want but do not remember where you put it.</p></div>
+                </details>
+                <details id="help-constellations">
+                    <summary>Constellations</summary>
+                    <div class="help-copy">
+                        <p>Constellations are optional. Use one when Items from different parts of your Universe are useful to see together.</p>
+                        <p>If everything naturally belongs in one branch, you probably do not need a Constellation. Original Items are not moved or copied.</p>
+                    </div>
+                </details>
+                <details id="help-moving">
+                    <summary>Moving &amp; duplicating</summary>
+                    <div class="help-copy">
+                        <p><strong>Move</strong> changes where an Item lives. <strong>Copy / Paste</strong> creates an independent copy.</p>
+                        <p><strong>Duplicate structure</strong> creates reusable organization, leaving content behind. Duplicated Task List tasks start incomplete.</p>
+                    </div>
+                </details>
+                <details id="help-backup">
+                    <summary>Backup &amp; Restore</summary>
+                    <div class="help-copy">
+                        <p>This test build is browser-local: your data lives in this browser. Keep a recent backup of important data.</p>
+                        <p><strong>Backup</strong> creates a portable copy of Cosmifold data. <strong>Restore</strong> loads a previous backup, replacing the current local data.</p>
+                    </div>
+                </details>
+                <details id="help-platforms">
+                    <summary>Mobile tips</summary>
+                    <div class="help-copy"><p>Use &hellip; for management actions. Swipe Preview up to open Contents; swipe Contents down to return. On a task, you can check Done in Compact Preview.</p></div>
+                </details>
+            </section>
         </div>
     </dialog>
 
@@ -422,6 +470,7 @@
     <script src="image-viewer.js"></script>
     <script src="help.js"></script>
     <script src="model.js"></script>
+    <script src="task-lists.js"></script>
     <script src="archives.js"></script>
     <script src="everyday.js"></script>
     <script src="portals.js"></script>
@@ -452,6 +501,8 @@
     <script src="background.js"></script>
     <script src="camera.js"></script>
     <script src="hierarchy.js"></script>
+    <script src="task-views.js"></script>
+    <script src="sidebar-split.js"></script>
     <dialog id="hierarchy-paste-dialog" class="collection-dialog" aria-labelledby="hierarchy-paste-title" aria-describedby="hierarchy-paste-description">
         <h2 id="hierarchy-paste-title">Add items here</h2>
         <p id="hierarchy-paste-description"></p>
