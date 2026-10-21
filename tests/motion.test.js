@@ -9,6 +9,17 @@ function env(){let now=0,serial=0;const timers=new Map(),canceled=[],created=[];
     for(const file of ['motion.js','background.js'])vm.runInContext(fs.readFileSync(path.join(__dirname,'..',file),'utf8'),context);
     return {Motion:vm.runInContext('CosmosMotion',context),Ambient:vm.runInContext('CosmosAmbient',context),element,document,timers,canceled,setTimer,clearTimer,created,time:value=>now=value};
 }
+test('task completion wave is short, nonblocking, cleans up and respects reduced motion',async()=>{
+    const e=env(),motion=new e.Motion(),wave=e.element(),node=e.element();
+    node.dataset={};node.querySelector=()=>wave;
+    motion.taskComplete(node,130);
+    assert.equal(wave.lastAnimation.options.duration,440);assert.equal(wave.lastAnimation.options.delay,130);
+    assert.equal(wave.lastAnimation.frames.at(-1).opacity,0);
+    wave.lastAnimation.finish();await Promise.resolve();assert.equal(motion.animations.size,0);
+    motion.setReducedMotion(true);motion.taskComplete(node);assert.equal(motion.animations.size,0);
+    motion.setReducedMotion(false);node.dataset.culled='true';motion.taskComplete(node);assert.equal(motion.animations.size,0);
+});
+
 test('motion bounds illumination/line stagger and cancellation restores static reduced-motion state',async()=>{
     const e=env(),motion=new e.Motion(),nodes=Array.from({length:200},e.element);
     motion.beginConstellation(nodes);assert.equal(motion.animations.size,96);assert.ok([...motion.animations].every(r=>r.animation.options.delay<=150));

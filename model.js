@@ -117,10 +117,13 @@ const galaxyModel = {
         if (!record || typeof record.id !== "string" || !record.id.trim() || record.id.length > 100 ||
             typeof record.name !== "string" || !record.name.trim() || record.name.length > 60 ||
             (record.description != null && (typeof record.description !== "string" || record.description.length > 1000))) return null;
+        if (['taskList','completed'].some(key => record[key] != null && typeof record[key] !== 'boolean')) return null;
         const location=this.normalizeLocation(record.location);
         return {
             id: record.id, name: record.name, description: record.description ?? "", ...(content ? { content } : {}),
             ...(location?{location}:{}),
+            ...(record.taskList === true ? {taskList:true} : {}),
+            ...(typeof record.completed === 'boolean' ? {completed:record.completed} : {}),
             category: typeof record.category === "string" ? record.category : "",
             parentId: typeof record.parentId === "string" && record.parentId ? record.parentId : null,
             x: Number.isFinite(record.x) ? record.x : 400,
@@ -248,8 +251,15 @@ const galaxyModel = {
     validateChange(entry, entries) {
         if (!entry.name.trim()) return "Enter a name.";
         if (entry.description != null && typeof entry.description !== "string") return "Description must be text.";
-        if (entry.name.length > 60 || (entry.description?.length ?? 0) > 1000 || entry.category.length > 60) return "Please shorten the name, description or category.";
+        if (entry.name.length > 60 || (entry.description?.length ?? 0) > 1000 || (entry.category?.length ?? 0) > 60) return "Please shorten the name, description or category.";
         if (entry.parentId && !entries.has(entry.parentId)) return "Choose an existing parent.";
+        const current = entries.get(entry.id), parent = entries.get(entry.parentId);
+        if (current && (current.taskList === true) !== (entry.taskList === true)) return "An item's Task List role cannot be changed.";
+        if (parent && entries.get(parent.parentId)?.taskList === true) return "Tasks cannot contain child items. Add files, notes, links or a location instead.";
+        if (parent?.taskList === true) {
+            if (entry.taskList === true) return "A Task List cannot contain another Task List.";
+            if ([...entries.values()].some(child => child.parentId === entry.id)) return "Items with children cannot move into a Task List. Choose an item without children.";
+        }
         const visited = new Set([entry.id]);
         let ancestor = entries.get(entry.parentId);
         while (ancestor) {

@@ -4,7 +4,10 @@
     const dialog = document.getElementById('help-dialog');
     trigger.addEventListener('click', () => {
         if (dialog.open) return;
+        dialog.querySelectorAll('details').forEach(topic => {topic.open = false;});
         dialog.showModal();
+        dialog.scrollTop = 0;
+        dialog.querySelector('.help-topics').scrollTop = 0;
     });
     document.getElementById('close-help-button').addEventListener('click', () => dialog.close());
     // Keep Escape and navigation keys inside Help, without dismissing content

@@ -17,13 +17,14 @@ function setup(data=null){
 }
 async function source(){
  const data=rich(),state=setup(data),originals=new Map();
+ data.entries[6].taskList=true;data.entries[7].completed=true;
  for(const [i,type,name] of [[0,'image/png','photo.png'],[1,'application/pdf','booking.pdf'],[2,'video/webm','trip.webm'],[3,'application/octet-stream','document.bin'],[4,'image/png','copy.png']]){
   const bytes=Uint8Array.from([0,255,128,1,i]),key='file-'+i,owner=i===4?'a-5':'a-3',thumbnail=i%2===0?new Blob([Uint8Array.from([i,128,255])],{type:'image/webp'}):null;
   originals.set(key,bytes);
   await state.files.save({key,entryId:owner,blob:new Blob([bytes],{type}),thumbnail});
   data.entries.find(e=>e.id===owner).content.attachments.push({id:key,kind:'upload',entryId:owner,storageKey:key,filename:name,mimeType:type,size:bytes.length,createdAt:'2026-10-11T00:00:00Z'});
  }
- state.disk.setItem(state.metadata.key,JSON.stringify(data));state.preferences.update({width:280,collapsed:false,universeCollapsed:true,expandedIds:['a-0']});
+ state.disk.setItem(state.metadata.key,JSON.stringify(data));state.preferences.update({width:280,collapsed:false,universeCollapsed:true,expandedIds:['a-0'],tasksActiveCollapsed:true,tasksCompletedCollapsed:false,hiddenCompletedTaskListIds:['a-6']});
  return {state,data,originals,result:await backup.create(state.repo)};
 }
 async function contents(state){
@@ -95,6 +96,11 @@ const invalid=[
  ['wrong count',m=>m.counts.entries++],
  ['raw and parsed metadata mismatch',m=>m.metadataText='{}'],
  ['invalid preferences',m=>{m.preferences=[];m.preferencesText='[]';}],
+ ['invalid Tasks preference',m=>{m.preferences={tasksCollapsed:'yes'};m.preferencesText=JSON.stringify(m.preferences);}],
+ ['invalid Active preference',m=>{m.preferences={tasksActiveCollapsed:'yes'};m.preferencesText=JSON.stringify(m.preferences);}],
+ ['invalid Completed preference',m=>{m.preferences={tasksCompletedCollapsed:1};m.preferencesText=JSON.stringify(m.preferences);}],
+ ['invalid dismissed-list array',m=>{m.preferences={hiddenCompletedTaskListIds:'list'};m.preferencesText=JSON.stringify(m.preferences);}],
+ ['invalid dismissed-list ID',m=>{m.preferences={hiddenCompletedTaskListIds:['list',false]};m.preferencesText=JSON.stringify(m.preferences);}],
  ['recovery states',m=>m.recoverySnapshots={}],
  ['prototype pollution',m=>m.metadata.entries[0].appearance=JSON.parse('{"__proto__":{"polluted":true}}')]
 ];

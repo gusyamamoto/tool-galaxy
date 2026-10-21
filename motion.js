@@ -27,6 +27,12 @@ class CosmosMotion {
         this.play(icon,[{transform:'rotate(0deg) scale(1)',opacity:.7},{transform:'rotate(12deg) scale(1.08)',opacity:1,offset:.4},{transform:'rotate(0deg) scale(1)',opacity:1}],{duration:240});}
     materialize(node){if(this.reduced)return;this.stats.materialize++;
         this.play(node,[{opacity:.2},{opacity:getComputedStyle(node).opacity}],{duration:220});}
+    taskComplete(node,delay=0) {
+        if(this.reduced||!node||node.dataset.culled==='true'||node.dataset.semanticHidden==='true')return;
+        const wave=node.querySelector('.task-completion-wave');
+        this.play(wave,[{opacity:0,transform:'scale(.8)'},{opacity:.85,transform:'scale(1.12)',offset:.25},
+            {opacity:0,transform:'scale(1.85)'}],{duration:440,delay,group:'task'});
+    }
     astronaut(node,release=false){if(this.reduced)return;const figure=node?.querySelector('.astronaut-figure');if(!figure)return;
         this.stats.astronaut++;this.play(figure,[{transform:`rotate(${release?-3:2}deg)`},{transform:'rotate(0deg)'}],{duration:release?240:180});}
     beginConstellation(nodes) {

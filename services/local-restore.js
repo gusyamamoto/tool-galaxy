@@ -117,8 +117,10 @@ const cosmifoldRestore = (()=>{
         if(manifest.preferences!==null&&!object(manifest.preferences))fail('This backup contains invalid sidebar preferences.');
         if(manifest.preferences){
             const prefs=manifest.preferences;
+            if(prefs.hiddenCompletedTaskListIds!=null&&(!Array.isArray(prefs.hiddenCompletedTaskListIds)||
+                prefs.hiddenCompletedTaskListIds.some(id=>typeof id!=='string'||!id.length)))fail('This backup contains invalid sidebar preferences.');
             if(prefs.width!=null&&(!Number.isFinite(prefs.width)||prefs.width<=0))fail('This backup contains invalid sidebar preferences.');
-            for(const key of ['collapsed','universeCollapsed','archivedCollapsed','constellationsCollapsed','constellationsSeen'])
+            for(const key of ['collapsed','universeCollapsed','archivedCollapsed','constellationsCollapsed','constellationsSeen','tasksCollapsed','tasksActiveCollapsed','tasksCompletedCollapsed'])
                 if(prefs[key]!=null&&typeof prefs[key]!=='boolean')fail('This backup contains invalid sidebar preferences.');
         }
         const refs=validateMetadata(manifest.metadata),keys=new Set(),records=[],start=spec.headerBytes+length;let offset=0;

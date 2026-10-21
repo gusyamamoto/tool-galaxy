@@ -13,7 +13,7 @@ def run_mobile_capture_checks(*, cdp, evaluate, check, wait_for, load, add, sele
     # validation, repository transaction and IndexedDB storage below.
     evaluate("""window.capturePickers=[];contentInspector.files.click=function(){capturePickers.push({accept:this.getAttribute('accept'),capture:this.getAttribute('capture'),multiple:this.multiple,label:this.getAttribute('aria-label')});};""")
     evaluate(f"toggleContentMenu(addMenu,hierarchySidebar.rows.get({json.dumps(owner)}).querySelector('.tree-add'),{json.dumps(owner)})")
-    check(evaluate("[...addMenu.querySelectorAll('button:not([hidden])')].map(b=>b.textContent).join('|')==='Add item|Add files|Add note|Add link'"), 'desktop Add retains core actions without linked-item creation or empty-clipboard Paste')
+    check(evaluate("[...addMenu.querySelectorAll('button:not([hidden])')].map(b=>b.textContent).join('|')==='Add item|Add task list|Add files|Add note|Add link'"), 'desktop Add retains core actions without linked-item creation or empty-clipboard Paste')
     evaluate("addMenu.querySelector('[data-add=files]').click()")
     check(evaluate("capturePickers.at(-1).accept===null&&capturePickers.at(-1).capture===null&&capturePickers.at(-1).multiple"), 'desktop Files keeps the ordinary multiple-file picker')
     evaluate("contentInspector.files.dispatchEvent(new Event('cancel'));closeInspector()")
@@ -41,11 +41,11 @@ def run_mobile_capture_checks(*, cdp, evaluate, check, wait_for, load, add, sele
     tap(f'.entry-node[data-entry-id="{owner}"]')
     check(evaluate(f'panel.hidden&&selectedNode.dataset.entryId==={json.dumps(owner)}'), 'a real body tap selects its body and leaves Contents closed')
     tap('#mobile-body-add')
-    quick_labels = 'Take Photo|Photo Gallery|Add item'
+    quick_labels = 'Take Photo|Photo Gallery|Add item|Add task list'
     def labels():
         return evaluate("[...addMenu.querySelectorAll('button:not([hidden])')].map(b=>b.textContent).join('|')")
 
-    check(labels() == quick_labels, 'CB View has exactly Take Photo, Photo Gallery and Add item')
+    check(labels() == quick_labels, 'CB View has Take Photo, Photo Gallery, Add item and Add task list')
     check(evaluate("!addMenu.querySelector('[data-add=more]')&&!addMenu.querySelector('[data-add=quick-note]')&&!addMenu.querySelector('[data-add=capture-files]')"), 'no hidden second-page, quick-note or general-files mobile menu remains')
     check(evaluate("addMenu.dataset.view==='quick'&&addMenu.querySelectorAll('[role=separator]:not([hidden])').length===0"), 'quick menu has no hidden full-menu actions exposed or group dividers')
     shot('mobile-capture-390-menu')
@@ -82,7 +82,7 @@ def run_mobile_capture_checks(*, cdp, evaluate, check, wait_for, load, add, sele
     cancel()
     evaluate('closeInspector()')
     click_selector('#mobile-body-add')
-    check(labels() == quick_labels, 'reopening CB + retains the same three actions')
+    check(labels() == quick_labels, 'reopening CB + retains the same four actions')
     click_selector('#add-child-button')
     check(evaluate(f"dialog.open&&contextualParentId==={json.dumps(owner)}&&parentField.value==={json.dumps(owner)}&&addMenu.hidden"), 'Add item opens the existing child form for the exact body')
     click_selector('#cancel-add-entry')
@@ -100,7 +100,7 @@ def run_mobile_capture_checks(*, cdp, evaluate, check, wait_for, load, add, sele
         evaluate('closeInspector();hierarchySidebar.setCollapsed(false)')
         check(evaluate("[...document.querySelectorAll('.hierarchy-row[data-entry-id]')].every(row=>{const a=row.querySelector('.tree-add'),m=row.querySelector('.tree-more'),ar=a.getBoundingClientRect(),mr=m.getBoundingClientRect();return getComputedStyle(a).visibility==='visible'&&getComputedStyle(m).display!=='none'&&ar.width>=44&&mr.width>=44&&ar.right<=mr.left&&mr.right<=innerWidth;})"), f'{width}x{height}: every row has independently visible + and actions')
         evaluate(f"hierarchySidebar.rows.get({json.dumps(owner)}).querySelector('.tree-add').click()")
-        check(labels() == quick_labels, f'{width}x{height}: Menu View uses the same three Add actions')
+        check(labels() == quick_labels, f'{width}x{height}: Menu View uses the same four Add actions')
         check(evaluate("addMenu.dataset.view==='quick'&&addMenu.querySelectorAll('[role=separator]:not([hidden])').length===0"), f'{width}x{height}: no expanded mobile Add menu or unnecessary separators')
         check(evaluate("(()=>{const r=addMenu.getBoundingClientRect();return r.left>=0&&r.right<=innerWidth&&r.top>=0&&r.bottom<=innerHeight&&r.width<=270;})()"), f'{width}x{height}: full Add menu stays inside viewport')
         check(evaluate("(()=>{const a=getComputedStyle(addMenu),m=getComputedStyle(contextMenu),ab=getComputedStyle(addMenu.querySelector('[data-add=camera]')),mb=getComputedStyle(contextMenu.querySelector('[data-action=edit]'));return ['backgroundColor','borderRadius','padding','boxShadow','borderColor','borderWidth'].every(k=>a[k]===m[k])&&['fontSize','fontFamily','padding','borderRadius','minHeight','color'].every(k=>ab[k]===mb[k]);})()"), f'{width}x{height}: Add surface and rows match the existing actions menu')

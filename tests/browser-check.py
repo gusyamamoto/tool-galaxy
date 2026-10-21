@@ -177,6 +177,13 @@ def find_browser():
 def main():
     args = argparse.ArgumentParser()
     args.add_argument("--screenshots", action="store_true")
+    args.add_argument("--task-lists-only", action="store_true", help="Branch tasks, progress, dormant/alive art, persistence and desktop/mobile controls")
+    args.add_argument('--sidebar-tasks-only', action='store_true', help='Task completion in the existing sidebar disclosure gutter')
+    args.add_argument('--sidebar-refinement-only', action='store_true', help='Shared sidebar row grammar and desktop-only persisted pane splitter')
+    args.add_argument('--task-dismissals-only', action='store_true', help='Hide completed Task Lists from the secondary view and restore them on new work')
+    args.add_argument('--task-views-only', action='store_true', help='Global Task Lists, completion focus and mobile Compact Preview Done')
+    args.add_argument('--desktop-add-only', action='store_true', help='Desktop context/header child creation and unchanged mobile presentation')
+    args.add_argument('--mobile-add-baseline', type=Path, help='Mobile screenshot baseline for desktop-add review; --capture-baseline records it')
     args.add_argument("--first-user-readiness-only", action="store_true", help="Check empty startup, stable hierarchy gutters, Constellation add/sizing, shared editors and keyboard viewport")
     args.add_argument("--auth-only", action="store_true", help="Check independent account flows, pending/error/recovery, local data and Backup/Restore isolation")
     args.add_argument("--cloud-boundary-only", action="store_true", help="Mocked development-only identity/Universe/REST/GraphQL privacy boundary")
@@ -401,6 +408,7 @@ def main():
             if options.compatibility_only:
                 evaluate('physics.pause()');return
             wait_for("physics.settled", timeout=25)
+            evaluate('applicationCommandTail')
 
         def wait_camera():
             wait_for("camera.frame===null && (typeof pendingBodyFocusTimer==='undefined'||pendingBodyFocusTimer===null)")
@@ -414,6 +422,7 @@ def main():
             assert evaluate("!dialog.open"), evaluate("formError.textContent")
             assert evaluate("(()=>{const p=physics.particles.get(selectedNode.dataset.entryId),e=entries.get(p.id);return p.x===e.x&&p.y===e.y;})()"), "Add must reveal/save the actual seeded position immediately"
             return evaluate("selectedNode.dataset.entryId")
+
 
         def edit(entry_id, name=None, parent=None):
             if parent is not None:
@@ -484,6 +493,50 @@ def main():
 
         cdp.call("Page.navigate", url=page_url)
         load()
+        if options.sidebar_refinement_only:
+            from sidebar_refinement_browser import run_sidebar_refinement_checks
+            def shot(name):
+                if screenshot_dir:
+                    (screenshot_dir/(name+'.png')).write_bytes(base64.b64decode(cdp.call('Page.captureScreenshot',format='png')['data']))
+            run_sidebar_refinement_checks(cdp=cdp,e=evaluate,check=check,wait_for=wait_for,add=add,shot=shot)
+            print(f'{count} sidebar refinement checks passed; screenshots: {screenshot_dir}',flush=True);return
+        if options.task_dismissals_only:
+            from task_dismissals_browser import run_task_dismissal_checks
+            def shot(name):
+                if screenshot_dir:
+                    (screenshot_dir/(name+'.png')).write_bytes(base64.b64decode(cdp.call('Page.captureScreenshot',format='png')['data']))
+            run_task_dismissal_checks(cdp=cdp,e=evaluate,check=check,wait_for=wait_for,add=add,shot=shot)
+            print(f'{count} Task List dismissal checks passed; screenshots: {screenshot_dir}',flush=True);return
+        if options.task_views_only:
+            from task_views_browser import run_task_view_checks
+            def shot(name):
+                if screenshot_dir:
+                    (screenshot_dir/(name+'.png')).write_bytes(base64.b64decode(cdp.call('Page.captureScreenshot',format='png')['data']))
+            run_task_view_checks(cdp=cdp,e=evaluate,check=check,wait_for=wait_for,add=add,shot=shot)
+            print(f'{count} task secondary/Compact Preview checks passed; screenshots: {screenshot_dir}',flush=True);return
+        if options.sidebar_tasks_only:
+            from sidebar_tasks_browser import run_sidebar_task_checks
+            def shot(name):
+                if screenshot_dir:
+                    (screenshot_dir/(name+'.png')).write_bytes(base64.b64decode(cdp.call('Page.captureScreenshot',format='png')['data']))
+            run_sidebar_task_checks(cdp=cdp,e=evaluate,check=check,wait_for=wait_for,add=add,shot=shot)
+            print(f'{count} sidebar task browser checks passed; screenshots: {screenshot_dir}',flush=True);return
+        if options.desktop_add_only:
+            from desktop_add_browser import run_desktop_add_checks
+            def shot(name):
+                if screenshot_dir:
+                    (screenshot_dir/(name+'.png')).write_bytes(base64.b64decode(cdp.call('Page.captureScreenshot',format='png')['data']))
+            run_desktop_add_checks(cdp=cdp,e=evaluate,check=check,wait_for=wait_for,add=add,shot=shot,
+                baseline_dir=options.mobile_add_baseline,capture_baseline=options.capture_baseline)
+            print(f'{count} desktop Add/mobile isolation checks passed',flush=True);return
+        if options.task_lists_only:
+            from task_lists_browser import run_task_checks
+            def shot(name):
+                if screenshot_dir:
+                    (screenshot_dir / (name+'.png')).write_bytes(base64.b64decode(cdp.call('Page.captureScreenshot',format='png')['data']))
+            run_task_checks(cdp=cdp,evaluate=evaluate,check=check,wait_for=wait_for,add=add,shot=shot,origin=origin)
+            print(f'PASS {count} Task List browser checks; screenshots: {screenshot_dir}')
+            return
         if options.staging_only:
             from staging_browser import run_staging_checks
             run_staging_checks(cdp=cdp,evaluate=evaluate,check=check,wait_for=wait_for,add=add,load=load,origin=origin,site_root=options.site_root,asset_files=static_asset_files,cdp_class=CDP,debug_port=debug_port)
@@ -1404,9 +1457,18 @@ def main():
             click_selector('#help-button')
             check(evaluate("document.getElementById('help-dialog').open&&document.activeElement.id==='close-help-button'"),'Help opens a named native modal with focus on its close control')
             check(workspace()==original,'opening Help preserves content draft, selection, lens, camera, physics and saved data')
-            check(evaluate("document.getElementById('help-title').textContent==='Help'&&[...document.querySelectorAll('#help-dialog summary')].map(s=>s.textContent).join('|')==='Getting around|Organizing things|Moving & copying|Constellations|Locations'&&document.querySelectorAll('#help-dialog details[open]').length===0"),'Help lands on five short collapsed topics without a wall of text')
+            check(evaluate("document.getElementById('help-title').textContent==='Help'&&[...document.querySelectorAll('.help-opening h3')].map(h=>h.textContent).join('|')==='Getting started|A few things to know'&&document.querySelectorAll('#help-dialog details[open]').length===0"),'Help starts with two short visible sections and collapsed deeper topics')
+            check(evaluate("[...document.querySelectorAll('.help-hints dt')].map(h=>h.textContent).join('|')==='+ Add something|\u2026 Manage something|Tap or click an Item|Contents|Task Lists'"),'five plain hints explain adding, managing, navigating, content and checklists')
+            check(evaluate("[...document.querySelectorAll('#help-dialog summary')].map(s=>s.textContent).join('|')==='Navigating|Adding & organizing Items|Contents|Task Lists & Tasks|Search|Constellations|Moving & duplicating|Backup & Restore|Mobile tips'"),'nine optional topics keep detailed help out of the opening')
+            removed=['help-concept','help-tree','help-path','help-start-steps','help-control-legend','help-structure-example','help-platform-grid','help-mini-legend','help-mobile-flow','help-60-title','help-caption','help-mini-path','help-example-count','help-optional']
+            help_css=(ROOT/'style.css').read_text(encoding='utf-8')
+            check(all(token not in help_css for token in removed),'obsolete Help-only card, tree, flow, grid and walkthrough CSS is removed')
+            check(evaluate("!document.querySelector('#help-dialog pre,#help-dialog ol,#help-dialog img,#help-dialog picture,#help-dialog svg,#help-dialog canvas,#help-dialog video,#help-dialog iframe')&&[...document.querySelectorAll('#help-dialog [class]')].every(e=>!/(concept|tree|flow|path|steps|grid)/.test(e.className))"),'Help contains no diagrams, cards, numbered walkthroughs or image assets')
+            beginner=evaluate("document.querySelector('.help-opening').textContent")
+            check(len(beginner.split())<=140,'beginner hints fit a quick skim: '+str(len(beginner.split()))+' words')
+            check(not any(term in beginner for term in ['Constellations','Active','Completed','Hide from Tasks','Backup','Restore']),'beginner opening leaves advanced views and backup inside disclosures')
             shot('help-desktop-landing')
-            for index in range(5):
+            for index in range(9):
                 evaluate(f"document.querySelectorAll('#help-dialog summary')[{index}].click()")
                 wait_for(f"(()=>{{const s=document.querySelectorAll('#help-dialog summary')[{index}];return s.getAttribute('aria-expanded')===String(s.parentElement.open)}})()")
                 check(True,f'topic {index+1} toggles and exposes its disclosure state')
@@ -1420,7 +1482,7 @@ def main():
             check(evaluate("document.activeElement===document.querySelector('#help-dialog details:last-child summary')"),'Shift+Tab wraps focus within the modal')
             key('Tab','Tab')
             check(evaluate("document.activeElement.id==='close-help-button'"),'Tab wraps back to the close control')
-            check(evaluate("(()=>{const d=document.getElementById('help-dialog'),r=d.getBoundingClientRect();return r.width<=440&&r.left>=0&&r.right<=innerWidth&&r.top>=0&&r.bottom<=innerHeight})()"),'desktop Help stays compact inside the viewport')
+            check(evaluate("(()=>{const d=document.getElementById('help-dialog'),r=d.getBoundingClientRect();return r.width<=560&&r.width>=480&&r.left>=0&&r.right<=innerWidth&&r.top>=0&&r.bottom<=innerHeight})()"),'desktop Help stays compact inside the viewport')
             shot('help-desktop')
             click_selector('#close-help-button')
             check(evaluate("!document.getElementById('help-dialog').open&&document.activeElement.id==='help-button'"),'close button returns focus to Help')
@@ -1431,17 +1493,21 @@ def main():
             evaluate(f"hierarchySidebar.restoreMovedSelection([{json.dumps(item)},{json.dumps(secondary)}],{json.dumps(item)})")
             group=workspace();click_selector('#help-button')
             check(workspace()==group,'Help preserves the complete multi-selection, active item, Content draft and zoomed system')
-            evaluate("document.querySelectorAll('#help-dialog summary')[2].click()");shot('help-moving-copying')
+            evaluate("document.querySelector('#help-moving summary').click()");shot('help-moving-copying')
             key('Escape','Escape');wait_for("!document.getElementById('help-dialog').open")
             check(workspace()==group,'closing Help restores the entire selected group without navigation')
             copy=evaluate("document.getElementById('help-dialog').textContent")
-            check(not any(term in copy.lower() for term in ['portal','canonical','parentid','pkm','semantic zoom','schema','database','graph theory','onboarding','node','edge']),'Help copy avoids internal and intimidating terminology')
-            check(all(term in copy for term in ['Scroll to zoom','Double-click','Universe','Search finds items by name','Ctrl-click','Windows/Linux','Cmd-click','macOS','Shift-click','selected group','Make a copy','Duplicate structure','Constellation','Location','files, photos, notes, links and location','Trip','Home project','Class / course','Take Photo','Photo Gallery','Add item','Move to…']),'Help covers current navigation, quick Add, management, independent copying, Contents and starters')
-            check("Creates an independent version. Changes to one won't affect the other." in copy and 'Choose Copy, then Paste where you want an independent copy.' in copy and not any(term in copy for term in ['Add existing item','Link existing item','Linked versions','Pick:']),'Help teaches independent Copy/Paste without hidden linked-item creation workflows')
-            check(all(term in copy for term in ['Universe = where something lives','Constellation = things you want to see together','recipe from Food','workout from Fitness','city from Travel','playlist from Music','original hierarchy location',"don't move or duplicate",'one or more Constellations','same item']),'Constellations explain cross-category grouping and shared original identity')
-            check("notes, files, photos, links and locations aren't copied." in copy and "Location stays the same wherever you view it, including in a Constellation." in copy,'Help preserves the content-free duplication and original Location distinctions')
-            check(evaluate("!document.querySelector('#help-dialog a[href],#help-dialog iframe')"),'Help stays informational and contains no external support links or embeds')
-            check(len(copy.split())<550,'all Help copy is short enough to skim in a couple of minutes')
+            check(not re.search(r'\b(?:CB|celestial bod(?:y|ies)|Task Mode|inherited|recursive|terminal tasks?|bookmarks?|portals?|canonical|parentId|schema|database)\b',copy,re.I),'Help uses Item and Links with no obsolete/internal task terminology')
+            check(all(term in beginner for term in ['visual place','Create an Item','Files','Notes','Links','Location','Add task list','Tasks later']),'beginner copy answers what Cosmifold is and how to start')
+            tasks_copy=evaluate("document.getElementById('help-tasks').textContent")
+            check(all(term in tasks_copy for term in ['Only the Items directly inside it are tasks.','cannot contain child Items','Done','brings them to life','progress','Active','Completed','Hide from Tasks','this view only','remains in the Universe','returns to Active automatically']),'one deeper topic explains direct tasks, completion, progress, grouping, hiding and automatic return')
+            constellation_copy=evaluate("document.getElementById('help-constellations').textContent")
+            check(all(term in constellation_copy for term in ['optional','different parts of your Universe','not moved or copied','naturally belongs in one branch']),'Constellations stays optional and favors a normal branch when appropriate')
+            check(all(term in copy for term in ['Copy / Paste','independent copy','Duplicate structure','leaving content behind','Duplicated Task List tasks start incomplete']),'copy/duplicate wording matches independent copies and reusable checklists')
+            backup_copy=evaluate("document.getElementById('help-backup').textContent")
+            check(all(term in backup_copy for term in ['browser-local','in this browser','portable copy','replacing the current local data','recent backup']) and 'sync' not in backup_copy.lower(),'Backup explains browser-local storage and portable copies without promising sync')
+            check(evaluate("!document.querySelector('#help-dialog a[href],#help-dialog iframe')"),'Help stays informational without external links or embeds')
+            check(len(copy.split())<650,'deeper Help stays compact and progressive: '+str(len(copy.split()))+' words total')
             evaluate("contentInspector.editLocation();contentInspector.locationInput.value='Keep my unfinished place'")
             location_draft=workspace();click_selector('#help-button');key('Escape','Escape');wait_for("!document.getElementById('help-dialog').open")
             check(workspace()==location_draft,'Help also preserves the inline Location editor and its unfinished text')
@@ -1450,12 +1516,33 @@ def main():
                 cdp.call('Emulation.setTouchEmulationEnabled',enabled=True)
                 wait_for('hierarchySidebar.narrow');evaluate('hierarchySidebar.setCollapsed(false)');wait_camera()
                 evaluate("document.getElementById('help-button').scrollIntoView({block:'nearest'})");before=workspace()
-                click_selector('#help-button');evaluate("document.querySelectorAll('#help-dialog details').forEach(t=>t.open=true)")
-                check_rendered("(()=>{const d=document.getElementById('help-dialog'),r=d.getBoundingClientRect(),s=d.querySelector('.help-topics');return r.left>=0&&r.right<=innerWidth&&r.top>=0&&r.bottom<=innerHeight&&s.scrollHeight>s.clientHeight&&s.scrollWidth<=s.clientWidth&&document.getElementById('help-button').getBoundingClientRect().height>=44&&document.getElementById('close-help-button').getBoundingClientRect().height>=44&&[...d.querySelectorAll('summary')].every(s=>s.getBoundingClientRect().height>=44)})()",f'Help fits {width}x{height} with internal scrolling and comfortable touch targets')
+                click_selector('#help-button')
+                check(evaluate("document.querySelector('#help-dialog .help-topics').scrollTop===0&&document.querySelectorAll('#help-dialog details[open]').length===0"),f'Help reopens at the beginner explanation at {width}x{height}')
+                if width in [360,390,430]:
+                    check(evaluate("document.querySelectorAll('.help-hints > div').length===5&&getComputedStyle(document.querySelector('.help-hints')).display==='block'&&document.querySelector('.help-hints').scrollWidth<=document.querySelector('.help-hints').clientWidth"),f'five simple text hints fit the phone at {width}px')
+                    shot(f'help-beginner-{width}')
+                    evaluate("document.getElementById('help-contents').open=true;document.querySelector('.help-topics').scrollTop=0")
+                    point=evaluate("(()=>{const r=document.querySelector('.help-topics').getBoundingClientRect();return {x:r.x+r.width*.75,y:r.y+r.height*.7}})()")
+                    cdp.call('Input.dispatchTouchEvent',type='touchStart',touchPoints=[point])
+                    for dy in [20,50,90,140]:cdp.call('Input.dispatchTouchEvent',type='touchMove',touchPoints=[dict(x=point['x'],y=point['y']-dy)])
+                    cdp.call('Input.dispatchTouchEvent',type='touchEnd',touchPoints=[])
+                    wait_for("document.querySelector('.help-topics').scrollTop>40")
+                    check(workspace()==before,f'native Help scrolling preserves the canvas and draft at {width}px')
+                    evaluate("new Promise(resolve=>{const s=document.querySelector('.help-topics');let last=s.scrollTop,stable=0;const frame=()=>{stable=s.scrollTop===last?stable+1:0;last=s.scrollTop;if(stable>=4)resolve();else requestAnimationFrame(frame)};requestAnimationFrame(frame)})")
+                    evaluate("document.querySelector('#help-navigation summary').scrollIntoView({block:'center'});new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))")
+                    target=evaluate("(()=>{const r=document.querySelector('#help-navigation summary').getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()")
+                    cdp.call('Input.dispatchTouchEvent',type='touchStart',touchPoints=[target]);cdp.call('Input.dispatchTouchEvent',type='touchEnd',touchPoints=[])
+                    wait_for("document.getElementById('help-navigation').open&&document.querySelector('#help-navigation summary').ariaExpanded==='true'")
+                    check(True,f'native touch opens the navigation explanation at {width}px')
+                evaluate("document.querySelectorAll('#help-dialog details').forEach(t=>t.open=true)")
+                check_rendered("(()=>{const d=document.getElementById('help-dialog'),r=d.getBoundingClientRect(),s=d.querySelector('.help-topics');return r.left>=0&&r.right<=innerWidth&&r.top>=0&&r.bottom<=innerHeight&&s.scrollHeight>s.clientHeight&&s.scrollWidth<=s.clientWidth&&[...d.querySelectorAll('.help-hints,p')].every(e=>e.scrollWidth<=e.clientWidth)&&document.getElementById('help-button').getBoundingClientRect().height>=44&&document.getElementById('close-help-button').getBoundingClientRect().height>=44&&[...d.querySelectorAll('summary')].every(s=>s.getBoundingClientRect().height>=44)})()",f'Help fits {width}x{height} with internal scrolling and comfortable touch targets')
                 evaluate("document.querySelector('#help-dialog .help-topics').scrollTop=10000")
-                check(evaluate("(()=>{const b=document.getElementById('close-help-button'),r=b.getBoundingClientRect();return document.elementFromPoint(r.x+r.width/2,r.y+r.height/2)===b})()"),f'close control stays reachable after scrolling at {width}x{height}')
-                if width==320:shot('help-mobile')
-                evaluate("document.querySelectorAll('#help-dialog details').forEach(t=>t.open=t.querySelector('summary').textContent==='Constellations');document.querySelector('#help-dialog .help-topics').scrollTop=0;new Promise(r=>requestAnimationFrame(r))")
+                close_info=evaluate("(()=>{const b=document.getElementById('close-help-button'),r=b.getBoundingClientRect(),d=document.getElementById('help-dialog');return {reachable:document.elementFromPoint(r.x+r.width/2,r.y+r.height/2)===b,rect:r.toJSON(),dialogScroll:d.scrollTop,topicScroll:d.querySelector('.help-topics').scrollTop,hit:document.elementFromPoint(r.x+r.width/2,r.y+r.height/2)?.outerHTML.slice(0,200)}})()")
+                if not close_info['reachable']:shot(f'help-close-failure-{width}')
+                check(close_info['reachable'],f'close control stays reachable after scrolling at {width}x{height}'+('' if close_info['reachable'] else str(close_info)))
+                check(close_info['dialogScroll']==0,f'Help topics own scrolling without an outer dialog scroller at {width}x{height}')
+                if width in [320,360,390,430]:shot(f'help-expanded-{width}')
+                evaluate("document.querySelectorAll('#help-dialog details').forEach(t=>t.open=t.id==='help-constellations');document.querySelector('#help-dialog .help-topics').scrollTop=0;new Promise(r=>requestAnimationFrame(r))")
                 shot(f'help-constellations-{width}x{height}')
                 click_selector('#close-help-button');check(workspace()==before,f'Help leaves mobile workspace unchanged at {width}x{height}')
             cdp.call('Emulation.setEmulatedMedia',features=[dict(name='prefers-reduced-motion',value='reduce')])
@@ -2176,7 +2263,7 @@ def main():
             def choice(id):evaluate(f"portalPicker.list.querySelector('[data-entry-id='+CSS.escape({json.dumps(id)})+']').click()")
             view=evaluate('JSON.stringify(camera.view)');selected=evaluate('selectedNode.dataset.entryId');entry_count=evaluate('entries.size')
             evaluate(f"openContextMenu({json.dumps(target)},550,220)")
-            check(evaluate("[...contextMenu.querySelectorAll(':scope>button:not([hidden])')].map(b=>b.textContent).join('|')==='Rename|Move to…|Add to Constellation|Copy|Duplicate structure|Delete item'"),'canvas menu retains canonical body management without insertion actions')
+            check(evaluate("[...contextMenu.querySelectorAll(':scope>button:not([hidden])')].map(b=>b.textContent).join('|')==='Add item|Add task list|Rename|Move to…|Add to Constellation|Copy|Duplicate structure|Delete item'"),'desktop canvas menu offers child creation with canonical body management')
             for surface in ['canvas','sidebar']:
                 evaluate(f"openContextMenu({json.dumps(parent)},500,250,{{surface:{json.dumps(surface)}}})")
                 check(evaluate("!contextMenu.querySelector('[data-action=portal]')"),'Galaxy '+surface+' menu has no standalone existing-item action')
@@ -2185,7 +2272,7 @@ def main():
             evaluate(f"closeContextMenu();selectEntry(entries.get({json.dumps(target)}),nodes.get({json.dumps(target)}),{{reframe:false}})")
             open_picker()
             check(evaluate(f"portalDialog.matches(':modal')&&portalParentId==={json.dumps(parent)}&&portalTargetId===null&&document.getElementById('create-portal').disabled&&document.activeElement.id==='portal-parent-search'"),'retained internal compatibility picker is focused and destination-bound')
-            check(evaluate("[...addMenu.querySelectorAll('button:not([hidden])')].map(b=>b.textContent).join('|')==='Add item|Add files|Add note|Add link'"),'desktop retains organization/content shortcuts and hides empty-clipboard Paste')
+            check(evaluate("[...addMenu.querySelectorAll('button:not([hidden])')].map(b=>b.textContent).join('|')==='Add item|Add task list|Add files|Add note|Add link'"),'desktop retains organization/content shortcuts and hides empty-clipboard Paste')
             check(evaluate("portalPicker.list.getAttribute('role')==='tree'&&[...portalPicker.list.querySelectorAll('[data-entry-id]')].every(n=>entries.has(n.dataset.entryId))"),'default picker browses canonical hierarchy and excludes linked placements')
             check(evaluate(f"portalPicker.rows.get({json.dumps(existing)}).choice.getAttribute('aria-disabled')==='true'&&portalPicker.rows.get({json.dumps(existing)}).added.textContent==='Already here'"),'canonical children already in the destination are marked and cannot be duplicated')
             check(evaluate('JSON.stringify(camera.view)')==view and evaluate('selectedNode.dataset.entryId')==selected,'opening and browsing preserve camera, selection and active content')
@@ -3287,7 +3374,7 @@ def main():
             evaluate(f"document.querySelector('[data-constellation-id=\"{remaining}\"] .collection-more').click()");action('delete');click_selector('#cancel-delete-constellation')
             check(evaluate(f"constellations.has({json.dumps(remaining)})") and state()==before,'touch Delete cancellation preserves state through the shared dialog')
             help_copy=evaluate("[...document.querySelectorAll('#help-dialog details')].find(d=>d.querySelector('summary').textContent==='Constellations').querySelector('.help-copy').textContent")
-            check(all(text in help_copy for text in ['Universe = where something lives','Constellation = things you want to see together','recipe from Food','workout from Fitness','city from Travel','playlist from Music','original hierarchy location',"don't move or duplicate",'one or more Constellations','same item']), 'Help explains cross-category Constellations, original identity and multiple memberships')
+            check(all(text in help_copy for text in ['optional','different parts of your Universe','naturally belongs in one branch','not moved or copied']), 'Help briefly explains optional cross-branch Constellations without changing original Items')
             def handle_geometry():
                 return evaluate("""(()=>{const p=panel.getBoundingClientRect(),b=document.getElementById('close-inspector-button'),i=b.querySelector('svg'),r=b.getBoundingClientRect(),s=i.getBoundingClientRect(),bs=getComputedStyle(b),cs=getComputedStyle(i);return {top:r.top-p.top,center:r.left+r.width/2-p.left-p.width/2,width:r.width,height:r.height,iconTop:s.top-p.top,iconCenter:s.left+s.width/2-p.left-p.width/2,iconWidth:s.width,iconHeight:s.height,buttonStyle:['padding','backgroundColor','color','opacity','borderRadius','boxShadow'].map(k=>bs[k]),iconStyle:['fill','stroke','strokeWidth','opacity'].map(k=>cs[k])};})()""")
             for width,height in [(360,800),(390,844),(430,932),(844,390)]:
@@ -3827,7 +3914,7 @@ def main():
             check(evaluate('JSON.stringify(camera.view)')==view and evaluate('JSON.stringify([...constellations.values()])')==refs and evaluate('physics.simulation.alpha()')==alpha,'overview content shortcuts preserve camera, collection references and physics temperature')
             evaluate(f"contentInspector.editNotes();contentInspector.notes.value='Unfinished note';openContextMenu({json.dumps(owner)},500,300,{{surface:'sidebar'}})")
             check(evaluate("!contentInspector.notesForm.hidden&&contentInspector.notes.value==='Unfinished note'"),'opening a same-entry context menu preserves its unfinished note')
-            check(evaluate("[...contextMenu.querySelectorAll(':scope > button:not([hidden])')].map(b=>b.textContent).join('|')==='Rename|Move to…|Add to Constellation|Copy|Duplicate structure|Delete item'"),'canonical context menu focuses on body management without Add/Paste duplicates')
+            check(evaluate("[...contextMenu.querySelectorAll(':scope > button:not([hidden])')].map(b=>b.textContent).join('|')==='Add item|Add task list|Rename|Move to…|Add to Constellation|Copy|Duplicate structure|Delete item'"),'desktop canonical context menu offers Add item and body management')
             add_menu_for(owner);evaluate("addMenu.querySelector('[data-add=files]').click()")
             check(evaluate('consolidationPickerClicks===2') and evaluate('JSON.stringify(camera.view)')==view,'canonical right-click Add files uses the same stable content handler')
             evaluate("document.getElementById('content-cancel-notes').click();contentInspector.files.dispatchEvent(new Event('cancel'));contentInspector.upload([new File(['Consolidation bytes'],'record.txt',{type:'text/plain'})]);void 0");wait_for('contentInspector.jobs.size===0')
@@ -3960,7 +4047,7 @@ def main():
                 evaluate(f"constellationWorkspace.setMember({json.dumps(collection)},{json.dumps(entry)},true)")
             def overlay_aligned():
                 return evaluate("constellationOverlay.edges.every(({from,to,line})=>{const a=nodes.get(from),b=nodes.get(to);return Math.abs(+line.getAttribute('x1')-a.renderX)<.01&&Math.abs(+line.getAttribute('y1')-a.renderY)<.01&&Math.abs(+line.getAttribute('x2')-b.renderX)<.01&&Math.abs(+line.getAttribute('y2')-b.renderY)<.01})")
-            check(evaluate("constellations.size===0&&document.getElementById('constellations-section').parentElement===document.getElementById('universe-section').parentElement&&!hierarchySidebar.tree.contains(document.getElementById('constellation-list'))"),'old saved hierarchy loads with a separate empty Constellations section')
+            check(evaluate("constellations.size===0&&document.getElementById('constellations-section').parentElement===document.getElementById('sidebar-secondary-views')&&!hierarchySidebar.tree.contains(document.getElementById('constellation-list'))"),'old saved hierarchy loads with a separate empty Constellations section')
             check(evaluate("!document.getElementById('constellations-section').hidden&&constellationWorkspace.list.hidden&&document.getElementById('constellations-toggle').getAttribute('aria-expanded')==='false'"),'empty Constellations section remains visible and compact with an independent chevron and +')
             g1=add('Collection home');sun=add('Plans',g1);planet=add('Hotel',sun);moon=add('Packing',planet);satellite=add('Checklist',moon);deep=add('Deep detail',satellite)
             g2=add('Other Galaxy');other=add('Hotel',g2);unrelated=add('Unrelated',other)
@@ -3976,7 +4063,8 @@ def main():
             cdp.call('Input.dispatchKeyEvent',type='keyUp',key='Enter',code='Enter',windowsVirtualKeyCode=13)
             check(evaluate("!constellationWorkspace.nameDialog.open"), 'Enter submits collection creation')
             wait_for('!constellationWorkspace.nameDialog.open');evaluate('physics.pause()')
-            check(evaluate("!constellationWorkspace.list.hidden&&document.getElementById('constellations-toggle').getAttribute('aria-expanded')==='true'"),'first collection creation automatically expands the section')
+            check(evaluate("constellationWorkspace.list.hidden&&document.getElementById('constellations-toggle').getAttribute('aria-expanded')==='false'"),'first collection stays quietly collapsed until explicitly opened')
+            evaluate("document.getElementById('constellations-toggle').click()")
             c1=evaluate('[...constellations.keys()].at(-1)');c2=create_collection('Project Launch');empty=create_collection('Empty group')
             check(evaluate(f"constellations.get({json.dumps(c1)}).memberEntryIds.length===0&&constellations.size===3"),'creation makes an empty independent collection before adding members')
             view=evaluate('JSON.stringify(camera.view)');evaluate("document.getElementById('constellations-toggle').click()")
@@ -4183,6 +4271,7 @@ def main():
             cdp.call('Emulation.setDeviceMetricsOverride',width=390,height=844,deviceScaleFactor=1,mobile=False)
             cdp.call('Emulation.setTouchEmulationEnabled',enabled=True,maxTouchPoints=1)
             evaluate('hierarchySidebar.setCollapsed(false)');wait_camera()
+            evaluate("if(constellationWorkspace.collapsed)document.getElementById('constellations-toggle').click()")
             point=evaluate("(()=>{const r=document.getElementById('constellations-toggle').getBoundingClientRect();return{x:r.x+r.width/2,y:r.y+r.height/2}})()")
             cdp.call('Input.dispatchTouchEvent',type='touchStart',touchPoints=[point]);cdp.call('Input.dispatchTouchEvent',type='touchEnd',touchPoints=[])
             check(evaluate('constellationWorkspace.list.hidden&&!constellationWorkspace.nameDialog.open'),'touch chevron collapses independently from the creation +')
@@ -4190,9 +4279,10 @@ def main():
             cdp.call('Input.dispatchTouchEvent',type='touchStart',touchPoints=[point]);cdp.call('Input.dispatchTouchEvent',type='touchEnd',touchPoints=[])
             check(evaluate('!constellationWorkspace.list.hidden'),'touch chevron expands the section without navigation')
             check(evaluate("getComputedStyle(document.getElementById('new-constellation-button')).opacity==='1'&&[...document.querySelectorAll('.constellation-row')].every(r=>r.querySelector('.collection-add').getBoundingClientRect().width>=44&&r.querySelector('.collection-more').getBoundingClientRect().width>=44)"),'section and row Add controls stay visible alongside management')
+            evaluate("document.querySelector('[data-constellation-id=sample-constellation-trip] .collection-more').scrollIntoView({block:'nearest'})")
             point=evaluate("(()=>{const r=document.querySelector('[data-constellation-id=\"sample-constellation-trip\"] .collection-more').getBoundingClientRect();return{x:r.x+r.width/2,y:r.y+r.height/2}})()")
             cdp.call('Input.dispatchTouchEvent',type='touchStart',touchPoints=[point]);cdp.call('Input.dispatchTouchEvent',type='touchEnd',touchPoints=[])
-            wait_for("!contextMenu.hidden");evaluate('closeContextMenu()');context_add=evaluate("(()=>{const r=document.querySelector('[data-constellation-id=sample-constellation-trip] .collection-add').getBoundingClientRect();return{x:r.x+r.width/2,y:r.y+r.height/2}})()")
+            wait_for("!contextMenu.hidden");evaluate("closeContextMenu();document.querySelector('[data-constellation-id=sample-constellation-trip] .collection-add').scrollIntoView({block:'nearest'})");context_add=evaluate("(()=>{const r=document.querySelector('[data-constellation-id=sample-constellation-trip] .collection-add').getBoundingClientRect();return{x:r.x+r.width/2,y:r.y+r.height/2}})()")
             cdp.call('Input.dispatchTouchEvent',type='touchStart',touchPoints=[context_add]);cdp.call('Input.dispatchTouchEvent',type='touchEnd',touchPoints=[])
             wait_for("constellationWorkspace.picker.open")
             check(evaluate("constellationWorkspace.pickerId==='sample-constellation-trip'&&constellationWorkspace.picker.getBoundingClientRect().width<=innerWidth-16"),'touch row + opens a bounded responsive member picker for that collection')
@@ -4488,7 +4578,7 @@ def main():
             check(evaluate(f"getComputedStyle(document.querySelector({json.dumps(selector)})).opacity==='1'"),'row hover reveals the right-aligned +')
             before=evaluate('JSON.stringify({id:selectedNode.dataset.entryId,tree:hierarchySidebar.selectedId,view:camera.view,panel:panel.hidden})')
             click_selector(selector)
-            check(evaluate(f"addMenuTargetId==={json.dumps(target)} && [...addMenu.querySelectorAll('button:not([hidden])')].map(b=>b.textContent).join('|')==='Add item|Add files|Add note|Add link'"),'row + retains desktop actions for its own row and hides empty-clipboard Paste')
+            check(evaluate(f"addMenuTargetId==={json.dumps(target)} && [...addMenu.querySelectorAll('button:not([hidden])')].map(b=>b.textContent).join('|')==='Add item|Add task list|Add files|Add note|Add link'"),'row + retains desktop actions for its own row and hides empty-clipboard Paste')
             check(evaluate('JSON.stringify({id:selectedNode.dataset.entryId,tree:hierarchySidebar.selectedId,view:camera.view,panel:panel.hidden})')==before,'opening row + does not select, focus-navigate or reframe the body')
             cdp.call('Input.dispatchKeyEvent',type='keyDown',key='Escape',code='Escape',windowsVirtualKeyCode=27)
             check(evaluate(f"addMenu.hidden && document.activeElement===document.querySelector({json.dumps(selector)}) && getComputedStyle(document.activeElement).opacity==='1'"),'Escape restores visible keyboard focus to the originating row +')
@@ -4543,7 +4633,7 @@ def main():
                 for role in ['Planet','Moon','Satellite','Astronaut','Astronaut']:
                     parent=chain[-1]
                     evaluate(f"selectEntry(entries.get({json.dumps(parent)}),nodes.get({json.dumps(parent)}));openSelectedRowAdd()")
-                    check(evaluate("[...addMenu.querySelectorAll('button:not([hidden])')].map(b=>b.textContent).join('|')==='Add item|Add files|Add note|Add link' && addMenuTargetId===selectedNode.dataset.entryId"),'row + offers hierarchy and content actions for its own item')
+                    check(evaluate("[...addMenu.querySelectorAll('button:not([hidden])')].map(b=>b.textContent).join('|')==='Add item|Add task list|Add files|Add note|Add link' && addMenuTargetId===selectedNode.dataset.entryId"),'row + offers hierarchy and content actions for its own item')
                     click_selector('#add-child-button')
                     check(evaluate(f"document.getElementById('add-entry-title').textContent==='Add item' && submitButton.textContent==='Create item' && document.getElementById('entry-info-fields').hidden && document.getElementById('parent-field').hidden && creationContext.hidden && roleField.hidden"),f'quick Add {role} only shows Name')
                     evaluate(f"fields[0].value='Organizer {role}';form.requestSubmit();physics.pause()")
@@ -4562,7 +4652,7 @@ def main():
                 check(evaluate(f"!panel.hidden && contentInspector.entryId==={json.dumps(owner)} && hierarchySidebar.selectedId==={json.dumps(owner)}"),'Cosmos selection opens matching contents and sidebar selection: '+json.dumps(evaluate(f"(()=>{{const n=nodes.get({json.dumps(owner)}),r=n.getBoundingClientRect();return {{rect:r.toJSON(),hit:document.elementFromPoint(r.x+r.width/2,r.y+r.height/2)?.outerHTML?.slice(0,180),selected:selectedNode?.dataset.entryId,inspected:contentInspector.entryId,panelHidden:panel.hidden,activeNodeDrags,narrow:hierarchySidebar.narrow}}}})()")))
                 check(evaluate('JSON.stringify(camera.view)')==before,'reopening contents through body selection does not move camera')
                 click_selector('#entry-more-button')
-                check(evaluate("!contextMenu.hidden && [...contextMenu.querySelectorAll(':scope > button:not([hidden])')].map(b=>b.textContent).join('|')==='Rename|Move to…|Add to Constellation|Copy|Duplicate structure|Archive Galaxy|Delete item'"),'Galaxy More retains full management including Archive without permanent metadata')
+                check(evaluate("!contextMenu.hidden && [...contextMenu.querySelectorAll(':scope > button:not([hidden])')].map(b=>b.textContent).join('|')==='Add item|Add task list|Rename|Move to…|Add to Constellation|Copy|Duplicate structure|Archive Galaxy|Delete item'"),'Galaxy More retains Add item and full management including Archive without permanent metadata')
                 check(evaluate('JSON.stringify(camera.view)')==before,'opening More leaves camera unchanged')
                 cdp.call('Input.dispatchKeyEvent',type='keyDown',key='ArrowDown',code='ArrowDown',windowsVirtualKeyCode=40)
                 check(evaluate("document.activeElement.dataset.action==='move'"),'More supports arrow-key navigation')

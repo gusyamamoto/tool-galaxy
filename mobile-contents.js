@@ -128,7 +128,7 @@ class MobileContentsSheet {
     cancelAnimation(){this.animation?.cancel();this.animation=null;this.closing=false;}
     cancelPendingClose(){if(this.closing)this.cancelAnimation();}
     bindGestures() {
-        const interactive='button,a,input,textarea,select,summary,video,audio,[contenteditable]:not([contenteditable="false"]),[role="button"],[role="tab"]';
+        const interactive='button,a,input,textarea,select,summary,video,audio,#mobile-task-control,[contenteditable]:not([contenteditable="false"]),[role="button"],[role="tab"]';
         for(const surface of [this.card,this.panel]){
             surface.addEventListener('touchstart',event=>{
                 this.cancelPendingClose();this.gesture=null;

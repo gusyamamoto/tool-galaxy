@@ -38,7 +38,9 @@ const hierarchyCopies = {
         const {entries,included,remap,now,parentId}=this.prepare(snapshot,[rootId],destination,newId,{topLevel:true});
         // An allowlist keeps future content/metadata fields out of this operation.
         const copies=[...included].map(id=>({id:remap.get(id),name:id===rootId?name.trim():entries.get(id).name,
-            parentId:parentId(id),description:'',category:'',x,y,createdAt:now,updatedAt:now}));
+            parentId:parentId(id),description:'',category:'',x,y,createdAt:now,updatedAt:now,
+            ...(entries.get(id).taskList === true ? {taskList:true} : {}),
+            ...(entries.get(entries.get(id).parentId)?.taskList === true ? {completed:false} : {})}));
         const combined=new Map([...entries,...copies.map(entry=>[entry.id,entry])]);
         for(const entry of copies){
             const error=galaxyModel.validateChange(entry,combined);
@@ -69,6 +71,11 @@ const hierarchyCopies = {
         // placements/memberships deliberately stay with the originals.
         const links=(snapshot.portals||[]).filter(p=>included.has(p.parentEntryId)&&included.has(p.targetEntryId))
             .map(p=>({...p,id:fresh(),parentEntryId:remap.get(p.parentEntryId),targetEntryId:remap.get(p.targetEntryId),createdAt:now}));
+        const combined=new Map([...entries,...copies.map(entry=>[entry.id,entry])]);
+        for(const entry of copies){
+            const error=galaxyModel.validateChange(entry,combined);
+            if(error)throw new Error(error);
+        }
         return {copies,links,files,rootIds:normalizedRoots.map(id=>remap.get(id)),sourceIds:[...included],remap};
     }
 };

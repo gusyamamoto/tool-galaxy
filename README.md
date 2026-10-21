@@ -1,5 +1,13 @@
 # Cosmifold
 
+Add a **Task List** anywhere in your Universe. Its direct children are tasks.
+Complete them to bring the branch to life. Choose **Add task list** beside
+**Add item**, enter a name and optionally one task per line, then Create.
+Return to checklists through the lower sidebar's **Tasks** view. On phones,
+tasks also have **Done** directly in Compact Preview. Completing a task focuses
+its real CB; unchecking leaves the camera alone.
+[Task List model, visuals and phone checklist](docs/task-lists.md).
+
 A 2.5D universe for organizing trips, recipes, photos, projects and other items. No
 install/build step: serve this directory with `python -m http.server 8000` and
 open `http://localhost:8000`. Use the same browser, address and port for saved data.
@@ -167,15 +175,26 @@ empty independent hierarchies, naming, persistence, recovery and Sample isolatio
   the tree, then selects the new root and opens its empty Content panel. The
   command is disabled for multiple selected items and absent from linked-item
   menus. It has no shortcut and preserves independent Copy/Paste behavior.
-  The small Cosmifold title stays above Search and three independently collapsible
-  sections: Universe, Constellations and Archived Galaxies. Each heading and its
+  The small Cosmifold title stays above Search and the primary Universe hierarchy.
+  A quieter lower area holds Tasks and Constellations; Archived Galaxies remains
+  independently collapsible. Each heading and its
   chevron toggle only that section. Universe + opens the existing New Galaxy /
   Starter flow; Constellations + creates a collection. Both reveal on hover/focus
   on desktop and remain visible with 44px targets on touch. Archive has no + and
   its section disappears when empty. The existing navigation preference object
-  stores `universeCollapsed`, `constellationsCollapsed` and `archivedCollapsed`
+  stores `universeCollapsed`, `tasksCollapsed`, `tasksActiveCollapsed`,
+  `tasksCompletedCollapsed`, `constellationsCollapsed` and `archivedCollapsed`
   separately from overall sidebar collapse/width. Section collapse preserves
   selection, content/drafts, camera, lens, physics and internal branch expansion.
+  Tasks derives canonical Task Lists in stable model order, with independently
+  collapsed checklists beneath peer Active/Completed groups. Active defaults
+  expanded and Completed collapsed; manual disclosures persist independently.
+  Completing/unchecking moves the real list between groups without overriding
+  those preferences. Completed tasks stay in their checklist. Completed rows offer
+  More -> Hide from Tasks; this saves only `hiddenCompletedTaskListIds` in UI
+  preferences. Universe content stays intact. New unfinished work consumes the
+  dismissal, returns the list to Active, and allows ordinary re-completion. Constellations starts collapsed unless an explicit preference says
+  otherwise; its creation and manual membership paths remain available.
   The generic More container, sidebar Fit, permanent count/zoom diagnostics and
   pan/zoom instructions are removed. Canvas Fit uses the same existing handler;
   internal count/zoom elements remain hidden for debug/test access. A separate,
@@ -205,11 +224,13 @@ empty independent hierarchies, naming, persistence, recovery and Sample isolatio
   opens its menu without opening a closed drawer or shifting the camera. Opening
   Contents measures available space without changing the camera;
   it waits for drag release before opening if a pointer is held.
-- **Body actions:** right-click a body or Galaxy name for management: Rename,
-  Move to…, Add to Constellation, Copy, Duplicate structure and Delete item.
-  Galaxy management also offers Archive Galaxy. The independent **+** menu adds
-  into that body. Mobile `…` opens full management directly; mobile `+` has only
-  Take Photo, Photo Gallery and Add item. Contents owns Files, Notes, Links and
+- **Body actions:** desktop right-click starts with Add item and Add task list, followed by Rename,
+  Move to…, Add to Constellation, Copy, Duplicate structure
+  and Delete item. Desktop Contents **+** beside **…** opens the shared Add menu;
+  each creation action opens its form directly. Galaxy management also offers Archive Galaxy. The sidebar **+**
+  retains its Add menu. Mobile `…` opens full management directly; mobile `+` has only
+  Take Photo, Photo Gallery, Add item and Add task list. Task Lists offer Add task;
+  task children retain capture/content actions without child creation. Contents owns Files, Notes, Links and
   Location entry. Compact, Contents and Menu View retain the same target semantics.
   Subtree confirmation remains. The menu stays inside the viewport, closes on outside clicks/Escape,
   and does not start dragging or camera focus. Shift+F10 opens it from a focused
@@ -1270,31 +1291,37 @@ mobile targets, preference reloads and the isolated Sample utility.
 
 ### Help
 
-The quiet **? Help** beside Backup and Account at the bottom of the sidebar opens local Help.
-Five short, collapsible topics cover Getting around, Organizing things,
-Moving & copying, Constellations, and Locations. All begin closed, so the first
-screen shows only the short intro and topic list. Small examples explain nested
-items and trip structure duplication. Independent Copy/Paste, Duplicate structure
-and cross-category Constellations have separate explanations. There is no startup tour,
-external documentation, dependency, or storage change.
+The quiet **? Help** beside Backup and Account opens an English-only, text-based
+Help dialog. **Getting started** briefly introduces Cosmifold; **A few things
+to know** offers five hints about +, More, selecting Items, Contents and creating
+a checklist. There are no concept cards, diagrams, images or onboarding steps.
 
-Help uses a compact dark modal on desktop and responsive sizing on phones, with
-an always-reachable header and internally scrolling topics. Enter/Space activate
-topics, Tab stays in Help, and Close or Escape returns focus to the trigger.
-Content drafts, selection, active Constellations, and camera state remain intact.
-Help has no animation, including with reduced motion.
+Under **Need more help?**, nine native disclosures cover Navigating, Adding &
+organizing Items, Contents, Task Lists & Tasks, Search, Constellations, Moving &
+duplicating, Backup & Restore, and Mobile tips. All start collapsed whenever Help
+opens. Active/Completed, Hide from Tasks and optional Constellations stay inside
+the detailed topics. Backup wording describes browser-local storage and portable
+backups without promising cloud sync.
 
-`python tests/browser-check.py --help-only --screenshots` checks disclosure state,
-keyboard/focus, terminology, desktop and narrow/landscape mobile bounds, touch
-targets, internal scrolling, reduced motion, and unchanged workspace/data.
-Before committing, skim the copy, try Help with an unfinished Note and active
-Constellation, and check long scrolling topics on a phone.
+Help uses a bounded 560px desktop modal and fits narrow phones. The Close header
+stays reachable while one topics pane scrolls. Enter/Space activate topics, Tab
+stays in Help, and Close or Escape returns focus to the trigger. Content drafts,
+selection, active Constellations, camera, physics and saved data remain intact.
+No runtime behavior, dependencies or storage changes are introduced.
+See [the review guide](docs/help-guide.md).
+
+`python tests/browser-check.py --help-only --screenshots` checks the short opening,
+nine collapsed topics, absence of visual tutorial markup/styles, word budgets,
+keyboard/focus, native touch disclosures/scrolling, phone and landscape bounds,
+reduced motion, and unchanged real/Sample workspace data. Skim the opening with
+someone new for 20-30 seconds, then let them experiment in the actual app.
 
 
 ### Focused usability polish
 
 Help lives in the bottom utility area, separate from the three navigation groups.
-Its existing topics, dialog, keyboard behavior and focus restoration are unchanged.
+Its native dialog, keyboard behavior and focus restoration are preserved; the
+beginner content and progressive topic structure are described above.
 
 On desktop, double-click a canonical sidebar name or press F2 on its focused row
 to rename inline. The current name is selected. Enter trims and saves with the

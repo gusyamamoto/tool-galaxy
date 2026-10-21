@@ -38,11 +38,20 @@ touch targets. The compact card and desktop spacing are unchanged.
 In short phone landscape, the drawer scrolls and reserves a usable tree height
 so expanded collections/utilities cannot squeeze capture rows out of view.
 
-Mobile Add uses the same three actions from the compact card, Contents header,
-and sidebar rows: Take Photo, Photo Gallery, Add item. There is no More step or
-expanded mobile Add menu. Contents owns general Files, Notes, Links and Location
-entry. Desktop keeps Add item, contextual Paste, Add files,
+Mobile Add uses the same four actions from the compact card, Contents header,
+and sidebar rows: Take Photo, Photo Gallery, Add item, Add task list. Task Lists
+replace creation choices with Add task; task children keep Take Photo and Photo
+Gallery without child creation. There is no More step or expanded mobile Add
+menu. Contents owns general Files, Notes, Links and Location
+entry. Desktop keeps Add item, Add task list, contextual Paste, Add files,
 Add note and Add bookmark. Both menus retain the approved surface and row styles.
+
+Task Compact Preview additionally offers Done directly below its title/actions;
+Task List parents show a progress count there. Other CBs keep their existing
+preview. Done uses the same completion action as Contents and both sidebar views.
+Completion focuses the task through existing navigation; unchecking does not.
+An adequately framed selected task stays stable. The Done label owns its touch
+interaction, while the title/handle retains the existing Contents swipe.
 
 ## Body management menus
 

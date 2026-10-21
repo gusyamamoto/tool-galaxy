@@ -115,6 +115,10 @@ let layout = new Map();
 // Starter IDs never grant special permissions or deletion protection.
 const starterIds = new Set(initialEntries.map((entry) => entry.id));
 const nodes = new Map();
+let taskStates = new Map();
+let taskWritePending = false;
+let creatingTaskList = false;
+let pendingTaskPulses = null;
 let terminalLabelIds = new Set();
 const lines = [];
 const orbitGuides = [];
@@ -146,6 +150,7 @@ let cameraViewReady = false;
 let semanticDetail = cosmosView.detail(1);
 const focusRevealIds = new Set();
 const hierarchySidebar = new HierarchySidebar({ host: galaxy, preferences: persistence.preferences,
+    onTaskToggle:(id,value)=>changeTask(id,'completed',value), taskBlocked:()=>taskWritePending||(!sampleMode&&!storageAvailable),
     onRename:renameEntry, onRenameStart() { cancelPendingBodyFocus(); camera.stopAnimation(); closeContextMenu(); closeContentMenus(); },
     onNavigate: (id,options) => focusEntry(id,{...options,openInspector:!hierarchySidebar.narrow}), onSelectionEmpty:()=>clearSelection(), onCreate: (id, button) => toggleContentMenu(addMenu, button, id),
     onActivate:id=>selectEntry(entries.get(id),nodes.get(id),{reframe:false,openInspector:!hierarchySidebar.narrow}), onMove:moveSidebarEntries,
@@ -155,7 +160,11 @@ const hierarchySidebar = new HierarchySidebar({ host: galaxy, preferences: persi
     moveBlocked:()=>deletionBusy||crudActive||activeNodeDrags||!!pan||!!pinch||(!sampleMode&&!storageAvailable), onDragEnd:()=>contentDrops.finish(),
     portals, onOpenPortal: id => openPortal(id), onPortalMenu: (id, x, y) => openPortalContextMenu(id, x, y),
     onViewportChange: animate => crudActive || panelChangeActive ? updateGraphViewport() : navigationViewportChanged(animate) });
+const sidebarPaneSplit = new SidebarPaneSplit({preferences:persistence.preferences, mediaQuery:hierarchySidebar.mobileQuery});
 const hierarchyClipboard=new HierarchyClipboard();
+const tasksView = new TasksSecondaryView({preferences:persistence.preferences, onMenu:openTasksListMenu,
+    navigate:id=>focusEntry(id,{openInspector:!hierarchySidebar.narrow}), complete:(id,value)=>changeTask(id,'completed',value),
+    blocked:()=>taskWritePending||(!sampleMode&&!storageAvailable), onLayout(){if(cameraViewReady)updateGraphViewport();}});
 let firstItemCreated=persistence.preferences.load().firstItemCreated===true;
 function syncFirstUse(initial=false) {
     const hasContent=entries.size>0||archivedEntries.size>0;
@@ -177,6 +186,7 @@ const camera = new GraphCamera({
         if(travel&&pendingPortalArrival===selectedNode?.dataset.entryId)motion.accent(selectedNode,'arrival');
         pendingPortalArrival=null;
         if (focusRevealIds.size) { focusRevealIds.clear(); renderGraph(); }
+        playTaskCompletionPulses();
     },
     onChange({ x, y, scale }, { source = 'programmatic', previousScale = scale } = {}) {
         const viewport = readRenderViewport();
@@ -211,6 +221,7 @@ const camera = new GraphCamera({
         }
         graphViewport.style.setProperty("--surface-detail", smoothDetail(scale, 0.5, 1));
         graphViewport.style.setProperty("--orbit-detail", detail.guides);
+        graphViewport.style.setProperty('--task-ring-detail',smoothDetail(scale,.28,.65));
         graphViewport.style.setProperty("--galaxy-label-size", `${14 + 2 * (1 - smoothDetail(scale, .18, .50))}px`);
         graphViewport.style.setProperty('--galaxy-label-detail', detail.labels.galaxy.opacity);
         galaxy.dataset.detailLevel = detail.tier;
@@ -389,17 +400,36 @@ function renderBodyActions() {
     contextMenu.dataset.view='full';
     contextMenu.querySelectorAll(':scope > button').forEach(button=>{
         const action=button.dataset.action;
-        button.hidden=button.hasAttribute('data-portal-action')||button.hasAttribute('data-collection-context')||
+        button.hidden=button.hasAttribute('data-tasks-action')||button.hasAttribute('data-portal-action')||button.hasAttribute('data-collection-context')||
+            (button.hasAttribute('data-desktop-only')&&hierarchySidebar.narrow)||
             (button.hasAttribute('data-galaxy-only')&&entry.depth!==0)||
-            (action==='paste'&&(!hierarchySidebar.narrow||!canPasteHierarchy(contextEntryId)));
+            (action==='paste'&&(!hierarchySidebar.narrow||!canPasteHierarchy(contextEntryId)))||
+            (action==='add-child'&&taskStates.get(entry.id)?.task)||
+            (action==='add-task-list'&&(taskStates.get(entry.id)?.task||entry.taskList===true));
     });
     contextMenu.querySelectorAll(':scope > [role="separator"]').forEach(item=>item.hidden=item.hasAttribute('data-mobile-only')&&!hierarchySidebar.narrow);
+    contextMenu.querySelector('[data-action="add-child"]').textContent=entry.taskList===true?'Add task':'Add item';
 }
 function toggleBodyActions(button,id,surface='canvas') {
     if(!contextMenu.hidden&&contextEntryId===id&&contextReturnFocus===button){closeContextMenu(true);return;}
     const rect=button.getBoundingClientRect();
     openContextMenu(id,rect.right,rect.bottom,{surface});
     if(contextEntryId===id){contextReturnFocus=button;button.setAttribute('aria-expanded','true');positionBodyActions(button);}
+}
+// Completed-list dismissal uses the existing menu/focus/positioning machinery.
+function openTasksListMenu(id,button) {
+    if(!taskStates.get(id)?.list||!taskStates.get(id)?.complete||tasksView.dismissals.ids.has(id))return;
+    if(!contextMenu.hidden&&contextMenu.dataset.tasksListId===id){closeContextMenu(true);return;}
+    closeContextMenu();closeContentMenus();
+    contextEntryId=id;contextReturnFocus=button;contextMenu.dataset.tasksListId=id;
+    contextMenu.dataset.entryId=id;contextMenu.dataset.view='full';
+    contextMenu.setAttribute('aria-label',`Actions for ${entries.get(id).name}`);
+    document.getElementById('context-entry-name').textContent=entries.get(id).name;
+    document.getElementById('constellation-memberships').hidden=true;
+    contextMenu.querySelectorAll(':scope > button').forEach(item=>item.hidden=item.dataset.action!=='hide-from-tasks');
+    contextMenu.querySelectorAll(':scope > [role="separator"]').forEach(item=>item.hidden=true);
+    button.setAttribute('aria-expanded','true');contextMenu.hidden=false;positionBodyActions(button);
+    contextMenu.querySelector('[data-action="hide-from-tasks"]').focus({preventScroll:true});
 }
 function positionBodyActions(button) {
     const rect=button.getBoundingClientRect();
@@ -433,7 +463,7 @@ function closeContextMenu(restoreFocus = false) {
     if (contextMenu.hidden) return;
     if (contextPortalId) hierarchySidebar.rows.get(contextPortalId)?.querySelector('.tree-portal-actions')?.setAttribute('aria-expanded','false');
     if(contextReturnFocus?.hasAttribute('aria-haspopup'))contextReturnFocus.setAttribute('aria-expanded','false');
-    contextMenu.hidden = true; contextEntryId = null; contextPortalId = null; contextCollectionId=null;contextMenu.removeAttribute('data-constellation-id');
+    contextMenu.hidden = true; contextEntryId = null; contextPortalId = null; contextCollectionId=null;contextMenu.removeAttribute('data-constellation-id');contextMenu.removeAttribute('data-tasks-list-id');
     if (restoreFocus && contextReturnFocus?.isConnected) {
         // Returning keyboard focus must not launch a new Cosmos focus transition.
         keyboardNavigation = false; contextReturnFocus.focus({ preventScroll: true });
@@ -456,6 +486,20 @@ contextMenu.addEventListener("click", event => {
         return;
     }
     if (!action || !entries.has(id)) return;
+    if(action==='hide-from-tasks'){
+        const allowed=contextMenu.dataset.tasksListId===id&&taskStates.get(id)?.complete;
+        closeContextMenu();
+        if(allowed)tasksView.hideCompleted(id);
+        return;
+    }
+    if(action==='add-child'){
+        if(hierarchySidebar.narrow)return;
+        closeContextMenu(true);createChildEntry(id);return;
+    }
+    if(action==='add-task-list'){
+        if(hierarchySidebar.narrow)return;
+        closeContextMenu(true);createChildEntry(id, true);return;
+    }
     if (action === 'constellation') { showConstellationMemberships(id); return; }
     if(action==='copy'){copyHierarchyItems(contextMenu.dataset.copySelection==='true'?hierarchySidebar.getSelectedEntryIds():[id]);closeContextMenu(true);return;}
     if(action==='paste'){closeContextMenu(true);openHierarchyPaste(id);return;}
@@ -555,6 +599,87 @@ function saveEntryLocation(id,value){return orderedCommand(async()=>{
     const updated=await universeRepository.updateLocation(getGalaxySnapshot,id,value);
     if(updated.location)entry.location=updated.location;else delete entry.location;entry.updatedAt=updated.updatedAt;graphNeedsSave=false;return updated;
 });}
+function refreshTaskMetadata() {
+    taskStates=cosmosTasks.index(entries);
+    entries.forEach(entry=>cosmosTasks.decorate(entry,nodes.get(entry.id),taskStates.get(entry.id)));
+    renderTaskContents();
+}
+function renderTaskContents() {
+    hierarchySidebar.refreshTaskControls();
+    tasksView.render(entries,taskStates,selectedNode?.dataset.entryId);
+    renderCompactTask();
+    const id=selectedNode?.dataset.entryId, entry=entries.get(id), task=taskStates.get(id);
+    const section=document.getElementById('content-task-section'), control=document.getElementById('content-task-control');
+    section.hidden=!entry||!task?.enabled||constellationOverview;
+    if(section.hidden)return;
+    document.getElementById('task-heading').textContent=task.task?'Task':'Task progress';
+    control.hidden=!task.task;
+    const checkbox=document.getElementById('content-task-done');
+    checkbox.checked=entry.completed===true;checkbox.disabled=taskWritePending||(!sampleMode&&!storageAvailable);
+    checkbox.setAttribute('aria-label',`Done: ${entry.name}`);
+    document.getElementById('content-task-progress').hidden=task.task;
+    document.getElementById('content-task-count').textContent=task.total ? `${task.done} of ${task.total} completed (${Math.round(task.ratio*100)}%)` : '0 tasks';
+    document.getElementById('content-task-meter').value=task.ratio;
+}
+function renderCompactTask() {
+    const entry=entries.get(selectedNode?.dataset.entryId),state=taskStates.get(entry?.id);
+    const quick=document.getElementById('mobile-task-quick'),wasHidden=quick.hidden;
+    quick.hidden=!state?.enabled||constellationOverview;
+    document.getElementById('mobile-task-control').hidden=!state?.task;
+    const checkbox=document.getElementById('mobile-task-done');
+    checkbox.checked=entry?.completed===true;checkbox.disabled=taskWritePending||(!sampleMode&&!storageAvailable);
+    checkbox.setAttribute('aria-label',`Done: ${entry?.name||'task'}`);
+    const progress=document.getElementById('mobile-task-progress');progress.hidden=!state?.list;
+    progress.textContent=state?.list?(state.total?`${state.done} of ${state.total} completed`:'0 tasks'):'';
+    if(wasHidden!==quick.hidden&&cameraViewReady&&hierarchySidebar.narrow)updateGraphViewport();
+}
+function playTaskCompletionPulses() {
+    const pending=pendingTaskPulses;pendingTaskPulses=null;
+    if(!pending||selectedNode?.dataset.entryId!==pending.id)return;
+    pending.ids.filter(id=>taskStates.get(id)?.complete).forEach((id,index)=>motion.taskComplete(nodes.get(id),index*65));
+}
+function focusCompletedTask(id, ids) {
+    const entry=entries.get(id),b=physics.bounds,p=camera.worldToScreen(entry.x,entry.y),scale=camera.view.scale;
+    const minimum=entry.depth>=5?1.7:entry.depth===4?1.5:entry.depth===3?1.2:.9;
+    const framed=selectedNode?.dataset.entryId===id&&scale>=minimum&&scale<=3&&p.x>b.left+20&&p.x<b.right-20&&p.y>b.top+20&&p.y<b.bottom-20;
+    pendingTaskPulses=null;
+    // A phone drawer can leave less than one body of canvas. Reveal the CB
+    // through ordinary navigation rather than trying to frame that sliver.
+    const keepSidebarOpen=!hierarchySidebar.narrow||hierarchySidebar.collapsed||b.right-b.left>=120;
+    focusEntry(id,{openInspector:!panel.hidden,keepSidebarOpen,keepFraming:framed});
+    pendingTaskPulses={id,ids};
+    if(camera.frame===null)playTaskCompletionPulses();
+}
+function changeTask(id,field,value) {return orderedCommand(async()=>{
+    taskWritePending=true;renderTaskContents();
+    const errorElement=document.getElementById('content-task-error');errorElement.hidden=true;
+    try {
+        const before=taskStates;
+        const updated=await universeRepository.updateTask(getGalaxySnapshot,id,field,value);
+        const entry=entries.get(id);
+        if(!entry)return;
+        if(typeof updated.completed==='boolean')entry.completed=updated.completed;
+        graphNeedsSave=false;refreshTaskMetadata();
+        if(field==='completed'&&value){
+            const completed=[id,entry.parentId]
+                .filter(key=>taskStates.get(key)?.complete&&!before.get(key)?.complete);
+            if(completed.includes(id))focusCompletedTask(id,completed);
+        } else if(pendingTaskPulses?.id===id) {
+            pendingTaskPulses=null;
+        }
+    } catch(error) {
+        errorElement.textContent=error.message||'Task changes could not be saved.';errorElement.hidden=false;
+        if(panel.hidden||document.getElementById('content-task-section').hidden)reportStorageFailure(errorElement.textContent);
+        throw error;
+    } finally {taskWritePending=false;renderTaskContents();}
+});}
+document.getElementById('content-task-done').addEventListener('change',event=>{
+    const id=selectedNode?.dataset.entryId,value=event.target.checked;
+    if(id)changeTask(id,'completed',value).catch(()=>{});
+});
+document.getElementById('mobile-task-done').addEventListener('change',event=>{
+    const id=selectedNode?.dataset.entryId;if(id)changeTask(id,'completed',event.target.checked).catch(()=>{});
+});
 function addEntryAttachment(id,record,metadata){return orderedCommand(async()=>{
     if(!entries.has(id)||deletingContentIds.has(id))throw new Error('This item is being deleted or no longer exists.');
     const updated=await universeRepository.addAttachment(getGalaxySnapshot,id,record,metadata);publishContent(id,updated);return updated;
@@ -875,6 +1000,7 @@ function initializeGalaxy() {
         storageAvailable=false;archivedGalaxies.clear();
         reportStorageFailure('Archived Galaxy state could not be loaded. Your original saved data is preserved; saving is disabled for this session.');
     }
+    taskStates=cosmosTasks.index(entries);
     [...entries.values()].forEach(createEntryNode);
     renderArchivedGalaxies();
     rebuildHierarchyPaths();
@@ -923,13 +1049,13 @@ function selectEntry(entry, node, { openInspector = true, reframe = false, scrol
         panelAncestry.scrollLeft = panelAncestry.scrollWidth;
     }
     panelAncestry.classList.toggle('has-clipped-ancestors', panelAncestry.scrollLeft > 1);
+    document.getElementById('content-task-error').hidden=true;
+    renderTaskContents();
 }
 
 function refreshPanelHierarchy(entry) {
     panelName.textContent=entry.name;
-    const add = document.getElementById('entry-add-button');
-    add.setAttribute('aria-label', `Add to ${entry.name}`); add.title = `Add to ${entry.name}`;
-    add.setAttribute('aria-haspopup','menu');add.setAttribute('aria-controls','add-menu');
+    syncEntryAddControl(entry);
     document.getElementById('archive-galaxy-button').hidden=entry.depth!==0;
     panelAncestry.replaceChildren();
     [...galaxyModel.ancestors(entries,entry.id)].reverse().forEach(ancestor=>{
@@ -939,6 +1065,13 @@ function refreshPanelHierarchy(entry) {
     panelAncestry.hidden=!entries.get(entry.parentId);
 }
 
+function syncEntryAddControl(entry=entries.get(selectedNode?.dataset.entryId)) {
+    if(!entry||constellationOverview)return;
+    const add=document.getElementById('entry-add-button');
+    add.setAttribute('aria-label',add.title=`Add to ${entry.name}`);
+    add.setAttribute('aria-haspopup','menu');
+    add.setAttribute('aria-controls','add-menu');
+}
 function setInspectorOpen(open, { reframe = false } = {}) {
     if (activeNodeDrags || (open && !selectedNode && !activeConstellationId)) return;
     if (!open) closeContentMenus();
@@ -979,6 +1112,7 @@ document.getElementById("close-inspector-button").addEventListener("click", () =
 });
 
 function updateHierarchyEmphasis(viewport = readRenderViewport()) {
+    renderCompactTask();
     const id = selectedNode?.dataset.entryId, selected = physics.particles.get(id);
     const actions = document.getElementById('mobile-body-actions'), entry = entries.get(id);
     actions.hidden = !entry || constellationOverview;
@@ -1166,6 +1300,7 @@ function updateEntryNode(entry, node) {
         if (!node.dataset.textureReady) node.style.setProperty("--surface-map", `url("data:image/svg+xml,${encodeURIComponent(texture)}")`);
     }
     node.querySelector(".node-label").textContent = entry.name; node.title = entry.name;
+    cosmosTasks.decorate(entry,node,taskStates.get(entry.id));
 }
 
 function getNewEntryPosition(targetIds, role, sourceEntries=entries) {
@@ -1198,6 +1333,7 @@ function getNodeRadius(entry) {
 
 function syncPhysicsGraph({ updateUI = true, reheat = .55 } = {}) {
     galaxyModel.normalizeHierarchy(entries);
+    refreshTaskMetadata();
     if (updateUI) entries.forEach(entry => updateEntryNode(entry, nodes.get(entry.id)));
     physics.setGraph([...entries.values()].map(({ id, role, depth, parentId, x, y, seedLayout }) =>
         ({ id, role, depth, parentId, x, y, seedLayout, sizeScale: entryRoles[role].scale })), layout, { reheat });
@@ -1220,6 +1356,7 @@ function syncPhysicsGraph({ updateUI = true, reheat = .55 } = {}) {
 }
 
 function updateGraphViewport() {
+    syncEntryAddControl();
     document.getElementById('mobile-body-contents').setAttribute('aria-expanded', String(!panel.hidden));
     document.getElementById('entry-more-button').setAttribute('aria-controls',constellationOverview?'entry-actions':'entry-context-menu');
     mobileContents?.sync({mobile:hierarchySidebar.narrow,open:!panel.hidden,available:!constellationOverview});
@@ -1595,13 +1732,13 @@ function clearFormError() {
 
 function updateFormRole() {
     const parent = entries.get(parentField.value), context = cosmosHierarchy.childContext(entries, parentField.value);
-    const { role } = context;
+    const role = context?.role || galaxyModel.roleAtDepth(parent ? parent.depth+1 : 0);
     roleField.dataset.role = role;
     roleField.textContent = entryRoles[roleField.dataset.role].name;
     document.getElementById("parent-help").textContent = parent ? `Child of ${parent.name}. Its descendants move with this branch.` : "A top-level Galaxy in the Universe.";
     if (!editingId) {
-        document.getElementById("add-entry-title").textContent = context.action;
-        submitButton.textContent = parent ? 'Create item' : 'Create Galaxy';
+        document.getElementById("add-entry-title").textContent = creatingTaskList ? 'Task List' : context?.action || 'Add item';
+        submitButton.textContent = creatingTaskList ? 'Create' : parent?.taskList === true ? 'Add task' : parent ? 'Create item' : 'Create Galaxy';
     }
     creationContext.querySelector("span").textContent = parent ? `Item under ${parent.name}` : "A new Galaxy in the Universe";
 }
@@ -1612,7 +1749,7 @@ function updateParentOptions(preferredId = parentField.value) {
     entries.forEach(entry => {
         if (editingId && galaxyModel.ancestors(entries, entry.id).some(ancestor => ancestor.id === editingId)) descendants.add(entry.id);
     });
-    [...entries.values()].filter(entry => !descendants.has(entry.id)).sort((a,b) => a.depth - b.depth || a.name.localeCompare(b.name)).forEach(entry => {
+    [...entries.values()].filter(entry => !descendants.has(entry.id) && !galaxyModel.validateChange(editingId ? {...entries.get(editingId),parentId:entry.id} : {id:'',name:'New item',category:'',parentId:entry.id,...(creatingTaskList?{taskList:true}:{})},entries)).sort((a,b) => a.depth - b.depth || a.name.localeCompare(b.name)).forEach(entry => {
         const path = [...galaxyModel.ancestors(entries, entry.id)].reverse().map(ancestor => ancestor.name);
         parentField.add(new Option([...path, entry.name].join(" / "), entry.id));
     });
@@ -1663,6 +1800,7 @@ function commitCrudMutation(mutate, { selectionId, topologyChanged = true, revea
     if (!entries.has(selectedNode?.dataset.entryId)) selectedNode = null;
     galaxyModel.normalizeHierarchy(entries);
     if (topologyChanged) syncPhysicsGraph({ updateUI: false, reheat: .12 });
+    else refreshTaskMetadata();
     graphNeedsSave=false;
     nodes.forEach((node, id) => {
         if (entries.has(id)) return;
@@ -1742,7 +1880,7 @@ function copyHierarchyItems(ids=hierarchySidebar.getSelectedEntryIds()) {
     return count;
 }
 function canPasteHierarchy(id) {
-    return entries.has(id)&&hierarchyClipboard.roots(entries).length>0&&(sampleMode||storageAvailable)&&!deletionBusy&&!pasteBusy;
+    return entries.has(id)&&!taskStates.get(id)?.task&&hierarchyClipboard.roots(entries).length>0&&(sampleMode||storageAvailable)&&!deletionBusy&&!pasteBusy;
 }
 function openHierarchyPaste(id) {
     const roots=hierarchyClipboard.roots(entries);
@@ -1839,8 +1977,11 @@ function restoreCrudFocus() {
     target.focus({ preventScroll: true });
 }
 
-function openEntryForm(entry = null, parentId = null, contextual = false, mode = "info") {
+function openEntryForm(entry = null, parentId = null, contextual = false, mode = "info", taskList = false) {
     if (deletionBusy) return;
+    if (!entry && parentId && (!cosmosHierarchy.childContext(entries,parentId) || (taskList && entries.get(parentId)?.taskList===true))) return;
+    creatingTaskList = !entry && taskList;
+    document.getElementById('task-list-fields').hidden = !creatingTaskList;
     beginCrudOperation();
 
     closeContextMenu();
@@ -1870,18 +2011,18 @@ function openEntryForm(entry = null, parentId = null, contextual = false, mode =
         document.getElementById('add-entry-title').textContent=`Move “${entry.name}” to…`;
         moveDestinationPicker.open(entry.id);
     }else updateParentOptions(entry ? entry.parentId || "" : parentId || "");
-    document.getElementById('galaxy-starter-field').hidden=!!entry||!!parentField.value;
+    document.getElementById('galaxy-starter-field').hidden=creatingTaskList||!!entry||!!parentField.value;
     starterDefaultName='';
     dialog.showModal();
     if(moving)moveDestinationSearch.focus({preventScroll:true});
 }
 
-function createChildEntry(parentId) {
+function createChildEntry(parentId, taskList = false) {
     const context = cosmosHierarchy.childContext(entries, parentId);
     if (!context || !parentId || activeNodeDrags || deletionBusy) return;
     beginCrudOperation();
     selectEntry(entries.get(parentId), nodes.get(parentId), { reframe: false });
-    openEntryForm(null, context.parentId, true);
+    openEntryForm(null, context.parentId, true, "info", taskList);
 }
 
 document.getElementById("change-creation-parent").addEventListener("click", () => {
@@ -1898,7 +2039,9 @@ function renderAddMenu() {
     addMenu.querySelectorAll('button').forEach(item => {
         const action = item.dataset.add;
         if (['camera','gallery'].includes(action)) item.hidden = !mobile;
-        else item.hidden = mobile && item !== addChildButton;
+        else item.hidden = mobile && item !== addChildButton && action !== 'task-list';
+        if(item===addChildButton){item.hidden=taskStates.get(addMenuTargetId)?.task===true;item.textContent=entries.get(addMenuTargetId)?.taskList===true?'Add task':'Add item';}
+        if(action==='task-list')item.hidden=taskStates.get(addMenuTargetId)?.enabled===true;
         if (action === 'paste') item.hidden=mobile||!canPasteHierarchy(addMenuTargetId);
     });
     addMenu.setAttribute('aria-label', `Add to ${entries.get(addMenuTargetId).name}`);
@@ -1971,6 +2114,7 @@ addMenu.addEventListener("click", event => {
     const id = addMenuTargetId;
     if (!action || !entries.has(id)) return;
     if (action === 'paste') {closeContentMenus();openHierarchyPaste(id);return;}
+    if (action === 'task-list') {closeContentMenus();createChildEntry(id,true);return;}
     openEntryContentAction(id, action);
 });
 function openEntryContentAction(id, action) {
@@ -2073,6 +2217,7 @@ form.addEventListener("submit", async (event) => {
         field.setCustomValidity(index !== 0 || field.value.trim() ? "" : "Please enter a value.");
     });
     const data = {
+        ...(editingId ? entries.get(editingId) : creatingTaskList ? {taskList:true} : entries.get(contextualParentId || parentField.value)?.taskList===true ? {completed:false} : {}),
         id: editingId || getNewEntryId(),
         name: fields[0].value.trim(),
         description: editingId ? entries.get(editingId).description : fields[1].value.trim(),
@@ -2103,7 +2248,14 @@ form.addEventListener("submit", async (event) => {
         const oldParentId=entry.parentId,now=new Date().toISOString(),changedIds=[data.id];
         Object.assign(entry,requested,{updatedAt:now},creating?{createdAt:now}:{});staged.set(entry.id,entry);
         const stagedLayout=new Map(layout);if(oldParentId!==data.parentId)stagedLayout.delete(entry.id);
-        if(creating&&!data.parentId){
+        if(creating && creatingTaskList){
+            galaxyModel.normalizeHierarchy(staged);
+            const checklist=cosmosTasks.create(staged,entry,document.getElementById('task-list-tasks').value.split(/\r?\n/),getNewEntryId);
+            for(const item of checklist.slice(1)){
+                const depth=entry.depth+1,role=galaxyModel.roleAtDepth(depth);
+                staged.set(item.id,{...item,role,depth,...getNewEntryPosition([data.id],role,staged),seedLayout:true});changedIds.push(item.id);
+            }
+        }else if(creating&&!data.parentId){
             galaxyModel.normalizeHierarchy(staged);
             for(const item of cosmosEveryday.starterItems(galaxyStarter.value,data.id,getNewEntryId)){
                 const role=galaxyModel.roleAtDepth(galaxyModel.ancestors(staged,item.parentId).length+1);
@@ -2446,7 +2598,7 @@ document.getElementById("portal-form").addEventListener("submit", async event =>
     }finally{portalSaveBusy=false;}
 });
 
-function focusEntry(id, { travel = false, closeFocus=false, sourceId = selectedNode?.dataset.entryId, preserveSidebarSelection = false, openInspector = true } = {}) {
+function focusEntry(id, { travel = false, closeFocus=false, sourceId = selectedNode?.dataset.entryId, preserveSidebarSelection = false, openInspector = true, keepSidebarOpen=false, keepFraming=false } = {}) {
     cancelPendingBodyFocus();
     const entry = entries.get(id);
     if(pinch)cancelCanvasTouches();
@@ -2455,7 +2607,7 @@ function focusEntry(id, { travel = false, closeFocus=false, sourceId = selectedN
     const source = physics.particles.get(sourceId);
 
 
-    if (hierarchySidebar.narrow) hierarchySidebar.setCollapsed(true);
+    if (hierarchySidebar.narrow&&!keepSidebarOpen) hierarchySidebar.setCollapsed(true);
     closeContextMenu();
     autoFitPending = false;
     focusRevealIds.clear();
@@ -2468,7 +2620,8 @@ function focusEntry(id, { travel = false, closeFocus=false, sourceId = selectedN
     }
     if(hierarchySidebar.narrow)syncMobileViewport();
     // Selection refreshes shared geometry after sidebar/sheet state changes.
-    selectEntry(entry, nodes.get(id), { reframe: false, preserveSidebarSelection, openInspector });
+    selectEntry(entry, nodes.get(id), { reframe: false, preserveSidebarSelection, openInspector, scroll:!keepSidebarOpen });
+    if(keepFraming)return;
     const viewport=hierarchySidebar.narrow?mobileFitViewport():physics.bounds;
     if(!viewport){camera.stopAnimation();return;}
     const { left, right, top, bottom } = viewport;

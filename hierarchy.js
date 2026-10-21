@@ -30,9 +30,10 @@ const cosmosHierarchy = {
     childContext(entries, parentId = null) {
         const parent = parentId ? entries.get(parentId) : null;
         if (parentId && !parent) return null;
+        if (parent && entries.get(parent.parentId)?.taskList === true) return null;
         const depth = parent ? parent.depth + 1 : 0, role = galaxyModel.roleAtDepth(depth);
         return { parentId: parent?.id || null, depth, role,
-            action: parent ? 'Add item' : 'New Galaxy' };
+            action: parent?.taskList === true ? 'Add task' : parent ? 'Add item' : 'New Galaxy' };
     }
 };
 
@@ -93,8 +94,8 @@ class NavigationSection {
 }
 
 class HierarchySidebar {
-    constructor({ host, onNavigate, onSelectionEmpty, onActivate, onMove, moveBlocked=()=>false, onDragEnd, onCreate, onMenu, onRename, onRenameStart, onOpenPortal, onPortalMenu, portals = new Map(), onViewportChange, preferences }) {
-        Object.assign(this, { host, onNavigate, onSelectionEmpty, onActivate, onMove, moveBlocked, onDragEnd, onCreate, onMenu, onRename, onRenameStart, onOpenPortal, onPortalMenu, portals, onViewportChange, preferences });
+    constructor({ host, onNavigate, onSelectionEmpty, onActivate, onMove, moveBlocked=()=>false, onDragEnd, onCreate, onMenu, onRename, onRenameStart, onTaskToggle, taskBlocked=()=>false, onOpenPortal, onPortalMenu, portals = new Map(), onViewportChange, preferences }) {
+        Object.assign(this, { host, onNavigate, onSelectionEmpty, onActivate, onMove, moveBlocked, onDragEnd, onCreate, onMenu, onRename, onRenameStart, onTaskToggle, taskBlocked, onOpenPortal, onPortalMenu, portals, onViewportChange, preferences });
         this.sidebar = document.getElementById("hierarchy-sidebar");
         this.tree = document.getElementById("hierarchy-tree");
         this.toggle = document.getElementById("sidebar-toggle");
@@ -237,7 +238,14 @@ class HierarchySidebar {
         });
         name.addEventListener('dblclick', event => { event.preventDefault(); event.stopPropagation(); this.beginRename(id); });
         row.addEventListener("focus", () => { this.activeId = id; this.updateTabStops(); });
-        disclosure.addEventListener("click", () => this.toggleBranch(id));
+        disclosure.addEventListener('focus', () => { this.activeId = id; this.updateTabStops(); });
+        disclosure.addEventListener('click', event => {
+            event.stopPropagation();
+            const entry = this.entries.get(id);
+            if (entry?.taskList !== true && this.entries.get(entry?.parentId)?.taskList === true) {
+                if (!this.taskBlocked()) Promise.resolve(this.onTaskToggle?.(id, entry.completed !== true)).catch(()=>{});
+            } else this.toggleBranch(id);
+        });
         add.addEventListener("focus", () => { this.activeId = id; this.updateTabStops(); });
         add.addEventListener("click", event => { event.stopPropagation(); this.onCreate(id, add); });
         more.addEventListener('focus', () => { this.activeId = id; this.updateTabStops(); });
@@ -314,7 +322,7 @@ class HierarchySidebar {
         const scroll = { top: this.tree.scrollTop, left: this.tree.scrollLeft };
         const focusedRow = document.activeElement?.closest(".hierarchy-row");
         const focused = focusedRow?.dataset.entryId || focusedRow?.dataset.portalId;
-        const focusedAction = document.activeElement?.closest('.tree-add,.tree-more,.tree-portal-actions,.tree-disclosure')?.className;
+        const focusedAction = document.activeElement?.closest('.tree-add,.tree-more,.tree-portal-actions,.tree-disclosure')?.classList[0];
         this.visibleRows = cosmosHierarchy.visible(this.entries, this.index, this.expanded, this.portals);
         if(!this.keepMovedSelection)this.selection.visibleOnly(new Set(this.visibleRows.filter(row=>!row.kind).map(row=>row.id)));
         this.selectedId=this.selection.activeEntryId;
@@ -341,9 +349,9 @@ class HierarchySidebar {
             if (this.rename?.id !== id) row.querySelector(".tree-name").textContent = entry.name;
             if (portal) { const actions=row.querySelector(".tree-portal-actions"); actions.ariaLabel=actions.title=`Linked item actions for ${entry.name}`; }
             if (!portal) {
-                const disclosure = row.querySelector(".tree-disclosure");
-                disclosure.disabled = !hasChildren; disclosure.ariaLabel = `${this.expanded.has(id) ? "Collapse" : "Expand"} ${entry.name}`;
+                this.syncTaskControl(entry, row);
                 const add = row.querySelector(".tree-add"); add.ariaLabel = add.title = `Add to ${entry.name}`;
+                if (this.entries.get(entry.parentId)?.taskList === true) add.ariaLabel = add.title = `Add content to ${entry.name}`;
                 const more = row.querySelector('.tree-more'); more.ariaLabel = more.title = `Actions for ${entry.name}`;
             }
             fragment.appendChild(row);
@@ -360,8 +368,38 @@ class HierarchySidebar {
     updateTabStops() {
         this.visibleRows?.forEach(({ id }) => {
             const row = this.rows.get(id); row.tabIndex = id === this.activeId ? 0 : -1;
-            row.querySelectorAll('.tree-add,.tree-more,.tree-portal-actions').forEach(button => { button.tabIndex = id === this.activeId ? 0 : -1; });
+            row.querySelectorAll('.tree-add,.tree-more,.tree-portal-actions,.tree-task-toggle').forEach(button => { button.tabIndex = id === this.activeId ? 0 : -1; });
         });
+    }
+    syncTaskControl(entry, row) {
+        const control = row.querySelector('.tree-disclosure');
+        const task = entry.taskList !== true && this.entries.get(entry.parentId)?.taskList === true;
+        if (control.classList.contains('tree-task-toggle') !== task) {
+            control.classList.toggle('tree-task-toggle', task);
+            control.innerHTML = task
+                ? '<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="2" y="2" width="12" height="12" rx="2"/><path class="tree-task-check" d="m4.5 8 2.3 2.5 4.7-5"/></svg>'
+                : '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="m6 4 4 4-4 4"/></svg>';
+        }
+        if (task) {
+            control.setAttribute('role', 'checkbox');
+            control.setAttribute('aria-checked', String(entry.completed === true));
+            control.ariaLabel = control.title = `Mark ${entry.name} as ${entry.completed === true ? 'incomplete' : 'done'}`;
+            // Keep keyboard focus while the shared completion command saves.
+            control.disabled = false;
+            control.setAttribute('aria-disabled', String(this.taskBlocked()));
+        } else {
+            control.removeAttribute('role'); control.removeAttribute('aria-checked'); control.removeAttribute('aria-disabled'); control.removeAttribute('title');
+            control.disabled = !this.index.children.get(entry.id)?.length;
+            control.ariaLabel = `${this.expanded.has(entry.id) ? 'Collapse' : 'Expand'} ${entry.name}`;
+            control.tabIndex = -1;
+        }
+    }
+    refreshTaskControls() {
+        this.rows.forEach((row, id) => {
+            const entry = this.entries.get(id);
+            if (entry && !row.dataset.portalId) this.syncTaskControl(entry, row);
+        });
+        this.updateTabStops();
     }
     toggleBranch(id) {
         if (!this.index.children.get(id)?.length) return;

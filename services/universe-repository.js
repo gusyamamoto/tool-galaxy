@@ -77,9 +77,11 @@ function createUniverseRepository({persistence, canWrite = () => true}) {
         },
         snapshot({entries, portals, constellations, layout, archivedGalaxies}) {
             return {
-                entries: [...entries.values()].map(({id,name,description,category,parentId,x,y,appearance,content,location,createdAt,updatedAt}) =>
+                entries: [...entries.values()].map(({id,name,description,category,parentId,x,y,appearance,content,location,createdAt,updatedAt,taskList,completed}) =>
                     ({id,name,description,category,parentId,x,y, ...(appearance ? {appearance} : {}), ...(content ? {content} : {}),
                         ...(location ? {location} : {}),
+                        ...(taskList === true ? {taskList:true} : {}),
+                        ...(typeof completed === 'boolean' ? {completed} : {}),
                         ...(createdAt ? {createdAt} : {}), ...(updatedAt ? {updatedAt} : {})})),
                 portals: [...portals.values()].map(record => ({...record})),
                 constellations: [...constellations.values()].map(record => ({...record,memberEntryIds:[...record.memberEntryIds]})),
@@ -116,6 +118,13 @@ function createUniverseRepository({persistence, canWrite = () => true}) {
             if(location)updated.location=location;else delete updated.location;
             await commit({...snapshot,entries:snapshot.entries.map(record=>record.id===id?updated:record)},
                 {type:'location.changed',ids:[id]});
+            return updated;
+        },
+        async updateTask(snapshot,id,field,value) {
+            snapshot=read(snapshot);
+            const updated=cosmosTasks.change(new Map(snapshot.entries.map(entry=>[entry.id,entry])),id,field,value);
+            await commit({...snapshot,entries:snapshot.entries.map(entry=>entry.id===id?updated:entry)},
+                {type:'task.changed',ids:[id]});
             return updated;
         },
         async replaceConstellations(snapshot, records) {
@@ -169,6 +178,8 @@ function createUniverseRepository({persistence, canWrite = () => true}) {
                 if(!current.has(destination)||liveIds.size!==plan.sourceIds.length||plan.sourceIds.some(id=>!liveIds.has(id)||JSON.stringify(current.get(id))!==JSON.stringify(original.get(id)))||JSON.stringify(internal(previous))!==JSON.stringify(internal(snapshot)))throw new Error('The copied items changed. Try Paste again.');
                 const occupied=new Set([...current.keys(),...(previous.portals||[]).map(p=>p.id)]);
                 if([...plan.copies,...plan.links].some(e=>occupied.has(e.id)))throw new Error('Copied item IDs are no longer available.');
+                const combined=new Map([...current,...plan.copies.map(entry=>[entry.id,entry])]);
+                for(const entry of plan.copies){const error=galaxyModel.validateChange(entry,combined);if(error)throw new Error(error);}
                 next={...previous,entries:[...previous.entries,...plan.copies],portals:[...(previous.portals||[]),...plan.links]};
 
             };
@@ -237,7 +248,7 @@ function createUniverseRepository({persistence, canWrite = () => true}) {
         },()=>write(previous,{type:'attachment.recovered',ids:[id]}));
         publish({type:'attachment.removed',ids:[id]});return updated;
     };
-    for(const name of ['save','saveLayout','updateContent','updateLocation','replaceConstellations','replacePlacements','moveEntries','duplicateStructure','archive','restore','copyEntries','deleteSubtree','addAttachment','removeAttachment','replaceLocalBackup','recoverPendingRestore']){
+    for(const name of ['save','saveLayout','updateContent','updateLocation','updateTask','replaceConstellations','replacePlacements','moveEntries','duplicateStructure','archive','restore','copyEntries','deleteSubtree','addAttachment','removeAttachment','replaceLocalBackup','recoverPendingRestore']){
         const operation=repository[name];repository[name]=(...args)=>enqueue(()=>operation.apply(repository,args));
     }
     repository.whenIdle=()=>tail;
