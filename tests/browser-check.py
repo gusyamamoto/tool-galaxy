@@ -184,6 +184,7 @@ def main():
     args.add_argument('--task-views-only', action='store_true', help='Global Task Lists, completion focus and mobile Compact Preview Done')
     args.add_argument('--desktop-add-only', action='store_true', help='Desktop context/header child creation and unchanged mobile presentation')
     args.add_argument('--mobile-add-baseline', type=Path, help='Mobile screenshot baseline for desktop-add review; --capture-baseline records it')
+    args.add_argument("--first-use-only", action="store_true", help="Empty-Universe onboarding, isolated live preview, hints, motion, mobile and keyboard")
     args.add_argument("--first-user-readiness-only", action="store_true", help="Check empty startup, stable hierarchy gutters, Constellation add/sizing, shared editors and keyboard viewport")
     args.add_argument("--auth-only", action="store_true", help="Check independent account flows, pending/error/recovery, local data and Backup/Restore isolation")
     args.add_argument("--cloud-boundary-only", action="store_true", help="Mocked development-only identity/Universe/REST/GraphQL privacy boundary")
@@ -331,7 +332,7 @@ def main():
         origin = f"http://{'localhost' if options.static_hosting_only or options.staging_only else '127.0.0.1'}:{server.server_port}"
         page_url = (options.site_root.resolve() / 'index.html').as_uri() if options.file_protocol else origin
         seed_condition = "location.protocol === 'file:'" if options.file_protocol else f"location.origin === {json.dumps(origin)}"
-        if options.first_user_readiness_only or options.staging_only:seed_condition="false"
+        if options.first_use_only or options.first_user_readiness_only or options.staging_only:seed_condition="false"
         legacy = {
             "version": 2,
             "entries": [
@@ -542,6 +543,13 @@ def main():
             run_staging_checks(cdp=cdp,evaluate=evaluate,check=check,wait_for=wait_for,add=add,load=load,origin=origin,site_root=options.site_root,asset_files=static_asset_files,cdp_class=CDP,debug_port=debug_port)
             print(f'{count} staging browser checks passed; origin={origin}',flush=True);return
 
+        if options.first_use_only:
+            from first_use_browser import run_first_use_checks
+            def shot(name):
+                if screenshot_dir:
+                    result=cdp.call('Page.captureScreenshot',format='png',captureBeyondViewport=False);(screenshot_dir/(name+'.png')).write_bytes(base64.b64decode(result['data']))
+            run_first_use_checks(cdp=cdp,evaluate=evaluate,check=check,wait_for=wait_for,load=load,shot=shot)
+            print(f'{count} first-use onboarding browser checks passed',flush=True);return
         if options.first_user_readiness_only:
             from first_user_readiness_browser import run_readiness_checks
             def shot(name):

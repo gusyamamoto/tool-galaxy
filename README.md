@@ -200,9 +200,10 @@ empty independent hierarchies, naming, persistence, recovery and Sample isolatio
   internal count/zoom elements remain hidden for debug/test access. A separate,
   development-only Sample utility is hidden in normal navigation. Explicit
   `?sample=large` mode retains Load/Leave Sample for local testing, without
-  writing real data or navigation preferences. A genuinely new, empty Universe
-  opens navigation with a subtle Start here cue beside Universe +. No starter
-  or Sample data is created automatically; the cue retires after the first item.
+  writing real data or navigation preferences. A genuinely empty Universe shows
+  a welcome with an isolated live example and **Create your first Item**, followed
+  by two temporary hints. No demo data enters the real Universe. See
+  [First-use onboarding](docs/first-use-onboarding.md) for behavior and checks.
   Toggle navigation beside the title to reclaim canvas space; a small reopen
   control remains when it is closed. Drag its
   right edge to resize, or focus the separator and use Left/Right/Home/End.

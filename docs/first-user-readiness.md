@@ -1,10 +1,11 @@
 # First-user readiness
 
-Fresh local storage starts with an empty Universe, open navigation and an expanded
-Universe section. A subtle **Start here** cue points to the existing Universe +.
-No starter or Sample content is loaded. The optional `firstItemCreated` navigation
-preference retires the cue after real content exists, including restored/existing
-or archived content. Later deleting all items does not restart orientation.
+Fresh local storage starts with an empty Universe and the
+[first-use welcome](first-use-onboarding.md), preserving normal sidebar behavior.
+Its display-only example never enters the real model. The welcome appears whenever
+both active and archived user Items are empty, independently of the legacy
+`firstItemCreated` preference. Contextual hints use a separate tiny preference and
+do not repeat after completion. The old Start here cue has been removed.
 Legacy starter migration remains supported; domain schemas are unchanged.
 
 Hierarchy rows retain a permanent disclosure grid slot. A disabled leaf disclosure
