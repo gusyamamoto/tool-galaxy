@@ -27,6 +27,28 @@
             <div id="nodes-layer"></div>
         </div>
 
+        <section id="first-use" aria-labelledby="first-use-title" hidden>
+            <div class="first-use-card">
+                <div class="first-use-copy">
+                    <h2 id="first-use-title">Cosmifold</h2>
+                    <p class="first-use-purpose">Organize anything as your own Universe.</p>
+                    <p class="first-use-examples">Plan a trip, collect recipes, organize a project,<br class="first-use-break"> save ideas, photos, notes and tasks.</p>
+                </div>
+                <figure class="first-use-example">
+                    <figcaption>What you can build <span>&middot; Example Universe</span></figcaption>
+                    <div id="first-use-preview" aria-hidden="true" inert></div>
+                </figure>
+                <div class="first-use-actions">
+                    <button id="first-use-create" type="button">+ Create your first Item</button>
+                    <button id="first-use-help" type="button" aria-haspopup="dialog" aria-controls="help-dialog">How does it work?</button>
+                </div>
+            </div>
+        </section>
+        <aside id="first-use-hint" aria-label="Getting started" hidden>
+            <p role="status" aria-live="polite"></p>
+            <button type="button" aria-label="Dismiss getting started hint">&times;</button>
+        </aside>
+
         <div id="mobile-body-actions" role="group" aria-label="Selected item" hidden>
             <button id="mobile-body-contents" type="button" aria-label="Expand contents" aria-controls="entry-panel" aria-expanded="false"><svg class="contents-chevron" aria-hidden="true" viewBox="0 0 16 16"><path d="m4 10 4-4 4 4"/></svg></button>
             <span id="mobile-body-name"></span>
@@ -61,7 +83,7 @@
             </div>
             <div id="sidebar-panes">
             <section id="universe-section" aria-labelledby="universe-heading">
-                <header class="sidebar-section-header"><h2 id="universe-heading" class="sidebar-section-title universe-heading-controls"><button id="universe-toggle" class="sidebar-section-toggle" type="button" aria-controls="hierarchy-tree" aria-expanded="true" aria-label="Collapse Universe"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m6 4 4 4-4 4"/></svg></button><button id="universe-home" class="sidebar-section-toggle" type="button" aria-label="Return to Universe overview">Universe</button></h2><span id="first-use-cue" hidden>Start here</span><button id="add-entry-button" type="button" class="collection-add" aria-label="New Galaxy" title="New Galaxy">+</button></header>
+                <header class="sidebar-section-header"><h2 id="universe-heading" class="sidebar-section-title universe-heading-controls"><button id="universe-toggle" class="sidebar-section-toggle" type="button" aria-controls="hierarchy-tree" aria-expanded="true" aria-label="Collapse Universe"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m6 4 4 4-4 4"/></svg></button><button id="universe-home" class="sidebar-section-toggle" type="button" aria-label="Return to Universe overview">Universe</button></h2><button id="add-entry-button" type="button" class="collection-add" aria-label="New Galaxy" title="New Galaxy">+</button></header>
                 <div id="hierarchy-tree" role="tree" aria-label="Cosmos Universe navigation"></div>
             </section>
             <div id="sidebar-pane-splitter" role="separator" aria-orientation="horizontal" aria-label="Resize Universe and secondary sidebar sections" aria-controls="universe-section sidebar-secondary-views" tabindex="-1" hidden></div>
@@ -482,6 +504,8 @@
     <script src="rich-content.js"></script>
     <script src="appearance.js"></script>
     <script src="cosmos-view.js"></script>
+    <script src="body-renderer.js"></script>
+    <script src="first-use.js"></script>
     <script src="label-density.js"></script>
     <script src="motion.js"></script>
     <script src="sample-data.js"></script>

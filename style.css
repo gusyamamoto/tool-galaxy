@@ -10,6 +10,75 @@ body {
     overflow: hidden;
 }
 
+/* First use occupies the workspace canvas; ordinary navigation stays available. */
+#first-use[hidden], #first-use-hint[hidden] { display: none; }
+#first-use {
+    position: absolute; inset: 48px 22px 64px calc(var(--sidebar-space) + 22px);
+    z-index: 14; display: grid; place-items: center; overflow: auto;
+    overscroll-behavior: contain; touch-action: pan-y;
+}
+.first-use-card {
+    width: min(1080px,100%); display: grid; align-items: center;
+    grid-template-columns: minmax(260px,.85fr) minmax(0,1.4fr); column-gap: 36px;
+}
+.first-use-copy h2 { margin: 0 0 18px; font-size: clamp(30px,3.4vw,44px); font-weight: 600; letter-spacing: -.035em; }
+.first-use-purpose { margin: 0 0 14px; max-width: 340px; font-size: clamp(20px,2vw,26px); line-height: 1.35; color: #e2ebf5; }
+.first-use-examples { margin: 0; color: #9eafc4; font-size: 14px; line-height: 1.65; }
+.first-use-break { display: none; }
+.first-use-example { margin: 0; min-width: 0; grid-column: 2; grid-row: 1 / 3; }
+.first-use-example figcaption { margin: 0 0 12px; color: #bdcddd; font-size: 12px; }
+.first-use-example figcaption span { color: #879bb3; }
+#first-use-preview {
+    position: relative; width: 100%; height: clamp(300px,42vw,460px); overflow: hidden;
+    isolation: isolate; border: 1px solid #849ab528; border-radius: 18px;
+    background: radial-gradient(ellipse at 40% 40%,#0c1729,#040811 80%);
+    pointer-events: none; --native-label-scale: 1;
+}
+.first-use-orbits, .first-use-bodies { position: absolute; inset: 0; width: 100%; height: 100%; }
+#first-use-preview .entry-node { pointer-events: none; transition: none; }
+/* Match the production nodes-layer paint: craft and people have no sphere. */
+#first-use-preview .entry-node:is([data-body="satellite"],[data-body="astronaut"]) { background: transparent; border: 0; border-radius: 3px; box-shadow: none; }
+#first-use-preview .entry-node:is([data-body="satellite"],[data-body="astronaut"])::before,
+#first-use-preview .entry-node:is([data-body="satellite"],[data-body="astronaut"])::after { content: none; }
+#galaxy #first-use-preview .entry-node .node-label { font-size: 12px; max-width: 114px; font-weight: 500; transition: none; }
+.first-use-actions { margin-top: 26px; display: grid; gap: 8px; justify-items: start; }
+#first-use-create { min-height: 48px; padding: 12px 20px; background: #d0e1f5; border: 1px solid #ebf4ff; border-radius: 8px; color: #102032; font-size: 15px; font-weight: 600; box-shadow: 0 3px 20px #8cb6e51a; }
+#first-use-create:hover { background: #e5effc; }
+#first-use-help { min-height: 44px; padding: 8px 0; border: 0; background: transparent; box-shadow: none; color: #aebfd4; font-size: 13px; }
+#first-use :is(button):focus-visible { outline: 2px solid #a0ceff; outline-offset: 5px; }
+#first-use-hint { position: absolute; left: calc(var(--sidebar-space) + 22px); bottom: 76px; z-index: 26; display: flex; align-items: start; gap: 8px; width: min(370px,calc(100% - var(--sidebar-space) - 44px)); padding: 12px 8px 12px 16px; border: 1px solid #8fa9c04d; border-radius: 10px; background: #122034f5; box-shadow: 0 4px 22px #0003; pointer-events: none; }
+#first-use-hint p { flex: 1; margin: 0; color: #c9d8e8; font-size: 13px; line-height: 1.5; }
+#first-use-hint button { flex-shrink: 0; min-width: 44px; min-height: 44px; margin: -8px 0; padding: 6px; background: transparent; border: 0; box-shadow: none; font-size: 20px; pointer-events: auto; }
+#galaxy:has(#entry-panel .inline-editor:not([hidden])) #first-use-hint { visibility: hidden; }
+/* A single first action; restore the ordinary + as soon as real content exists. */
+#galaxy.first-use-visible #add-entry-button { visibility: hidden; }
+@media (max-width: 1120px) {
+    .first-use-card { max-width: 650px; grid-template-columns: minmax(0,1fr); gap: 20px; }
+    .first-use-example { grid-column: 1; grid-row: auto; }
+    .first-use-copy h2 { margin-bottom: 10px; }
+    .first-use-purpose { max-width: none; }
+    #first-use-preview { height: clamp(260px,32vh,360px); }
+    .first-use-actions { margin-top: 0; }
+}
+@media (max-width: 760px), (pointer: coarse) and (max-width: 1024px) and (max-height: 500px) {
+    #first-use { inset: max(62px,env(safe-area-inset-top)) max(18px,env(safe-area-inset-right)) max(18px,env(safe-area-inset-bottom)) max(18px,env(safe-area-inset-left)); place-items: center; }
+    .first-use-card { gap: 18px; }
+    .first-use-copy h2 { font-size: 30px; margin-bottom: 10px; }
+    .first-use-purpose { font-size: 21px; line-height: 1.35; margin-bottom: 10px; max-width: 360px; }
+    .first-use-examples { font-size: 13px; line-height: 1.55; }
+    .first-use-example figcaption { font-size: 11px; margin-bottom: 8px; }
+    #first-use-preview { height: clamp(230px,32dvh,300px); border-radius: 12px; }
+    .first-use-actions { gap: 4px; justify-items: stretch; text-align: center; }
+    #first-use-help { padding: 6px; }
+    #first-use-hint { left: 18px; top: 68px; bottom: auto; width: calc(100% - 36px); }
+    #galaxy:not(.sidebar-collapsed) :is(#first-use,#first-use-hint) { visibility: hidden; }
+}
+@media (max-height: 690px) {
+    #first-use { align-items: start; }
+    .first-use-card { gap: 12px; }
+    #first-use-preview { height: 230px; }
+}
+
 #galaxy {
     --node-size: 26px;
     /* Geometry inputs only; Fit reads these with the existing viewport snapshot. */
@@ -529,10 +598,10 @@ button:disabled { opacity: 0.45; cursor: default; }
 .planet-rings { position: absolute; width: 160%; height: 42%; left: -30%; top: 29%; border: 2px double hsl(var(--body-hue) 26% 68% / .58); border-radius: 50%; transform: rotate(-24deg); pointer-events: none; box-shadow: 0 0 0 1px hsl(var(--body-hue) 18% 48% / .15); opacity: var(--overview-decoration, 1); }
 /* Overview retains role silhouettes and colors, not tiny texture/filter layers.
    The original close-view artwork is untouched above the simplification range. */
-#graph-viewport[data-simple-bodies="true"] .entry-node:not(.temporarily-revealed):not([data-body="galaxy"]) { box-shadow: none; }
-#graph-viewport[data-simple-bodies="true"] .entry-node:not(.temporarily-revealed):is([data-body="sun"],[data-body="planet"],[data-body="moon"])::before,
-#graph-viewport[data-simple-bodies="true"] .entry-node:not(.temporarily-revealed):is([data-body="sun"],[data-body="planet"],[data-body="moon"])::after,
-#graph-viewport[data-simple-bodies="true"] .planet-rings { display: none; }
+:is(#graph-viewport,#first-use-preview)[data-simple-bodies="true"] .entry-node:not(.temporarily-revealed):not([data-body="galaxy"]) { box-shadow: none; }
+:is(#graph-viewport,#first-use-preview)[data-simple-bodies="true"] .entry-node:not(.temporarily-revealed):is([data-body="sun"],[data-body="planet"],[data-body="moon"])::before,
+:is(#graph-viewport,#first-use-preview)[data-simple-bodies="true"] .entry-node:not(.temporarily-revealed):is([data-body="sun"],[data-body="planet"],[data-body="moon"])::after,
+:is(#graph-viewport,#first-use-preview)[data-simple-bodies="true"] .planet-rings { display: none; }
 /* Tiny overview markers must not mask other bodies with overlapping 44px spans. */
 #graph-viewport[data-simple-bodies="true"] .entry-node:not(.temporarily-revealed) .node-hit-area { width: max(12px,100%); height: max(12px,100%); }
 #panel-ancestry { display: flex; align-items: center; flex-wrap: nowrap; gap: 4px; flex: 1 1 0%; min-width: 0; margin: 0; overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; scrollbar-width: none; }
@@ -1627,8 +1696,6 @@ summary:focus-visible { outline: 1px solid #b9d0e9; outline-offset: 3px; }
 }
 
 /* Shared first-use and inspector presentation; data/gesture semantics stay local. */
-#first-use-cue { margin-left: auto; color: #91a5bb; font-size: 10px; white-space: nowrap; }
-#universe-section:has(#first-use-cue:not([hidden])) #add-entry-button { opacity: 1; pointer-events: auto; }
 .tree-disclosure-slot { display: grid; place-items: center; min-width: 0; align-self: stretch; }
 .tree-disclosure:disabled { visibility: hidden; }
 .constellation-row .collection-add { opacity: 1; pointer-events: auto; }

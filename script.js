@@ -165,15 +165,15 @@ const hierarchyClipboard=new HierarchyClipboard();
 const tasksView = new TasksSecondaryView({preferences:persistence.preferences, onMenu:openTasksListMenu,
     navigate:id=>focusEntry(id,{openInspector:!hierarchySidebar.narrow}), complete:(id,value)=>changeTask(id,'completed',value),
     blocked:()=>taskWritePending||(!sampleMode&&!storageAvailable), onLayout(){if(cameraViewReady)updateGraphViewport();}});
-let firstItemCreated=persistence.preferences.load().firstItemCreated===true;
-function syncFirstUse(initial=false) {
-    const hasContent=entries.size>0||archivedEntries.size>0;
-    if(!sampleMode&&storageAvailable&&hasContent&&!firstItemCreated){
-        firstItemCreated=true;persistence.preferences.update({firstItemCreated:true}).catch(()=>{});
-    }
-    const firstUse=!sampleMode&&storageAvailable&&!hasContent&&!firstItemCreated;
-    document.getElementById('first-use-cue').hidden=!firstUse;
-    if(initial&&firstUse){hierarchySidebar.setCollapsed(false);hierarchySidebar.universeSection.setCollapsed(false);}
+const firstUse = new FirstUseOnboarding({
+    root:document.getElementById('first-use'), hint:document.getElementById('first-use-hint'),
+    preferences:persistence.preferences, create:()=>openEntryForm(),
+    help:()=>document.getElementById('help-button').click(),
+    obscured:()=>hierarchySidebar.narrow&&!hierarchySidebar.collapsed
+});
+function syncFirstUse() {
+    firstUse.sync({empty:entries.size===0&&archivedEntries.size===0,
+        available:!sampleMode&&storageAvailable, entries});
 }
 const pasteDialog=document.getElementById('hierarchy-paste-dialog'),pasteCopy=document.getElementById('hierarchy-paste-copy'),pasteLink=document.getElementById('hierarchy-paste-link'),pasteCancel=document.getElementById('hierarchy-paste-cancel'),pasteStatus=document.getElementById('hierarchy-paste-status');
 let pasteDestination=null,pasteBusy=false,pasteReturnFocus=null,pasteCommitted=false;
@@ -1273,33 +1273,7 @@ function createEntryNode(entry) {
 
 // Editing reuses the same appearance renderer without duplicating DOM or handlers.
 function updateEntryNode(entry, node) {
-    const hit=node.querySelector('.node-hit-area');
-    if(!hit){const target=document.createElement('span');target.className='node-hit-area';target.ariaHidden='true';node.append(target);}
-    node.dataset.role = entry.role; node.dataset.depth = entry.depth;
-    node.dataset.body = entryRoles[entry.role].body;
-    node.style.setProperty("--body-scale", entryRoles[entry.role].scale);
-    node.style.setProperty("--body-visual-scale", cosmosView.visualScale[entry.role] || 1);
-    const cap = `${cosmosView.bodyCaps[entry.role] || 76}px`;
-    node.style.setProperty("--body-cap", cosmosView.inspectionCaps[entry.role] ? `var(--${entry.role}-inspection-cap, ${cap})` : cap);
-    const style = galaxyAppearance.resolve(entry), hash = style.seed;
-    node.dataset.archetype = style.archetype;
-    node.dataset.surface = style.archetype === "gas-giant" ? "gaseous" : style.archetype;
-    node.dataset.rings = String(style.rings);
-    node.style.setProperty("--body-hue", style.hue);
-    node.style.setProperty("--surface-angle", `${style.angle}deg`);
-    let ring = node.querySelector(".planet-rings");
-    if (style.rings && !ring) { ring = document.createElement("span"); ring.className = "planet-rings"; ring.setAttribute("aria-hidden", "true"); node.prepend(ring); }
-    if (!style.rings) ring?.remove();
-    node.querySelector(".galaxy-core,.satellite-craft,.astronaut-figure")?.remove();
-    if (entry.role === 'galaxy') node.insertAdjacentHTML('afterbegin', '<span class="galaxy-core" aria-hidden="true"></span>');
-    if (entry.role === "satellite") node.insertAdjacentHTML("afterbegin", galaxyAppearance.satellite(style));
-    if (entry.role === "astronaut") node.insertAdjacentHTML("afterbegin", galaxyAppearance.astronaut(style));
-    if (!["galaxy", "satellite", "astronaut"].includes(entry.role)) {
-        const texture = `<svg xmlns="http://www.w3.org/2000/svg" width="180" height="180"><filter id="terrain"><feTurbulence type="fractalNoise" baseFrequency=".075 .11" numOctaves="3" seed="${hash % 997}" stitchTiles="stitch"/><feColorMatrix type="saturate" values="0"/><feComponentTransfer><feFuncR type="linear" slope="1.8" intercept="-.4"/><feFuncG type="linear" slope="1.8" intercept="-.4"/><feFuncB type="linear" slope="1.8" intercept="-.4"/></feComponentTransfer></filter><rect width="100%" height="100%" filter="url(#terrain)"/></svg>`;
-        // Metadata/parent edits keep an existing baked field for this stable ID.
-        if (!node.dataset.textureReady) node.style.setProperty("--surface-map", `url("data:image/svg+xml,${encodeURIComponent(texture)}")`);
-    }
-    node.querySelector(".node-label").textContent = entry.name; node.title = entry.name;
+    renderCelestialBody(entry, node);
     cosmosTasks.decorate(entry,node,taskStates.get(entry.id));
 }
 
@@ -2240,6 +2214,7 @@ form.addEventListener("submit", async (event) => {
     }
     setFormBusy(true);
     try{await orderedCommand(async()=>{
+        const wasEmpty=entries.size===0&&archivedEntries.size===0;
         const creating=!editingId,staged=new Map([...entries].map(([id,record])=>[id,{...record}]));
         const entry=creating?{...getNewEntryPosition(data.parentId?[data.parentId]:[],roleField.dataset.role),seedLayout:true}:staged.get(data.id);
         if(!entry)throw new Error('This item no longer exists.');
@@ -2276,6 +2251,7 @@ form.addEventListener("submit", async (event) => {
         },
             {selectionId:data.id,topologyChanged:creating||oldParentId!==data.parentId,reveal:creating||oldParentId!==data.parentId,preserveScroll:!creating,inspectorOpen:creating||!panel.hidden,persisted:true});
         dialog.close();restoreCrudFocus();finishCrudOperation();
+        if(creating&&!sampleMode)firstUse.created({wasEmpty,rootId:data.id,created:changedIds.map(id=>entries.get(id))});
     });}catch(error){formError.textContent=error.message;formError.hidden=false;}
     finally{setFormBusy(false);if(dialog.open&&!formError.hidden)(fields[0].getClientRects().length?fields[0]:dialog.classList.contains('move-destination-mode')?moveDestinationSearch:parentField).focus();}
 
@@ -2720,7 +2696,7 @@ document.addEventListener("pointerdown", (event) => {
 });
 
 initializeGalaxy();
-syncFirstUse(true);
+syncFirstUse();
 const sampleUtility = document.getElementById('sample-utility');
 // Explicit Sample mode remains available to development/tests via its URL.
 sampleUtility.hidden=!sampleMode;
