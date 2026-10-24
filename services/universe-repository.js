@@ -21,6 +21,18 @@ function createUniverseRepository({persistence, canWrite = () => true}) {
         // Observers must never turn a successful local write into a UI failure.
         listeners.forEach(listener => { try { listener({...intent, ...(intent.ids ? {ids:[...intent.ids]} : {}), scope: persistence.scope}); } catch (error) { repository.lastObserverError = error; } });
     }
+    function fileCallbacks(commit,rollback){
+        let captured=false,before;
+        return [()=>{
+            if(persistence.metadata.readForBackup){before=persistence.metadata.readForBackup().metadataText;captured=true;}
+            return commit();
+        },()=>{
+            // A quota/validation rejection before a metadata write needs no
+            // second write (which could fail for the same storage reason).
+            if(captured&&persistence.metadata.readForBackup().metadataText===before)return;
+            rollback();
+        }];
+    }
     const repository = {
         restoreRevision:()=>persistence.files.restoreMarker(),
         async recoverPendingRestore() {
@@ -64,6 +76,12 @@ function createUniverseRepository({persistence, canWrite = () => true}) {
             publish({type:'universe.restored'});
         },
         load: () => persistence.metadata.load(),
+        async recoverAttachmentOperations(){
+            if(persistence.sample||!persistence.files.recoverOperations)return;
+            // F3 validation must precede any journal-scoped cleanup.
+            const snapshot=persistence.metadata.load();
+            await persistence.files.recoverOperations(snapshot);
+        },
         async readBackup() {
             if(persistence.sample)throw new Error('Leave Sample mode to back up your saved Cosmos.');
             const saved=persistence.metadata.readForBackup(),preferencesText=persistence.preferences.readForBackup();
@@ -191,7 +209,7 @@ function createUniverseRepository({persistence, canWrite = () => true}) {
 
             };
             const commitLocal=()=>{prepare();write(next,{type:'items.copied',ids:plan.rootIds});};
-            if(records.length)await persistence.files.saveBatch(records,commitLocal,()=>write(previous,{type:'items.copy-recovered',ids:plan.rootIds}));
+            if(records.length)await persistence.files.saveBatch(records,...fileCallbacks(commitLocal,()=>{if(previous)write(previous,{type:'items.copy-recovered',ids:plan.rootIds});}));
             else {prepare();if(!canWrite()||restoring)throw new Error('Saved data is unavailable.');await persistence.metadata.commit(next,{type:'items.copied',ids:plan.rootIds});}
             publish({type:'items.copied',ids:plan.rootIds});return {...plan,snapshot:next};
         },
@@ -206,7 +224,7 @@ function createUniverseRepository({persistence, canWrite = () => true}) {
         async deleteSubtree(snapshot, ids, {deleteFiles = true, validate = () => {}, readSnapshot = () => snapshot} = {}) {
             snapshot=read(snapshot);
             const removed = new Set(ids), intent = {type: 'items.deleted', ids: [...removed]};
-            let committed = false, previous, next;
+            let previous, next;
             const prepare = () => {
                 validate(); previous = readSnapshot();
                 const collections = galaxyConstellations.withoutEntries(previous.constellations || [], removed);
@@ -219,10 +237,10 @@ function createUniverseRepository({persistence, canWrite = () => true}) {
                     layout: (previous.layout || []).filter(record => !removed.has(record.id))};
 
             };
-            const commitLocal=()=>{prepare();write(next,intent);committed=true;};
-            if (deleteFiles) await persistence.files.deleteEntries(removed, commitLocal, () => {
-                if (committed) write(previous, {type: 'items.delete-recovered', ids: [...removed]});
-            });
+            const commitLocal=()=>{prepare();write(next,intent);};
+            if (deleteFiles) await persistence.files.deleteEntries(removed, ...fileCallbacks(commitLocal, () => {
+                if (previous) write(previous, {type: 'items.delete-recovered', ids: [...removed]});
+            }));
             else {prepare();if(!canWrite()||restoring)throw new Error('Saved data is unavailable.');await persistence.metadata.commit(next,intent);}
             publish(intent);
             return next;
@@ -240,22 +258,22 @@ function createUniverseRepository({persistence, canWrite = () => true}) {
     };
     repository.addAttachment=async(snapshot,id,record,metadata)=>{
         let previous,updated;
-        await persistence.files.save(record,()=>{
+        await persistence.files.save(record,...fileCallbacks(()=>{
             previous=read(snapshot);const entry=previous.entries.find(e=>e.id===id);if(!entry)throw new Error('This item no longer exists.');
             const content=entry.content||galaxyModel.emptyContent();updated=localContentCommit(previous,id,{...content,attachments:[...content.attachments,metadata]});
-        },()=>write(previous,{type:'attachment.recovered',ids:[id]}));
+        },()=>{if(previous)write(previous,{type:'attachment.recovered',ids:[id]});}));
         publish({type:'attachment.added',ids:[id]});return updated;
     };
     repository.removeAttachment=async(snapshot,id,key)=>{
         let previous,updated;
-        await persistence.files.delete(key,()=>{
+        await persistence.files.delete(key,...fileCallbacks(()=>{
             previous=read(snapshot);const entry=previous.entries.find(e=>e.id===id);
             if(!entry?.content?.attachments.some(file=>file.storageKey===key))throw new Error('This file no longer exists.');
             updated=localContentCommit(previous,id,{...entry.content,attachments:entry.content.attachments.filter(file=>file.storageKey!==key)});
-        },()=>write(previous,{type:'attachment.recovered',ids:[id]}));
+        },()=>{if(previous)write(previous,{type:'attachment.recovered',ids:[id]});}));
         publish({type:'attachment.removed',ids:[id]});return updated;
     };
-    for(const name of ['save','saveLayout','updateContent','updateLocation','updateTask','replaceConstellations','replacePlacements','moveEntries','duplicateStructure','archive','restore','copyEntries','deleteSubtree','addAttachment','removeAttachment','replaceLocalBackup','recoverPendingRestore']){
+    for(const name of ['save','saveLayout','updateContent','updateLocation','updateTask','replaceConstellations','replacePlacements','moveEntries','duplicateStructure','archive','restore','copyEntries','deleteSubtree','addAttachment','removeAttachment','replaceLocalBackup','recoverPendingRestore','recoverAttachmentOperations']){
         const operation=repository[name];repository[name]=(...args)=>enqueue(()=>{
             const action=()=>operation.apply(repository,args);
             // Keep file callbacks and abort compensation under the SAME write
