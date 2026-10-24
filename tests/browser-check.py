@@ -201,6 +201,7 @@ def main():
     args.add_argument('--object-urls-only', action='store_true', help='Count live object URLs through media teardown, async races, failures, downloads, texture eviction and Restore')
     args.add_argument('--storage-capacity-only', action='store_true', help='Advisory capacity estimates, batches, copy, unsupported API, stale results and actual quota compensation')
     args.add_argument('--attachment-orphans-only', action='store_true', help='Historical orphan classification, explicit cleanup, revalidation and cross-tab preservation')
+    args.add_argument('--persistence-integration-only', action='store_true', help='Combined rich picker round-trip, stale attachment/Restore fences, repeated recovery and database upgrades')
     args.add_argument('--restore-valid-backup', type=Path, help='Optional actual valid disk backup for --restore-model-only picker regression')
     args.add_argument('--restore-invalid-backup', type=Path, help='Optional actual helper-generated invalid disk backup paired with --restore-valid-backup')
     args.add_argument("--backup-dialog-only", action="store_true", help="Focused Backup/Restore layout, renamed-file validation, picker, download and keyboard checks")
@@ -513,6 +514,10 @@ def main():
 
         cdp.call("Page.navigate", url=page_url)
         load()
+        if options.persistence_integration_only:
+            from persistence_integration_browser import run_persistence_integration_checks
+            run_persistence_integration_checks(cdp=cdp,cdp_class=CDP,e=evaluate,check=check,wait_for=wait_for,add=add,origin=origin)
+            print(f'{count} persistence integration browser checks passed',flush=True);return
         if options.attachment_orphans_only:
             from attachment_orphan_browser import run_attachment_orphan_checks
             run_attachment_orphan_checks(cdp=cdp,cdp_class=CDP,e=evaluate,check=check,wait_for=wait_for,add=add,origin=origin)
