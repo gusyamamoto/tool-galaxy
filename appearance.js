@@ -10,6 +10,36 @@ const galaxyAppearance = {
     },
     palettes: { amber: 36, blue: 212, teal: 178, violet: 265, rose: 327 },
     textureCache: new Map(),
+    textureUrls: new Map(),
+    textureEpoch: 0,
+    unusedTextureLimit: 32,
+    queueTextureTrim(){
+        if(!this.textureObserver&&globalThis.MutationObserver&&document.body){
+            this.textureObserver=new MutationObserver(()=>{if(this.textureUrls.size>this.unusedTextureLimit)this.queueTextureTrim();});
+            this.textureObserver.observe(document.body,{childList:true,subtree:true});
+        }
+        clearTimeout(this.textureTrimTimer);this.textureTrimTimer=setTimeout(()=>this.trimTextures(),0);
+    },
+    trimTextures(){
+        // CSS snapshots used by deletion/archive animations also pin a field.
+        // Never evict a URL while any live surface still paints it.
+        const used=new Set([...document.querySelectorAll('[style*="blob:"]')].map(node=>node.style.getPropertyValue('--surface-map')));
+        const unused=[...this.textureUrls].filter(([,url])=>!used.has(`url("${url}")`));
+        for(const [key,url] of unused.slice(0,Math.max(0,unused.length-this.unusedTextureLimit))){
+            this.textureUrls.delete(key);this.textureCache.delete(key);URL.revokeObjectURL(url);
+        }
+    },
+    clearTextures(){
+        this.textureEpoch++;clearTimeout(this.textureTrimTimer);this.textureObserver?.disconnect();this.textureObserver=null;
+        const retired=new Set([...this.textureUrls.values()].map(url=>`url("${url}")`));
+        document.querySelectorAll('[style*="blob:"],[data-texture-ready]').forEach(node=>{
+            if(retired.has(node.style.getPropertyValue('--surface-map'))){
+                node.style.removeProperty('--surface-map');node.style.removeProperty('--surface-grain');
+            }
+            delete node.textureKey;delete node.dataset.textureReady;delete node.dataset.textureCached;
+        });
+        this.textureUrls.forEach(url=>URL.revokeObjectURL(url));this.textureUrls.clear();this.textureCache.clear();
+    },
     cloudCache: new Map(),
     // Cache surface noise only; lighting, edges, rings and text stay native.
     // Procedural pixels avoid repeated SVG-filter rasterization and expensive
@@ -23,8 +53,10 @@ const galaxyAppearance = {
     bakeField(seed, size, material = 'rocky') {
         const key = `${seed}:${material}:${size}`;
         if (!this.textureCache.has(key)) {
+            const epoch=this.textureEpoch;
             this.textureCache.set(key, new Promise(resolve => {
                 const generate = () => {
+                    if(epoch!==this.textureEpoch){resolve(null);return;}
                     try {
                         const canvas = document.createElement("canvas");
                         canvas.width = canvas.height = size;
@@ -65,13 +97,18 @@ const galaxyAppearance = {
                             pixels.data[i + 3] = alpha * 255;
                         }
                         context.putImageData(pixels, 0, 0);
-                        canvas.toBlob(blob => resolve(blob ? `url("${URL.createObjectURL(blob)}")` : null), "image/png");
+                        canvas.toBlob(blob => {
+                            if(!blob||epoch!==this.textureEpoch){resolve(null);return;}
+                            const url=URL.createObjectURL(blob);this.textureUrls.set(key,url);
+                            resolve(`url("${url}")`);this.queueTextureTrim();
+                        }, "image/png");
                     } catch { resolve(null); } // The existing SVG field is a fallback.
                 };
                 if (typeof requestIdleCallback === "function") requestIdleCallback(generate, { timeout: 800 });
                 else setTimeout(generate, 0);
             }));
         }
+        if(this.textureUrls.has(key)){const url=this.textureUrls.get(key);this.textureUrls.delete(key);this.textureUrls.set(key,url);}
         return this.textureCache.get(key);
     },
     prepareTextures(node, diameter) {
@@ -85,8 +122,9 @@ const galaxyAppearance = {
         node.textureSize = size;
         node.dataset.textureReady = "pending";
         const seed = this.hash(node.dataset.entryId);
+        const epoch=this.textureEpoch;
         this.bakeField(seed, size, material).then(map => {
-            if (!node.isConnected || node.textureKey !== key) return;
+            if (epoch!==this.textureEpoch || !node.isConnected || node.textureKey !== key) return;
             if (map) {
                 node.style.setProperty("--surface-map", map);
                 node.style.setProperty("--surface-grain", "none");
@@ -216,3 +254,4 @@ const galaxyAppearance = {
         return `<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 256 256" data-morphology="${style.archetype}"><defs>${gradient('mist', style.hue + 6, 67, .55)}${gradient('haze', style.hue, 44, .14)}</defs><g transform="rotate(${style.angle} 128 128)"><ellipse cx="${haze[0]}" cy="${haze[1]}" rx="${haze[2]}" ry="${haze[3]}" fill="url(#haze)"/>${puffs.join('')}</g></svg>`;
     }
 };
+globalThis.addEventListener?.('pagehide',()=>galaxyAppearance.clearTextures());

@@ -136,7 +136,9 @@ const galaxyAttachmentFiles = {
         } catch { /* A polished fallback tile uses the original video bytes. */ }
         finally {
             clearTimeout(timer); video.onloadedmetadata=video.onloadeddata=video.onseeked=video.onerror=null;
-            video.pause(); video.removeAttribute('src'); video.load(); URL.revokeObjectURL(url);
+            try { video.pause();video.removeAttribute('src');video.load(); }
+            catch { /* Native teardown failure must not discard the original. */ }
+            finally { URL.revokeObjectURL(url); }
         }
     }
 };

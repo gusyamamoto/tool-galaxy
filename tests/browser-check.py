@@ -198,6 +198,7 @@ def main():
     args.add_argument('--corrupt-data-only', action='store_true', help='Preserved corrupt snapshots, recovery download/Restore, onboarding, migrations and two-tab safety')
     args.add_argument('--attachment-recovery-only', action='store_true', help='Durable attachment journal, held-operation reload, restart reconciliation, ownership, F1/F2/F3 and Restore')
     args.add_argument('--restore-model-only', action='store_true', help='Reject invalid backup models before replacement; preserve exact metadata, files and F4 journals; F3 reload')
+    args.add_argument('--object-urls-only', action='store_true', help='Count live object URLs through media teardown, async races, failures, downloads, texture eviction and Restore')
     args.add_argument('--restore-valid-backup', type=Path, help='Optional actual valid disk backup for --restore-model-only picker regression')
     args.add_argument('--restore-invalid-backup', type=Path, help='Optional actual helper-generated invalid disk backup paired with --restore-valid-backup')
     args.add_argument("--backup-dialog-only", action="store_true", help="Focused Backup/Restore layout, renamed-file validation, picker, download and keyboard checks")
@@ -510,6 +511,10 @@ def main():
 
         cdp.call("Page.navigate", url=page_url)
         load()
+        if options.object_urls_only:
+            from object_url_browser import run_object_url_checks
+            run_object_url_checks(cdp=cdp,e=evaluate,check=check,wait_for=wait_for,add=add)
+            print(f'{count} object URL lifecycle browser checks passed',flush=True);return
         if options.restore_model_only:
             from restore_model_browser import run_restore_model_checks
             run_restore_model_checks(cdp=cdp,e=evaluate,check=check,wait_for=wait_for,
@@ -1346,12 +1351,12 @@ def main():
             cdp.call('Emulation.setEmulatedMedia',features=[dict(name='prefers-reduced-motion',value='reduce')])
             evaluate(f"contentInspector.openFile({json.dumps(pdf)},document.querySelector({json.dumps(pdf_trigger)}))");wait_for('imageViewer.dialog.open&&!imageViewer.pdf.hidden');key('Escape','Escape')
             check(evaluate('!imageViewer.dialog.open'),'PDF reduced-motion closing remains immediate')
-            evaluate("window.textOpen=window.open;window.textOpened=false;window.open=()=>({location:{replace:url=>textOpened=url.startsWith('blob:')},closed:true,close(){}});contentInspector.openFile(contentInspector.content().attachments.find(f=>f.mimeType==='text/plain'));void 0")
-            wait_for('textOpened===true');evaluate('window.open=textOpen')
+            evaluate("window.textOpen=window.open;window.textOpened=false;window.open=()=>({location:{replace:url=>textOpened=url.startsWith('blob:')},closed:false,close(){this.closed=true}});contentInspector.openFile(contentInspector.content().attachments.find(f=>f.mimeType==='text/plain'));void 0")
+            wait_for('textOpened===true');evaluate('window.open=textOpen;contentInspector.clearNativePreviews(true)')
             check(evaluate('!imageViewer.dialog.open'),'text files retain their existing external opening path')
             for name in ['missing-type.txt','missing-type.md']:
                 evaluate(f"contentInspector.upload([new File(['Plain text stays readable'],{json.dumps(name)})])");wait_for('contentInspector.jobs.size===0')
-                check(evaluate(f"(async()=>{{const original=window.open;let url;window.open=()=>({{location:{{replace:value=>url=value}},closed:true,close(){{}}}});try{{const meta=contentInspector.content().attachments.find(f=>f.filename==={json.dumps(name)});await contentInspector.openFile(meta);const response=await fetch(url);return response.headers.get('Content-Type')==='text/plain'&&(await response.text())==='Plain text stays readable'&&meta.mimeType==='application/octet-stream'&&!contentInspector.fileDetails.open}}finally{{window.open=original}}}})()"),f'{name} keeps safe text viewing without changing stored MIME or opening File Details')
+                check(evaluate(f"(async()=>{{const original=window.open;let url;window.open=()=>({{location:{{replace:value=>url=value}},closed:false,close(){{this.closed=true}}}});try{{const meta=contentInspector.content().attachments.find(f=>f.filename==={json.dumps(name)});await contentInspector.openFile(meta);const response=await fetch(url);return response.headers.get('Content-Type')==='text/plain'&&(await response.text())==='Plain text stays readable'&&meta.mimeType==='application/octet-stream'&&!contentInspector.fileDetails.open}}finally{{window.open=original;contentInspector.clearNativePreviews(true)}}}})()"),f'{name} keeps safe text viewing without changing stored MIME or opening File Details')
             check(not cdp.errors,f'no attachment-viewer exceptions: {cdp.errors}');print(f'{count} attachment-viewer checks passed',flush=True);return
 
         if options.usability_only:

@@ -28,7 +28,7 @@ class CosmifoldBackupUI {
             }
         });
         this.dialog.addEventListener('close',()=>{this.controller?.abort();this.handle=null;this.preview.hidden=true;(this.trigger.getClientRects().length?this.trigger:document.getElementById('sidebar-toggle')).focus({preventScroll:true});});
-        window.addEventListener('pagehide',()=>{this.controller?.abort();this.urls.forEach((timer,url)=>{clearTimeout(timer);URL.revokeObjectURL(url);});this.urls.clear();});
+        window.addEventListener('pagehide',()=>{this.controller?.abort();});
     }
     message(text,error=false){this.status.textContent=text;this.status.hidden=false;this.status.dataset.error=String(error);}
     setBusy(value){
@@ -81,9 +81,7 @@ class CosmifoldBackupUI {
                 if(this.dialog.open)this.message(progress.stage==='files'?`Preparing files ${progress.completed} of ${progress.total}…`:'Preparing backup…');
             }});
             if(!this.dialog.open||this.controller.signal.aborted)return;
-            const url=URL.createObjectURL(result.blob),link=document.createElement('a');link.href=url;link.download=result.filename;link.hidden=true;
-            document.body.append(link);link.click();link.remove();
-            this.urls.set(url,setTimeout(()=>{URL.revokeObjectURL(url);this.urls.delete(url);},60000));
+            cosmifoldObjectUrls.download(result.blob,result.filename,this.urls);
             this.message('Backup sent to your browser’s downloads.');
         }catch(error){
             if(error.name!=='AbortError'){

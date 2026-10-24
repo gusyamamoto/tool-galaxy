@@ -149,7 +149,11 @@ def run_mobile_capture_checks(*, cdp, evaluate, check, wait_for, load, add, sele
     check(evaluate('!imageViewer.saveCopy.hidden'), 'unsupported HEIF viewer retains Save a copy fallback')
     check(evaluate("(async()=>await (await fetch(imageViewer.saveCopy.href)).text()==='original HEIF bytes')()"), 'unsupported HEIF Save a copy points to the original bytes')
     shot('mobile-capture-heif-fallback')
-    evaluate("imageViewer.dialog.close();(async()=>{const f=contentInspector.content().attachments[1],r=await attachmentStore.get(f.storageKey);await attachmentStore.save({...r,thumbnail:capturePhoto});})()")
+    # Fixture-only thumbnail injection. Ordinary F4 saves correctly reject an
+    # existing key; this does not exercise or bypass a product mutation path.
+    evaluate("""imageViewer.dialog.close();(async()=>{const f=contentInspector.content().attachments[1],r=await attachmentStore.get(f.storageKey);
+        const db=await new Promise((resolve,reject)=>{const request=indexedDB.open('galaxy-attachments');request.onsuccess=()=>resolve(request.result);request.onerror=()=>reject(request.error)});
+        try{await new Promise((resolve,reject)=>{const tx=db.transaction('files','readwrite');tx.oncomplete=resolve;tx.onabort=()=>reject(tx.error);tx.objectStore('files').put({...r,thumbnail:capturePhoto});});}finally{db.close();}})()""")
     evaluate("document.querySelectorAll('#content-media .content-media-viewport')[1].click()")
     wait_for('imageViewer.dialog.open&&!imageViewer.image.hidden')
     check(evaluate("(async()=>imageViewer.image.naturalWidth===80&&imageViewer.url!==imageViewer.originalUrl&&await(await fetch(imageViewer.infoCopy.href)).text()==='original HEIF bytes')()"), 'friendly HEIF preview displays while Info download retains the original')
