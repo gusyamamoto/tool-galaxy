@@ -17,7 +17,12 @@ class StagingPackageTests(unittest.TestCase):
             output = Path(directory) / 'site'
             files = staging.prepare(output)
             self.assertEqual(sorted(p.relative_to(output).as_posix() for p in output.rglob('*') if p.is_file()), files)
-            self.assertTrue({'index.html', 'startup.js', 'script.js', 'body-renderer.js', 'first-use.js', 'task-views.js', 'sidebar-split.js', 'task-lists.js', 'ids.js', 'vendor/LICENSES.txt'} <= set(files))
+            self.assertTrue({'index.html', 'startup.js', 'script.js', 'body-renderer.js', 'first-use.js', 'task-views.js', 'sidebar-split.js', 'task-lists.js', 'ids.js', 'vendor/LICENSES.txt',
+                             'persistence/local-metadata-store.js', 'persistence/indexeddb-file-store.js', 'services/local-restore-session.js',
+                             'services/local-restore.js', 'object-urls.js', 'storage-capacity.js', 'services/attachment-storage-audit.js', 'backup-ui.js'} <= set(files))
+            for probe in ['tests/restore_model_fixture.py', 'tests/object_url_probe.js', 'tests/storage_capacity_browser.py',
+                          'tests/attachment_orphan_probe.js', 'tests/persistence_integration_browser.py']:
+                self.assertNotIn(probe, files)
             self.assertFalse(any(p.startswith(('dev/', 'tests/', 'docs/', 'scripts/', 'supabase/', '.git/', 'delayed-')) for p in files))
             self.assertFalse(any('cloud-' in p for p in files))
             self.assertEqual((output / 'auth-config.js').read_text(), staging.STAGING_AUTH)

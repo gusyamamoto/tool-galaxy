@@ -14,8 +14,9 @@ python -B tests/staging_package_test.py
 python -B tests/browser-check.py --staging-only --site-root staging-site
 ```
 
-`staging-site/` contains 51 declared runtime assets, the existing 404 page, headers
-and vendor notices. Scripts, styles and their existing relative locations are
+The current artifact contains 59 declared static files, including the existing
+404 page, headers and vendor notices; the preparation command reports the actual
+discovered inventory. Scripts, styles and their existing relative locations are
 preserved. There is no compilation, framework, package installation, migration or
 duplicated source tree to maintain. The helper discovers HTML/CSS asset references;
 `script.js`, dynamically loaded by startup, is already declared as an HTML preload.
