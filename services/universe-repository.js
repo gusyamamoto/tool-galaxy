@@ -186,7 +186,7 @@ function createUniverseRepository({persistence, canWrite = () => true}) {
             await commit(next,{type:'items.structure-duplicated',ids:plan.rootIds});
             return {...plan,snapshot:next};
         },
-        async copyEntries(snapshot,roots,destination,newId,{readSnapshot=()=>snapshot,validate=()=>{}}={}) {
+        async copyEntries(snapshot,roots,destination,newId,{readSnapshot=()=>snapshot,validate=()=>{},beforeFileWrite=async()=>{}}={}) {
             snapshot=read(snapshot);
             const plan=hierarchyCopies.plan(snapshot,roots,destination,newId),records=[];
             for(const file of plan.files){
@@ -194,6 +194,7 @@ function createUniverseRepository({persistence, canWrite = () => true}) {
                 if(!old||old.entryId!==file.source.entryId||!(old.blob instanceof Blob)||old.blob.size!==file.source.size)throw new Error('A file is unavailable. Restore it before making copies.');
                 records.push({...old,key:file.metadata.storageKey,entryId:file.metadata.entryId});
             }
+            if(records.length)await beforeFileWrite(records);
             let previous,next;
             const prepare=()=>{
                 validate();previous=readSnapshot();

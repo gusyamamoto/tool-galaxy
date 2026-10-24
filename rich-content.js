@@ -47,8 +47,9 @@ function createPanelItemMenu(actions, label, root) {
 // Content presentation over canonical entry content and a replaceable file store.
 class EntryContentInspector {
     constructor({ store, getEntry, save, saveLocation, rollback, onAction, onLayout, motion=null, imageViewer, addAttachment,removeAttachment,
-        notifyFileFailure=()=>{}, isSessionStale=()=>false }) {
+        notifyFileFailure=()=>{}, isSessionStale=()=>false,checkCapacity=null,capacityFailure=()=>{},cancelCapacity=()=>{} }) {
         Object.assign(this, { store, getEntry, save, saveLocation, rollback, onAction, onLayout, motion, imageViewer,addAttachment,removeAttachment,notifyFileFailure,isSessionStale });
+        Object.assign(this,{checkCapacity,capacityFailure,cancelCapacity});
         this.root = document.getElementById("panel-rich-content");
         this.notes = document.getElementById("content-notes");
         this.notesForm = document.getElementById("content-notes-form");
@@ -186,6 +187,7 @@ class EntryContentInspector {
     }
     error(error, prefix='') {
         const quota = error?.name === "QuotaExceededError" || error?.cause?.name === "QuotaExceededError";
+        if(quota)this.capacityFailure?.();
         const messages = {
             NotReadableError: 'This file could not be read. Download or save a copy onto this device, then choose it again.',
             NotFoundError: 'This file is no longer available. Download or save a local copy, then choose it again.',
@@ -196,6 +198,7 @@ class EntryContentInspector {
         this.message(prefix ? `${prefix} ${detail}` : detail, true);
     }
     select(entry, visible) {
+        this.cancelCapacity?.();
         if(this.entryId!==entry?.id&&this.imageViewer?.dialog.open)this.imageViewer.dialog.close();
         this.promoteFileFailure();
         clearTimeout(this.statusTimer);
@@ -211,7 +214,7 @@ class EntryContentInspector {
         if(draft?.bookmark){document.getElementById('content-link-url').value=draft.bookmark.value;document.getElementById('content-link-title').value=draft.bookmark.title;this.editingLinkId=draft.bookmark.editingId;this.linkForm.hidden=false;}
         this.renderNotes(); this.renderLists(); this.renderLocation(); this.busy();
     }
-    hide() { this.promoteFileFailure(); this.visible = false; clearTimeout(this.statusTimer); this.clearPreviews();this.reconcilePreviews();if(this.imageViewer?.dialog.open)this.imageViewer.dialog.close(); }
+    hide() { this.cancelCapacity?.();this.promoteFileFailure(); this.visible = false; clearTimeout(this.statusTimer); this.clearPreviews();this.reconcilePreviews();if(this.imageViewer?.dialog.open)this.imageViewer.dialog.close(); }
     render() { if (this.entryId) { this.renderLists(); this.renderLocation(); this.busy(); } }
     setupLocation() {
         this.locationForm=document.getElementById('content-location-form');
@@ -299,6 +302,7 @@ class EntryContentInspector {
         try { await operation(context); if (id === this.entryId) { this.renderLists(); this.clearMessage(); } }
         catch (error) {
             // F1 owns stale-session feedback and its Reload action.
+            this.capacityFailure?.();
             if(!this.isSessionStale()&&error?.code!=='LOCAL_SNAPSHOT_STALE'&&error?.cause?.code!=='LOCAL_SNAPSHOT_STALE') {
                 const text=this.fileFailureText(context,error);
                 if(id===this.entryId&&this.visible&&!document.querySelector('dialog[open]')) {
@@ -328,6 +332,7 @@ class EntryContentInspector {
     }
     chooseFiles({media=false,source='files',entryId=this.entryId,onSelect=null} = {}) {
         if (this.getEntry(entryId) && !this.jobs.get(entryId)) {
+            this.cancelCapacity?.();
             this.fileSelection = {entryId,onSelect};
             // A different inspected body's job must not disable this destination.
             this.files.disabled = false;
@@ -561,6 +566,7 @@ class EntryContentInspector {
     }
     upload(files, id = this.entryId) {
         return this.job(id, async context => {
+            await this.checkCapacity?.(files,{isCurrent:()=>this.entryId===id&&this.visible&&!!this.getEntry(id)});
             for (const file of files) {
                 context.filename=file.name;
                 const { metadata, record } = await galaxyAttachmentFiles.prepare(file,id);
