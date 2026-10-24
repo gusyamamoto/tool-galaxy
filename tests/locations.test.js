@@ -1,5 +1,5 @@
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm'),path=require('node:path');
-const ctx=vm.createContext({URL,Blob,structuredClone});
+const ctx=vm.createContext({URL,Blob,structuredClone,navigator:{locks:require('./local-write-fixture').createLockManager()}});
 for(const file of ['model.js','portals.js','constellations.js','clipboard.js','persistence/memory-stores.js','persistence/local-metadata-store.js','services/universe-repository.js'])vm.runInContext(fs.readFileSync(path.join(__dirname,'..',file),'utf8'),ctx);
 const model=vm.runInContext('galaxyModel',ctx),factory=vm.runInContext('createUniverseRepository',ctx),memory=vm.runInContext('createMemoryMetadataStore',ctx),local=vm.runInContext('createLocalMetadataStore',ctx);
 const plain=value=>JSON.parse(JSON.stringify(value));

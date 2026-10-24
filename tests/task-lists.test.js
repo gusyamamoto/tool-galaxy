@@ -1,5 +1,5 @@
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
-const context=vm.createContext({URL,structuredClone,Blob});
+const context=vm.createContext({URL,structuredClone,Blob,navigator:{locks:require('./local-write-fixture').createLockManager()}});
 for(const file of ['model.js','task-lists.js','portals.js','clipboard.js','persistence/local-metadata-store.js','persistence/memory-stores.js','services/universe-repository.js'])vm.runInContext(fs.readFileSync(file,'utf8'),context);
 const get=name=>vm.runInContext(name,context),model=get('galaxyModel'),tasks=get('cosmosTasks');
 const plain=value=>JSON.parse(JSON.stringify(value));

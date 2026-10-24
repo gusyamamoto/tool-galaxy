@@ -6,6 +6,7 @@ class PersistenceError extends Error {
         this.name = error?.name || 'PersistenceError';
         this.store = store; this.operation = operation; this.scope = scope;
         this.recoveryRequired = !!error?.recoveryRequired;
+        if (error?.code) this.code = error.code;
     }
 }
 function createPersistence({config = cosmosConfig, sample = false, sampleSnapshot = null, metadata, files, preferences} = {}) {
@@ -25,7 +26,7 @@ function createPersistence({config = cosmosConfig, sample = false, sampleSnapsho
             try {
                 if(operation==='saveBatch'&&typeof adapter.saveBatch!=='function')throw new Error('This storage provider cannot make safe file copies.');
                 const result = operation==='commit' && !adapter.commit ? Promise.resolve(adapter.save(...args)) : adapter[operation](...args);
-                if (result?.then && store === 'metadata' && operation!=='commit') {
+                if (result?.then && store === 'metadata' && !['commit','withWrite'].includes(operation)) {
                     result.catch(() => {});
                     throw new Error('Metadata adapters must provide synchronous local commits; remote sync belongs behind that boundary.');
                 }
@@ -36,7 +37,8 @@ function createPersistence({config = cosmosConfig, sample = false, sampleSnapsho
     }
     return {
         scope, sample, diagnostics,
-        metadata: boundary(metadata, 'metadata', ['load','save','commit','clear','readForBackup','readRestoreJournal','beginRestore','endRestore','captureRestoreState','replaceRaw','recoverRaw']),
+        metadata: boundary(metadata, 'metadata', ['load','save','commit','clear','readForBackup','readRestoreJournal','beginRestore','endRestore','captureRestoreState','replaceRaw','recoverRaw',
+            ...['withWrite','checkpoint','subscribeStale'].filter(name => typeof metadata[name] === 'function')]),
         files: Object.assign(boundary(files, 'files', ['save','saveBatch','get','readAll','delete','deleteEntries','hasEntries','replaceAll','restoreMarker']), {temporary: !!files.temporary}),
         preferences
     };
