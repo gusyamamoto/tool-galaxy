@@ -5,7 +5,7 @@ function createLocalMetadataStore({storage = () => globalThis.localStorage, scop
     // The exact persisted text is the durable snapshot identity, including legacy
     // data. Only a successful load/write acknowledges it; Backup never rebases it.
     const writeLock = `cosmifold-workspace-write:${JSON.stringify(scope)}`, listeners = new Set();
-    let acknowledged = false, expected = null, stale = false, writing = false;
+    let acknowledged = false, expected = null, stale = false, writing = false, loadFailure = null;
     const current = () => storage().getItem(prefix) ?? (scope == null ? storage().getItem('tool-galaxy:user-data') : null);
     const remember = text => { expected = text; acknowledged = true; };
     function staleError() {
@@ -18,6 +18,7 @@ function createLocalMetadataStore({storage = () => globalThis.localStorage, scop
         return error;
     }
     function assertCurrent() {
+        if (loadFailure) throw loadFailure;
         if (stale) throw staleError();
         const text = current();
         if (acknowledged && text !== expected) throw staleError();
@@ -34,6 +35,21 @@ function createLocalMetadataStore({storage = () => globalThis.localStorage, scop
             (data.archivedGalaxies != null && !Array.isArray(data.archivedGalaxies))) {
             throw new Error("Unsupported or invalid saved galaxy.");
         }
+        galaxyModel.validateStoredSnapshot(data);
+    }
+    function parseStored(text) {
+        let data;
+        try { data=JSON.parse(text); }
+        catch(cause) {
+            loadFailure=Object.assign(new Error('Saved local data could not be read.',{cause}),{code:'LOCAL_DATA_SYNTAX'});
+            throw loadFailure;
+        }
+        try { validate(data); }
+        catch(cause) {
+            loadFailure=Object.assign(new Error('Saved local data could not be loaded safely.',{cause}),{code:'LOCAL_DATA_STRUCTURE'});
+            throw loadFailure;
+        }
+        return data;
     }
     return {
         subscribeStale(listener) { listeners.add(listener); return () => listeners.delete(listener); },
@@ -68,11 +84,16 @@ function createLocalMetadataStore({storage = () => globalThis.localStorage, scop
             const disk=storage();if(text===null)disk.removeItem(this.key);else disk.setItem(this.key,text);
             if(this.legacyKey!==this.key)disk.removeItem(this.legacyKey);
             remember(current());
+            loadFailure=null;
         },
         recoverRaw(previous) {
             const disk=storage(),put=(key,text)=>text===null?disk.removeItem(key):disk.setItem(key,text);
             put(this.key,previous.current);if(this.legacyKey!==this.key)put(this.legacyKey,previous.legacy);
             remember(current());
+            // A failed Restore may have briefly installed good metadata. Its
+            // rollback must reinstate the original recovery write guard too.
+            loadFailure=null;
+            const text=current();if(text!==null)try{parseStored(text);}catch{ /* Raw rollback remains successful. */ }
         },
 
         readForBackup() {
@@ -90,8 +111,7 @@ function createLocalMetadataStore({storage = () => globalThis.localStorage, scop
                 return null;
             }
 
-            const data = JSON.parse(stored);
-            validate(data);
+            const data = parseStored(stored);
             if (!acknowledged) remember(stored);
             const records = data.version === 1 ? data.tools : data.entries;
             // Version 3 keeps all entries (including built-in edits/positions) together.
@@ -114,12 +134,11 @@ function createLocalMetadataStore({storage = () => globalThis.localStorage, scop
         save(snapshot) {
             const localStorage = storage();
             const previous = assertCurrent();
-            const previousData = previous === null ? null : JSON.parse(previous);
+            const previousData = previous === null ? null : parseStored(previous);
             const previousVersion = previousData?.version ?? null;
             if (previousVersion !== null && ![1, 2, 3, 4, 5].includes(previousVersion)) {
                 throw new Error("Unsupported saved galaxy cannot be overwritten.");
             }
-            if (previous !== null) validate(previousData);
             if (previousVersion !== null && previousVersion < 3 && localStorage.getItem(this.backupKey) === null) {
                 // Back up the exact old snapshot before replacing it. If this fails, keep it untouched.
                 localStorage.setItem(this.backupKey, previous);

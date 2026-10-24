@@ -43,7 +43,7 @@ test('invalid groups and metadata save failures never partially reparent',async 
 test('default local keys, scoped data and independent UI preferences round-trip without migration', async () => {
     const browser = storage(), source = () => browser;
     const original = local({storage:source}), scoped = local({storage:source,scope:'account/workspace'}), other = local({storage:source,scope:'another'});
-    original.save(snapshot());scoped.save({...snapshot(),entries:[]});
+    original.save(snapshot());scoped.save({entries:[],layout:[]});
     assert.equal(JSON.parse(browser.data.get('galaxy:user-data')).version,5);
     assert.equal(original.load().entries.length,3);assert.equal(scoped.load().entries.length,0);assert.equal(other.load(),null);
     const ui = prefs({storage:source}), workspaceUi = prefs({storage:source,scope:'account/workspace'});

@@ -1,29 +1,4 @@
-const initialEntries = [
-    {
-        id: "github",
-        name: "GitHub",
-        x: 300,
-        y: 250,
-        description: "Stores and manages Git repositories online.",
-        category: "Version control"
-    },
-    {
-        id: "vs-code",
-        name: "VS Code",
-        x: 550,
-        y: 380,
-        description: "Code editor used to build and manage the project.",
-        category: "Code editor"
-    },
-    {
-        id: "codex",
-        name: "Codex",
-        x: 800,
-        y: 220,
-        description: "AI coding assistant for writing and modifying code.",
-        category: "AI assistant"
-    }
-];
+const initialEntries = galaxyModel.legacyEntries;
 
 const entryRoles = galaxyModel.roles;
 const sampleMode = galaxySample.isRequested(window.location.search);
@@ -127,6 +102,7 @@ let hoveredEntryId = null, searchFocusId = null;
 let selectedNode = null;
 let nextEntryId = 1;
 let storageAvailable = true;
+let localDataRecovery = false;
 let localSessionStale = false;
 const staleSessionMessage = 'Cosmifold changed in another tab. Reload this tab to continue safely.';
 const fileFailure=document.getElementById('file-failure');
@@ -962,6 +938,32 @@ function reportStorageFailure(message) {
     storageStatus.hidden = false;
 }
 
+function showLocalDataRecovery(error) {
+    localDataRecovery=true;storageAvailable=false;graphNeedsSave=false;
+    entries.clear();archivedEntries.clear();portals.clear();constellations.clear();archivedGalaxies.clear();layout.clear();
+    console.error('Cosmifold saved local data could not be loaded:',error);
+    galaxy.inert=true;galaxy.setAttribute('aria-hidden','true');
+    const recovery=document.getElementById('local-data-recovery');recovery.hidden=false;
+    const download=document.getElementById('download-recovery-data'),status=document.getElementById('recovery-status');
+    let raw;
+    try { raw=persistence.metadata.readForBackup().metadataText; }
+    catch { /* Storage access may be denied; never substitute an empty export. */ }
+    download.disabled=typeof raw!=='string';
+    if(download.disabled){status.hidden=false;status.textContent='This browser is blocking access to the saved data. Allow site storage, then reload to try again.';}
+    download.addEventListener('click',()=>{
+        const url=URL.createObjectURL(new Blob([raw],{type:'application/json'})),link=document.createElement('a');
+        link.href=url;link.download=`cosmifold-recovery-${new Date().toISOString().slice(0,10)}.json`;
+        document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);
+    });
+    const restore=document.getElementById('restore-recovery-backup');
+    restore.addEventListener('click',()=>{
+        backupUI.download.hidden=true;backupUI.trigger.click();backupUI.choose.focus();
+    });
+    backupUI.dialog.addEventListener('close',()=>restore.focus({preventScroll:true}));
+    document.getElementById('reload-recovery-data').addEventListener('click',()=>location.reload());
+    document.getElementById('local-data-recovery-title').focus({preventScroll:true});
+}
+
 function getGalaxySnapshot() {
     return universeRepository.snapshot({entries: allCanonicalEntries(), portals, constellations, layout, archivedGalaxies});
 }
@@ -995,9 +997,8 @@ function initializeGalaxy() {
         try {
             saved = universeRepository.load();
         } catch (error) {
-            // Preserve unreadable/unsupported data instead of overwriting it.
-            storageAvailable = false;
-            reportStorageFailure("Saved entries could not be loaded. Changes will remain available only for this session.");
+            showLocalDataRecovery(error);
+            return;
         }
     }
 
@@ -1033,9 +1034,9 @@ function initializeGalaxy() {
     try {
         galaxyArchives.normalize(saved?.archivedGalaxies || [], entries).forEach((record,id)=>archivedGalaxies.set(id,record));
         galaxyArchives.split(entries, archivedGalaxies).forEach((entry,id)=>archivedEntries.set(id,entry));
-    } catch {
-        storageAvailable=false;archivedGalaxies.clear();
-        reportStorageFailure('Archived Galaxy state could not be loaded. Your original saved data is preserved; saving is disabled for this session.');
+    } catch (error) {
+        showLocalDataRecovery(error);
+        return;
     }
     taskStates=cosmosTasks.index(entries);
     [...entries.values()].forEach(createEntryNode);

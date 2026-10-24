@@ -10,6 +10,14 @@ body {
     overflow: hidden;
 }
 
+#local-data-recovery { position: fixed; inset: 0; z-index: 1100; display: grid; place-items: center; overflow-y: auto; padding: max(24px,env(safe-area-inset-top)) 20px; background: #080f1a; }
+#local-data-recovery[hidden] { display: none; }
+#local-data-recovery > div { width: min(100%,560px); }
+#local-data-recovery h1 { font-size: 24px; }
+#local-data-recovery p { line-height: 1.6; color: #c4cfdc; }
+.recovery-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 24px; }
+.recovery-actions button { min-height: 44px; padding: 10px 16px; margin: 0; }
+
 /* First use occupies the workspace canvas; ordinary navigation stays available. */
 #first-use[hidden], #first-use-hint[hidden] { display: none; }
 #first-use {
