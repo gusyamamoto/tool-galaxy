@@ -61,6 +61,88 @@ is executed, and preview text never becomes HTML. SHA-256 detects corruption,
 not trustworthiness or encryption. Some malformed snapshots which Export could
 capture without normalization are deliberately rejected rather than repaired.
 
+Restore validates raw metadata with `galaxyModel.validateStoredSnapshot`, the
+same canonical validator used by local startup (F3). This happens before file
+payload validation, confirmation, journals or staging. Item IDs, parents, cycles,
+content, Locations, linked placements, Constellations, archives and global
+attachment identities share those rules. Nested Task Lists and children below
+a task are rejected; `taskList` and `completed`, when present and non-null, must
+be booleans. A normal Item moved outside a Task List may retain completion.
+Depth and celestial roles remain derived; they do not dictate hierarchy.
+No invalid references, fields or records are repaired or silently discarded.
+
+Existing backup checks additionally require exact saved Bookmark/Location/name
+values, consistent layout/archive disclosure references, allowed file types,
+matching raw/parsed text and counts, and complete verified payloads.
+Every attachment reference requires its original bytes, including archived
+Items. A thumbnail may be absent when declared absent. A missing original,
+duplicate file identity/key, wrong owner or extra unreferenced payload rejects
+the entire candidate. Export excludes unrelated orphan rows; this exclusion
+does not permit importing unknown bytes in a Restore candidate.
+
+Portable Backup started at **v1 with storage-v5**, which is also the oldest
+supported portable schema. No portable backup migration exists. Local saved
+storage v1-v4 still migrates through normal startup before export; these local
+snapshots are not older portable backups. Restore preserves supported optional
+defaults without inventing migrations. A newer header, manifest backup version
+or storage version is rejected with a clear newer-version message.
+
+The complete order is bounded header/integrity checks, manifest parse and version
+checks, raw/parsed envelope consistency, shared raw canonical validation,
+backup-specific saved-value checks, file manifest/ownership/completeness,
+payload hashes and counts, then an opaque validated preview handle. Only explicit
+confirmation starts the existing exclusive Restore transaction. Validation never
+opens a storage write transaction or consumes F4 attachment journals. A failed
+replacement rolls those journals back with the old files; successful replacement
+clears obsolete journals atomically with the file set/Restore marker. F1 workspace
+ownership and stale-write protection remain unchanged. Invalid candidates also
+leave an existing F3 corruption snapshot and its recovery actions available;
+valid explicit Restore can replace it. Errors stay in the Restore dialog.
+
+### Deterministic invalid-model check
+
+Use a disposable local browser profile and synthetic data only.
+
+Reload the app before testing changed validation code. An already-open tab keeps
+the JavaScript it loaded earlier; rebuilding source does not update that tab.
+For local testing, use the current repository at `http://localhost:8000`, then
+hard reload (Ctrl+Shift+R). An older generated `staging-site/` is a separate
+artifact and does not reflect source edits automatically.
+
+1. Create a normal Item with a Note and Location, plus a Task List with one
+   checked and one unchecked task. Optionally attach a small text file.
+2. Download a backup and save it as `BackupA.cosmifold` in a temporary folder.
+3. From the repository root, run the following, substituting that folder:
+
+   ```powershell
+   python -B tests/restore_model_fixture.py C:\Temp\BackupA.cosmifold C:\Temp\InvalidA.cosmifold
+   ```
+
+   The helper makes a nested Task List, updates the exact metadata text, counts
+   if needed and manifest checksum, and preserves the original payload bytes.
+   It refuses to overwrite an existing output. Keep Backup A unchanged.
+4. Choose Restore and select `InvalidA.cosmifold`. Expect “This backup can't be
+   restored because its saved structure is invalid.” No replacement confirmation
+   appears. Verify the current Item, Note, Location, tasks and file are unchanged.
+5. Close the dialog and reload. The existing workspace should load normally
+   without recovery or first-use onboarding.
+6. Select the original `BackupA.cosmifold`, confirm Restore and let it reload.
+   Verify both task completion states and the saved content/file.
+
+The automated equivalent runs in an isolated temporary profile:
+`python -B tests/browser-check.py --restore-model-only`. It also compares exact
+canonical text, file/thumbnail bytes, Restore marker and F4 journal across
+rejections, checks rollback after a forced commit error, and restores from F3
+recovery followed by an immediate startup validation.
+All candidates use the actual Restore button, native file input and change
+handler. A valid candidate must preview and cancel safely; the helper-generated
+candidate must show an error without preview. To repeat with specific local
+files, add `--restore-valid-backup "path\BackupA.cosmifold"` and
+`--restore-invalid-backup "path\InvalidC.cosmifold"`. These files are selected
+for validation only; the suite's confirmed replacement uses synthetic data in
+its disposable profile. Run `python -B tests/restore_model_fixture_test.py` for
+independent checksum, parent/flag, payload preservation and overwrite checks.
+
 Restore requires an up-to-date browser with **Web Locks** on HTTPS or localhost.
 The application still runs and exports where safe Restore is unavailable. Tabs
 running this app hold shared workspace locks; replacement requires an exclusive

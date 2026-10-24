@@ -197,6 +197,9 @@ def main():
     args.add_argument('--background-files-only', action='store_true', help='Deferred attachment failures, persistent desktop/mobile feedback, IndexedDB rollback and stale Reload priority')
     args.add_argument('--corrupt-data-only', action='store_true', help='Preserved corrupt snapshots, recovery download/Restore, onboarding, migrations and two-tab safety')
     args.add_argument('--attachment-recovery-only', action='store_true', help='Durable attachment journal, held-operation reload, restart reconciliation, ownership, F1/F2/F3 and Restore')
+    args.add_argument('--restore-model-only', action='store_true', help='Reject invalid backup models before replacement; preserve exact metadata, files and F4 journals; F3 reload')
+    args.add_argument('--restore-valid-backup', type=Path, help='Optional actual valid disk backup for --restore-model-only picker regression')
+    args.add_argument('--restore-invalid-backup', type=Path, help='Optional actual helper-generated invalid disk backup paired with --restore-valid-backup')
     args.add_argument("--backup-dialog-only", action="store_true", help="Focused Backup/Restore layout, renamed-file validation, picker, download and keyboard checks")
     args.add_argument("--restore-only", action="store_true", help="Check validated local replacement, real IndexedDB rollback, reload recovery and fresh-origin migration")
     args.add_argument("--backup-only", action="store_true", help="Check complete read-only backup downloads, raw bytes/thumbnails, failure/cancel, narrow controls and Sample isolation")
@@ -284,6 +287,11 @@ def main():
     args.add_argument("--sizes-only", action="store_true", help="Check desktop/mobile native sizes without repeating drag cases")
     args.add_argument("--extremes-only", action="store_true", help="Check only extreme Planet/Moon recovery in the arrangement suite")
     options = args.parse_args()
+    if options.restore_valid_backup or options.restore_invalid_backup:
+        if not options.restore_model_only or not options.restore_valid_backup or not options.restore_invalid_backup:
+            args.error('Actual Restore fixtures require --restore-model-only and both --restore-valid-backup / --restore-invalid-backup')
+        if not options.restore_valid_backup.is_file() or not options.restore_invalid_backup.is_file():
+            args.error('Actual Restore fixture paths must exist')
     if options.staging_only:
         auth = (options.site_root / 'auth-config.js').read_text(encoding='utf-8')
         if auth != "// Public staging is local-only: no Auth SDK/session or remote account requests.\nconst cosmifoldAuthConfig = Object.freeze({});\n":
@@ -502,6 +510,11 @@ def main():
 
         cdp.call("Page.navigate", url=page_url)
         load()
+        if options.restore_model_only:
+            from restore_model_browser import run_restore_model_checks
+            run_restore_model_checks(cdp=cdp,e=evaluate,check=check,wait_for=wait_for,
+                                     valid_backup=options.restore_valid_backup,invalid_backup=options.restore_invalid_backup)
+            print(f'{count} Restore model validation browser checks passed',flush=True);return
         if options.attachment_recovery_only:
             from attachment_recovery_browser import run_attachment_recovery_checks
             run_attachment_recovery_checks(cdp=cdp,cdp_class=CDP,e=evaluate,check=check,wait_for=wait_for,origin=origin,add=add)

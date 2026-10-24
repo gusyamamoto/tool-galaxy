@@ -3,6 +3,11 @@ const cosmifoldRestore = (()=>{
     const validated=new WeakMap();
     const object=value=>value!==null&&typeof value==='object'&&!Array.isArray(value);
     const fail=(message='This backup appears to be incomplete or damaged.')=>{throw new Error(message);};
+    const version=(value,supported)=>{
+        if(!Number.isSafeInteger(value)||value<1)fail();
+        if(value>supported)fail("This backup was created by a newer version of Cosmifold and can't be restored here.");
+        if(value!==supported)fail("This backup version isn't supported here.");
+    };
     const check=signal=>{if(signal?.aborted)throw new DOMException('Restore cancelled.','AbortError');};
     function parse(text){
         let value;try{value=JSON.parse(text);}catch{fail();}
@@ -21,41 +26,25 @@ const cosmifoldRestore = (()=>{
         if(!object(metadata)||metadata.version!==cosmifoldBackup.storageVersion||!Array.isArray(metadata.entries)||!Array.isArray(metadata.layout))fail('The saved Cosmos in this backup is invalid.');
         for(const field of ['portals','constellations','archivedGalaxies'])if(metadata[field]!=null&&!Array.isArray(metadata[field]))fail();
         if(metadata.connections!=null&&(!Array.isArray(metadata.connections)||metadata.connections.length))fail('This backup contains obsolete relationship data.');
-        const entries=new Map(),references=new Map();
+        // Validate the raw candidate with the SAME rules as startup, before any
+        // normalized projection can hide invalid fields or any storage is touched.
+        try{galaxyModel.validateStoredSnapshot(metadata);}
+        catch(cause){throw new Error("This backup can't be restored because its saved structure is invalid.",{cause});}
+        const entries=new Map(metadata.entries.map(entry=>[entry.id,entry])),references=new Map();
+        // Preserve the existing backup-only checks for exact saved values/file
+        // policy. Canonical identity, ancestry and content rules live in model.js.
         for(const entry of metadata.entries){
-            if(!object(entry)||!galaxyModel.normalizeEntry(entry)||entries.has(entry.id)||
-                (entry.parentId!=null&&(typeof entry.parentId!=='string'||!entry.parentId))||
-                ['x','y'].some(key=>entry[key]!=null&&!Number.isFinite(entry[key]))||
-                (entry.category!=null&&typeof entry.category!=='string')||
-                (entry.appearance!=null&&!object(entry.appearance))||
-                (entry.location!=null&&(!galaxyModel.normalizeLocation(entry.location)||galaxyModel.normalizeLocation(entry.location).text!==entry.location.text)))fail('This backup contains invalid or duplicate items.');
-            for(const key of ['createdAt','updatedAt'])if(entry[key]!=null&&(typeof entry[key]!=='string'||!Number.isFinite(Date.parse(entry[key]))))fail();
-            entries.set(entry.id,entry);
+            if(['x','y'].some(key=>entry[key]!=null&&!Number.isFinite(entry[key]))||
+                (entry.location!=null&&galaxyModel.normalizeLocation(entry.location).text!==entry.location.text))fail('This backup contains invalid saved item values.');
             if(entry.content){
-                const content=galaxyModel.normalizeContent(entry.content,entry.id);if(!content)fail('This backup contains invalid item content.');
-                for(let i=0;i<content.links.length;i++)if(content.links[i].url!==entry.content.links[i].url)fail('This backup contains an invalid Bookmark.');
+                if(entry.content.links.some(link=>galaxyModel.webUrl(link.url)!==link.url))fail('This backup contains an invalid Bookmark.');
                 for(const file of entry.content.attachments){
-                    if(references.has(file.storageKey)||galaxyModel.filePolicy.blocked(file.filename,file.mimeType))fail('This backup contains invalid file references.');
+                    if(galaxyModel.filePolicy.blocked(file.filename,file.mimeType))fail('This backup contains invalid file references.');
                     references.set(file.storageKey,file);
                 }
             }
         }
-        // Linear parent walk: detect cycles without repairing or quadratic ancestry scans.
-        const done=new Set();
-        for(const start of entries.values()){
-            const visiting=new Set();let entry=start;
-            while(entry&&!done.has(entry.id)){
-                if(visiting.has(entry.id))fail('This backup contains a hierarchy cycle.');visiting.add(entry.id);
-                if(entry.parentId!=null&&!entries.has(entry.parentId))fail('This backup contains a missing parent item.');
-                entry=entries.get(entry.parentId);
-            }
-            visiting.forEach(id=>done.add(id));
-        }
-        const portals=metadata.portals||[],collections=metadata.constellations||[];
-        if(galaxyPortals.normalizeAll(portals,entries).length!==portals.length)fail('This backup contains invalid linked placements.');
-        const normalized=galaxyConstellations.normalizeAll(collections,entries);
-        if(normalized.length!==collections.length||collections.some((c,i)=>JSON.stringify(c.memberEntryIds)!==JSON.stringify(normalized[i].memberEntryIds)||c.name!==normalized[i].name))fail('This backup contains invalid Constellation memberships.');
-        const collectionIds=new Set(collections.map(c=>c.id));if(portals.some(p=>collectionIds.has(p.id)))fail('This backup contains duplicate identifiers.');
+        if((metadata.constellations||[]).some(c=>c.name!==c.name.trim()))fail('This backup contains an invalid Constellation name.');
         const layoutIds=new Set();
         for(const record of metadata.layout){
             const entry=entries.get(record?.id);
@@ -64,21 +53,15 @@ const cosmifoldRestore = (()=>{
         }
         // Cache root ownership once. Calling subtreeIds for every archived root
         // would make a large untrusted manifest quadratic in the number of items.
-        const roots=new Map(),archived=new Set();
+        const roots=new Map();
         for(const start of entries.values()){
             const path=[];let entry=start;
             while(entry&&!roots.has(entry.id)){path.push(entry);entry=entries.get(entry.parentId);}
             const root=entry?roots.get(entry.id):path.at(-1)?.id;path.forEach(item=>roots.set(item.id,root));
         }
         for(const record of metadata.archivedGalaxies||[]){
-            const root=entries.get(record?.galaxyId);
-            if(!root||archived.has(root.id))fail('This backup contains invalid archived Galaxy data.');
-            // Reuse the existing archive header rules on a small disposable map;
-            // validate expanded membership against the cached roots separately.
-            try{galaxyArchives.normalize([{...record,expandedIds:undefined}],new Map([[root.id,{...root,depth:0}]]));}
-            catch{fail('This backup contains invalid archived Galaxy data.');}
-            if(record.expandedIds!=null&&(!Array.isArray(record.expandedIds)||new Set(record.expandedIds).size!==record.expandedIds.length||record.expandedIds.some(id=>typeof id!=='string'||roots.get(id)!==root.id)))fail('This backup contains invalid archived item references.');
-            archived.add(root.id);
+            const root=entries.get(record.galaxyId);
+            if(record.expandedIds!=null&&(new Set(record.expandedIds).size!==record.expandedIds.length||record.expandedIds.some(id=>roots.get(id)!==root.id)))fail('This backup contains invalid archived item references.');
         }
         return references;
     }
@@ -99,7 +82,7 @@ const cosmifoldRestore = (()=>{
         const header=new Uint8Array(await file.slice(0,spec.headerBytes).arrayBuffer()),magic=new TextEncoder().encode(spec.magic);
         if(!magic.every((byte,i)=>header[i]===byte))fail("This doesn't appear to be a Cosmifold backup.");
         const view=new DataView(header.buffer);
-        if(view.getUint32(magic.length,true)!==spec.backupVersion)fail("This backup version isn't supported yet.");
+        version(view.getUint32(magic.length,true),spec.backupVersion);
         const length=view.getUint32(magic.length+4,true);
         if(!length||length>spec.maxManifestBytes||length>file.size-spec.headerBytes)fail();
         const json=await file.slice(spec.headerBytes,spec.headerBytes+length).arrayBuffer();check(signal);
@@ -108,7 +91,7 @@ const cosmifoldRestore = (()=>{
         let text;try{text=new TextDecoder('utf-8',{fatal:true}).decode(json);}catch{fail();}
         const manifest=parse(text);
         if(!object(manifest)||manifest.format!==spec.format)fail("This doesn't appear to be a Cosmifold backup.");
-        if(manifest.backupVersion!==spec.backupVersion||manifest.storageVersion!==spec.storageVersion)fail("This backup was created by a version of Cosmifold that this app can't restore yet.");
+        version(manifest.backupVersion,spec.backupVersion);version(manifest.storageVersion,spec.storageVersion);
         if(typeof manifest.exportedAt!=='string'||!Number.isFinite(Date.parse(manifest.exportedAt))||!Array.isArray(manifest.attachments)||!object(manifest.counts)||Object.hasOwn(manifest,'recoverySnapshots'))fail();
         for(const name of ['metadata','preferences']){
             const raw=manifest[name+'Text'];if(raw!==null&&typeof raw!=='string')fail();
