@@ -106,6 +106,17 @@ let localDataRecovery = false;
 let localSessionStale = false;
 const staleSessionMessage = 'Cosmifold changed in another tab. Reload this tab to continue safely.';
 const fileFailure=document.getElementById('file-failure');
+const capacityWarning=document.getElementById('storage-capacity-warning');
+function placeCapacityWarning(){
+    const host=[...document.querySelectorAll('dialog[open]')].at(-1)||document.body;
+    if(capacityWarning.parentElement!==host)host.append(capacityWarning);
+}
+const storageCapacity=cosmifoldStorageCapacity.create({
+    notify(text){placeCapacityWarning();document.getElementById('storage-capacity-message').textContent=text;capacityWarning.hidden=false;},
+    hide(){capacityWarning.hidden=true;},
+    canShow:()=>!sampleMode&&!localSessionStale&&!localDataRecovery&&fileFailure.hidden
+});
+document.getElementById('dismiss-storage-capacity').addEventListener('click',()=>storageCapacity.dismiss());
 document.getElementById('dismiss-file-failure').addEventListener('click',()=>{fileFailure.hidden=true;});
 function placeFileFailure() {
     // Native previews occupy the top layer; keep their notification inside it.
@@ -116,8 +127,10 @@ document.addEventListener('toggle',event=>{
     if(event.target.tagName!=='DIALOG')return;
     if(event.target.open)contentInspector.promoteFileFailure();
     if(!fileFailure.hidden)placeFileFailure();
+    if(!capacityWarning.hidden)placeCapacityWarning();
 },true);
 function notifyFileFailure(text) {
+    storageCapacity.failure();
     if(localSessionStale)return;
     placeFileFailure();
     fileFailure.hidden=false;
@@ -126,6 +139,7 @@ function notifyFileFailure(text) {
 persistence.metadata.subscribeStale?.(() => {
     if(localSessionStale)return;
     localSessionStale=true;storageAvailable=false;
+    storageCapacity.cancel();
     fileFailure.hidden=true;
     physics.pause();
     // Keep Backup/Help available, but stop stale graph/editor interactions.
@@ -706,6 +720,8 @@ const imageViewer = new CosmifoldImageViewer({store:attachmentStore,getEntry:id=
 const contentInspector = new EntryContentInspector({ store: attachmentStore, motion, getEntry: id => entries.get(id),
     imageViewer,
     notifyFileFailure,isSessionStale:()=>localSessionStale,
+    checkCapacity:(files,options)=>storageCapacity.check(files,options),
+    capacityFailure:()=>storageCapacity.failure(),cancelCapacity:()=>storageCapacity.invalidate(),
     save: saveEntryContent, saveLocation:saveEntryLocation, addAttachment:addEntryAttachment,removeAttachment:removeEntryAttachment,
     onAction() { cancelPendingBodyFocus();autoFitPending = false; keyboardNavigation = false; camera.stopAnimation(); },
     onLayout() {
@@ -939,6 +955,7 @@ function exitConstellation({ restorePanel = true } = {}) {
 }
 
 function reportStorageFailure(message) {
+    storageCapacity.failure();
     storageStatus.textContent = localSessionStale ? staleSessionMessage : message;
     storageStatus.hidden = false;
 }
@@ -1929,7 +1946,9 @@ async function confirmHierarchyPaste(mode) {
     try{
         if(mode==='copy'){await orderedCommand(async()=>{
             const result=await universeRepository.copyEntries(getGalaxySnapshot,roots,destination,()=>`copy:${cosmifoldIds.uuid()}`,{
-                readSnapshot:getGalaxySnapshot,validate(){if(!entries.has(destination)||roots.some(id=>!entries.has(id)))throw new Error('The copied items changed. Try Paste again.');}
+                readSnapshot:getGalaxySnapshot,
+                beforeFileWrite:records=>storageCapacity.check(records,{copies:true,isCurrent:()=>pasteDialog.open&&pasteBusy}),
+                validate(){if(!entries.has(destination)||roots.some(id=>!entries.has(id)))throw new Error('The copied items changed. Try Paste again.');}
             });
             commitCrudMutation(()=>{
                 result.copies.forEach(entry=>entries.set(entry.id,{...entry,seedLayout:true}));
@@ -1946,7 +1965,7 @@ async function confirmHierarchyPaste(mode) {
             hierarchySidebar.expanded.add(destination);hierarchySidebar.render();
         }
         storageStatus.hidden=true;pasteCommitted=true;pasteDialog.close();
-    }catch(error){pasteStatus.textContent=error.name==='QuotaExceededError'?'Nothing was added. This browser does not have enough local storage for these copies. Free some space and try again.':`Nothing was added. ${error.message}`;pasteStatus.hidden=false;}
+    }catch(error){storageCapacity.failure();pasteStatus.textContent=error.name==='QuotaExceededError'?'Nothing was added. This browser does not have enough local storage for these copies. Free some space and try again.':`Nothing was added. ${error.message}`;pasteStatus.hidden=false;}
     finally{
         pasteBusy=false;pasteCopy.disabled=false;pasteLink.disabled=!!hierarchyClipboard.linkError(entries,portals,destination);pasteCancel.disabled=false;
         if(!pasteDialog.open){finishCrudOperation();hierarchySidebar.rows.get(hierarchySidebar.activeEntryId)?.focus({preventScroll:true});}

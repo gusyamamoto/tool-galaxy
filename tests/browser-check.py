@@ -199,6 +199,7 @@ def main():
     args.add_argument('--attachment-recovery-only', action='store_true', help='Durable attachment journal, held-operation reload, restart reconciliation, ownership, F1/F2/F3 and Restore')
     args.add_argument('--restore-model-only', action='store_true', help='Reject invalid backup models before replacement; preserve exact metadata, files and F4 journals; F3 reload')
     args.add_argument('--object-urls-only', action='store_true', help='Count live object URLs through media teardown, async races, failures, downloads, texture eviction and Restore')
+    args.add_argument('--storage-capacity-only', action='store_true', help='Advisory capacity estimates, batches, copy, unsupported API, stale results and actual quota compensation')
     args.add_argument('--restore-valid-backup', type=Path, help='Optional actual valid disk backup for --restore-model-only picker regression')
     args.add_argument('--restore-invalid-backup', type=Path, help='Optional actual helper-generated invalid disk backup paired with --restore-valid-backup')
     args.add_argument("--backup-dialog-only", action="store_true", help="Focused Backup/Restore layout, renamed-file validation, picker, download and keyboard checks")
@@ -511,6 +512,10 @@ def main():
 
         cdp.call("Page.navigate", url=page_url)
         load()
+        if options.storage_capacity_only:
+            from storage_capacity_browser import run_storage_capacity_checks
+            run_storage_capacity_checks(cdp=cdp,e=evaluate,check=check,wait_for=wait_for,add=add)
+            print(f'{count} storage capacity browser checks passed',flush=True);return
         if options.object_urls_only:
             from object_url_browser import run_object_url_checks
             run_object_url_checks(cdp=cdp,e=evaluate,check=check,wait_for=wait_for,add=add)
