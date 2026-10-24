@@ -200,6 +200,7 @@ def main():
     args.add_argument('--restore-model-only', action='store_true', help='Reject invalid backup models before replacement; preserve exact metadata, files and F4 journals; F3 reload')
     args.add_argument('--object-urls-only', action='store_true', help='Count live object URLs through media teardown, async races, failures, downloads, texture eviction and Restore')
     args.add_argument('--storage-capacity-only', action='store_true', help='Advisory capacity estimates, batches, copy, unsupported API, stale results and actual quota compensation')
+    args.add_argument('--attachment-orphans-only', action='store_true', help='Historical orphan classification, explicit cleanup, revalidation and cross-tab preservation')
     args.add_argument('--restore-valid-backup', type=Path, help='Optional actual valid disk backup for --restore-model-only picker regression')
     args.add_argument('--restore-invalid-backup', type=Path, help='Optional actual helper-generated invalid disk backup paired with --restore-valid-backup')
     args.add_argument("--backup-dialog-only", action="store_true", help="Focused Backup/Restore layout, renamed-file validation, picker, download and keyboard checks")
@@ -512,6 +513,10 @@ def main():
 
         cdp.call("Page.navigate", url=page_url)
         load()
+        if options.attachment_orphans_only:
+            from attachment_orphan_browser import run_attachment_orphan_checks
+            run_attachment_orphan_checks(cdp=cdp,cdp_class=CDP,e=evaluate,check=check,wait_for=wait_for,add=add,origin=origin)
+            print(f'{count} attachment orphan browser checks passed',flush=True);return
         if options.storage_capacity_only:
             from storage_capacity_browser import run_storage_capacity_checks
             run_storage_capacity_checks(cdp=cdp,e=evaluate,check=check,wait_for=wait_for,add=add)
@@ -732,7 +737,8 @@ def main():
             click_selector('#backup-button')
             check(evaluate("backupUI.dialog.open&&document.activeElement===backupUI.download"),'Download backup retains initial keyboard focus')
             press('Tab');check(evaluate('document.activeElement===backupUI.choose'),'Tab moves from Download to Restore')
-            press('Tab');check(evaluate('document.activeElement===backupUI.cancel'),'Tab moves from Restore to quiet Cancel')
+            press('Tab');check(evaluate("document.activeElement===document.querySelector('#backup-storage summary')"),'Tab moves from Restore to compact local-storage disclosure')
+            press('Tab');check(evaluate('document.activeElement===backupUI.cancel'),'Tab moves from storage disclosure to quiet Cancel')
             press('Tab');check(evaluate('document.activeElement===backupUI.download'),'Tab wraps within the dialog')
             press('Tab',8);check(evaluate('document.activeElement===backupUI.cancel'),'Shift+Tab wraps to Cancel')
             evaluate("window.dialogPickerClicked=false;backupUI.file.addEventListener('click',e=>{e.preventDefault();dialogPickerClicked=true},{once:true});backupUI.choose.click()")
@@ -832,6 +838,7 @@ def main():
             click_selector('#backup-button')
             check(evaluate("backupUI.dialog.open&&document.activeElement.id==='download-backup'&&document.getElementById('backup-privacy').textContent.includes('not encrypted')"),'Backup opens a quiet named dialog with download focus and honest privacy wording')
             key('Tab');check(evaluate("document.activeElement.id==='choose-restore-backup'"),'Tab wraps from Download to Restore inside Backup')
+            key('Tab');check(evaluate("document.activeElement===document.querySelector('#backup-storage summary')"),'Tab reaches the compact storage disclosure without leaving Backup')
             key('Tab');check(evaluate("document.activeElement.id==='cancel-backup'"),'Tab continues to Cancel without moving focus behind the modal')
             key('Tab');check(evaluate("document.activeElement.id==='download-backup'"),'Tab returns to Download inside the modal')
             check(workspace()==original_state,'opening Backup preserves selection, multi-selection, Content draft and camera')
@@ -2163,6 +2170,7 @@ def main():
             evaluate(f"persistence.metadata.commit=archiveSaveOriginal;const e=archivedEntries.get({json.dumps(g)}),b=physics.bounds;camera.setView({{x:(b.left+b.right)/2-e.x*.62,y:(b.top+b.bottom)/2-e.y*.62,scale:.62}},false)");view=evaluate('JSON.stringify(camera.view)')
             evaluate("window.restoreOriginal=restoreGalaxy;restoreGalaxy=async id=>{await restoreOriginal(id);physics.pause();const e=entries.get(id);window.restoreStart=e?{x:e.x,y:e.y}:null}")
             click_selector(f'[data-archived-galaxy-id="{g}"] button')
+            wait_for("typeof restoreStart!=='undefined'&&restoreStart!==null")
             evaluate('restoreGalaxy=restoreOriginal')
             check(evaluate(f"entries.has({json.dumps(owner)})&&!archivedGalaxies.has({json.dumps(g)})&&hierarchySidebar.index.roots.includes({json.dumps(g)})"),'Restore returns the canonical deep hierarchy and normal Galaxy row')
             check(evaluate(f"JSON.stringify(entries.get({json.dumps(owner)}).content)")==content and evaluate('JSON.stringify(camera.view)')==view,'Restore preserves content and camera')
@@ -2197,9 +2205,9 @@ def main():
             check(evaluate("[...document.querySelectorAll('#archived-galaxy-list button')].every(b=>b.getBoundingClientRect().height>=44)&&document.documentElement.scrollWidth===innerWidth"),'mobile Archive rows keep 44px Restore actions without horizontal overflow')
             cdp.call('Page.reload');load();wait_camera()
             check(evaluate('archivedGalaxies.size>=2&&entries.size===0'),'multiple archives and the empty active Universe survive refresh')
-            evaluate(f"const e=archivedEntries.get({json.dumps(g)}),b=physics.bounds;camera.setView({{x:(b.left+b.right)/2-e.x*.55,y:(b.top+b.bottom)/2-e.y*.55,scale:.55}},false);restoreGalaxy({json.dumps(g)});physics.pause()")
+            evaluate(f"(async()=>{{const e=archivedEntries.get({json.dumps(g)}),b=physics.bounds;camera.setView({{x:(b.left+b.right)/2-e.x*.55,y:(b.top+b.bottom)/2-e.y*.55,scale:.55}},false);await restoreGalaxy({json.dumps(g)});physics.pause()}})()")
             check(evaluate("(()=>{const r=[...archiveMotion.transitions].find(r=>r.kind==='restore');return r?.animations[0].effect.getTiming().duration===140&&Math.abs(new DOMMatrix(r.animations[0].effect.getKeyframes()[0].transform).a-.94)<.0001&&!r.layer.querySelector('.galaxy-energy-ring');})()"),'reduced restore uses a 140ms fade/scale-up without energy effects')
-            evaluate("archiveMotion.clear();[...archivedGalaxies.keys()].forEach(id=>restoreGalaxy(id));physics.pause()")
+            evaluate("(async()=>{archiveMotion.clear();for(const id of [...archivedGalaxies.keys()])await restoreGalaxy(id);physics.pause()})()")
             check(evaluate('archivedGalaxies.size===0&&archivedEntries.size===0'),'multiple archives restore independently without leftover hidden entries')
             check(evaluate(f"(async()=>!!(await attachmentStore.get({json.dumps(file_key)}))?.blob)()"),'archive/refresh/restore cycles preserve IndexedDB content')
             cdp.call('Page.reload');load();wait_camera()
