@@ -127,6 +127,23 @@ let hoveredEntryId = null, searchFocusId = null;
 let selectedNode = null;
 let nextEntryId = 1;
 let storageAvailable = true;
+let localSessionStale = false;
+const staleSessionMessage = 'Cosmifold changed in another tab. Reload this tab to continue safely.';
+persistence.metadata.subscribeStale?.(() => {
+    if(localSessionStale)return;
+    localSessionStale=true;storageAvailable=false;
+    physics.pause();
+    // Keep Backup/Help available, but stop stale graph/editor interactions.
+    document.querySelectorAll('dialog[open]').forEach(dialog=>{
+        if(!['backup-dialog','help-dialog','account-dialog'].includes(dialog.id))dialog.close();
+    });
+    document.querySelectorAll('#graph-viewport,#entry-panel,#mobile-body-actions,#universe-section,#tasks-section,#constellations-section,#archived-galaxies,#add-menu,#entry-context-menu,#first-use').forEach(element=>element.inert=true);
+    document.getElementById('add-entry-button').disabled=true;
+    reportStorageFailure(staleSessionMessage);
+    hierarchySidebar.setCollapsed(false);
+    const reload=document.getElementById('reload-local-data');reload.hidden=false;reload.focus();
+});
+document.getElementById('reload-local-data').addEventListener('click',()=>location.reload());
 let graphNeedsSave = false;
 let editingId = null;
 let contextualParentId = null;
@@ -921,7 +938,7 @@ function exitConstellation({ restorePanel = true } = {}) {
 }
 
 function reportStorageFailure(message) {
-    storageStatus.textContent = message;
+    storageStatus.textContent = localSessionStale ? staleSessionMessage : message;
     storageStatus.hidden = false;
 }
 
@@ -947,7 +964,7 @@ function saveGalaxy(){
 
 function checkpointGalaxy(){
     if(localRestoreInProgress||applicationCommandsPending||sampleMode||!storageAvailable)return;
-    try{universeRepository.checkpointLayout(getGalaxySnapshot);graphNeedsSave=false;}catch{graphNeedsSave=true;reportStorageFailure('Changes could not be saved in this browser. They may be lost on refresh.');}
+    try{if(universeRepository.checkpointLayout(getGalaxySnapshot)!==false)graphNeedsSave=false;}catch{graphNeedsSave=true;reportStorageFailure('Changes could not be saved in this browser. They may be lost on refresh.');}
 }
 
 function initializeGalaxy() {
@@ -1757,7 +1774,7 @@ function beginCrudOperation() {
 function finishCrudOperation() {
     if (dialog.open || deleteDialog.open || archiveDialog.open || portalDialog.open || pasteDialog.open || structureDialog.open || constellationWorkspace.isDialogOpen()) return;
     crudActive = false;
-    if (!document.hidden) physics.resume();
+    if (!document.hidden&&!localSessionStale) physics.resume();
 }
 
 // Publish an acknowledged command: model/derived particles -> DOM/tree ->
@@ -1952,6 +1969,7 @@ function restoreCrudFocus() {
 }
 
 function openEntryForm(entry = null, parentId = null, contextual = false, mode = "info", taskList = false) {
+    if(localSessionStale)return;
     if (deletionBusy) return;
     if (!entry && parentId && (!cosmosHierarchy.childContext(entries,parentId) || (taskList && entries.get(parentId)?.taskList===true))) return;
     creatingTaskList = !entry && taskList;
@@ -2782,7 +2800,7 @@ document.addEventListener("visibilitychange", () => {
         if (graphNeedsSave) {
             checkpointGalaxy();
         }
-    } else if (!localRestoreInProgress && !dialog.open && !deleteDialog.open && !archiveDialog.open && !portalDialog.open && !constellationWorkspace.isDialogOpen()) {
+    } else if (!localSessionStale && !localRestoreInProgress && !dialog.open && !deleteDialog.open && !archiveDialog.open && !portalDialog.open && !constellationWorkspace.isDialogOpen()) {
         physics.resume();
     }
 });

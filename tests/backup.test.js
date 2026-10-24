@@ -1,6 +1,6 @@
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm'),path=require('node:path');
 const {webcrypto,createHash}=require('node:crypto');
-const ctx=vm.createContext({URL,Blob,structuredClone,crypto:webcrypto,TextEncoder,TextDecoder,DOMException,setTimeout});
+const ctx=vm.createContext({URL,Blob,structuredClone,crypto:webcrypto,TextEncoder,TextDecoder,DOMException,setTimeout,navigator:{locks:require('./local-write-fixture').createLockManager()}});
 for(const file of ['config.js','model.js','portals.js','constellations.js','clipboard.js','persistence/local-metadata-store.js','persistence/local-preferences-store.js','persistence/memory-stores.js','persistence/composition.js','services/universe-repository.js','services/local-backup.js'])vm.runInContext(fs.readFileSync(path.join(__dirname,'..',file),'utf8'),ctx);
 const get=name=>vm.runInContext(name,ctx),backup=get('cosmifoldBackup'),repository=get('createUniverseRepository'),local=get('createLocalMetadataStore'),prefs=get('createLocalPreferencesStore'),memoryFiles=get('createMemoryFileStore'),compose=get('createPersistence');
 const plain=v=>JSON.parse(JSON.stringify(v)),hash=bytes=>createHash('sha256').update(bytes).digest('hex');

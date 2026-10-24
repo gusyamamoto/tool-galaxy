@@ -1,6 +1,6 @@
 const assert = require('node:assert/strict'), fs = require('node:fs'), vm = require('node:vm'), path = require('node:path');
 const {test} = require('node:test');
-const context = vm.createContext({Blob, structuredClone, URL});
+const context = vm.createContext({Blob, structuredClone, URL, navigator:{locks:require('./local-write-fixture').createLockManager()}});
 for (const file of ['config.js','model.js','portals.js','clipboard.js','constellations.js','persistence/local-metadata-store.js',
     'persistence/local-preferences-store.js','persistence/memory-stores.js','persistence/composition.js','services/universe-repository.js'])
     vm.runInContext(fs.readFileSync(path.join(__dirname,'..',file),'utf8'),context);

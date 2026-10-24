@@ -193,6 +193,7 @@ def main():
     args.add_argument("--staging-only", action="store_true", help="Check the prepared offline staging artifact without Auth stubs, including persistence and startup failures")
     args.add_argument("--static-hosting-only", action="store_true", help="Audit static assets, hosting headers, browser requests, CSP, refresh and origin-isolated persistence")
     args.add_argument("--awaitable-only", action="store_true", help="Deterministic pending/rejected command, draft, publication and ordering checks")
+    args.add_argument('--local-stale-only', action='store_true', help='Real two-tab local stale-write, file deletion, Reload and Backup checks')
     args.add_argument("--backup-dialog-only", action="store_true", help="Focused Backup/Restore layout, renamed-file validation, picker, download and keyboard checks")
     args.add_argument("--restore-only", action="store_true", help="Check validated local replacement, real IndexedDB rollback, reload recovery and fresh-origin migration")
     args.add_argument("--backup-only", action="store_true", help="Check complete read-only backup downloads, raw bytes/thumbnails, failure/cancel, narrow controls and Sample isolation")
@@ -420,6 +421,7 @@ def main():
             evaluate(f"""openEntryForm(null,{json.dumps(parent or '')},true);fields[0].value={json.dumps(name)};fields[1].value='Description of '+fields[0].value;
                 fields[2].value='Test';parentField.value={json.dumps(parent or '')};parentField.dispatchEvent(new Event('change'));
                 form.requestSubmit();""")
+            wait_for('!formSaveBusy')
             assert evaluate("!dialog.open"), evaluate("formError.textContent")
             assert evaluate("(()=>{const p=physics.particles.get(selectedNode.dataset.entryId),e=entries.get(p.id);return p.x===e.x&&p.y===e.y;})()"), "Add must reveal/save the actual seeded position immediately"
             return evaluate("selectedNode.dataset.entryId")
@@ -435,6 +437,7 @@ def main():
             if parent is not None:
                 evaluate(f"moveDestinationPicker.select({json.dumps(parent)})")
             evaluate("form.requestSubmit()")
+            wait_for('!formSaveBusy')
 
         def hierarchy_edge(parent, child):
             return evaluate(f"galaxyModel.buildHierarchyEdges(entries).some(c=>c.from==={json.dumps(parent)} && c.to==={json.dumps(child)} && c.kind==='hierarchy')")
@@ -494,6 +497,10 @@ def main():
 
         cdp.call("Page.navigate", url=page_url)
         load()
+        if options.local_stale_only:
+            from local_stale_browser import run_local_stale_checks
+            run_local_stale_checks(cdp=cdp,cdp_class=CDP,e=evaluate,check=check,origin=origin)
+            print(f'{count} local stale-write browser checks passed',flush=True);return
         if options.sidebar_refinement_only:
             from sidebar_refinement_browser import run_sidebar_refinement_checks
             def shot(name):

@@ -1,6 +1,6 @@
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
 const {webcrypto}=require('node:crypto');
-const ctx=vm.createContext({URL,Blob,structuredClone,crypto:webcrypto,TextEncoder,TextDecoder,DOMException,setTimeout});
+const ctx=vm.createContext({URL,Blob,structuredClone,crypto:webcrypto,TextEncoder,TextDecoder,DOMException,setTimeout,navigator:{locks:require('./local-write-fixture').createLockManager()}});
 for(const file of ['ids.js','config.js','model.js','portals.js','constellations.js','archives.js','persistence/local-metadata-store.js','persistence/local-preferences-store.js','persistence/memory-stores.js','persistence/composition.js','services/universe-repository.js','services/local-backup.js','services/local-restore.js','services/local-restore-session.js'])vm.runInContext(fs.readFileSync(file,'utf8'),ctx);
 const get=name=>vm.runInContext(name,ctx),backup=get('cosmifoldBackup'),restore=get('cosmifoldRestore');
 const plain=value=>JSON.parse(JSON.stringify(value));

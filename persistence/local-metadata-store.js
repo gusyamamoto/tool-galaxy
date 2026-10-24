@@ -1,7 +1,29 @@
 // Persistence adapter: exchange plain data with the app, never DOM elements.
 // Keep current keys, exact legacy backups and the v5 format inside this adapter.
-function createLocalMetadataStore({storage = () => globalThis.localStorage, scope = null} = {}) {
+function createLocalMetadataStore({storage = () => globalThis.localStorage, scope = null, locks = globalThis.navigator?.locks} = {}) {
     const prefix = scope == null ? "galaxy:user-data" : `galaxy:workspace:${encodeURIComponent(scope)}:user-data`;
+    // The exact persisted text is the durable snapshot identity, including legacy
+    // data. Only a successful load/write acknowledges it; Backup never rebases it.
+    const writeLock = `cosmifold-workspace-write:${JSON.stringify(scope)}`, listeners = new Set();
+    let acknowledged = false, expected = null, stale = false, writing = false;
+    const current = () => storage().getItem(prefix) ?? (scope == null ? storage().getItem('tool-galaxy:user-data') : null);
+    const remember = text => { expected = text; acknowledged = true; };
+    function staleError() {
+        const error = new Error('Cosmifold changed in another tab. Reload this tab to continue safely.');
+        error.code = 'LOCAL_SNAPSHOT_STALE';
+        if (!stale) {
+            stale = true;
+            listeners.forEach(listener => { try { listener(error); } catch { /* Observers cannot permit a stale write. */ } });
+        }
+        return error;
+    }
+    function assertCurrent() {
+        if (stale) throw staleError();
+        const text = current();
+        if (acknowledged && text !== expected) throw staleError();
+        if (!acknowledged) remember(text);
+        return text;
+    }
     function validate(data) {
         const records = data?.version === 1 ? data.tools : data?.entries;
         if (!data || ![1, 2, 3, 4, 5].includes(data.version) || !Array.isArray(records) ||
@@ -14,6 +36,24 @@ function createLocalMetadataStore({storage = () => globalThis.localStorage, scop
         }
     }
     return {
+        subscribeStale(listener) { listeners.add(listener); return () => listeners.delete(listener); },
+        async withWrite(action, {replacement = false} = {}) {
+            if (!locks?.request) {
+                const error = new Error('Safe local saving requires a current browser on HTTPS or localhost.');
+                error.code = 'LOCAL_WRITE_LOCK_UNAVAILABLE'; throw error;
+            }
+            return locks.request(writeLock, {mode:'exclusive'}, async () => {
+                if (!replacement) assertCurrent();
+                writing = true;
+                try { return await action(); } finally { writing = false; }
+            });
+        },
+        checkpoint(snapshot) {
+            assertCurrent();
+            // pagehide cannot await a new Web Lock. Never bypass serialization.
+            if (!writing) return false;
+            this.save(snapshot); return true;
+        },
         key: prefix,
         legacyKey: scope == null ? "tool-galaxy:user-data" : prefix,
         backupKey: prefix + ":pre-hierarchy",
@@ -27,10 +67,12 @@ function createLocalMetadataStore({storage = () => globalThis.localStorage, scop
         replaceRaw(text) {
             const disk=storage();if(text===null)disk.removeItem(this.key);else disk.setItem(this.key,text);
             if(this.legacyKey!==this.key)disk.removeItem(this.legacyKey);
+            remember(current());
         },
         recoverRaw(previous) {
             const disk=storage(),put=(key,text)=>text===null?disk.removeItem(key):disk.setItem(key,text);
             put(this.key,previous.current);if(this.legacyKey!==this.key)put(this.legacyKey,previous.legacy);
+            remember(current());
         },
 
         readForBackup() {
@@ -44,11 +86,13 @@ function createLocalMetadataStore({storage = () => globalThis.localStorage, scop
             const localStorage = storage();
             const stored = localStorage.getItem(this.key) ?? localStorage.getItem(this.legacyKey);
             if (stored === null) {
+                if (!acknowledged) remember(null);
                 return null;
             }
 
             const data = JSON.parse(stored);
             validate(data);
+            if (!acknowledged) remember(stored);
             const records = data.version === 1 ? data.tools : data.entries;
             // Version 3 keeps all entries (including built-in edits/positions) together.
             // Partial legacy built-in records are merged with defaults by the application.
@@ -69,7 +113,7 @@ function createLocalMetadataStore({storage = () => globalThis.localStorage, scop
         async commit(snapshot,intent) { this.save(snapshot,intent); },
         save(snapshot) {
             const localStorage = storage();
-            const previous = localStorage.getItem(this.key) ?? localStorage.getItem(this.legacyKey);
+            const previous = assertCurrent();
             const previousData = previous === null ? null : JSON.parse(previous);
             const previousVersion = previousData?.version ?? null;
             if (previousVersion !== null && ![1, 2, 3, 4, 5].includes(previousVersion)) {
@@ -86,13 +130,15 @@ function createLocalMetadataStore({storage = () => globalThis.localStorage, scop
             if (previousVersion !== null && previousVersion < 5 && localStorage.getItem(this.treeBackupKey) === null) {
                 localStorage.setItem(this.treeBackupKey, previous);
             }
-            localStorage.setItem(this.key, JSON.stringify({
+            const text = JSON.stringify({
                 // Empty legacy slot keeps older version-5 readers able to open the snapshot.
                 version: 5, entries: snapshot.entries, connections: [], layout: snapshot.layout || [],
                 ...(snapshot.portals != null ? { portals: snapshot.portals } : {}),
                 ...(snapshot.constellations != null ? { constellations: snapshot.constellations } : {}),
                 ...(snapshot.archivedGalaxies != null ? { archivedGalaxies: snapshot.archivedGalaxies } : {})
-            }));
+            });
+            localStorage.setItem(this.key, text);
+            remember(text);
         },
         clear() {
             const localStorage = storage();

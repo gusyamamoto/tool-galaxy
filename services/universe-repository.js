@@ -91,7 +91,14 @@ function createUniverseRepository({persistence, canWrite = () => true}) {
         },
         async save(snapshot, intent = {type: 'items.changed'}) { await commit(read(snapshot),intent); },
         async saveLayout(snapshot){await commit(read(snapshot),{type:'layout.saved'});},
-        checkpointLayout(snapshot){if(pending||restoring)return;write(read(snapshot),{type:'layout.checkpoint'});},
+        checkpointLayout(snapshot){
+            if(pending||restoring)return false;
+            if(persistence.metadata.checkpoint){
+                if(!canWrite())return false;
+                return persistence.metadata.checkpoint(read(snapshot));
+            }
+            write(read(snapshot),{type:'layout.checkpoint'});return true;
+        },
         subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); },
         async updateContent(snapshot, id, value, recovery = null) {
             snapshot=read(snapshot);
@@ -249,7 +256,13 @@ function createUniverseRepository({persistence, canWrite = () => true}) {
         publish({type:'attachment.removed',ids:[id]});return updated;
     };
     for(const name of ['save','saveLayout','updateContent','updateLocation','updateTask','replaceConstellations','replacePlacements','moveEntries','duplicateStructure','archive','restore','copyEntries','deleteSubtree','addAttachment','removeAttachment','replaceLocalBackup','recoverPendingRestore']){
-        const operation=repository[name];repository[name]=(...args)=>enqueue(()=>operation.apply(repository,args));
+        const operation=repository[name];repository[name]=(...args)=>enqueue(()=>{
+            const action=()=>operation.apply(repository,args);
+            // Keep file callbacks and abort compensation under the SAME write
+            // lock. Restore retains its stronger lifetime workspace exclusion.
+            return persistence.metadata.withWrite ? persistence.metadata.withWrite(action,
+                {replacement:['replaceLocalBackup','recoverPendingRestore'].includes(name)}) : action();
+        });
     }
     repository.whenIdle=()=>tail;
     return repository;
