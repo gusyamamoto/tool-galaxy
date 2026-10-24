@@ -39,6 +39,8 @@ async function altered(blob,mutate){
 
 test('Export -> Restore -> Export preserves rich current metadata, exact IDs, originals and thumbnails',async()=>{
  const a=await source(),b=setup({version:5,entries:[{id:'unrelated',name:'Other',parentId:null}],layout:[],connections:[]});
+ a.data.entries.push({id:'unchecked',name:'Pack tomorrow',parentId:'a-6',completed:false});
+ a.state.disk.setItem(a.state.metadata.key,JSON.stringify(a.data));a.result=await backup.create(a.state.repo);
  await b.files.save({key:'old',entryId:'unrelated',blob:new Blob(['Old file'])});await b.files.save({key:'orphan',entryId:'missing',blob:new Blob(['Debris'])});
  b.disk.setItem(b.metadata.backupKey,'Internal history stays');b.disk.setItem(b.metadata.legacyKey,'Obsolete fallback');
  const handle=await restore.inspect(a.result.blob),before=await contents(b);assert.deepEqual(await contents(b),before,'validation makes no writes');
@@ -53,6 +55,8 @@ test('Export -> Restore -> Export preserves rich current metadata, exact IDs, or
  }
  const again=await backup.create(b.repo);delete again.manifest.exportedAt;const original=plain(a.result.manifest);delete original.exportedAt;assert.deepEqual(plain(again.manifest),original);
  assert.deepEqual(plain(b.repo.load().entries),a.data.entries);
+ get('galaxyModel').validateStoredSnapshot(JSON.parse(b.metadata.readForBackup().metadataText));
+ assert.equal(b.repo.load().entries[6].taskList,true);assert.equal(b.repo.load().entries[7].completed,true);
 });
 
 test('fresh, empty-snapshot and memory persistence restore cleanly',async()=>{
@@ -74,7 +78,14 @@ test('invalid identity, unsupported versions, corruption and truncation are reje
 });
 
 const invalid=[
+ ['nested Task Lists',m=>m.metadata.entries[7].taskList=true],
+ ['task with child Item',m=>m.metadata.entries[4].taskList=true],
+ ['Task List placed below a task',m=>{m.metadata.entries[5].taskList=true;m.metadata.entries[7].taskList=true;}],
+ ['malformed completed',m=>m.metadata.entries[7].completed='true'],
+ ['malformed Task List flag',m=>m.metadata.entries[6].taskList=1],
+ ['false task flag cannot override parent semantics',m=>{m.metadata.entries[5].taskList=true;m.metadata.entries[6].taskList=false;}],
  ['duplicate IDs',m=>m.metadata.entries[1].id='a-0'],
+ ['self parent',m=>m.metadata.entries[1].parentId='a-1'],
  ['missing parent',m=>m.metadata.entries[1].parentId='missing'],
  ['hierarchy cycle',m=>m.metadata.entries[0].parentId='a-7'],
  ['invalid name',m=>m.metadata.entries[1].name=''],
@@ -82,12 +93,23 @@ const invalid=[
  ['invalid Location',m=>m.metadata.entries[1].location.text=''],
  ['invalid membership',m=>m.metadata.constellations[0].memberEntryIds.push('missing')],
  ['duplicate membership',m=>m.metadata.constellations[0].memberEntryIds.push('a-2')],
+ ['malformed membership',m=>m.metadata.constellations[0].memberEntryIds.push({id:'a-1'})],
+ ['invalid Constellation timestamp hidden by normalization',m=>m.metadata.constellations[0].updatedAt='invalid date'],
+ ['Constellation ID collides with Item',m=>m.metadata.constellations[0].id='a-1'],
+ ['duplicate Constellation ID',m=>m.metadata.constellations.push({...m.metadata.constellations[0]})],
  ['invalid linked item',m=>m.metadata.portals[0].targetEntryId='missing'],
  ['duplicate placement',m=>m.metadata.portals.push({...m.metadata.portals[0],id:'other-link'})],
  ['invalid archive',m=>m.metadata.archivedGalaxies[0].galaxyId='a-3'],
+ ['duplicate archive',m=>m.metadata.archivedGalaxies.push({...m.metadata.archivedGalaxies[0]})],
  ['invalid expanded archive item',m=>m.metadata.archivedGalaxies[0].expandedIds.push('missing')],
  ['invalid layout',m=>m.metadata.layout[0].parentId='missing'],
  ['attachment owner mismatch',m=>m.attachments[0].record.entryId='a-0'],
+ ['attachment metadata owner mismatch',m=>m.metadata.entries[3].content.attachments[0].entryId='a-0'],
+ ['malformed attachment key',m=>m.metadata.entries[3].content.attachments[0].storageKey=' '],
+ ['malformed attachment shape',m=>delete m.metadata.entries[3].content.attachments[0].kind],
+ ['duplicate attachment ID across Items',m=>m.metadata.entries[5].content.attachments[0].id=m.metadata.entries[3].content.attachments[0].id],
+ ['duplicate attachment ownership',m=>m.metadata.entries[5].content.attachments[0].storageKey=m.metadata.entries[3].content.attachments[0].storageKey],
+ ['unreferenced backup file',m=>m.metadata.entries[5].content.attachments=[]],
  ['missing original',m=>m.attachments.pop()],
  ['duplicate payload record',m=>m.attachments.push(m.attachments[0])],
  ['missing thumbnail',m=>m.attachments[0].thumbnail=null],
@@ -95,6 +117,10 @@ const invalid=[
  ['negative size',m=>m.attachments[0].original.size=-1],
  ['wrong count',m=>m.counts.entries++],
  ['raw and parsed metadata mismatch',m=>m.metadataText='{}'],
+ ['wrong metadata type',m=>m.metadata=[]],
+ ['missing entries section',m=>delete m.metadata.entries],
+ ['malformed backup version',m=>m.backupVersion='1'],
+ ['malformed storage version',m=>m.storageVersion=null],
  ['invalid preferences',m=>{m.preferences=[];m.preferencesText='[]';}],
  ['invalid Tasks preference',m=>{m.preferences={tasksCollapsed:'yes'};m.preferencesText=JSON.stringify(m.preferences);}],
  ['invalid Active preference',m=>{m.preferences={tasksActiveCollapsed:'yes'};m.preferencesText=JSON.stringify(m.preferences);}],
@@ -106,7 +132,59 @@ const invalid=[
 ];
 for(const [name,mutate] of invalid)test('rejects '+name+' before any persistence API is called',async()=>{
  const a=await source(),bad=await altered(a.result.blob,m=>{mutate(m);if(!name.includes('raw and parsed'))m.metadataText=JSON.stringify(m.metadata);});
- await assert.rejects(restore.inspect(bad));assert.equal({}.polluted,undefined);
+ const b=(await source()).state,before=await contents(b);let writes=0;
+ b.repo.replaceLocalBackup=async()=>{writes++;assert.fail('Invalid candidate reached replacement');};
+ await assert.rejects((async()=>restore.restore(await restore.inspect(bad),b.repo))());
+ assert.equal(writes,0);assert.deepEqual(await contents(b),before);assert.equal({}.polluted,undefined);
+ assert.equal(b.repo.load().entries.length,8,'existing workspace remains readable');
+});
+
+test('raw Constellation timestamp is rejected before the old normalizer can drop it',async()=>{
+ const a=await source(),model=get('galaxyModel'),collections=get('galaxyConstellations');
+ a.data.constellations[0].updatedAt='invalid date';
+ const normalized=collections.normalizeAll(a.data.constellations,new Map(a.data.entries.map(e=>[e.id,e])));
+ assert.equal(normalized.length,1);assert.equal(Object.hasOwn(normalized[0],'updatedAt'),false,'the old length/member/name checks missed this');
+ assert.throws(()=>model.validateStoredSnapshot(a.data),/invalid Constellation/);
+ await assert.rejects(restore.inspect(await altered(a.result.blob,m=>{m.metadata=a.data;m.metadataText=JSON.stringify(a.data);})),
+  error=>/saved structure is invalid/.test(error.message)&&/invalid Constellation/.test(error.cause.message));
+});
+
+test('oldest supported portable schema keeps optional defaults, arbitrary depths and derived roles',async()=>{
+ // Portable Backup began at v1/storage-v5. Local v1-v4 migrations are a separate format.
+ const data=rich();delete data.constellations;delete data.portals;delete data.archivedGalaxies;
+ data.entries.forEach(e=>{delete e.content;delete e.location;delete e.createdAt;e.role='disposable';e.depth=-42;});
+ data.entries[3].completed=true;data.entries[6].taskList=true;data.entries[7].completed=false;
+ const a=setup(data),b=setup(),exported=await backup.create(a.repo);
+ assert.equal(exported.manifest.backupVersion,1);assert.equal(exported.manifest.storageVersion,5);
+ await restore.restore(await restore.inspect(exported.blob),b.repo);
+ assert.deepEqual(JSON.parse(b.metadata.readForBackup().metadataText),data);
+ assert.doesNotThrow(()=>b.repo.load());
+ assert.equal(b.repo.load().entries[3].completed,true,'ordinary Item moved out of a Task List may retain completion');
+});
+
+test('future header/manifest versions give a clear newer-version error without guessing',async()=>{
+ const a=await source();
+ const bytes=new Uint8Array(await a.result.blob.arrayBuffer());new DataView(bytes.buffer).setUint32(17,2,true);
+ for(const blob of [new Blob([bytes]),await altered(a.result.blob,m=>m.backupVersion=2),await altered(a.result.blob,m=>m.storageVersion=6)])
+  await assert.rejects(restore.inspect(blob),/created by a newer version of Cosmifold/);
+ for(const older of [0,4])await assert.rejects(restore.inspect(await altered(a.result.blob,m=>m.storageVersion=older)));
+});
+
+test('valid-checksum invalid JSON is rejected before a candidate can be staged',async()=>{
+ const a=await source(),bytes=new Uint8Array(await a.result.blob.arrayBuffer()),view=new DataView(bytes.buffer),length=view.getUint32(21,true);
+ bytes[backup.headerBytes]=33;bytes.set(new Uint8Array(await webcrypto.subtle.digest('SHA-256',bytes.slice(backup.headerBytes,backup.headerBytes+length))),25);
+ await assert.rejects(restore.inspect(new Blob([bytes])));
+});
+
+test('F3 recovery preserves the corrupt raw snapshot on model rejection and accepts explicit valid Restore',async()=>{
+ const a=await source(),b=setup(),raw=' {"version":5,"entries":[{"id":"lost","name":"Keep","parentId":"missing"}],"layout":[]} ';
+ b.disk.setItem(b.metadata.key,raw);await b.files.save({key:'preserved',entryId:'lost',blob:new Blob(['original bytes'])});
+ assert.throws(()=>b.repo.load(),{code:'LOCAL_DATA_STRUCTURE'});const before=await contents(b);
+ const bad=await altered(a.result.blob,m=>{m.metadata.entries[7].taskList=true;m.metadataText=JSON.stringify(m.metadata);});
+ await assert.rejects(restore.inspect(bad),/saved structure is invalid/);assert.deepEqual(await contents(b),before);
+ await assert.rejects(b.repo.save({entries:[],layout:[]}),{code:'LOCAL_DATA_STRUCTURE'});
+ await restore.restore(await restore.inspect(a.result.blob),b.repo);assert.doesNotThrow(()=>b.repo.load());
+ assert.equal(b.metadata.readForBackup().metadataText,a.state.metadata.readForBackup().metadataText);
 });
 
 test('limits are checked before allocating supplied lengths; cancellation is read-only',async()=>{
