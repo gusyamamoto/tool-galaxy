@@ -46,8 +46,9 @@ function createPanelItemMenu(actions, label, root) {
 
 // Content presentation over canonical entry content and a replaceable file store.
 class EntryContentInspector {
-    constructor({ store, getEntry, save, saveLocation, rollback, onAction, onLayout, motion=null, imageViewer, addAttachment,removeAttachment }) {
-        Object.assign(this, { store, getEntry, save, saveLocation, rollback, onAction, onLayout, motion, imageViewer,addAttachment,removeAttachment });
+    constructor({ store, getEntry, save, saveLocation, rollback, onAction, onLayout, motion=null, imageViewer, addAttachment,removeAttachment,
+        notifyFileFailure=()=>{}, isSessionStale=()=>false }) {
+        Object.assign(this, { store, getEntry, save, saveLocation, rollback, onAction, onLayout, motion, imageViewer,addAttachment,removeAttachment,notifyFileFailure,isSessionStale });
         this.root = document.getElementById("panel-rich-content");
         this.notes = document.getElementById("content-notes");
         this.notesForm = document.getElementById("content-notes-form");
@@ -171,6 +172,7 @@ class EntryContentInspector {
     }
     content(id = this.entryId) { return this.getEntry(id)?.content || galaxyModel.emptyContent(); }
     clearMessage() {
+        this.inlineFileFailure=null;
         clearTimeout(this.statusTimer);this.status.textContent='';this.status.hidden=true;this.onLayout();
     }
     message(text, error = false) {
@@ -182,7 +184,7 @@ class EntryContentInspector {
         });
         if (!error) this.statusTimer = setTimeout(() => { this.status.hidden = true; this.onLayout(); }, 4000);
     }
-    error(error) {
+    error(error, prefix='') {
         const quota = error?.name === "QuotaExceededError" || error?.cause?.name === "QuotaExceededError";
         const messages = {
             NotReadableError: 'This file could not be read. Download or save a copy onto this device, then choose it again.',
@@ -190,9 +192,11 @@ class EntryContentInspector {
             SecurityError: 'This browser is blocking access to the file or local storage. Allow site storage or try a regular browser tab.',
             DataCloneError: 'This file could not be saved. Download or save a copy onto this device, then choose it again.'
         };
-        this.message(quota ? "There isn’t enough local browser storage for this attachment. Free some space or choose a smaller file or video and try again." : messages[error?.name] || messages[error?.cause?.name] || error?.message || "This content could not be saved.", true);
+        const detail=quota ? "There isn’t enough local browser storage for this attachment. Free some space or choose a smaller file or video and try again." : messages[error?.name] || messages[error?.cause?.name] || error?.message || "This content could not be saved.";
+        this.message(prefix ? `${prefix} ${detail}` : detail, true);
     }
     select(entry, visible) {
+        this.promoteFileFailure();
         clearTimeout(this.statusTimer);
         this.entryId = entry?.id || null; this.visible = visible;
         this.linkForm.hidden = this.notesForm.hidden = this.locationForm.hidden = true; this.status.hidden = true;
@@ -206,7 +210,7 @@ class EntryContentInspector {
         if(draft?.bookmark){document.getElementById('content-link-url').value=draft.bookmark.value;document.getElementById('content-link-title').value=draft.bookmark.title;this.editingLinkId=draft.bookmark.editingId;this.linkForm.hidden=false;}
         this.renderNotes(); this.renderLists(); this.renderLocation(); this.busy();
     }
-    hide() { this.visible = false; clearTimeout(this.statusTimer); this.clearPreviews(); }
+    hide() { this.promoteFileFailure(); this.visible = false; clearTimeout(this.statusTimer); this.clearPreviews(); }
     render() { if (this.entryId) { this.renderLists(); this.renderLocation(); this.busy(); } }
     setupLocation() {
         this.locationForm=document.getElementById('content-location-form');
@@ -275,11 +279,32 @@ class EntryContentInspector {
         try{return await operation();}finally{this.jobs.delete(id);this.busy();}
     }
     hasJobs(ids) { return [...ids].some(id => this.jobs.get(id)); }
-    async job(id, operation) {
+    promoteFileFailure() {
+        if(!this.inlineFileFailure)return;
+        if(!this.isSessionStale())this.notifyFileFailure(this.inlineFileFailure);
+        this.inlineFileFailure=null;this.status.hidden=true;
+    }
+    fileFailureText(context,error) {
+        const file=context.filename ? `“${context.filename}”` : 'the file';
+        const item=context.itemName ? `“${context.itemName}”` : 'the original Item';
+        const action=context.operation==='remove' ? `remove ${file} from` : `add ${file} to`;
+        const quota=error?.name==='QuotaExceededError'||error?.cause?.name==='QuotaExceededError';
+        return `Couldn’t ${action} ${item}.${quota?' Browser storage is full. Free some space and try again.':''}`;
+    }
+    async job(id, operation, details={}) {
         if (this.jobs.get(id)) { this.message("Wait for the current file action to finish.", true); return; }
+        const context={itemId:id,itemName:this.getEntry(id)?.name,operation:'add',...details};
         this.onAction(); this.jobs.set(id, 1); this.busy();
-        try { await operation(); if (id === this.entryId) { this.renderLists(); this.clearMessage(); } }
-        catch (error) { if (id === this.entryId) { this.renderLists(); this.error(error); } }
+        try { await operation(context); if (id === this.entryId) { this.renderLists(); this.clearMessage(); } }
+        catch (error) {
+            // F1 owns stale-session feedback and its Reload action.
+            if(!this.isSessionStale()&&error?.code!=='LOCAL_SNAPSHOT_STALE'&&error?.cause?.code!=='LOCAL_SNAPSHOT_STALE') {
+                const text=this.fileFailureText(context,error);
+                if(id===this.entryId&&this.visible&&!document.querySelector('dialog[open]')) {
+                    this.renderLists();this.error(error,this.fileFailureText(context));this.inlineFileFailure=text;
+                } else this.notifyFileFailure(text);
+            }
+        }
         finally { this.jobs.delete(id); this.busy(); }
     }
     focusEditor(input) {
@@ -458,7 +483,7 @@ class EntryContentInspector {
                 const id = metadata.entryId;
                 this.job(id, async () => {
                     await this.removeAttachment(id,metadata.storageKey);
-                });
+                }, {operation:'remove',filename:metadata.filename});
             }, `Remove attachment ${metadata.filename}`));
             if (isMedia) {
                 item.append(preview, this.itemMenu(actions, metadata.filename)); media.append(item);
@@ -512,8 +537,9 @@ class EntryContentInspector {
         this.onLayout();
     }
     upload(files, id = this.entryId) {
-        return this.job(id, async () => {
+        return this.job(id, async context => {
             for (const file of files) {
+                context.filename=file.name;
                 const { metadata, record } = await galaxyAttachmentFiles.prepare(file,id);
                 await this.addAttachment(id,record,metadata);
             }

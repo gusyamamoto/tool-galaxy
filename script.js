@@ -129,9 +129,28 @@ let nextEntryId = 1;
 let storageAvailable = true;
 let localSessionStale = false;
 const staleSessionMessage = 'Cosmifold changed in another tab. Reload this tab to continue safely.';
+const fileFailure=document.getElementById('file-failure');
+document.getElementById('dismiss-file-failure').addEventListener('click',()=>{fileFailure.hidden=true;});
+function placeFileFailure() {
+    // Native previews occupy the top layer; keep their notification inside it.
+    const host=[...document.querySelectorAll('dialog[open]')].at(-1)||document.body;
+    if(fileFailure.parentElement!==host)host.append(fileFailure);
+}
+document.addEventListener('toggle',event=>{
+    if(event.target.tagName!=='DIALOG')return;
+    if(event.target.open)contentInspector.promoteFileFailure();
+    if(!fileFailure.hidden)placeFileFailure();
+},true);
+function notifyFileFailure(text) {
+    if(localSessionStale)return;
+    placeFileFailure();
+    fileFailure.hidden=false;
+    document.getElementById('file-failure-message').textContent=text;
+}
 persistence.metadata.subscribeStale?.(() => {
     if(localSessionStale)return;
     localSessionStale=true;storageAvailable=false;
+    fileFailure.hidden=true;
     physics.pause();
     // Keep Backup/Help available, but stop stale graph/editor interactions.
     document.querySelectorAll('dialog[open]').forEach(dialog=>{
@@ -708,6 +727,7 @@ const motion = new CosmosMotion();
 const imageViewer = new CosmifoldImageViewer({store:attachmentStore,getEntry:id=>entries.get(id)});
 const contentInspector = new EntryContentInspector({ store: attachmentStore, motion, getEntry: id => entries.get(id),
     imageViewer,
+    notifyFileFailure,isSessionStale:()=>localSessionStale,
     save: saveEntryContent, saveLocation:saveEntryLocation, addAttachment:addEntryAttachment,removeAttachment:removeEntryAttachment,
     onAction() { cancelPendingBodyFocus();autoFitPending = false; keyboardNavigation = false; camera.stopAnimation(); },
     onLayout() {

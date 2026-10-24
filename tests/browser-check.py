@@ -194,6 +194,7 @@ def main():
     args.add_argument("--static-hosting-only", action="store_true", help="Audit static assets, hosting headers, browser requests, CSP, refresh and origin-isolated persistence")
     args.add_argument("--awaitable-only", action="store_true", help="Deterministic pending/rejected command, draft, publication and ordering checks")
     args.add_argument('--local-stale-only', action='store_true', help='Real two-tab local stale-write, file deletion, Reload and Backup checks')
+    args.add_argument('--background-files-only', action='store_true', help='Deferred attachment failures, persistent desktop/mobile feedback, IndexedDB rollback and stale Reload priority')
     args.add_argument("--backup-dialog-only", action="store_true", help="Focused Backup/Restore layout, renamed-file validation, picker, download and keyboard checks")
     args.add_argument("--restore-only", action="store_true", help="Check validated local replacement, real IndexedDB rollback, reload recovery and fresh-origin migration")
     args.add_argument("--backup-only", action="store_true", help="Check complete read-only backup downloads, raw bytes/thumbnails, failure/cancel, narrow controls and Sample isolation")
@@ -497,6 +498,10 @@ def main():
 
         cdp.call("Page.navigate", url=page_url)
         load()
+        if options.background_files_only:
+            from background_file_browser import run_background_file_checks
+            run_background_file_checks(cdp=cdp,e=evaluate,check=check,wait_for=wait_for,add=add)
+            print(f'{count} background file failure browser checks passed',flush=True);return
         if options.local_stale_only:
             from local_stale_browser import run_local_stale_checks
             run_local_stale_checks(cdp=cdp,cdp_class=CDP,e=evaluate,check=check,origin=origin)
@@ -4760,15 +4765,19 @@ def main():
             check(evaluate(f"entries.get({json.dumps(owner)}).content.notes.text===''") ,'existing notes can be cleared completely')
             evaluate(f"contentInspector.notes.value={json.dumps(note)};document.getElementById('content-notes-form').requestSubmit()")
             def link(url,title=''):
+                wait_for('contentInspector.jobs.size===0')
                 evaluate(f"contentInspector.editLink();document.getElementById('content-link-url').value={json.dumps(url)};document.getElementById('content-link-title').value={json.dumps(title)};contentInspector.linkForm.requestSubmit()")
+                wait_for('contentInspector.jobs.size===0')
             link('https://example.com/recipe','Recipe');link('https://example.org/reference')
             check(evaluate(f"entries.get({json.dumps(owner)}).content.links.length===2 && [...document.querySelectorAll('#content-links a')].every(a=>a.target==='_blank'&&a.rel.includes('noopener'))"),'multiple readable links have stable IDs and safe new-tab actions')
             link_id=evaluate(f"entries.get({json.dumps(owner)}).content.links[0].id")
             evaluate("contentInspector.editLink(contentInspector.content().links[0]);document.getElementById('content-link-title').value='Updated recipe';contentInspector.linkForm.requestSubmit()")
+            wait_for('contentInspector.jobs.size===0')
             check(evaluate(f"entries.get({json.dumps(owner)}).content.links[0].id==={json.dumps(link_id)} && contentInspector.content().links[0].title==='Updated recipe'"),'link editing retains its canonical ID')
             link('javascript:alert(1)')
             check(evaluate("contentInspector.content().links.length===2 && contentInspector.status.dataset.error==='true'"),'unsafe URL schemes are rejected before saving')
             evaluate("contentInspector.linkForm.hidden=true;document.querySelectorAll('#content-links .content-row-actions')[1].lastElementChild.click()")
+            wait_for('contentInspector.jobs.size===0')
             check(evaluate('contentInspector.content().links.length===1'),'link removal removes only its own content record')
             stable(before,'link add/edit/remove leave camera state unchanged')
             fixtures=profile/'attachment-fixtures';fixtures.mkdir()
