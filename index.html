@@ -265,6 +265,20 @@
         <p id="archive-feedback" role="status" aria-live="polite" hidden></p>
     </main>
 
+    <section id="local-data-recovery" aria-labelledby="local-data-recovery-title" hidden>
+        <div>
+            <h1 id="local-data-recovery-title" tabindex="-1">Your saved data needs attention</h1>
+            <p>Cosmifold found a problem with your saved local data. Your original data has not been changed.</p>
+            <p>Download the preserved data for recovery, or restore a backup. The recovery download contains saved metadata, not attachment files, and is not a normal Cosmifold Backup.</p>
+            <div class="recovery-actions">
+                <button id="download-recovery-data" type="button">Download preserved data</button>
+                <button id="restore-recovery-backup" type="button">Restore from Backup</button>
+                <button id="reload-recovery-data" type="button">Reload</button>
+            </div>
+            <p id="recovery-status" role="status" hidden></p>
+        </div>
+    </section>
+
     <div id="file-failure" hidden>
         <p id="file-failure-message" role="alert" aria-atomic="true"></p>
         <button id="dismiss-file-failure" type="button" aria-label="Dismiss file error">Dismiss</button>

@@ -11,8 +11,8 @@ function fixture(){return {entries:[
  {id:'b',name:'Restaurants in Mexico',parentId:'a',x:160,y:470},
  {id:'c',name:'Stay',parentId:'g',x:155,y:465},
  {id:'other',name:'Elsewhere',parentId:null,x:600,y:700}
- ],portals:[{id:'internal',parentEntryId:'a',targetEntryId:'b'},{id:'external',parentEntryId:'a',targetEntryId:'other'}],
- constellations:[{id:'favorites',name:'Favorites',memberEntryIds:['g','b']}],layout:[{id:'a',parentId:'g',angle:2,radius:70}],
+ ],portals:[{id:'internal',parentEntryId:'a',targetEntryId:'b',createdAt:'2026-01-01T00:00:00Z'},{id:'external',parentEntryId:'a',targetEntryId:'other',createdAt:'2026-01-01T00:00:00Z'}],
+ constellations:[{id:'favorites',name:'Favorites',memberEntryIds:['g','b'],createdAt:'2026-01-01T00:00:00Z'}],layout:[{id:'a',parentId:'g',angle:2,radius:70}],
  archivedGalaxies:[{galaxyId:'g',archivedAt:'2026-01-01T00:00:00Z'}]};}
 function repository(source){const meta=metaFactory(source);return {meta,repo:repoFactory({persistence:{metadata:meta,files:forbiddenFiles}})};}
 

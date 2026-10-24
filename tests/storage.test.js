@@ -2,11 +2,11 @@ const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('nod
 const {test}=require('node:test');
 const source=fs.readFileSync(path.join(__dirname,'..','persistence/local-metadata-store.js'),'utf8'),key='galaxy:user-data',oldKey='tool-galaxy:user-data';
 const entry={id:'entry',name:'Name',description:'',parentId:null,x:250,y:300,appearance:{archetype:'ringed',future:'keep'}};
-const reference={id:'portal:a',targetEntryId:'entry',parentEntryId:'parent',createdAt:'2026-01-01T00:00:00Z'};
+const reference={id:'portal:a',targetEntryId:'entry',parentEntryId:'entry',createdAt:'2026-01-01T00:00:00Z'};
 const plain=v=>JSON.parse(JSON.stringify(v));
 function make(records=[]){
     const data=new Map(records),localStorage={getItem:key=>data.get(key)??null,setItem:(key,value)=>data.set(key,value)};
-    const context=vm.createContext({localStorage});vm.runInContext(source,context);
+    const context=vm.createContext({localStorage,URL});vm.runInContext(fs.readFileSync(path.join(__dirname,'..','model.js'),'utf8'),context);vm.runInContext(source,context);
     return {data,localStorage,adapter:vm.runInContext('createLocalMetadataStore()',context)};
 }
 test('empty storage has no snapshot',()=>assert.equal(make().adapter.load(),null));

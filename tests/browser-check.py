@@ -195,6 +195,7 @@ def main():
     args.add_argument("--awaitable-only", action="store_true", help="Deterministic pending/rejected command, draft, publication and ordering checks")
     args.add_argument('--local-stale-only', action='store_true', help='Real two-tab local stale-write, file deletion, Reload and Backup checks')
     args.add_argument('--background-files-only', action='store_true', help='Deferred attachment failures, persistent desktop/mobile feedback, IndexedDB rollback and stale Reload priority')
+    args.add_argument('--corrupt-data-only', action='store_true', help='Preserved corrupt snapshots, recovery download/Restore, onboarding, migrations and two-tab safety')
     args.add_argument("--backup-dialog-only", action="store_true", help="Focused Backup/Restore layout, renamed-file validation, picker, download and keyboard checks")
     args.add_argument("--restore-only", action="store_true", help="Check validated local replacement, real IndexedDB rollback, reload recovery and fresh-origin migration")
     args.add_argument("--backup-only", action="store_true", help="Check complete read-only backup downloads, raw bytes/thumbnails, failure/cancel, narrow controls and Sample isolation")
@@ -460,6 +461,8 @@ def main():
                 mouse('mouseMoved',**point)
             mouse('mousePressed',**point,button=button,clickCount=1)
             mouse('mouseReleased',**point,button=button,clickCount=1)
+            if options.constellations_only:
+                wait_for('applicationCommandsPending===0&&!constellationWorkspace.savingName&&!constellationWorkspace.savingPicker&&!constellationWorkspace.savingDelete')
 
         def drag_to(entry_id, world_x, world_y, settle_timeout=25):
             evaluate(f"focusEntry({json.dumps(entry_id)})")
@@ -498,6 +501,10 @@ def main():
 
         cdp.call("Page.navigate", url=page_url)
         load()
+        if options.corrupt_data_only:
+            from corrupt_data_browser import run_corrupt_data_checks
+            run_corrupt_data_checks(cdp=cdp,cdp_class=CDP,e=evaluate,check=check,wait_for=wait_for,origin=origin)
+            print(f'{count} corrupt local data browser checks passed',flush=True);return
         if options.background_files_only:
             from background_file_browser import run_background_file_checks
             run_background_file_checks(cdp=cdp,e=evaluate,check=check,wait_for=wait_for,add=add)
@@ -4062,6 +4069,7 @@ def main():
                     (screenshot_dir/(name+'.png')).write_bytes(base64.b64decode(result['data']))
             def create_collection(name):
                 evaluate(f"document.getElementById('new-constellation-button').click();document.getElementById('constellation-name').value={json.dumps(name)};document.getElementById('constellation-name-form').requestSubmit();physics.pause()")
+                wait_for('!constellationWorkspace.nameDialog.open')
                 return evaluate('[...constellations.keys()].at(-1)')
             def member(collection,entry):
                 evaluate(f"constellationWorkspace.setMember({json.dumps(collection)},{json.dumps(entry)},true)")
@@ -4081,8 +4089,9 @@ def main():
             evaluate("document.getElementById('constellation-name').value='Favorites'")
             cdp.call('Input.dispatchKeyEvent',type='keyDown',key='Enter',code='Enter',windowsVirtualKeyCode=13,text='\r')
             cdp.call('Input.dispatchKeyEvent',type='keyUp',key='Enter',code='Enter',windowsVirtualKeyCode=13)
+            wait_for('!constellationWorkspace.nameDialog.open')
             check(evaluate("!constellationWorkspace.nameDialog.open"), 'Enter submits collection creation')
-            wait_for('!constellationWorkspace.nameDialog.open');evaluate('physics.pause()')
+            evaluate('physics.pause()')
             check(evaluate("constellationWorkspace.list.hidden&&document.getElementById('constellations-toggle').getAttribute('aria-expanded')==='false'"),'first collection stays quietly collapsed until explicitly opened')
             evaluate("document.getElementById('constellations-toggle').click()")
             c1=evaluate('[...constellations.keys()].at(-1)');c2=create_collection('Project Launch');empty=create_collection('Empty group')
@@ -4115,6 +4124,7 @@ def main():
             check(evaluate(f"!constellations.get({json.dumps(c2)}).memberEntryIds.includes({json.dumps(moon)})&&entries.has({json.dumps(moon)})"),'context membership toggle removes only the reference')
             evaluate("closeContextMenu()")
             evaluate(f"openContextMenu({json.dumps(deep)},550,260);contextMenu.querySelector('[data-action=constellation]').click();document.querySelector('#constellation-memberships button:last-child').click();document.getElementById('constellation-name').value='Context-created';document.getElementById('constellation-name-form').requestSubmit();physics.pause()")
+            wait_for('!constellationWorkspace.nameDialog.open')
             from_context=evaluate('[...constellations.keys()].at(-1)')
             check(evaluate(f"constellations.get({json.dumps(from_context)}).memberEntryIds.length===0&&!contextMenu.hidden&&contextEntryId==={json.dumps(deep)}"),'context New creates an empty collection and returns to the same checked membership menu')
             click_selector(f'#constellation-memberships [data-collection-id="{from_context}"]')
@@ -4124,6 +4134,7 @@ def main():
             wait_for('!constellationWorkspace.nameDialog.open');evaluate('physics.pause()')
             check(evaluate("document.activeElement.id==='new-constellation-button'"),'modal Escape restores an accessible sidebar action without creating a collection')
             evaluate(f"openPortalDialog({json.dumps(g2)});portalPicker.select({json.dumps(planet)});document.getElementById('create-portal').disabled=false;document.getElementById('portal-form').requestSubmit();physics.pause()")
+            wait_for('!portalDialog.open')
             portal=evaluate('[...portals.keys()].at(-1)');member(c2,portal)
             check(evaluate(f"constellations.get({json.dumps(c2)}).memberEntryIds.includes({json.dumps(planet)})&&!constellations.get({json.dumps(c2)}).memberEntryIds.includes({json.dumps(portal)})"),'Portal-origin membership resolves to canonical ID and stays deduplicated')
             evaluate(f"constellationWorkspace.openPicker({json.dumps(c2)});document.getElementById('constellation-member-search').value='Hotel';constellationWorkspace.renderPicker()")
@@ -4138,6 +4149,7 @@ def main():
             check(evaluate(f"document.querySelector('[data-constellation-id=\"{c1}\"]').classList.contains('is-active')") and evaluate('JSON.stringify(camera.view)')==view,'expanding restores active styling without reframing')
             check(evaluate('JSON.stringify([...entries].map(([id,e])=>[id,e.x,e.y]))')==before and evaluate('JSON.stringify([...entries].map(([id,e])=>[id,e.parentId,e.role,e.depth,e.content]))')==topology,'activation never relocates, reparents or changes celestial roles/content')
             evaluate(f"openEntryForm(entries.get({json.dumps(other)}),null,false,'move');moveDestinationPicker.select({json.dumps(sun)});form.requestSubmit();physics.pause()")
+            wait_for('!formSaveBusy')
             check(evaluate(f"activeConstellationId==={json.dumps(c1)}&&[...activeConstellationGalaxyIds].join(',')==={json.dumps(g1)}"),'reparenting an active collection entry immediately recomputes represented Galaxy IDs')
             evaluate(f"(async()=>{{openEntryForm(entries.get({json.dumps(other)}),null,false,'move');moveDestinationPicker.select({json.dumps(g2)});form.requestSubmit();await applicationCommandTail;physics.pause();showConstellationOverview()}})()")
             check(evaluate(f"activeConstellationGalaxyIds.has({json.dumps(g1)})&&activeConstellationGalaxyIds.has({json.dumps(g2)})"),'restoring canonical ancestry restores its Galaxy context without sticky reveal state')
@@ -4155,10 +4167,12 @@ def main():
             evaluate("document.getElementById('close-constellation-picker').click();physics.pause()")
             view=evaluate('JSON.stringify(camera.view)');member(c1,unrelated)
             evaluate(f"document.querySelector('#constellation-member-list [data-entry-id=\"{unrelated}\"] summary').click();document.querySelector('#constellation-member-list [data-entry-id=\"{unrelated}\"] details button').click()")
+            evaluate('applicationCommandTail')
             check(evaluate(f"!constellations.get({json.dumps(c1)}).memberEntryIds.includes({json.dumps(unrelated)})&&entries.has({json.dumps(unrelated)})") and evaluate('JSON.stringify(camera.view)')==view,'member overflow removes only membership with no camera jump')
             evaluate("document.getElementById('entry-more-button').click()")
             check(evaluate("[...entryActions.querySelectorAll('button:not([hidden])')].map(b=>b.textContent).join('|')==='Rename|Delete Constellation'"),'collection More contains only Rename and Delete Constellation')
             click_selector('#rename-constellation-button');evaluate("document.getElementById('constellation-name').value='Shared Favorites';document.getElementById('constellation-name-form').requestSubmit();physics.pause()")
+            wait_for('!constellationWorkspace.nameDialog.open')
             check(evaluate(f"constellations.get({json.dumps(c1)}).name==='Shared Favorites'&&panelName.textContent==='Shared Favorites'") and evaluate('JSON.stringify(camera.view)')==view,'rename updates sidebar and panel without reframing')
             evaluate(f"document.querySelector('#constellation-member-list [data-entry-id=\"{deep}\"] .constellation-member-name').click()");wait_camera();evaluate('physics.pause()')
             check(evaluate(f"activeConstellationId==={json.dumps(c1)}&&!constellationOverview&&selectedNode.dataset.entryId==={json.dumps(deep)}&&contentInspector.entryId==={json.dumps(deep)}&&!document.getElementById('panel-rich-content').hidden&&constellationOverlay.edges.length===3&&!document.getElementById('active-constellation-indicator').hidden"),'overview entry click opens canonical Contents while keeping the active lens and its compact indicator')
@@ -4190,6 +4204,7 @@ def main():
             check(evaluate('JSON.stringify(camera.view)')==view and evaluate("!document.getElementById('constellation-members-empty').hidden&&!galaxy.classList.contains('constellation-has-members')"),'empty collection opens quietly without moving the camera or dimming the Cosmos')
             evaluate("exitConstellation();window.beforeCollectionSave=persistence.metadata.commit;persistence.metadata.commit=()=>{throw new Error('quota')}")
             evaluate(f"constellationWorkspace.openPicker({json.dumps(c2)});document.getElementById('constellation-member-search').value='Unrelated';constellationWorkspace.renderPicker();document.querySelector('#constellation-picker-results button[data-entry-id]').click();document.getElementById('confirm-constellation-entries').click()")
+            wait_for('!constellationWorkspace.savingPicker')
             check(evaluate(f"!constellations.get({json.dumps(c2)}).memberEntryIds.includes({json.dumps(unrelated)})&&!document.getElementById('constellation-picker-status').hidden"),'failed metadata save leaves membership unchanged and reports the error')
             evaluate("persistence.metadata.commit=beforeCollectionSave;document.getElementById('close-constellation-picker').click();physics.pause();saveGalaxy()")
             evaluate("document.getElementById('constellations-toggle').click();hierarchySidebar.savePreference()")
@@ -4198,13 +4213,19 @@ def main():
             check(evaluate("constellationWorkspace.list.hidden&&document.getElementById('constellations-toggle').getAttribute('aria-expanded')==='false'"),'section collapse preference survives refresh separately from domain data')
             evaluate("document.getElementById('constellations-toggle').click()")
             check(evaluate('JSON.stringify([...constellations.values()])')==saved and evaluate('JSON.parse(localStorage.getItem("galaxy:user-data")).version===5'),'Constellations refresh intact with additive version-5 storage')
+            valid_collection_raw=evaluate("localStorage.getItem('galaxy:user-data')")
             evaluate(f"(()=>{{const data=JSON.parse(localStorage.getItem('galaxy:user-data'));data.constellations[0].memberEntryIds.push('missing',{json.dumps(portal)},data.constellations[0].memberEntryIds[0]);localStorage.setItem('galaxy:user-data',JSON.stringify(data));}})()")
+            corrupt_collection_raw=evaluate("localStorage.getItem('galaxy:user-data')")
             cdp.call('Page.reload');load();wait_camera();evaluate('physics.pause()')
-            check(evaluate('JSON.stringify([...constellations.values()])')==saved,'invalid, Portal and duplicate persisted member IDs normalize without losing valid memberships')
+            check(evaluate("localDataRecovery&&!document.getElementById('local-data-recovery').hidden&&constellations.size===0&&firstUse.root.hidden") and evaluate("localStorage.getItem('galaxy:user-data')")==corrupt_collection_raw,'invalid, Portal and duplicate persisted memberships enter recovery and preserve the exact original')
+            # Explicitly restore the valid synthetic fixture for the remaining UI checks.
+            evaluate(f"localRestoreInProgress=true;localStorage.setItem('galaxy:user-data',{json.dumps(valid_collection_raw)})")
+            cdp.call('Page.reload');load();wait_camera();evaluate('physics.pause()')
             evaluate(f"activateConstellation({json.dumps(c2)})");wait_camera();view=evaluate('JSON.stringify(camera.view)')
             evaluate("document.getElementById('entry-more-button').click();document.getElementById('delete-constellation-button').click()")
             check(evaluate("constellationWorkspace.deleteDialog.open&&document.getElementById('delete-constellation-help').textContent.includes('won’t be deleted')&&!panel.contains(constellationWorkspace.deleteDialog)"),'centered collection deletion confirmation clearly preserves canonical entries')
             evaluate("document.getElementById('delete-constellation-form').requestSubmit();physics.pause()")
+            wait_for('!constellationWorkspace.deleteDialog.open')
             check(evaluate(f"!constellations.has({json.dumps(c2)})&&entries.has({json.dumps(planet)})&&portals.has({json.dumps(portal)})") and evaluate('JSON.stringify(camera.view)')==view,'deleting a collection leaves entities and Portals intact without camera movement')
             select(planet);evaluate("contentInspector.upload([new File(['Keep file transaction'],'member.txt',{type:'text/plain'})]);void 0");wait_for('contentInspector.jobs.size===0')
             key=evaluate('contentInspector.content().attachments[0].storageKey')

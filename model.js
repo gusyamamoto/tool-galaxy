@@ -1,5 +1,87 @@
 // Persist a generic tree. Depth and celestial roles are disposable presentation.
 const galaxyModel = {
+    // v1/v2 stored only edits/positions for these original built-in Items.
+    legacyEntries: [
+        {id:'github',name:'GitHub',x:300,y:250,description:'Stores and manages Git repositories online.',category:'Version control'},
+        {id:'vs-code',name:'VS Code',x:550,y:380,description:'Code editor used to build and manage the project.',category:'Code editor'},
+        {id:'codex',name:'Codex',x:800,y:220,description:'AI coding assistant for writing and modifying code.',category:'AI assistant'}
+    ],
+    validateStoredSnapshot(data) {
+        const object=value=>value!==null&&typeof value==='object'&&!Array.isArray(value);
+        const date=value=>typeof value==='string'&&Number.isFinite(Date.parse(value));
+        const id=value=>typeof value==='string'&&!!value.trim()&&value.length<=150;
+        const fail=reason=>{throw new Error(`Invalid saved data: ${reason}.`);};
+        const legacy=data.version<3, defaults=new Map(this.legacyEntries.map(entry=>[entry.id,entry]));
+        const records=legacy?[...(data.version===1?data.tools:data.entries),...data.builtInPositions]:data.entries;
+        const entries=new Map(legacy?this.legacyEntries.map(entry=>[entry.id,{...entry,parentId:null}]):[]);
+        const seen=new Set(),fileIds=new Set(),fileKeys=new Set();
+        for(const record of records) {
+            if(!object(record)||seen.has(record.id))fail('invalid or duplicate Item');
+            seen.add(record.id);
+            const entry=legacy?{...defaults.get(record.id),...record}:record;
+            if(data.version<5&&entry.role!=null&&!['group','category','subcategory','entry'].includes(entry.role))fail('invalid legacy Item role');
+            if(!this.normalizeEntry(entry)||
+                (entry.parentId!=null&&(typeof entry.parentId!=='string'||!entry.parentId))||
+                (entry.category!=null&&typeof entry.category!=='string')||
+                (entry.location!=null&&!this.normalizeLocation(entry.location))||
+                (entry.appearance!=null&&!object(entry.appearance))||
+                ['createdAt','updatedAt'].some(key=>entry[key]!=null&&!date(entry[key])))fail('invalid Item fields or content');
+            entries.set(entry.id,{...entry,parentId:entry.parentId??null});
+            for(const file of entry.content?.attachments||[]) {
+                if(fileIds.has(file.id)||fileKeys.has(file.storageKey))fail('duplicate attachment identity');
+                fileIds.add(file.id);fileKeys.add(file.storageKey);
+            }
+        }
+        // Validate raw ancestry before normalizeHierarchy can repair it. Roles,
+        // depth, positions and layout are projections, never hierarchy authority.
+        const done=new Set();
+        for(const start of entries.values()) {
+            const visiting=new Set();let entry=start;
+            while(entry&&!done.has(entry.id)) {
+                if(visiting.has(entry.id))fail('hierarchy cycle');
+                visiting.add(entry.id);
+                if(entry.parentId!==null&&!entries.has(entry.parentId))fail('missing parent Item');
+                entry=entries.get(entry.parentId);
+            }
+            visiting.forEach(key=>done.add(key));
+        }
+        for(const entry of entries.values()) {
+            const parent=entries.get(entry.parentId);
+            if(data.version<5&&parent) {
+                const role=value=>value?.role==='group'?'category':value?.role;
+                const expected=role(entry)==='subcategory'?'category':role(entry)==='entry'?'subcategory':null;
+                if(!expected||role(parent)!==expected)fail('invalid legacy parent relationship');
+            }
+            if(parent?.taskList===true&&entry.taskList===true)fail('nested Task List');
+            if(parent&&entries.get(parent.parentId)?.taskList===true)fail('task with child Items');
+        }
+        const identifiers=new Set(entries.keys()),placements=new Set();
+        for(const portal of data.portals||[]) {
+            if(!object(portal)||!id(portal.id)||identifiers.has(portal.id)||!entries.has(portal.targetEntryId)||!entries.has(portal.parentEntryId)||!date(portal.createdAt))fail('invalid linked placement');
+            const pair=JSON.stringify([portal.targetEntryId,portal.parentEntryId]);
+            if(placements.has(pair))fail('duplicate linked placement');
+            identifiers.add(portal.id);placements.add(pair);
+        }
+        for(const collection of data.constellations||[]) {
+            if(!object(collection)||!id(collection.id)||identifiers.has(collection.id)||
+                typeof collection.name!=='string'||!collection.name.trim()||collection.name.trim().length>60||
+                !Array.isArray(collection.memberEntryIds)||!date(collection.createdAt)||
+                (collection.updatedAt!=null&&!date(collection.updatedAt)))fail('invalid Constellation');
+            const members=new Set();
+            for(const member of collection.memberEntryIds) {
+                if(!entries.has(member)||members.has(member))fail('invalid Constellation membership');
+                members.add(member);
+            }
+            identifiers.add(collection.id);
+        }
+        const archived=new Set();
+        for(const record of data.archivedGalaxies||[]) {
+            const root=entries.get(record?.galaxyId);
+            if(!root||root.parentId!==null||archived.has(root.id)||!date(record.archivedAt)||
+                (record.expandedIds!=null&&(!Array.isArray(record.expandedIds)||record.expandedIds.some(value=>typeof value!=='string'))))fail('invalid archived Galaxy');
+            archived.add(root.id);
+        }
+    },
     // Acceptance is independent of preview capability. Persisted metadata keeps
     // its original MIME; only these formats enter Cosmifold's preview pipelines.
     filePolicy: {
