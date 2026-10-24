@@ -410,6 +410,18 @@
             <button id="confirm-restore-backup" type="button">Restore</button>
         </section>
         <p id="backup-status" role="status" aria-live="polite" hidden></p>
+        <details id="backup-storage">
+            <summary>Local storage</summary>
+            <p>Check for unused local file data from earlier operations.</p>
+            <button id="audit-unused-files" type="button">Check unused files</button>
+            <p id="unused-files-status" role="status" aria-live="polite" hidden></p>
+            <button id="remove-unused-files" type="button" hidden>Remove unused files…</button>
+            <div id="unused-files-confirmation" hidden>
+                <p id="unused-files-confirmation-text"></p>
+                <button id="confirm-unused-files" type="button">Remove unused files</button>
+                <button id="cancel-unused-files" type="button">Keep files</button>
+            </div>
+        </details>
         <div class="form-actions"><button id="cancel-backup" type="button">Cancel</button></div>
     </dialog>
     <dialog id="help-dialog" aria-labelledby="help-title" aria-describedby="help-intro">
@@ -541,6 +553,7 @@
     <script src="persistence/indexeddb-file-store.js"></script>
     <script src="persistence/memory-stores.js"></script>
     <script src="persistence/composition.js"></script>
+    <script src="services/attachment-storage-audit.js"></script>
     <script src="services/universe-repository.js"></script>
     <script src="services/local-backup.js"></script>
     <script src="services/local-restore.js"></script>

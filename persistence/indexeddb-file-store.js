@@ -115,6 +115,44 @@ function createIndexedDbFileStore({indexedDB = globalThis.indexedDB, scope = nul
             try { operation(store, finish); } catch (error) { failure = error; tx.abort(); }
         });
     }
+    async function inventory(mode='readonly',keys=null,validate=null){
+        const db=await open();
+        return new Promise((resolve,reject)=>{
+            const tx=db.transaction(['files','fileOperations','restoreState'],mode,mode==='readwrite'?{durability:'strict'}:{}),files=tx.objectStore('files');
+            let failure,result,remaining=3+(keys?keys.length:1);
+            const state={records:[],operations:[],restoreState:[],recoveryBlocked};let markerKeys,markerValues;
+            const fail=error=>{failure=error;tx.abort();};
+            tx.oncomplete=()=>resolve(result||state);
+            tx.onabort=()=>reject(failure||tx.error||new Error('Unused local files could not be checked.'));
+            const ready=()=>{if(--remaining)return;
+                try{
+                    state.restoreState=markerKeys.map((key,i)=>({key,value:markerValues[i]}));
+                    if(validate){
+                        const removed=validate(state);
+                        const selected=new Set(keys);
+                        if(!Array.isArray(removed)||removed.some(key=>!selected.has(key)))throw new Error('Invalid unused-file deletion plan.');
+                        removed.forEach(key=>files.delete(key));result={removed};
+                    }
+                }catch(error){fail(error);}
+            };
+            const operations=tx.objectStore('fileOperations').getAll();
+            operations.onsuccess=()=>{state.operations=operations.result;ready();};
+            const names=tx.objectStore('restoreState').getAllKeys(),values=tx.objectStore('restoreState').getAll();
+            names.onsuccess=()=>{markerKeys=names.result;ready();};values.onsuccess=()=>{markerValues=values.result;ready();};
+            if(keys)for(const key of keys){
+                const request=files.get(key);request.onsuccess=()=>{
+                    try{if(request.result!==undefined)state.records.push(cosmifoldAttachmentAudit.describe(request.result,key));ready();}catch(error){fail(error);}
+                };
+            }else{
+                // One record's Blob handles at a time; never read/decode its bytes.
+                const request=files.openCursor();request.onsuccess=()=>{
+                    try{const cursor=request.result;if(!cursor){ready();return;}
+                        state.records.push(cosmifoldAttachmentAudit.describe(cursor.value,cursor.primaryKey));cursor.continue();
+                    }catch(error){fail(error);}
+                };
+            }
+        });
+    }
     // Read keys/owners only at startup, never file bytes or previews. This also
     // lets deletion clean an unreferenced file left by an interrupted old write.
     readFiles((store, finish) => {
@@ -156,6 +194,11 @@ function createIndexedDbFileStore({indexedDB = globalThis.indexedDB, scope = nul
         files.forEach(file=>ownership.delete(file.key));return files.length;
     }
     return {
+        auditStorage(){return inventory();},
+        async removeOrphans(keys,validate){
+            const result=await inventory('readwrite',keys,validate);
+            result.removed.forEach(key=>ownership.delete(key));return result;
+        },
         setOperationStageHook(hook){operationStageHook=typeof hook==='function'?hook:null;},
         async listOperations(){
             const db=await open();return new Promise((resolve,reject)=>{

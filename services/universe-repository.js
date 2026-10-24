@@ -33,7 +33,35 @@ function createUniverseRepository({persistence, canWrite = () => true}) {
             rollback();
         }];
     }
+    function attachmentAuditState(){
+        if(persistence.sample||!canWrite()||restoring||!persistence.files.auditStorage||!persistence.metadata.withWrite)
+            throw new Error('Unused-file maintenance is unavailable for this workspace.');
+        if(persistence.metadata.readRestoreJournal())throw new Error('Finish Restore recovery before checking unused files.');
+        const text=persistence.metadata.readForBackup().metadataText;
+        const snapshot=persistence.metadata.load(); // The same raw F3 validation as startup.
+        if(persistence.metadata.readForBackup().metadataText!==text)throw new Error('Saved data changed. Check unused files again.');
+        return {snapshot,text,raw:text===null?null:JSON.parse(text)};
+    }
     const repository = {
+        async auditAttachmentStorage(){
+            const state=attachmentAuditState(),inventory=await persistence.files.auditStorage();
+            if(persistence.metadata.readForBackup().metadataText!==state.text)throw new Error('Saved data changed. Check unused files again.');
+            return cosmifoldAttachmentAudit.classify(state.snapshot,inventory,state.raw);
+        },
+        async removeOrphanedAttachments(keys){
+            if(!Array.isArray(keys)||keys.some(key=>typeof key!=='string'||!key.trim()||key.length>1024))throw new Error('Check unused files before removing them.');
+            keys=[...new Set(keys)];const state=attachmentAuditState();
+            const result=await persistence.files.removeOrphans(keys,inventory=>{
+                // This synchronous validation runs INSIDE the deletion transaction,
+                // while the existing F1 lock excludes metadata/file writers.
+                if(persistence.metadata.readRestoreJournal()||persistence.metadata.readForBackup().metadataText!==state.text)
+                    throw new Error('Saved data changed. Check unused files again.');
+                const audit=cosmifoldAttachmentAudit.classify(state.snapshot,inventory,state.raw);
+                if(audit.blocked)throw new Error(audit.blocked);
+                return audit.orphaned.map(record=>record.key);
+            });
+            return {removed:result.removed.length,skipped:keys.length-result.removed.length};
+        },
         restoreRevision:()=>persistence.files.restoreMarker(),
         async recoverPendingRestore() {
             if(persistence.sample)return false;
@@ -274,7 +302,7 @@ function createUniverseRepository({persistence, canWrite = () => true}) {
         },()=>{if(previous)write(previous,{type:'attachment.recovered',ids:[id]});}));
         publish({type:'attachment.removed',ids:[id]});return updated;
     };
-    for(const name of ['save','saveLayout','updateContent','updateLocation','updateTask','replaceConstellations','replacePlacements','moveEntries','duplicateStructure','archive','restore','copyEntries','deleteSubtree','addAttachment','removeAttachment','replaceLocalBackup','recoverPendingRestore','recoverAttachmentOperations']){
+    for(const name of ['save','saveLayout','updateContent','updateLocation','updateTask','replaceConstellations','replacePlacements','moveEntries','duplicateStructure','archive','restore','copyEntries','deleteSubtree','addAttachment','removeAttachment','replaceLocalBackup','recoverPendingRestore','recoverAttachmentOperations','auditAttachmentStorage','removeOrphanedAttachments']){
         const operation=repository[name];repository[name]=(...args)=>enqueue(()=>{
             const action=()=>operation.apply(repository,args);
             // Keep file callbacks and abort compensation under the SAME write

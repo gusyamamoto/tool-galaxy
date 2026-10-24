@@ -729,6 +729,7 @@ const contentInspector = new EntryContentInspector({ store: attachmentStore, mot
         updateGraphViewport();
     } });
 const backupUI=new CosmifoldBackupUI({repository:universeRepository,sample:sampleMode,
+    maintenanceBlocked:()=>localDataRecovery||localSessionStale||localRestoreInProgress||!!globalThis.cosmifoldAttachmentRecoveryError,
     session:globalThis.cosmifoldRestoreSession,
     onRestoreStart:()=>{localRestoreInProgress=true;restorePhysicsWasPaused=physics.paused;physics.pause();},
     onRestoreEnd:(success,recoveryRequired=false)=>{

@@ -40,7 +40,7 @@ function createPersistence({config = cosmosConfig, sample = false, sampleSnapsho
         metadata: boundary(metadata, 'metadata', ['load','save','commit','clear','readForBackup','readRestoreJournal','beginRestore','endRestore','captureRestoreState','replaceRaw','recoverRaw',
             ...['withWrite','checkpoint','subscribeStale'].filter(name => typeof metadata[name] === 'function')]),
         files: Object.assign(boundary(files, 'files', ['save','saveBatch','get','readAll','delete','deleteEntries','hasEntries','replaceAll','restoreMarker',
-            ...['listOperations','recoverOperations','setOperationStageHook'].filter(name=>typeof files[name]==='function')]), {temporary: !!files.temporary}),
+            ...['listOperations','recoverOperations','setOperationStageHook','auditStorage','removeOrphans'].filter(name=>typeof files[name]==='function')]), {temporary: !!files.temporary}),
         preferences
     };
 }
