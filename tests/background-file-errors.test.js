@@ -8,7 +8,7 @@ function fixture(){
     const Inspector=vm.runInContext('EntryContentInspector',context);
     const entries=new Map([['a',{name:'Travel'}],['b',{name:'Work'}]]),notices=[],inline=[],saved=[];
     const inspector=Object.assign(Object.create(Inspector.prototype),{
-        entryId:'a',visible:true,jobs:new Map(),getEntry:id=>entries.get(id),
+        entryId:'a',visible:true,jobs:new Map(),nativePreviews:new Map(),getEntry:id=>entries.get(id),
         notifyFileFailure:text=>notices.push(text),isSessionStale:()=>false,
         status:{hidden:true},onAction(){},busy(){},renderLists(){},onLayout(){},clearPreviews(){},
         error(error){inline.push(error);this.status.hidden=false;},

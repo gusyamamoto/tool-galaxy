@@ -68,7 +68,7 @@ class EntryContentInspector {
             onLayout();
         };
         this.jobs = new Map(); this.urls = new Set(); this.generation = 0; this.entryId = null; this.previewLoads = 0;
-        this.downloadUrls = new Map();this.pendingDrafts=new Map();
+        this.downloadUrls = new Map();this.pendingDrafts=new Map();this.nativePreviews=new Map();
         this.setupFileDetails();
         this.setupLocation();
         this.notes.maxLength = galaxyModel.contentLimits.notes;
@@ -167,7 +167,7 @@ class EntryContentInspector {
         });
         window.addEventListener("pagehide", () => {
             this.clearPreviews();
-            this.downloadUrls.forEach((timer,url)=>{clearTimeout(timer);URL.revokeObjectURL(url)});this.downloadUrls.clear();
+            this.clearNativePreviews();
         });
     }
     content(id = this.entryId) { return this.getEntry(id)?.content || galaxyModel.emptyContent(); }
@@ -196,6 +196,7 @@ class EntryContentInspector {
         this.message(prefix ? `${prefix} ${detail}` : detail, true);
     }
     select(entry, visible) {
+        if(this.entryId!==entry?.id&&this.imageViewer?.dialog.open)this.imageViewer.dialog.close();
         this.promoteFileFailure();
         clearTimeout(this.statusTimer);
         this.entryId = entry?.id || null; this.visible = visible;
@@ -210,7 +211,7 @@ class EntryContentInspector {
         if(draft?.bookmark){document.getElementById('content-link-url').value=draft.bookmark.value;document.getElementById('content-link-title').value=draft.bookmark.title;this.editingLinkId=draft.bookmark.editingId;this.linkForm.hidden=false;}
         this.renderNotes(); this.renderLists(); this.renderLocation(); this.busy();
     }
-    hide() { this.promoteFileFailure(); this.visible = false; clearTimeout(this.statusTimer); this.clearPreviews(); }
+    hide() { this.promoteFileFailure(); this.visible = false; clearTimeout(this.statusTimer); this.clearPreviews();this.reconcilePreviews();if(this.imageViewer?.dialog.open)this.imageViewer.dialog.close(); }
     render() { if (this.entryId) { this.renderLists(); this.renderLocation(); this.busy(); } }
     setupLocation() {
         this.locationForm=document.getElementById('content-location-form');
@@ -428,8 +429,26 @@ class EntryContentInspector {
     itemMenu(actions, label) {
         return createPanelItemMenu(actions, label, this.root);
     }
-    clearPreviews() { this.generation++; this.urls.forEach(url => URL.revokeObjectURL(url)); this.urls.clear(); }
+    clearPreviews() {
+        this.generation++;
+        this.root.querySelectorAll('.content-file-preview img').forEach(image=>{
+            image.onload=image.onerror=null;image.removeAttribute('src');image.remove();
+        });
+        this.urls.forEach(url => URL.revokeObjectURL(url)); this.urls.clear();
+    }
+    reconcilePreviews(){
+        this.imageViewer?.refresh();
+        this.nativePreviews.forEach((preview,tab)=>{
+            if(!this.getEntry(preview.metadata.entryId)?.content?.attachments.some(file=>file.id===preview.metadata.id&&file.storageKey===preview.metadata.storageKey)){
+                tab.close();preview.release();
+            }
+        });
+    }
+    clearNativePreviews(close=false){
+        [...this.nativePreviews].forEach(([tab,preview])=>{if(close)tab.close();preview.release();});
+    }
     renderLists() {
+        this.reconcilePreviews();
         const links = document.getElementById("content-links"), files = document.getElementById("content-attachments"), media = document.getElementById("content-media");
         const changed=this.listEntryId!==this.entryId,previous=this.listFileIds||new Set(),current=new Set(this.content().attachments.map(file=>file.id));
         if(!changed&&this.visible&&this.motion&&!this.motion.reduced){
@@ -505,24 +524,28 @@ class EntryContentInspector {
     async preview(metadata, element, generation) {
         const capability = galaxyModel.filePolicy.classify(metadata);
         if (!['image','video','text'].includes(capability.kind)) return;
-        this.previewLoads++;
+        this.previewLoads++;let image,url;
+        const release=()=>{
+            if(image){image.onload=image.onerror=null;image.removeAttribute('src');image.remove();}
+            if(url){this.urls.delete(url);URL.revokeObjectURL(url);url=null;}
+        };
         try {
             const record = await this.store.get(metadata.storageKey);
-            if (generation !== this.generation || !this.visible) return;
+            if (generation !== this.generation || !this.visible || !element.isConnected) return;
             if (!record || record.entryId !== metadata.entryId) { this.previewUnavailable(element, "File unavailable in this browser storage."); return; }
             if (['image','video'].includes(capability.kind) && record.thumbnail) {
-                const image = document.createElement("img"), url = URL.createObjectURL(record.thumbnail);
+                image = document.createElement("img");url = URL.createObjectURL(record.thumbnail);
                 this.urls.add(url); image.src = url; image.alt = ""; image.loading = "lazy";
                 const button = element.querySelector("button");button.querySelector('.content-media-placeholder')?.remove();button.prepend(image);
                 image.onload = () => this.onLayout();
-                image.onerror = () => { if (generation === this.generation && this.visible) this.previewUnavailable(element, "Preview unavailable. Open to try again."); };
+                image.onerror = () => { release();if (generation === this.generation && this.visible) this.previewUnavailable(element, "Preview unavailable. Open to try again."); };
             } else if (capability.kind === 'text') {
                 const text = await record.blob.slice(0,galaxyModel.contentLimits.textPreviewBytes).text();
-                if (generation !== this.generation) return;
+                if (generation !== this.generation || !this.visible || !element.isConnected) return;
                 const pre = document.createElement("pre"); pre.textContent = text; pre.className = "content-text-preview";
                 element.parentElement.append(pre);
             }
-        } catch (error) { if (generation === this.generation && this.visible) this.previewUnavailable(element, "Preview unavailable. Open to try again."); }
+        } catch (error) { release();if (generation === this.generation && this.visible) this.previewUnavailable(element, "Preview unavailable. Open to try again."); }
     }
     previewUnavailable(element, message) {
         // Keep the opening control available even when stored thumbnails cannot load.
@@ -600,11 +623,7 @@ class EntryContentInspector {
             if (!record || record.entryId !== metadata.entryId) throw new Error('This file is unavailable in this browser storage.');
             // Generic files download inertly; never navigate to active HTML/SVG
             // or let a browser infer an executable preview from a MIME guess.
-            const url = URL.createObjectURL(new Blob([record.blob], {type:'application/octet-stream'}));
-            const link = document.createElement('a');link.href=url;link.download=metadata.filename;link.hidden=true;
-            document.body.append(link);link.click();link.remove();
-            const timer = setTimeout(()=>{URL.revokeObjectURL(url);this.downloadUrls.delete(url)},60000);
-            this.downloadUrls.set(url,timer);
+            cosmifoldObjectUrls.download(new Blob([record.blob], {type:'application/octet-stream'}),metadata.filename,this.downloadUrls);
             return true;
         } catch (error) { onError(error); return false; }
     }
@@ -613,17 +632,32 @@ class EntryContentInspector {
         const capability = galaxyModel.filePolicy.classify(metadata);
         if (['image','video','pdf'].includes(capability.kind)) { this.imageViewer.open(metadata, trigger); return; }
         if (capability.kind === 'generic') { this.showFileDetails(metadata,trigger); return; }
+        return this.openNativeFile(metadata);
+    }
+    async openNativeFile(metadata,type='text/plain',source=null) {
         const tab = window.open("about:blank", "_blank");
         if (!tab) { this.message("Allow this file to open in a new browser tab.", true); return; }
         tab.opener = null;
+        // One tab owns one optional URL and one close poll. No per-open pagehide
+        // closures survive after the tab closes, including while the read waits.
+        const preview={metadata,url:null,timer:null,release:()=>{
+            if(this.nativePreviews.get(tab)!==preview)return;
+            clearInterval(preview.timer);this.nativePreviews.delete(tab);
+            if(preview.url)URL.revokeObjectURL(preview.url);
+        }};
+        this.nativePreviews.set(tab,preview);
+        preview.timer=setInterval(()=>{
+            if(tab.closed){preview.release();return;}
+            if(preview.url)try{if(!['about:blank',preview.url].includes(tab.location.href))preview.release();}catch{preview.release();}
+        },1000);
         try {
-            const record = await this.store.get(metadata.storageKey);
+            const record = source?{entryId:metadata.entryId,blob:source}:await this.store.get(metadata.storageKey);
+            if(tab.closed||this.nativePreviews.get(tab)!==preview){preview.release();return;}
+            if(!this.getEntry(metadata.entryId)?.content?.attachments.some(file=>file.id===metadata.id&&file.storageKey===metadata.storageKey)){tab.close();preview.release();return;}
             if (!record || record.entryId !== metadata.entryId) throw new Error("This file is unavailable in this browser storage.");
-            const blob = new Blob([record.blob],{type:"text/plain"});
-            const url = URL.createObjectURL(blob);
-            tab.location.replace(url);
-            const timer = setInterval(() => { if (tab.closed) { URL.revokeObjectURL(url); clearInterval(timer); } },1000);
-            window.addEventListener("pagehide", () => { URL.revokeObjectURL(url); clearInterval(timer); }, { once: true });
-        } catch (error) { tab.close(); this.error(error); }
+            const blob = new Blob([record.blob],{type});
+            preview.url = URL.createObjectURL(blob);
+            tab.location.replace(preview.url);
+        } catch (error) { preview.release();tab.close();this.error(error); }
     }
 }

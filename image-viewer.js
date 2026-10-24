@@ -7,8 +7,8 @@ function cosmosMediaDuration(seconds) {
 // Unified local Media presentation. PDFs keep their independent native-reader flow.
 // Retain the constructor name for the existing inspector composition.
 class CosmifoldImageViewer {
-    constructor({store, getEntry, supportsPdf = () => navigator.pdfViewerEnabled ?? !!navigator.mimeTypes?.namedItem?.('application/pdf')}) {
-        Object.assign(this, {store, getEntry, supportsPdf});
+    constructor({store, getEntry, openExternal, supportsPdf = () => navigator.pdfViewerEnabled ?? !!navigator.mimeTypes?.namedItem?.('application/pdf')}) {
+        Object.assign(this, {store, getEntry, openExternal, supportsPdf});
         const byId = id => document.getElementById(id);
         this.dialog = byId('image-viewer'); this.image = byId('image-viewer-image'); this.video = byId('media-viewer-video');
         this.area = this.dialog.querySelector('.media-viewer-area'); this.name = byId('image-viewer-name');
@@ -19,6 +19,14 @@ class CosmifoldImageViewer {
         this.info = byId('image-viewer-info'); this.infoText = byId('media-viewer-info-text'); this.infoButton = byId('image-viewer-info-button');
         this.infoCopy = byId('media-viewer-info-copy'); this.saveCopy = byId('media-viewer-save-copy');
         this.version = 0; this.session = 0; this.thumbnailUrls = new Set();
+        this.external.addEventListener('click',event=>{
+            if(!this.openExternal)return;event.preventDefault();this.openExternal(this.images[this.index],this.originalBlob);
+        });
+        for(const link of [this.saveCopy,this.infoCopy])link.addEventListener('click',event=>{
+            event.preventDefault();if(!this.originalBlob)return;
+            try{cosmifoldObjectUrls.download(new Blob([this.originalBlob],{type:'application/octet-stream'}),this.images[this.index].filename);}
+            catch{this.status.hidden=false;this.status.textContent='This copy could not be saved. Please try again.';}
+        });
         this.infoButton.addEventListener('click', () => {
             this.info.hidden = !this.info.hidden; this.infoButton.setAttribute('aria-expanded', String(!this.info.hidden));
         });
@@ -47,17 +55,22 @@ class CosmifoldImageViewer {
         });
         this.pdf.addEventListener('error', () => {
             if (!this.dialog.open || !this.isPdf) return;
-            this.pdf.hidden = true; this.status.hidden = false;
+            this.pdf.hidden = true;this.pdf.removeAttribute('src');this.pdf.removeAttribute('type');this.status.hidden = false;
             this.status.textContent = 'This PDF could not be displayed here. Try Open externally.';
         });
+        this.dialog.addEventListener('beforetoggle',event=>{if(event.newState==='closed')this.finishSession();});
         this.dialog.addEventListener('close', () => {
             if (this.dialog.open) return;
-            this.version++; this.session++; this.release(); this.clearFilmstrip();
+            this.finishSession();
             const target = this.trigger?.isConnected && this.trigger.getClientRects().length ? this.trigger : byId('close-inspector-button');
             (target?.getClientRects().length ? target : byId('sidebar-toggle')).focus({preventScroll:true});
         });
         this.resizeObserver = new ResizeObserver(() => this.fitImage()); this.resizeObserver.observe(this.area);
-        window.addEventListener('pagehide', () => { this.version++; this.session++; this.release(); this.clearFilmstrip(); });
+        window.addEventListener('pagehide', () => this.finishSession());
+    }
+    finishSession(){
+        if(this.finishedSession===this.session)return;
+        this.version++;this.session++;this.release();this.clearFilmstrip();this.finishedSession=this.session;
     }
     open(metadata, trigger) {
         if (document.querySelector('dialog[open]')) return;
@@ -82,13 +95,23 @@ class CosmifoldImageViewer {
         this.pdfTools.hidden = true; this.external.removeAttribute('href');
         this.saveCopy.hidden = true; this.saveCopy.removeAttribute('href'); this.infoCopy.removeAttribute('href');
         this.previous.style.removeProperty('left'); this.next.style.removeProperty('right');
-        if (this.url) URL.revokeObjectURL(this.url);
-        if (this.originalUrl) URL.revokeObjectURL(this.originalUrl);
-        if (this.posterUrl) URL.revokeObjectURL(this.posterUrl);
+        new Set([this.url,this.originalUrl,this.posterUrl].filter(Boolean)).forEach(url=>URL.revokeObjectURL(url));
         this.url = this.posterUrl = this.originalUrl = null;
+        this.originalBlob=null;
     }
     clearFilmstrip() {
-        this.thumbnailUrls.forEach(url => URL.revokeObjectURL(url)); this.thumbnailUrls.clear(); this.filmstrip.replaceChildren();
+        this.filmstrip.querySelectorAll('img').forEach(image=>{image.onerror=null;image.removeAttribute('src');});
+        this.filmstrip.replaceChildren();this.thumbnailUrls.forEach(url => URL.revokeObjectURL(url)); this.thumbnailUrls.clear();
+    }
+    refresh(){
+        if(!this.dialog.open)return;
+        const current=this.images[this.index],attachments=this.getEntry(current?.entryId)?.content?.attachments||[];
+        const files=attachments.filter(file=>this.isPdf?file.id===current?.id:galaxyModel.filePolicy.isMedia(file));
+        const index=files.findIndex(file=>file.id===current?.id&&file.storageKey===current?.storageKey);
+        if(index<0){this.dialog.close();return;}
+        if(JSON.stringify(files.map(file=>[file.id,file.storageKey]))!==JSON.stringify(this.images.map(file=>[file.id,file.storageKey]))){
+            this.images=files;this.session++;this.buildFilmstrip();this.show(index);
+        }
     }
     buildFilmstrip() {
         this.clearFilmstrip();
@@ -102,9 +125,14 @@ class CosmifoldImageViewer {
             button.addEventListener('click', () => this.show(index)); this.filmstrip.append(button);
             this.store.get(metadata.storageKey).then(record => {
                 if (session !== this.session || !this.dialog.open || !button.isConnected || record?.entryId !== metadata.entryId || !record.thumbnail) return;
-                const url = URL.createObjectURL(record.thumbnail), image = document.createElement('img');
-                this.thumbnailUrls.add(url); image.src = url; image.alt = ''; image.loading = 'lazy'; button.replaceChildren(image);
-                if (kind === 'video') { const play=document.createElement('span');play.textContent='▷';play.setAttribute('aria-hidden','true');button.append(play); }
+                const image = document.createElement('img'),url = URL.createObjectURL(record.thumbnail);
+                const release=()=>{image.onerror=null;image.removeAttribute('src');image.remove();if(this.thumbnailUrls.delete(url))URL.revokeObjectURL(url);};
+                try {
+                    this.thumbnailUrls.add(url);
+                    image.onerror=()=>{release();if(button.isConnected)button.textContent=kind==='video'?'▷':'◇';};
+                    image.src = url; image.alt = ''; image.loading = 'lazy'; button.replaceChildren(image);
+                    if (kind === 'video') { const play=document.createElement('span');play.textContent='▷';play.setAttribute('aria-hidden','true');button.append(play); }
+                } catch {release();}
             }).catch(() => {});
         });
     }
@@ -132,9 +160,22 @@ class CosmifoldImageViewer {
     }
     videoUnavailable(version) {
         if (version !== this.version || !this.dialog.open) return;
-        clearTimeout(this.videoTimer); this.video.pause(); this.video.hidden = true;
+        this.fallbackOriginal();
         this.status.hidden = false; this.status.textContent = 'This video cannot be played in this browser. Save a copy to watch it in another player.';
-        this.saveCopy.hidden = false;
+        this.saveCopy.hidden = !this.originalUrl;
+    }
+    fallbackOriginal(){
+        // Failed decoder resources have no visible owner. Only an explicit
+        // original-file download URL remains until this viewer session closes.
+        clearTimeout(this.videoTimer);this.video.onloadedmetadata=this.video.onloadeddata=this.video.onerror=null;
+        this.video.pause();this.video.hidden=true;this.video.removeAttribute('src');this.video.removeAttribute('poster');this.video.load();
+        this.image.hidden=true;this.image.removeAttribute('src');
+        if(this.posterUrl)URL.revokeObjectURL(this.posterUrl);this.posterUrl=null;
+        try {
+            if(!this.originalUrl)this.originalUrl=URL.createObjectURL(new Blob([this.originalBlob],{type:'application/octet-stream'}));
+            if(this.url&&this.url!==this.originalUrl)URL.revokeObjectURL(this.url);this.url=null;
+            for(const link of [this.saveCopy,this.infoCopy])link.href=this.originalUrl;
+        } catch {this.release();}
     }
     async show(index) {
         if (!this.dialog.open || index < 0 || index >= this.images.length) return;
@@ -152,7 +193,9 @@ class CosmifoldImageViewer {
         try {
             const record = await this.store.get(metadata.storageKey);
             if (version !== this.version || !this.dialog.open) return;
+            if(!this.getEntry(metadata.entryId)?.content?.attachments.some(file=>file.id===metadata.id&&file.storageKey===metadata.storageKey)){this.dialog.close();return;}
             if (!record || record.entryId !== metadata.entryId) throw new Error('Attachment unavailable in this browser storage.');
+            this.originalBlob=record.blob;
             // A persisted friendly HEIF preview can be read even without a HEIF decoder.
             const preview = ['image/heic','image/heif'].includes(capability.renderType) && record.thumbnail;
             this.url = URL.createObjectURL(new Blob([record.blob],{type:capability.renderType}));
@@ -185,7 +228,7 @@ class CosmifoldImageViewer {
         } catch {
             if (version !== this.version || !this.dialog.open) return;
             const downloadable = !this.isPdf && this.saveCopy.hasAttribute('href');
-            if (downloadable) { this.image.hidden = true; this.saveCopy.hidden = false; }
+            if (downloadable) { this.fallbackOriginal();this.saveCopy.hidden = !this.originalUrl; }
             else this.release();
             this.status.hidden = false;
             this.status.textContent = this.isPdf ? 'This PDF could not be opened. You can close the viewer and try again.' : downloadable ? 'Preview unavailable in this browser. Save a copy to open the original in another app.' : 'This media could not be opened. It may be unavailable in this browser storage.';

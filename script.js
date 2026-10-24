@@ -600,6 +600,7 @@ function publishContent(id,updated){
     if(updated.content)entry.content=updated.content;else delete entry.content;
     if(updated.updatedAt)entry.updatedAt=updated.updatedAt;else delete entry.updatedAt;
     graphNeedsSave=false;
+    contentInspector.reconcilePreviews();
 }
 function saveEntryContent(id,value){return orderedCommand(async()=>{
     const entry=entries.get(id);if(!entry||deletingContentIds.has(id))throw new Error('This item is being deleted or no longer exists.');
@@ -700,7 +701,8 @@ function removeEntryAttachment(id,key){return orderedCommand(async()=>{
     const updated=await universeRepository.removeAttachment(getGalaxySnapshot,id,key);publishContent(id,updated);return updated;
 });}
 const motion = new CosmosMotion();
-const imageViewer = new CosmifoldImageViewer({store:attachmentStore,getEntry:id=>entries.get(id)});
+const imageViewer = new CosmifoldImageViewer({store:attachmentStore,getEntry:id=>entries.get(id),
+    openExternal:(metadata,blob)=>contentInspector.openNativeFile(metadata,'application/pdf',blob)});
 const contentInspector = new EntryContentInspector({ store: attachmentStore, motion, getEntry: id => entries.get(id),
     imageViewer,
     notifyFileFailure,isSessionStale:()=>localSessionStale,
@@ -713,7 +715,10 @@ const contentInspector = new EntryContentInspector({ store: attachmentStore, mot
 const backupUI=new CosmifoldBackupUI({repository:universeRepository,sample:sampleMode,
     session:globalThis.cosmifoldRestoreSession,
     onRestoreStart:()=>{localRestoreInProgress=true;restorePhysicsWasPaused=physics.paused;physics.pause();},
-    onRestoreEnd:(success,recoveryRequired=false)=>{if(!success&&!recoveryRequired){localRestoreInProgress=false;if(!restorePhysicsWasPaused)physics.resume();}},
+    onRestoreEnd:(success,recoveryRequired=false)=>{
+        if(success){contentInspector.hide();contentInspector.clearNativePreviews(true);galaxyAppearance.clearTextures();}
+        else if(!recoveryRequired){localRestoreInProgress=false;if(!restorePhysicsWasPaused)physics.resume();}
+    },
     blocked:()=>applicationCommandsPending>0||contentInspector.jobs.size>0||deletionBusy||pasteBusy});
 const contentDrops=new CosmosContentDrops({host:galaxy,getEntry:id=>entries.get(id),
     tree:hierarchySidebar.tree,expandRow:id=>hierarchySidebar.expandForContentDrag(id),
@@ -955,9 +960,7 @@ function showLocalDataRecovery(error,{attachment=false}={}) {
     download.disabled=typeof raw!=='string';
     if(download.disabled){status.hidden=false;status.textContent='This browser is blocking access to the saved data. Allow site storage, then reload to try again.';}
     download.addEventListener('click',()=>{
-        const url=URL.createObjectURL(new Blob([raw],{type:'application/json'})),link=document.createElement('a');
-        link.href=url;link.download=`cosmifold-recovery-${new Date().toISOString().slice(0,10)}.json`;
-        document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);
+        cosmifoldObjectUrls.download(new Blob([raw],{type:'application/json'}),`cosmifold-recovery-${new Date().toISOString().slice(0,10)}.json`);
     });
     const restore=document.getElementById('restore-recovery-backup');
     restore.addEventListener('click',()=>{
@@ -1813,6 +1816,7 @@ function commitCrudMutation(mutate, { selectionId, topologyChanged = true, revea
     const previousSelection = selectedNode?.dataset.entryId;
     const materialized=[];
     mutate();
+    contentInspector.reconcilePreviews();
     if (topologyChanged || selectionId !== previousSelection) focusRevealIds.clear();
     if (!entries.has(selectedNode?.dataset.entryId)) selectedNode = null;
     galaxyModel.normalizeHierarchy(entries);
