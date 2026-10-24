@@ -10,7 +10,7 @@ def run_background_file_checks(*, cdp, e, check, wait_for, add):
     wait_for('physics.settled')
     e('physics.pause();graphNeedsSave=false')
     e("""window.realPrepare=galaxyAttachmentFiles.prepare;
-        window.realFilePut=IDBObjectStore.prototype.put;
+        window.realFileAdd=IDBObjectStore.prototype.add;
         window.realMetadataSave=persistence.metadata.save;
         window.realBitmap=window.createImageBitmap;
         window.failureOwner="""+q(a))
@@ -24,7 +24,7 @@ def run_background_file_checks(*, cdp, e, check, wait_for, add):
         wait_for('camera.frame===null')
 
     def reset():
-        e("""galaxyAttachmentFiles.prepare=realPrepare;IDBObjectStore.prototype.put=realFilePut;
+        e("""galaxyAttachmentFiles.prepare=realPrepare;IDBObjectStore.prototype.add=realFileAdd;
             persistence.metadata.save=realMetadataSave;window.createImageBitmap=realBitmap;
             document.getElementById('dismiss-file-failure').click();contentInspector.clearMessage();
             window.preparedKeys=[];window.completedFileWrites=0;window.filePutTransaction=null;""")
@@ -67,7 +67,7 @@ def run_background_file_checks(*, cdp, e, check, wait_for, add):
     reset()
     start(('full.txt',))
     select(b,False)
-    e("IDBObjectStore.prototype.put=function(record,...args){if(record.entryId===failureOwner)throw new DOMException('raw technical quota detail','QuotaExceededError');return realFilePut.call(this,record,...args);}")
+    e("IDBObjectStore.prototype.add=function(record,...args){if(record.entryId===failureOwner)throw new DOMException('raw technical quota detail','QuotaExceededError');return realFileAdd.call(this,record,...args);}")
     finish()
     check(shown() and 'Browser storage is full' in text() and 'full.txt' in text() and 'raw technical' not in text(), 'B: real IndexedDB write rejection produces a friendly quota banner')
     check(absent_from_disk(), 'B: failed file and metadata are absent from actual local storage and IndexedDB')
@@ -75,21 +75,20 @@ def run_background_file_checks(*, cdp, e, check, wait_for, add):
     reset()
     start(('metadata.txt',))
     select(b)
-    e("""IDBObjectStore.prototype.put=function(record,...args){const request=realFilePut.call(this,record,...args);if(record.entryId===failureOwner)request.addEventListener('success',()=>completedFileWrites++);return request;};
+    e("""IDBObjectStore.prototype.add=function(record,...args){const request=realFileAdd.call(this,record,...args);if(record.entryId===failureOwner)request.addEventListener('success',()=>completedFileWrites++);return request;};
         persistence.metadata.save=function(){throw new Error('forced metadata failure');};""")
     finish()
     check(shown() and 'metadata.txt' in text() and e('completedFileWrites===1'), 'metadata persistence failure after blob write is reported globally')
-    check(absent_from_disk(), 'metadata failure aborts the real blob transaction without publishing a reference')
+    check(absent_from_disk(), 'metadata failure compensates the durable blob without publishing a reference')
 
     reset()
     start(('abort.txt',))
     select(b)
-    e("""IDBObjectStore.prototype.put=function(record,...args){if(record.entryId===failureOwner)filePutTransaction=this.transaction;return realFilePut.call(this,record,...args);};
-        window.abortAfterMetadata=true;
-        persistence.metadata.save=function(...args){const result=realMetadataSave.apply(this,args);if(abortAfterMetadata){abortAfterMetadata=false;filePutTransaction.abort();}return result;};""")
+    e("""window.abortAfterMetadata=true;
+        persistence.metadata.save=function(...args){const result=realMetadataSave.apply(this,args);if(abortAfterMetadata){abortAfterMetadata=false;throw new Error('forced failure after metadata commit');}return result;};""")
     finish()
-    check(shown() and 'abort.txt' in text() and e('!abortAfterMetadata'), 'late transaction abort after metadata commit is reported')
-    check(absent_from_disk(), 'late abort preserves existing metadata compensation and removes failed blob')
+    check(shown() and 'abort.txt' in text() and e('!abortAfterMetadata'), 'callback failure after metadata commit is reported')
+    check(absent_from_disk(), 'late callback failure compensates metadata and durable blob')
 
     reset()
     start(('inline.pdf',))

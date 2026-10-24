@@ -196,6 +196,7 @@ def main():
     args.add_argument('--local-stale-only', action='store_true', help='Real two-tab local stale-write, file deletion, Reload and Backup checks')
     args.add_argument('--background-files-only', action='store_true', help='Deferred attachment failures, persistent desktop/mobile feedback, IndexedDB rollback and stale Reload priority')
     args.add_argument('--corrupt-data-only', action='store_true', help='Preserved corrupt snapshots, recovery download/Restore, onboarding, migrations and two-tab safety')
+    args.add_argument('--attachment-recovery-only', action='store_true', help='Durable attachment journal, held-operation reload, restart reconciliation, ownership, F1/F2/F3 and Restore')
     args.add_argument("--backup-dialog-only", action="store_true", help="Focused Backup/Restore layout, renamed-file validation, picker, download and keyboard checks")
     args.add_argument("--restore-only", action="store_true", help="Check validated local replacement, real IndexedDB rollback, reload recovery and fresh-origin migration")
     args.add_argument("--backup-only", action="store_true", help="Check complete read-only backup downloads, raw bytes/thumbnails, failure/cancel, narrow controls and Sample isolation")
@@ -501,6 +502,10 @@ def main():
 
         cdp.call("Page.navigate", url=page_url)
         load()
+        if options.attachment_recovery_only:
+            from attachment_recovery_browser import run_attachment_recovery_checks
+            run_attachment_recovery_checks(cdp=cdp,cdp_class=CDP,e=evaluate,check=check,wait_for=wait_for,origin=origin,add=add)
+            print(f'{count} attachment transaction recovery browser checks passed',flush=True);return
         if options.corrupt_data_only:
             from corrupt_data_browser import run_corrupt_data_checks
             run_corrupt_data_checks(cdp=cdp,cdp_class=CDP,e=evaluate,check=check,wait_for=wait_for,origin=origin)
@@ -874,7 +879,8 @@ def main():
                     backupUI.dialog.close();physics.pause();graphNeedsSave=false;
                     const key={json.dumps(missing)},blob=new Blob(['Unrelated current original bytes'],{{type:'application/octet-stream'}}),date=new Date().toISOString();
                     const file={{id:'b-original',kind:'upload',entryId:'unrelated-b',storageKey:key,filename:'old.bin',mimeType:blob.type,size:blob.size,createdAt:date}};
-                    await attachmentStore.save({{key,entryId:'unrelated-b',blob}},()=>persistence.metadata.save({{entries:[{{id:'unrelated-b',name:'Other Cosmos',parentId:null,x:200,y:300,content:{{...galaxyModel.emptyContent(),notes:{{format:'plain',text:'Current B notes'}},attachments:[file]}}}}],layout:[]}}));
+                    const records=(await attachmentStore.readAll()).filter(record=>record.key!==key);records.push({{key,entryId:'unrelated-b',blob}});
+                    await attachmentStore.replaceAll(records,'fixture-b',()=>persistence.metadata.save({{entries:[{{id:'unrelated-b',name:'Other Cosmos',parentId:null,x:200,y:300,content:{{...galaxyModel.emptyContent(),notes:{{format:'plain',text:'Current B notes'}},attachments:[file]}}}}],layout:[]}}),()=>{{}});
                     persistence.preferences.replaceRaw('{{"width":240}}');await attachmentStore.save({{key:'old-orphan',entryId:'gone',blob:new Blob(['Keep until success'])}});
                 }})()""")
                 reload_restore_page()
@@ -2721,6 +2727,7 @@ def main():
 
         if options.sidebar_copy_paste_only:
             evaluate("openEntryForm();fields[0].value='Mexico';galaxyStarter.value='trip';galaxyStarter.dispatchEvent(new Event('change'));form.requestSubmit()")
+            wait_for('!formSaveBusy')
             root=evaluate('selectedNode.dataset.entryId');names=evaluate(f"Object.fromEntries([...galaxyModel.subtreeIds(entries,{json.dumps(root)})].map(id=>[entries.get(id).name,id]))")
             japan=add('Japan');korea=add('Korea');italy=add('Italy');wait_for('physics.settled');evaluate('physics.pause()')
             food,hotel,transport,documents=[names[n] for n in ['Food','Hotel','Transport','Documents']]
@@ -2731,6 +2738,7 @@ def main():
                 modifier=4 if meta else 2
                 cdp.call('Input.dispatchKeyEvent',type='keyDown',key=letter,code='Key'+letter.upper(),modifiers=modifier,windowsVirtualKeyCode=ord(letter.upper()));cdp.call('Input.dispatchKeyEvent',type='keyUp',key=letter,code='Key'+letter.upper(),modifiers=modifier,windowsVirtualKeyCode=ord(letter.upper()))
             def paste(destination,mode,context=False):
+                evaluate('applicationCommandTail')
                 pick([destination]);evaluate(f"hierarchySidebar.rows.get({json.dumps(destination)}).focus({{preventScroll:true}})")
                 if context:
                     add_menu_for(destination);evaluate("addMenu.querySelector('[data-add=paste]').click()")
@@ -2790,17 +2798,18 @@ def main():
             wait_for('!crudActive');evaluate(f"hierarchySidebar.beginRename({json.dumps(japan)})")
             check(evaluate("['c','v'].every(key=>{const event=new KeyboardEvent('keydown',{key,metaKey:true,bubbles:true,cancelable:true});hierarchySidebar.rename.input.dispatchEvent(event);return !event.defaultPrevented})"),'inline rename keeps native Cmd copy/paste behavior');evaluate('hierarchySidebar.endRename(false)')
             check(evaluate("(()=>{const text=document.createElement('div');text.contentEditable='true';document.body.append(text);const native=['c','v'].every(key=>{const event=new KeyboardEvent('keydown',{key,ctrlKey:true,bubbles:true,cancelable:true});text.dispatchEvent(event);return !event.defaultPrevented});text.remove();return native})()"),'contenteditable fields keep native text clipboard behavior')
-            # Force a real IndexedDB abort AFTER metadata commit to exercise recovery.
+            # Files now commit before metadata. Force a callback rejection after
+            # metadata publication to verify compensation of the durable copies.
             pick([japan]);evaluate(f"hierarchySidebar.rows.get({json.dumps(japan)}).focus({{preventScroll:true}})");shortcut('v')
             check(evaluate('pasteDialog.open'),'rollback check starts from an explicit Paste choice')
             before=evaluate('JSON.stringify(getGalaxySnapshot())')
             file_keys="new Promise((resolve,reject)=>{const open=indexedDB.open('galaxy-attachments');open.onerror=()=>reject(open.error);open.onsuccess=()=>{const db=open.result,tx=db.transaction('files','readonly'),request=tx.objectStore('files').getAllKeys();request.onsuccess=()=>resolve(request.result.sort());tx.oncomplete=()=>db.close()}})"
             before_keys=evaluate(file_keys)
-            evaluate("window.copyTxnOriginal=IDBDatabase.prototype.transaction;window.copyMetaOriginal=persistence.metadata.save;IDBDatabase.prototype.transaction=function(...args){const tx=copyTxnOriginal.apply(this,args);if(args[1]==='readwrite')window.copyAbortingTxn=tx;return tx};persistence.metadata.save=(snapshot,intent)=>{copyMetaOriginal(snapshot,intent);if(intent?.type==='items.copied')copyAbortingTxn.abort()}")
+            evaluate("window.copyMetaOriginal=persistence.metadata.save;persistence.metadata.save=(snapshot,intent)=>{copyMetaOriginal(snapshot,intent);if(intent?.type==='items.copied')throw new Error('forced failure after copied metadata commit')}")
             evaluate('pasteCopy.click()');wait_for('!pasteBusy')
-            evaluate('IDBDatabase.prototype.transaction=copyTxnOriginal;persistence.metadata.save=copyMetaOriginal')
-            check(evaluate('pasteDialog.open&&pasteStatus.textContent.includes("Nothing was added")') and evaluate('JSON.stringify(getGalaxySnapshot())')==before,'late IndexedDB abort restores metadata and publishes no partial tree')
-            check(evaluate(file_keys)==before_keys,'late abort leaves no orphan attachment or thumbnail records')
+            evaluate('persistence.metadata.save=copyMetaOriginal')
+            check(evaluate('pasteDialog.open&&pasteStatus.textContent.includes("Nothing was added")') and evaluate('JSON.stringify(getGalaxySnapshot())')==before,'post-commit callback rejection restores metadata and publishes no partial tree')
+            check(evaluate(file_keys)==before_keys,'callback rejection removes durable copied attachment and thumbnail records')
             evaluate('pasteDialog.close()')
             evaluate(f"requestEntryDelete({json.dumps(repeated[0])});document.getElementById('delete-entry-form').requestSubmit()");wait_for('!deletionBusy')
             check(evaluate(f"(async()=>{{for(const f of entries.get({json.dumps(food)}).content.attachments)if(!(await attachmentStore.get(f.storageKey)))return false;return true}})()"),'deleting a copy preserves originals and their files')

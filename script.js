@@ -938,12 +938,16 @@ function reportStorageFailure(message) {
     storageStatus.hidden = false;
 }
 
-function showLocalDataRecovery(error) {
+function showLocalDataRecovery(error,{attachment=false}={}) {
     localDataRecovery=true;storageAvailable=false;graphNeedsSave=false;
     entries.clear();archivedEntries.clear();portals.clear();constellations.clear();archivedGalaxies.clear();layout.clear();
     console.error('Cosmifold saved local data could not be loaded:',error);
     galaxy.inert=true;galaxy.setAttribute('aria-hidden','true');
     const recovery=document.getElementById('local-data-recovery');recovery.hidden=false;
+    if(attachment){
+        document.getElementById('local-data-recovery-title').textContent='A file operation needs attention';
+        document.getElementById('local-data-recovery-message').textContent="Cosmifold couldn't finish recovering a file operation. Your saved data has been left unchanged. Reload to try again, or restore a backup.";
+    }
     const download=document.getElementById('download-recovery-data'),status=document.getElementById('recovery-status');
     let raw;
     try { raw=persistence.metadata.readForBackup().metadataText; }
@@ -1002,6 +1006,7 @@ function initializeGalaxy() {
         }
     }
 
+    if(!sampleMode&&globalThis.cosmifoldAttachmentRecoveryError){showLocalDataRecovery(globalThis.cosmifoldAttachmentRecoveryError,{attachment:true});return;}
     if (saved?.needsCanonicalSave) graphNeedsSave = true;
     const records = saved?.entries || [];
     (saved?.legacy&&!sampleMode ? initialEntries : []).forEach((initialEntry) => {

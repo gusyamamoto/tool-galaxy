@@ -11,6 +11,18 @@
         const persistence=createPersistence({sample,sampleSnapshot:sample?galaxySample.build():null});
         session=createRestoreSession(persistence.scope);await session.hold();
         if(!sample&&persistence.metadata.readRestoreJournal())await session.exclusive(()=>createUniverseRepository({persistence}).recoverPendingRestore());
+        if(!sample){
+            try{
+                if(session.supported)await createUniverseRepository({persistence}).recoverAttachmentOperations();
+                else {
+                    persistence.metadata.load();
+                    if((await persistence.files.listOperations()).length)throw new Error('Safe file recovery requires a current browser on HTTPS or localhost.');
+                }
+            }catch(error){
+                // F3 owns invalid canonical data. No file cleanup ran against it.
+                if(!['LOCAL_DATA_SYNTAX','LOCAL_DATA_STRUCTURE'].includes(error.code))globalThis.cosmifoldAttachmentRecoveryError=error;
+            }
+        }
         globalThis.cosmifoldStartupPersistence=persistence;globalThis.cosmifoldRestoreSession=session;
         window.addEventListener('pageshow',event=>{if(event.persisted){
             if(typeof localRestoreInProgress!=='undefined')localRestoreInProgress=true;
