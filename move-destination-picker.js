@@ -33,34 +33,39 @@ class MoveDestinationIndex {
     }
 }
 
-// Reuses the canonical single-choice browser; this controller only owns Move UI state.
+// Shared destination controller. Move keeps its existing defaults; independent
+// structure duplication supplies its validator and permits the current location.
 class MoveDestinationPicker {
-    constructor({list,search,universe,current,selection,confirm,getEntries,onSelect}) {
-        Object.assign(this,{search,universe,current,selection,confirm,getEntries,onSelect});
+    constructor({list,search,universe,current,selection,confirm,getEntries,onSelect,
+        createIndex=(entries,id)=>new MoveDestinationIndex(entries,id),allowCurrent=false,selectionPrefix='Move to: ',showPath=false}) {
+        Object.assign(this,{search,universe,current,selection,confirm,getEntries,onSelect,createIndex,allowCurrent,selectionPrefix,showPath});
         this.choices=new CanonicalSinglePicker({list,search,getEntries:()=>this.index.entries,
-            included:id=>id===this.index.currentParentId,includedLabel:'Current location',
+            included:id=>!this.allowCurrent&&id===this.index.currentParentId,includedLabel:'Current location',
             searchEntries:query=>this.index.search(query),ancestryFor:id=>this.index.ancestry(id),
             onSelect:id=>this.select(id===null?undefined:id)});
         universe.addEventListener('click',()=>this.select(null));
     }
     open(sourceId) {
-        this.index=new MoveDestinationIndex(this.getEntries(),sourceId);
+        this.index=this.createIndex(this.getEntries(),sourceId);
         this.current.textContent=this.index.path(this.index.currentParentId);this.current.title=this.current.textContent;
-        this.universe.disabled=this.index.currentParentId===null||!this.index.allowed(null);
+        this.universe.disabled=(!this.allowCurrent&&this.index.currentParentId===null)||!this.index.allowed(null);
         this.choices.reset({expanded:this.index.expandedPath()});
+        if(this.allowCurrent)this.select(this.index.currentParentId);
     }
     select(id) {
-        if(id!==undefined&&(id===this.index.currentParentId||!this.index.allowed(id)))return false;
+        if(id!==undefined&&((!this.allowCurrent&&id===this.index.currentParentId)||!this.index.allowed(id)))return false;
         this.destinationId=id;
         if(this.choices.selectedId!==(id||null)) {this.choices.selectedId=id||null;this.choices.render();}
         this.universe.setAttribute('aria-pressed',String(id===null));
-        const name=document.createElement('strong'),path=document.createElement('small');
-        const destinationName=id===undefined?'':id===null?'Universe':this.index.allEntries.get(id).name;
-        const ambiguous=id!==undefined&&id!==null&&this.index.searchRows.some(row=>row.entry.id!==id&&row.name===destinationName.toLocaleLowerCase());
-        name.textContent=id===undefined?'':`Move to: ${destinationName}`;
-        path.textContent=ambiguous?this.index.path(id):'';path.hidden=!ambiguous;
-        this.selection.replaceChildren(name,path);this.selection.title=id===undefined?'':this.index.path(id);
-        this.selection.parentElement.hidden=id===undefined;
+        if(this.selection) {
+            const name=document.createElement('strong'),path=document.createElement('small');
+            const destinationName=id===undefined?'':id===null?'Universe':this.index.allEntries.get(id).name;
+            const ambiguous=id!==undefined&&id!==null&&this.index.searchRows.some(row=>row.entry.id!==id&&row.name===destinationName.toLocaleLowerCase());
+            name.textContent=id===undefined?'':`${this.selectionPrefix}${destinationName}`;
+            path.textContent=id!==undefined&&(this.showPath||ambiguous)?this.index.path(id):'';path.hidden=!path.textContent;
+            this.selection.replaceChildren(name,path);this.selection.title=id===undefined?'':this.index.path(id);
+            this.selection.parentElement.hidden=id===undefined;
+        }
         this.confirm.disabled=id===undefined;
         this.onSelect(id);
         return true;

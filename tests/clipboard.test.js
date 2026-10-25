@@ -49,11 +49,6 @@ test('missing bytes, quota errors and late abort recovery publish no half-tree o
   await assert.rejects(repo.copyEntries(source,['a'],'d',ids()));assert.equal(published,0);assert.deepEqual(plain(meta.load()),source);assert.equal(await files.get('new-4'),null);
  }
 });
-test('link availability preserves existing leaf-link rules while rejecting redundant placements in Paste',()=>{
- const source=fixture(),entries=new Map(source.entries.map(e=>[e.id,e])),portals=new Map(source.portals.map(p=>[p.id,p])),clip=new Clipboard();
- clip.copy(entries,['a']);assert.ok(clip.linkError(entries,portals,'a'));assert.ok(clip.linkError(entries,portals,'g'));assert.ok(clip.linkError(entries,portals,'d'));
- clip.copy(entries,['g']);assert.equal(clip.linkError(entries,new Map(),'b'),'','Galaxy/ancestor targets remain supported by the existing leaf-placement architecture');
-});
 test('a source change during attachment staging is rejected without losing the latest state',async()=>{
  const original=fixture(),latest=structuredClone(original);latest.entries.push({id:'late',name:'New child',parentId:'a'});
  const meta=metaFactory(latest),files=filesFactory();await files.save({key:'file',entryId:'a',blob:new Blob(['data'])});

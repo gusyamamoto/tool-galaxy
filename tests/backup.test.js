@@ -72,7 +72,11 @@ test('image, PDF, video and generic bytes and saved thumbnails round-trip lossle
 
 test('copy-created and archived referenced attachments survive while orphan records remain stored but excluded',async()=>{
  const state=setup();await attach(state,'original',Buffer.from('Independent bytes'),{thumbnail:Buffer.from('Preview')});
+ // Creation targets must be active. Archive after copying to test Backup's
+ // retention of both sets of archived referenced bytes.
+ const archived=state.repo.load().archivedGalaxies[0];await state.repo.restore(state.repo.load(),archived.galaxyId);
  let n=0;const copied=await state.repo.copyEntries(state.repo.load(),['item-1'],'item-0',()=>`new-${++n}`);
+ await state.repo.archive(state.repo.load(),archived);
  await state.files.save({key:'unreferenced',entryId:'old-owner',blob:new Blob(['Orphan bytes'])});
  const {manifest,records}=await inspect((await backup.create(state.repo)).blob),file=copied.copies[0].content.attachments[0];
  assert.equal(manifest.counts.attachmentRecords,2);assert.equal(Object.hasOwn(manifest.counts,'unreferencedRecords'),false);

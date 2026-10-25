@@ -11,7 +11,7 @@ rendering, hierarchy calculations and selection remain synchronous.
 | Rename / inline rename | renameEntry -> repository.save -> metadata.save | Synchronous staged snapshot; immediate DOM publication. |
 | Group move | HierarchySidebar.onMove -> moveSidebarEntries -> repository.moveEntries | Synchronous snapshot then runtime publication. |
 | Duplicate structure | structure form -> repository.duplicateStructure -> metadata.save | Synchronous staged hierarchy; one save. |
-| Copy / Make copies | confirmHierarchyPaste -> repository.copyEntries -> files.saveBatch + metadata.save callbacks | Already asynchronous file transaction; synchronous metadata/compensation inside it. |
+| Copy / Paste here | pasteHierarchy -> repository.copyEntries -> files.saveBatch + metadata.save callbacks | Durable journaled file batch precedes synchronous metadata/compensation; publication follows success. |
 | Link / remove placement | portal form / Paste Link / removePortal -> commitPortalReferences -> replacePlacements | Synchronous snapshot then sidebar publication. |
 | Delete subtree | delete form -> repository.deleteSubtree -> files.deleteEntries + metadata.save callbacks | Already asynchronous compound deletion; rollback snapshots. |
 | Archive / unarchive | archive form / restoreGalaxy -> repository.archive/restore -> metadata.save | Synchronous snapshot followed by active/archive Map projection. |
