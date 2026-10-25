@@ -36,6 +36,8 @@ class AssetReferences(HTMLParser):
         attrs = dict(attributes)
         for key in ('src', 'poster'):
             if attrs.get(key):self.references.append(attrs[key])
+        if tag in ('img', 'source') and attrs.get('srcset'):
+            self.references.extend(candidate.strip().split()[0] for candidate in attrs['srcset'].split(',') if candidate.strip())
         if tag == 'link' and attrs.get('href'):self.references.append(attrs['href'])
 
 
@@ -185,6 +187,7 @@ def main():
     args.add_argument('--desktop-add-only', action='store_true', help='Desktop context/header child creation and unchanged mobile presentation')
     args.add_argument('--mobile-add-baseline', type=Path, help='Mobile screenshot baseline for desktop-add review; --capture-baseline records it')
     args.add_argument("--first-use-only", action="store_true", help="Empty-Universe onboarding, isolated live preview, hints, motion, mobile and keyboard")
+    args.add_argument('--prerelease-ux-only', action='store_true', help='Contextual coach, mobile sections, add flows, Constellation disclosure and global More')
     args.add_argument("--first-user-readiness-only", action="store_true", help="Check empty startup, stable hierarchy gutters, Constellation add/sizing, shared editors and keyboard viewport")
     args.add_argument("--auth-only", action="store_true", help="Check independent account flows, pending/error/recovery, local data and Backup/Restore isolation")
     args.add_argument("--cloud-boundary-only", action="store_true", help="Mocked development-only identity/Universe/REST/GraphQL privacy boundary")
@@ -197,6 +200,7 @@ def main():
     args.add_argument('--background-files-only', action='store_true', help='Deferred attachment failures, persistent desktop/mobile feedback, IndexedDB rollback and stale Reload priority')
     args.add_argument('--corrupt-data-only', action='store_true', help='Preserved corrupt snapshots, recovery download/Restore, onboarding, migrations and two-tab safety')
     args.add_argument('--attachment-recovery-only', action='store_true', help='Durable attachment journal, held-operation reload, restart reconciliation, ownership, F1/F2/F3 and Restore')
+    args.add_argument('--attachment-binary-only', action='store_true', help='WebKit Blob preparation fallback with real IndexedDB, copy, Restore, recovery and audit')
     args.add_argument('--restore-model-only', action='store_true', help='Reject invalid backup models before replacement; preserve exact metadata, files and F4 journals; F3 reload')
     args.add_argument('--object-urls-only', action='store_true', help='Count live object URLs through media teardown, async races, failures, downloads, texture eviction and Restore')
     args.add_argument('--storage-capacity-only', action='store_true', help='Advisory capacity estimates, batches, copy, unsupported API, stale results and actual quota compensation')
@@ -348,7 +352,7 @@ def main():
         origin = f"http://{'localhost' if options.static_hosting_only or options.staging_only else '127.0.0.1'}:{server.server_port}"
         page_url = (options.site_root.resolve() / 'index.html').as_uri() if options.file_protocol else origin
         seed_condition = "location.protocol === 'file:'" if options.file_protocol else f"location.origin === {json.dumps(origin)}"
-        if options.first_use_only or options.first_user_readiness_only or options.staging_only:seed_condition="false"
+        if options.first_use_only or options.first_user_readiness_only or options.staging_only or options.prerelease_ux_only:seed_condition="false"
         legacy = {
             "version": 2,
             "entries": [
@@ -467,6 +471,9 @@ def main():
             cdp.call("Input.dispatchMouseEvent", type=kind, x=x, y=y, **kwargs)
 
         def click_selector(selector, button='left'):
+            if selector in ('#help-button','#backup-button','#account-button') and evaluate('document.getElementById("utility-menu").hidden'):
+                evaluate('document.getElementById("utility-more").scrollIntoView({block:"nearest"})')
+                click_selector('#utility-more')
             # Labels can overlap the centers of nearby bodies. Use a point that
             # actually hits the requested element, rather than its neighbour.
             point=evaluate(f"(()=>{{const selector={json.dumps(selector)},element=document.querySelector(selector);for(const target of [element,...element.querySelectorAll('.node-label')]){{const r=target.getBoundingClientRect();for(const fy of [.5,.25,.75,.1,.9])for(const fx of [.5,.25,.75,.1,.9]){{const x=r.x+r.width*fx,y=r.y+r.height*fy;if(document.elementFromPoint(x,y)?.closest(selector)===element)return {{x,y}};}}}}const r=element.getBoundingClientRect();return {{x:r.x+r.width/2,y:r.y+r.height/2}};}})()")
@@ -514,6 +521,10 @@ def main():
 
         cdp.call("Page.navigate", url=page_url)
         load()
+        if options.attachment_binary_only:
+            from attachment_binary_browser import run_attachment_binary_checks
+            run_attachment_binary_checks(cdp=cdp,e=evaluate,check=check,wait_for=wait_for,add=add,select=select)
+            print(f'{count} attachment binary compatibility browser checks passed',flush=True);return
         if options.persistence_integration_only:
             from persistence_integration_browser import run_persistence_integration_checks
             run_persistence_integration_checks(cdp=cdp,cdp_class=CDP,e=evaluate,check=check,wait_for=wait_for,add=add,origin=origin)
@@ -600,6 +611,14 @@ def main():
             run_staging_checks(cdp=cdp,evaluate=evaluate,check=check,wait_for=wait_for,add=add,load=load,origin=origin,site_root=options.site_root,asset_files=static_asset_files,cdp_class=CDP,debug_port=debug_port)
             print(f'{count} staging browser checks passed; origin={origin}',flush=True);return
 
+        if options.prerelease_ux_only:
+            from prerelease_ux_browser import run_prerelease_ux_checks
+            def shot(name):
+                if screenshot_dir:
+                    result=cdp.call('Page.captureScreenshot',format='png',captureBeyondViewport=False)
+                    (screenshot_dir/(name+'.png')).write_bytes(base64.b64decode(result['data']))
+            run_prerelease_ux_checks(cdp=cdp,e=evaluate,check=check,wait_for=wait_for,load=load,add=add,shot=shot)
+            print(f'{count} prerelease UX browser checks passed; screenshots: {screenshot_dir}',flush=True);return
         if options.first_use_only:
             from first_use_browser import run_first_use_checks
             def shot(name):
@@ -757,7 +776,8 @@ def main():
             choose(renamed)
             check(evaluate("backupUI.handle&&!backupUI.preview.hidden&&document.activeElement===backupUI.confirm"),'real File with unrelated name and extension validates and focuses confirmation')
             check(evaluate("localStorage.getItem('galaxy:user-data')")==saved,'renamed-file validation leaves persisted Cosmos untouched')
-            press('Escape');check(evaluate('!backupUI.dialog.open&&document.activeElement===backupUI.trigger'),'Escape cancels preview and restores sidebar focus')
+            press('Escape');wait_for('!backupUI.dialog.open&&document.activeElement.id==="utility-more"')
+            check(evaluate('!backupUI.dialog.open&&document.activeElement.id==="utility-more"'),'Escape cancels preview and restores More focus')
             click_selector('#backup-button')
             fake=downloads/'fake.cosmifold';fake.write_bytes(b'Not a real backup despite its extension')
             choose(fake);check(evaluate("!backupUI.handle&&backupUI.preview.hidden&&backupUI.status.dataset.error==='true'"),'fake .cosmifold file is rejected by its contents')
@@ -847,7 +867,7 @@ def main():
             key('Tab');check(evaluate("document.activeElement.id==='cancel-backup'"),'Tab continues to Cancel without moving focus behind the modal')
             key('Tab');check(evaluate("document.activeElement.id==='download-backup'"),'Tab returns to Download inside the modal')
             check(workspace()==original_state,'opening Backup preserves selection, multi-selection, Content draft and camera')
-            shot('backup-desktop');key('Escape');settle();check(evaluate('!backupUI.dialog.open&&document.activeElement.id==="backup-button"'),'Escape closes and restores sidebar focus')
+            shot('backup-desktop');key('Escape');settle();check(evaluate('!backupUI.dialog.open&&document.activeElement.id==="utility-more"'),'Escape closes and restores More focus')
             click_selector('#backup-button');click_selector('#cancel-backup');settle();check(workspace()==original_state,'Cancel creates nothing and preserves the Cosmos')
             requests_before=len(cdp.requests);cdp.call('Network.emulateNetworkConditions',offline=True,latency=0,downloadThroughput=0,uploadThroughput=0)
             click_selector('#backup-button');evaluate("downloadBackupProgress=[];window.backupCreate=cosmifoldBackup.create;cosmifoldBackup.create=function(repo,options){return backupCreate.call(this,repo,{...options,onProgress:p=>{downloadBackupProgress.push(p);options.onProgress(p)}})};backupUI.download.click();backupUI.download.click()")
@@ -1346,6 +1366,8 @@ def main():
             click_selector('#image-viewer-close');wait_for('!imageViewer.dialog.open')
             wait_for(f"document.activeElement===document.querySelector({json.dumps(pdf_trigger)})&&imageViewer.url===null")
             check(evaluate(f"document.activeElement===document.querySelector({json.dumps(pdf_trigger)})&&imageViewer.url===null"),'PDF Close restores attachment focus and releases original bytes after reading')
+            evaluate(f"document.querySelector({json.dumps(pdf_trigger)}).scrollIntoView({{block:'center'}})")
+            evaluate('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))')
             click_selector(pdf_trigger);wait_for('!imageViewer.pdf.hidden');key('Escape','Escape');wait_for('!imageViewer.dialog.open')
             check(evaluate(f"document.activeElement===document.querySelector({json.dumps(pdf_trigger)})"),'PDF Escape from viewer controls dismisses the document and restores attachment focus')
             evaluate('window.nativePdfSupport=imageViewer.supportsPdf;imageViewer.supportsPdf=()=>false')
@@ -1389,7 +1411,7 @@ def main():
             check(evaluate("!!document.getElementById('help-button').closest('#sidebar-utilities')&&!document.querySelector('.sidebar-brand #help-button')&&!!document.getElementById('sample-utility').closest('#sidebar-utilities')"),'Help remains directly accessible in the bottom utility area')
             shot('usability-sidebar')
             click_selector('#help-button');check(evaluate("document.getElementById('help-dialog').open"),'bottom Help opens its existing modal');key('Escape','Escape');wait_for("!document.getElementById('help-dialog').open")
-            check(evaluate("document.activeElement.id==='help-button'"),'Help returns focus to its new bottom trigger')
+            check(evaluate("document.activeElement.id==='utility-more'"),'Help returns focus to its new bottom trigger')
             evaluate(f"portals.set('portal:usability',{{id:'portal:usability',targetEntryId:{json.dumps(item)},parentEntryId:{json.dumps(other)},createdAt:new Date().toISOString()}});commitConstellations(new Map([['constellation:usability',{{id:'constellation:usability',name:'Trip',memberEntryIds:[{json.dumps(item)}],createdAt:new Date().toISOString()}}]]));hierarchySidebar.expanded.add({json.dumps(other)});hierarchySidebar.setEntries(entries)")
             row=f'.hierarchy-row[data-entry-id="{item}"]';label=row+' .tree-name'
             evaluate('window.renameNavigations=0;window.originalNavigate=hierarchySidebar.onNavigate;hierarchySidebar.onNavigate=id=>{renameNavigations++;originalNavigate(id)}')
@@ -1411,7 +1433,7 @@ def main():
             check(evaluate(f"!hierarchySidebar.rename&&entries.get({json.dumps(item)}).name==='Holiday photos'"),'F2 provides keyboard access and Escape cancels only the rename')
             evaluate(f"hierarchySidebar.beginRename({json.dumps(item)});hierarchySidebar.rename.input.value='   '");key('Enter','Enter','\r')
             check(evaluate("!!hierarchySidebar.rename&&hierarchySidebar.rename.input.getAttribute('aria-invalid')==='true'"),'empty trimmed names are blocked in the editor')
-            key('Escape','Escape');evaluate(f"hierarchySidebar.beginRename({json.dumps(item)});hierarchySidebar.rename.input.value='Blur me';document.getElementById('help-button').focus()")
+            key('Escape','Escape');evaluate(f"hierarchySidebar.beginRename({json.dumps(item)});hierarchySidebar.rename.input.value='Blur me';document.getElementById('utility-more').focus()")
             check(evaluate(f"!hierarchySidebar.rename&&entries.get({json.dumps(item)}).name==='Holiday photos'"),'focus-away cancels unsubmitted text cleanly')
             evaluate(f"contentInspector.editNotes();contentInspector.notes.value='Keep my unfinished note';window.inlineView=JSON.stringify(camera.view);window.inlineBranches=JSON.stringify([...hierarchySidebar.expanded]);hierarchySidebar.beginRename({json.dumps(item)});hierarchySidebar.rename.input.value='Holiday photos!'");key('Enter','Enter','\r')
             check(evaluate("contentInspector.notes.value==='Keep my unfinished note'&&!contentInspector.notesForm.hidden&&JSON.stringify(camera.view)===inlineView&&JSON.stringify([...hierarchySidebar.expanded])===inlineBranches"),'inline Rename preserves the open Note draft, camera and branch expansion')
@@ -1481,8 +1503,11 @@ def main():
             wait_for("(async()=>!!await fixturePersistence.files.get('a-file'))()")
             evaluate("window.fixtureBefore=JSON.stringify(fixtureRepository.load());window.fixtureStoreSave=fixturePersistence.metadata.save;fixturePersistence.metadata.save=()=>{throw new DOMException('Full','QuotaExceededError')};void 0")
             check(evaluate("(async()=>{try{await fixtureRepository.deleteSubtree(fixtureRepository.load(),['g','a']);return false}catch{return JSON.stringify(fixtureRepository.load())===fixtureBefore&&!!await fixturePersistence.files.get('a-file')}})()"),'failed compound metadata commit aborts file deletion and keeps every record')
-            evaluate("fixturePersistence.metadata.save=fixtureStoreSave;window.fixtureTransaction=IDBDatabase.prototype.transaction;IDBDatabase.prototype.transaction=function(...args){const tx=fixtureTransaction.apply(this,args);if(this.name==='galaxy-attachments:foundation-test')window.fixtureTx=tx;return tx};void 0")
-            check(evaluate("""(async()=>{try{await fixturePersistence.files.save({key:'abort-file',entryId:'a',blob:new Blob(['Abort'])},()=>{fixtureRepository.save({...fixtureRepository.load(),entries:[]});fixtureTx.abort()},()=>fixtureRepository.save(JSON.parse(fixtureBefore)));return false}catch{return JSON.stringify(fixtureRepository.load())===fixtureBefore&&await fixturePersistence.files.get('abort-file')===null}finally{IDBDatabase.prototype.transaction=fixtureTransaction}})()"""),'a real late IndexedDB abort compensates the already-written metadata')
+            # F4 commits metadata only AFTER the durable file transaction. Abort
+            # that live transaction at request success, rather than aborting a
+            # completed tx from the later metadata callback (the older contract).
+            evaluate("fixturePersistence.metadata.save=fixtureStoreSave;window.fixtureAdd=IDBObjectStore.prototype.add;window.fixtureMetadataPublished=false;IDBObjectStore.prototype.add=function(value,...args){const request=fixtureAdd.call(this,value,...args);if(this.name==='files'&&value.key==='abort-file')request.addEventListener('success',()=>this.transaction.abort());return request};void 0")
+            check(evaluate("""(async()=>{try{await fixturePersistence.files.save({key:'abort-file',entryId:'a',blob:new Blob(['Abort'])},()=>{fixtureMetadataPublished=true;fixtureRepository.save({...fixtureRepository.load(),entries:[]});},()=>fixtureRepository.save(JSON.parse(fixtureBefore)));return false}catch{return !fixtureMetadataPublished&&JSON.stringify(fixtureRepository.load())===fixtureBefore&&await fixturePersistence.files.get('abort-file')===null&&(await fixturePersistence.files.listOperations()).length===0}finally{IDBObjectStore.prototype.add=fixtureAdd}})()"""),'a real IndexedDB transaction abort leaves metadata unpublished and removes its prepared journal')
             evaluate("fixtureRepository.deleteSubtree(fixtureRepository.load(),['g','a'])")
             check(evaluate("(async()=>{const s=fixtureRepository.load();return s.entries.length===1&&s.entries[0].id==='keep'&&s.portals.length===0&&s.constellations[0].memberEntryIds.join(',')==='keep'&&s.layout.length===0&&await fixturePersistence.files.get('a-file')===null&&!!await fixturePersistence.files.get('keep-file')})()"),'compound subtree deletion removes owned bytes, links, membership and layout while preserving unrelated data')
             cdp.call('Page.reload',ignoreCache=True);load()
@@ -1553,11 +1578,11 @@ def main():
             check(evaluate("(()=>{const d=document.getElementById('help-dialog'),r=d.getBoundingClientRect();return r.width<=560&&r.width>=480&&r.left>=0&&r.right<=innerWidth&&r.top>=0&&r.bottom<=innerHeight})()"),'desktop Help stays compact inside the viewport')
             shot('help-desktop')
             click_selector('#close-help-button')
-            check(evaluate("!document.getElementById('help-dialog').open&&document.activeElement.id==='help-button'"),'close button returns focus to Help')
-            key('Enter','Enter','\r');wait_for("document.getElementById('help-dialog').open")
+            check(evaluate("!document.getElementById('help-dialog').open&&document.activeElement.id==='utility-more'"),'close button returns focus to Help')
+            key('Enter','Enter','\r');key('Enter','Enter','\r');wait_for("document.getElementById('help-dialog').open")
             check(True,'keyboard activates the Help trigger');key('Escape','Escape')
             wait_for("!document.getElementById('help-dialog').open")
-            check(evaluate("document.activeElement.id==='help-button'") and workspace()==original,'Escape restores focus without closing Content or deactivating the Constellation')
+            check(evaluate("document.activeElement.id==='utility-more'") and workspace()==original,'Escape restores focus without closing Content or deactivating the Constellation')
             evaluate(f"hierarchySidebar.restoreMovedSelection([{json.dumps(item)},{json.dumps(secondary)}],{json.dumps(item)})")
             group=workspace();click_selector('#help-button')
             check(workspace()==group,'Help preserves the complete multi-selection, active item, Content draft and zoomed system')
@@ -1603,7 +1628,7 @@ def main():
                     wait_for("document.getElementById('help-navigation').open&&document.querySelector('#help-navigation summary').ariaExpanded==='true'")
                     check(True,f'native touch opens the navigation explanation at {width}px')
                 evaluate("document.querySelectorAll('#help-dialog details').forEach(t=>t.open=true)")
-                check_rendered("(()=>{const d=document.getElementById('help-dialog'),r=d.getBoundingClientRect(),s=d.querySelector('.help-topics');return r.left>=0&&r.right<=innerWidth&&r.top>=0&&r.bottom<=innerHeight&&s.scrollHeight>s.clientHeight&&s.scrollWidth<=s.clientWidth&&[...d.querySelectorAll('.help-hints,p')].every(e=>e.scrollWidth<=e.clientWidth)&&document.getElementById('help-button').getBoundingClientRect().height>=44&&document.getElementById('close-help-button').getBoundingClientRect().height>=44&&[...d.querySelectorAll('summary')].every(s=>s.getBoundingClientRect().height>=44)})()",f'Help fits {width}x{height} with internal scrolling and comfortable touch targets')
+                check_rendered("(()=>{const d=document.getElementById('help-dialog'),r=d.getBoundingClientRect(),s=d.querySelector('.help-topics');return r.left>=0&&r.right<=innerWidth&&r.top>=0&&r.bottom<=innerHeight&&s.scrollHeight>s.clientHeight&&s.scrollWidth<=s.clientWidth&&[...d.querySelectorAll('.help-hints,p')].every(e=>e.scrollWidth<=e.clientWidth)&&document.getElementById('utility-more').getBoundingClientRect().height>=44&&document.getElementById('close-help-button').getBoundingClientRect().height>=44&&[...d.querySelectorAll('summary')].every(s=>s.getBoundingClientRect().height>=44)})()",f'Help fits {width}x{height} with internal scrolling and comfortable touch targets')
                 evaluate("document.querySelector('#help-dialog .help-topics').scrollTop=10000")
                 close_info=evaluate("(()=>{const b=document.getElementById('close-help-button'),r=b.getBoundingClientRect(),d=document.getElementById('help-dialog');return {reachable:document.elementFromPoint(r.x+r.width/2,r.y+r.height/2)===b,rect:r.toJSON(),dialogScroll:d.scrollTop,topicScroll:d.querySelector('.help-topics').scrollTop,hit:document.elementFromPoint(r.x+r.width/2,r.y+r.height/2)?.outerHTML.slice(0,200)}})()")
                 if not close_info['reachable']:shot(f'help-close-failure-{width}')
@@ -2033,7 +2058,7 @@ def main():
             before=state();evaluate('archivedSection.toggle.click()')
             check(state()==before and evaluate('!archivedSection.list.hidden'),'Archive expansion changes only navigation presentation')
             shot('sections-desktop')
-            evaluate("hierarchySidebar.universeSection.setCollapsed(true);constellationWorkspace.collapsed=false;constellationWorkspace.applySectionState();constellationWorkspace.saveSectionPreference();archivedSection.setCollapsed(true);saveGalaxy();physics.pause()")
+            evaluate("hierarchySidebar.universeSection.setCollapsed(true);constellationWorkspace.section.setCollapsed(false);archivedSection.setCollapsed(true);saveGalaxy();physics.pause()")
             pref=evaluate("JSON.parse(localStorage.getItem('galaxy:navigation-ui'))")
             check(pref['universeCollapsed'] and not pref['constellationsCollapsed'] and pref['archivedCollapsed'],'three section states persist independently in existing navigation preferences')
             cdp.call('Page.reload');load();wait_camera();evaluate('physics.pause()')
@@ -3394,6 +3419,8 @@ def main():
             def state():
                 return evaluate("JSON.stringify({active:activeConstellationId,overview:constellationOverview,selected:selectedNode?.dataset.entryId,panel:panel.hidden,title:panelName.textContent,kind:document.getElementById('panel-kind').textContent,content:document.getElementById('panel-rich-content').hidden,view:camera.view})")
             def local(id):
+                evaluate('constellationWorkspace.section.setCollapsed(false)')
+                evaluate(f'document.querySelector(\'[data-constellation-id="{id}"]\').scrollIntoView({{block:"nearest"}});new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))')
                 click_selector(f'[data-constellation-id="{id}"] .constellation-open',button='right')
             def action(name):
                 click_selector(f'#entry-context-menu [data-action="collection-{name}"]')
@@ -3433,7 +3460,7 @@ def main():
             click_selector('#cancel-delete-constellation');evaluate('physics.pause()')
             cdp.call('Emulation.setDeviceMetricsOverride',width=390,height=844,deviceScaleFactor=1,mobile=False)
             cdp.call('Emulation.setTouchEmulationEnabled',enabled=True,maxTouchPoints=1);time.sleep(.2);wait_camera()
-            evaluate('hierarchySidebar.setCollapsed(false)');wait_camera();evaluate('physics.pause()')
+            evaluate('hierarchySidebar.setCollapsed(false);mobileSidebarSections.select(constellationWorkspace.section)');wait_camera();evaluate('physics.pause()')
             before=state()
             point=evaluate(f"(()=>{{const b=document.querySelector('[data-constellation-id=\"{remaining}\"] .collection-more');b.scrollIntoView({{block:'nearest'}});const r=b.getBoundingClientRect();return{{x:r.x+r.width/2,y:r.y+r.height/2,width:r.width,height:r.height}}}})()")
             check(point['width']>=44 and point['height']>=44,'touch overflow has a comfortable target and remains visibly available')
@@ -4360,7 +4387,7 @@ def main():
             evaluate("if(constellationWorkspace.collapsed)document.getElementById('constellations-toggle').click()")
             point=evaluate("(()=>{const r=document.getElementById('constellations-toggle').getBoundingClientRect();return{x:r.x+r.width/2,y:r.y+r.height/2}})()")
             cdp.call('Input.dispatchTouchEvent',type='touchStart',touchPoints=[point]);cdp.call('Input.dispatchTouchEvent',type='touchEnd',touchPoints=[])
-            check(evaluate('constellationWorkspace.list.hidden&&!constellationWorkspace.nameDialog.open'),'touch chevron collapses independently from the creation +')
+            check(evaluate('!constellationWorkspace.list.hidden&&hierarchySidebar.tree.hidden&&!constellationWorkspace.nameDialog.open'),'touch chevron selects Constellations exclusively without opening creation')
             point=evaluate("(()=>{const r=document.getElementById('constellations-toggle').getBoundingClientRect();return{x:r.x+r.width/2,y:r.y+r.height/2}})()")
             cdp.call('Input.dispatchTouchEvent',type='touchStart',touchPoints=[point]);cdp.call('Input.dispatchTouchEvent',type='touchEnd',touchPoints=[])
             check(evaluate('!constellationWorkspace.list.hidden'),'touch chevron expands the section without navigation')

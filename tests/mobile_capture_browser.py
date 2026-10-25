@@ -11,12 +11,12 @@ def run_mobile_capture_checks(*, cdp, evaluate, check, wait_for, load, add, sele
     select(owner)
     # Suppress native dialogs only; exercise the real buttons, change handlers,
     # validation, repository transaction and IndexedDB storage below.
-    evaluate("""window.capturePickers=[];contentInspector.files.click=function(){capturePickers.push({accept:this.getAttribute('accept'),capture:this.getAttribute('capture'),multiple:this.multiple,label:this.getAttribute('aria-label')});};""")
+    evaluate("""window.capturePickers=[];[contentInspector.files,contentInspector.photoFiles,contentInspector.cameraFiles].forEach(input=>input.click=function(){capturePickers.push({accept:this.getAttribute('accept'),capture:this.getAttribute('capture'),multiple:this.multiple,label:this.getAttribute('aria-label')});});""")
     evaluate(f"toggleContentMenu(addMenu,hierarchySidebar.rows.get({json.dumps(owner)}).querySelector('.tree-add'),{json.dumps(owner)})")
     check(evaluate("[...addMenu.querySelectorAll('button:not([hidden])')].map(b=>b.textContent).join('|')==='Add item|Add task list|Add files|Add note|Add link'"), 'desktop Add retains core actions without linked-item creation or empty-clipboard Paste')
     evaluate("addMenu.querySelector('[data-add=files]').click()")
     check(evaluate("capturePickers.at(-1).accept===null&&capturePickers.at(-1).capture===null&&capturePickers.at(-1).multiple"), 'desktop Files keeps the ordinary multiple-file picker')
-    evaluate("contentInspector.files.dispatchEvent(new Event('cancel'));closeInspector()")
+    evaluate("(contentInspector.fileSelection?.input||contentInspector.files).dispatchEvent(new Event('cancel'));closeInspector()")
 
     def mobile(width, height):
         cdp.call('Emulation.setDeviceMetricsOverride', width=width, height=height, deviceScaleFactor=1, mobile=True)
@@ -25,7 +25,7 @@ def run_mobile_capture_checks(*, cdp, evaluate, check, wait_for, load, add, sele
         evaluate('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))')
 
     def cancel():
-        evaluate("contentInspector.files.dispatchEvent(new Event('cancel'))")
+        evaluate("(contentInspector.fileSelection?.input||contentInspector.files).dispatchEvent(new Event('cancel'))")
 
     mobile(390, 844)
     evaluate(f"closeInspector();hierarchySidebar.setCollapsed(true);nodes.get({json.dumps(owner)}).click()")
@@ -36,17 +36,34 @@ def run_mobile_capture_checks(*, cdp, evaluate, check, wait_for, load, add, sele
         cdp.call('Input.dispatchTouchEvent',type='touchStart',touchPoints=[point])
         cdp.call('Input.dispatchTouchEvent',type='touchEnd',touchPoints=[])
 
+    # Both shared capture surfaces must expose the same native routes. Exercise
+    # actual touch dispatch and cancellation without mutating saved metadata.
+    for surface,trigger,expanded in [('Preview Contents','#mobile-body-add',False),('Contents','#entry-add-button',True)]:
+        for action,input_id,capture,accept,multiple in [
+                ('camera','content-camera','environment','image/*',False),
+                ('photo','content-photos',None,'image/*',True),
+                ('capture-files','content-files',None,None,True)]:
+            evaluate('hierarchySidebar.setCollapsed(true);'+('setInspectorOpen(true);mobileContents.setPage("files")' if expanded else 'closeInspector()'))
+            saved=evaluate('localStorage.getItem("galaxy:user-data")')
+            tap(trigger);tap(f'#add-menu [data-add={action}]')
+            check(evaluate(f'contentInspector.fileSelection.input.id==={json.dumps(input_id)}&&contentInspector.fileSelection.entryId==={json.dumps(owner)}&&capturePickers.at(-1).capture==={json.dumps(capture)}&&capturePickers.at(-1).accept==={json.dumps(accept)}&&capturePickers.at(-1).multiple==={str(multiple).lower()}'), f'{surface}: {action} reuses the existing native picker and exact destination')
+            check(evaluate(f'panel.hidden==={str(not expanded).lower()}&&addMenu.hidden'), f'{surface}: {action} waits for a result without changing the content surface')
+            cancel()
+            check(evaluate('contentInspector.fileSelection===null&&document.getElementById("content-file-limit").hidden') and evaluate('localStorage.getItem("galaxy:user-data")')==saved, f'{surface}: {action} cancellation clears its destination without saving')
+
+    evaluate('closeInspector()')
     evaluate(f"focusEntry({json.dumps(owner)},{{closeFocus:true,openInspector:false}})")
     wait_for('camera.frame===null')
     tap(f'.entry-node[data-entry-id="{owner}"]')
     check(evaluate(f'panel.hidden&&selectedNode.dataset.entryId==={json.dumps(owner)}'), 'a real body tap selects its body and leaves Contents closed')
     tap('#mobile-body-add')
-    quick_labels = 'Take Photo|Photo Gallery|Add item|Add task list'
+    quick_labels = 'Take a photo|Add photo|Add files|Add item|Add task list'
+    sidebar_labels = quick_labels
     def labels():
         return evaluate("[...addMenu.querySelectorAll('button:not([hidden])')].map(b=>b.textContent).join('|')")
 
-    check(labels() == quick_labels, 'CB View has Take Photo, Photo Gallery, Add item and Add task list')
-    check(evaluate("!addMenu.querySelector('[data-add=more]')&&!addMenu.querySelector('[data-add=quick-note]')&&!addMenu.querySelector('[data-add=capture-files]')"), 'no hidden second-page, quick-note or general-files mobile menu remains')
+    check(labels() == quick_labels, 'Preview Contents has camera, photo, files, Add item and Add task list')
+    check(evaluate("!addMenu.querySelector('[data-add=more]')&&!addMenu.querySelector('[data-add=quick-note]')&&!addMenu.querySelector('[data-add=camera]').hidden&&!addMenu.querySelector('[data-add=gallery]')"), 'compact menu exposes camera directly without duplicate sources or a second page')
     check(evaluate("addMenu.dataset.view==='quick'&&addMenu.querySelectorAll('[role=separator]:not([hidden])').length===0"), 'quick menu has no hidden full-menu actions exposed or group dividers')
     shot('mobile-capture-390-menu')
     preview_destination = evaluate('addMenuTargetId')
@@ -68,13 +85,13 @@ def run_mobile_capture_checks(*, cdp, evaluate, check, wait_for, load, add, sele
     evaluate('closeInspector()')
     tap('#mobile-body-add')
     before = evaluate("localStorage.getItem('galaxy:user-data')")
-    tap('#add-menu [data-add=camera]')
-    check(evaluate("capturePickers.at(-1).capture==='environment'&&capturePickers.at(-1).accept==='image/*'&&!capturePickers.at(-1).multiple&&panel.hidden&&addMenu.hidden"), 'Take Photo directly requests a single outward-facing image without a details form')
+    tap('#add-menu [data-add=photo]')
+    check(evaluate("capturePickers.at(-1).capture===null&&capturePickers.at(-1).accept==='image/*'&&capturePickers.at(-1).multiple&&panel.hidden&&addMenu.hidden"), 'Add photo requests images including HEIF without camera-only capture')
     cancel()
     check(evaluate("panel.hidden&&contentInspector.fileSelection===null&&document.getElementById('content-file-limit').hidden"), 'camera cancellation clears picker state and leaves Contents closed')
     check(evaluate("localStorage.getItem('galaxy:user-data')") == before, 'cancel does not write metadata')
-    click_selector('#mobile-body-add'); click_selector('#add-menu [data-add=gallery]')
-    check(evaluate("capturePickers.at(-1).capture===null&&capturePickers.at(-1).accept.includes('.heic')&&capturePickers.at(-1).multiple&&panel.hidden"), 'Gallery allows photos including HEIF and removes camera capture')
+    click_selector('#mobile-body-add'); click_selector('#add-menu [data-add=capture-files]')
+    check(evaluate("capturePickers.at(-1).capture===null&&capturePickers.at(-1).accept===null&&capturePickers.at(-1).multiple&&panel.hidden"), 'repeated native picker allows all supported photos and files')
     cancel()
     evaluate('setInspectorOpen(true);mobileContents.setPage("files")')
     tap('#content-browse-add-file')
@@ -82,7 +99,7 @@ def run_mobile_capture_checks(*, cdp, evaluate, check, wait_for, load, add, sele
     cancel()
     evaluate('closeInspector()')
     click_selector('#mobile-body-add')
-    check(labels() == quick_labels, 'reopening CB + retains the same four actions')
+    check(labels() == quick_labels, 'reopening CB + retains compact actions')
     click_selector('#add-child-button')
     check(evaluate(f"dialog.open&&contextualParentId==={json.dumps(owner)}&&parentField.value==={json.dumps(owner)}&&addMenu.hidden"), 'Add item opens the existing child form for the exact body')
     click_selector('#cancel-add-entry')
@@ -98,16 +115,18 @@ def run_mobile_capture_checks(*, cdp, evaluate, check, wait_for, load, add, sele
     for width, height in [(360, 800), (390, 844), (430, 932), (844, 390)]:
         mobile(width, height)
         evaluate('closeInspector();hierarchySidebar.setCollapsed(false)')
-        check(evaluate("[...document.querySelectorAll('.hierarchy-row[data-entry-id]')].every(row=>{const a=row.querySelector('.tree-add'),m=row.querySelector('.tree-more'),ar=a.getBoundingClientRect(),mr=m.getBoundingClientRect();return getComputedStyle(a).visibility==='visible'&&getComputedStyle(m).display!=='none'&&ar.width>=44&&mr.width>=44&&ar.right<=mr.left&&mr.right<=innerWidth;})"), f'{width}x{height}: every row has independently visible + and actions')
-        evaluate(f"hierarchySidebar.rows.get({json.dumps(owner)}).querySelector('.tree-add').click()")
-        check(labels() == quick_labels, f'{width}x{height}: Menu View uses the same four Add actions')
+        check(evaluate("[...document.querySelectorAll('.hierarchy-row[data-entry-id]')].every(row=>{const a=row.querySelector('.tree-add'),m=row.querySelector('.tree-more').getBoundingClientRect();return a.hidden&&a.tabIndex===-1&&a.getClientRects().length===0&&m.width>=44&&m.right<=innerWidth;})"), f'{width}x{height}: rows retain management without +')
+        check(evaluate("document.getElementById('add-entry-button').getClientRects().length>0"), f'{width}x{height}: Universe keeps New Galaxy +')
+        evaluate('hierarchySidebar.setCollapsed(true)')
+        tap('#mobile-body-add')
+        check(labels() == quick_labels, f'{width}x{height}: Preview Contents retains all capture actions')
         check(evaluate("addMenu.dataset.view==='quick'&&addMenu.querySelectorAll('[role=separator]:not([hidden])').length===0"), f'{width}x{height}: no expanded mobile Add menu or unnecessary separators')
         check(evaluate("(()=>{const r=addMenu.getBoundingClientRect();return r.left>=0&&r.right<=innerWidth&&r.top>=0&&r.bottom<=innerHeight&&r.width<=270;})()"), f'{width}x{height}: full Add menu stays inside viewport')
-        check(evaluate("(()=>{const a=getComputedStyle(addMenu),m=getComputedStyle(contextMenu),ab=getComputedStyle(addMenu.querySelector('[data-add=camera]')),mb=getComputedStyle(contextMenu.querySelector('[data-action=edit]'));return ['backgroundColor','borderRadius','padding','boxShadow','borderColor','borderWidth'].every(k=>a[k]===m[k])&&['fontSize','fontFamily','padding','borderRadius','minHeight','color'].every(k=>ab[k]===mb[k]);})()"), f'{width}x{height}: Add surface and rows match the existing actions menu')
+        check(evaluate("(()=>{const a=getComputedStyle(addMenu),m=getComputedStyle(contextMenu),ab=getComputedStyle(addMenu.querySelector('[data-add=capture-files]')),mb=getComputedStyle(contextMenu.querySelector('[data-action=edit]'));return ['backgroundColor','borderRadius','padding','boxShadow','borderColor','borderWidth'].every(k=>a[k]===m[k])&&['fontSize','fontFamily','padding','borderRadius','minHeight','color'].every(k=>ab[k]===mb[k]);})()"), f'{width}x{height}: Add surface and rows match the existing actions menu')
         shot(f'mobile-capture-{width}-drawer')
         cdp.call('Input.dispatchKeyEvent',type='keyDown',key='Escape',code='Escape',windowsVirtualKeyCode=27)
         cdp.call('Input.dispatchKeyEvent',type='keyUp',key='Escape',code='Escape',windowsVirtualKeyCode=27)
-        check(evaluate("addMenu.hidden&&document.activeElement.classList.contains('tree-add')"), f'{width}x{height}: Escape returns to the same +')
+        check(evaluate("addMenu.hidden&&document.activeElement.id==='mobile-body-add'"), f'{width}x{height}: Escape returns to Preview Contents +')
         evaluate('hierarchySidebar.setCollapsed(true);setInspectorOpen(true);panel.scrollTop=0')
         tap('#contents-tab-files')
         check(evaluate("(()=>{const a=document.getElementById('entry-add-button').getBoundingClientRect(),m=moreButton.getBoundingClientRect(),n=panelName.getBoundingClientRect();return a.width>=44&&a.height>=44&&a.left>=n.right&&a.right<=m.left&&m.right<=innerWidth&&n.width>0;})()"), f'{width}x{height}: Contents title, body + and existing actions remain separate and reachable')
@@ -119,16 +138,17 @@ def run_mobile_capture_checks(*, cdp, evaluate, check, wait_for, load, add, sele
         evaluate('closeContentMenus();closeInspector()')
     mobile(390, 844)
     evaluate('hierarchySidebar.setCollapsed(true)')
-    # A retained destination can differ from the selected body.
-    evaluate(f"selectEntry(entries.get({json.dumps(other)}),nodes.get({json.dumps(other)}),{{openInspector:false}});toggleContentMenu(addMenu,hierarchySidebar.rows.get({json.dumps(owner)}).querySelector('.tree-add'),{json.dumps(owner)})")
-    check(labels() == quick_labels, 'closed-sidebar context uses quick mode independently of the trigger')
+    # Main-screen creation retains the selected destination without sidebar +.
+    evaluate(f"selectEntry(entries.get({json.dumps(owner)}),nodes.get({json.dumps(owner)}),{{openInspector:false}});closeInspector();hierarchySidebar.setCollapsed(true)")
+    tap('#mobile-body-add')
+    check(labels() == sidebar_labels, 'Preview trigger retains its compact contextual menu')
     evaluate("document.getElementById('add-child-button').click()")
-    check(evaluate(f"dialog.open&&contextualParentId==={json.dumps(owner)}&&parentField.value==={json.dumps(owner)}"), 'Add item preserves an unselected destination instead of substituting the active body')
+    check(evaluate(f"dialog.open&&contextualParentId==={json.dumps(owner)}&&parentField.value==={json.dumps(owner)}"), 'Add item preserves the selected main-screen destination')
     evaluate('document.getElementById("cancel-add-entry").click()')
     evaluate('closeContentMenus()')
     # Create a genuine PNG with the browser, then change selection before delivery.
-    evaluate(f"openEntryContentAction({json.dumps(owner)},'gallery');selectEntry(entries.get({json.dumps(other)}),nodes.get({json.dumps(other)}),{{openInspector:false}})")
-    evaluate("""(async()=>{const c=document.createElement('canvas');c.width=80;c.height=60;c.getContext('2d').fillRect(0,0,80,60);const blob=await new Promise(r=>c.toBlob(r,'image/png'));window.capturePhoto=new File([blob],'camera-photo.png',{type:'image/png'});const d=new DataTransfer();d.items.add(capturePhoto);contentInspector.files.files=d.files;contentInspector.files.dispatchEvent(new Event('change'));})()""")
+    evaluate(f"openEntryContentAction({json.dumps(owner)},'photo');selectEntry(entries.get({json.dumps(other)}),nodes.get({json.dumps(other)}),{{openInspector:false}})")
+    evaluate("""(async()=>{const c=document.createElement('canvas');c.width=80;c.height=60;c.getContext('2d').fillRect(0,0,80,60);const blob=await new Promise(r=>c.toBlob(r,'image/png'));window.capturePhoto=new File([blob],'camera-photo.png',{type:'image/png'});const d=new DataTransfer();d.items.add(capturePhoto);(contentInspector.fileSelection?.input||contentInspector.files).files=d.files;(contentInspector.fileSelection?.input||contentInspector.files).dispatchEvent(new Event('change'));})()""")
     wait_for('contentInspector.jobs.size===0&&contentInspector.content().attachments.length===1')
     check(evaluate(f"!panel.hidden&&contentInspector.entryId==={json.dumps(owner)}&&!(entries.get({json.dumps(other)}).content?.attachments.length)"), 'picker result attaches to its original destination after selection changes')
     check(evaluate("(async()=>{const f=contentInspector.content().attachments[0],r=await attachmentStore.get(f.storageKey);return r.entryId===f.entryId&&r.blob.size===capturePhoto.size&&!!r.thumbnail&&f.width===80&&f.height===60;})()"), 'capture uses existing original-byte and thumbnail storage transaction')

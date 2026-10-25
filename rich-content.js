@@ -58,6 +58,8 @@ class EntryContentInspector {
         this.quickBookmark=document.getElementById('content-bookmarks-empty');this.quickUrl=document.getElementById('content-quick-bookmark-url');
         this.quickSave=document.getElementById('content-quick-bookmark-save');
         this.files = document.getElementById("content-files");
+        this.photoFiles = document.getElementById('content-photos');
+        this.cameraFiles = document.getElementById('content-camera');
         this.status = document.getElementById("content-status");
         this.onLayout=()=>{
             // Editor feedback shares its field scroller; a previous success/error
@@ -153,16 +155,7 @@ class EntryContentInspector {
                 if(empty()){event.preventDefault();event.stopImmediatePropagation();cancel();}
             },true);
         }
-        this.files.addEventListener("change", () => {
-            const files = [...this.files.files]; this.files.value = "";
-            const selection = this.fileSelection; this.fileSelection = null;
-            document.getElementById("content-file-limit").hidden = true;
-            const id = selection?.entryId || this.entryId;
-            if (files.length && this.getEntry(id)) {
-                selection?.onSelect?.(); this.upload(files, id);
-            } else this.onLayout();
-        });
-        this.files.addEventListener("cancel", () => { this.fileSelection = null; document.getElementById("content-file-limit").hidden = true; this.onLayout(); });
+        this.setupFilePickers();
         document.addEventListener("pointerdown", event => {
             this.root.querySelectorAll(".content-item-menu[open]").forEach(menu => { if (!menu.contains(event.target)) menu.open = false; });
         });
@@ -330,23 +323,49 @@ class EntryContentInspector {
         this.linkForm.hidden = false; this.renderBookmarkState();
         this.focusEditor(document.getElementById('content-link-url'));
     }
+    setupFilePickers() {
+        this.fileSelections = new Map();
+        for (const input of [this.files,this.photoFiles,this.cameraFiles]) {
+            const release=()=>{
+                const selection=this.fileSelections.get(input);
+                this.fileSelections.delete(input);
+                if(this.fileSelection===selection)this.fileSelection=null;
+                document.getElementById('content-file-limit').hidden=!this.fileSelection;
+                return selection;
+            };
+            input.addEventListener('change',()=>{
+                const files=[...input.files];input.value='';
+                const selection=release();
+                // An unrelated input's late event must not consume a newer picker.
+                if(!selection&&this.fileSelection)return;
+                const id=selection?.entryId||this.entryId;
+                if(files.length&&this.getEntry(id)){
+                    selection?.onSelect?.();this.upload(files,id);
+                }else this.onLayout();
+            });
+            input.addEventListener('cancel',()=>{release();this.onLayout();});
+        }
+    }
     chooseFiles({media=false,source='files',entryId=this.entryId,onSelect=null} = {}) {
         if (this.getEntry(entryId) && !this.jobs.get(entryId)) {
             this.cancelCapacity?.();
-            this.fileSelection = {entryId,onSelect};
+            const input=(source==='camera'?this.cameraFiles:['photo','gallery'].includes(source)?this.photoFiles:this.files)||this.files;
+            this.fileSelection = {input,entryId,onSelect};
+            (this.fileSelections ||= new Map()).set(input,this.fileSelection);
             // A different inspected body's job must not disable this destination.
-            this.files.disabled = false;
-            this.files.value = '';
-            this.files.removeAttribute('capture'); this.files.multiple = source !== 'camera';
-            if (source === 'camera') { this.files.accept = 'image/*'; this.files.setAttribute('capture','environment'); }
-            else if (source === 'gallery') this.files.accept = 'image/*,.heic,.heif';
-            else if (media) this.files.accept = '.jpg,.jpeg,.png,.webp,.heic,.heif,.mp4,.webm,.mov';
-            else this.files.removeAttribute('accept');
-            this.files.setAttribute('aria-label', source === 'camera' ? 'Take Photo' : source === 'gallery' ? 'Photo Gallery' : media ? 'Choose photos or videos' : 'Choose files');
+            input.disabled = false;
+            input.value = '';
+            input.removeAttribute('capture'); input.multiple = source !== 'camera';
+            if (source === 'camera') { input.accept = 'image/*'; input.setAttribute('capture','environment'); }
+            else if (source === 'photo') input.accept = 'image/*';
+            else if (source === 'gallery') input.accept = 'image/*,.heic,.heif';
+            else if (media) input.accept = '.jpg,.jpeg,.png,.webp,.heic,.heif,.mp4,.webm,.mov';
+            else input.removeAttribute('accept');
+            input.setAttribute('aria-label', source === 'camera' ? 'Take a photo' : source === 'photo' || source === 'gallery' ? 'Choose photos' : media ? 'Choose photos or videos' : 'Choose files');
             this.onAction(); document.getElementById("content-file-limit").hidden = false;
             this.onLayout();
-            try { this.files.click(); }
-            catch (error) { this.fileSelection = null; document.getElementById('content-file-limit').hidden = true; this.error(error); }
+            try { input.click(); }
+            catch (error) { this.fileSelections.delete(input);this.fileSelection = null; document.getElementById('content-file-limit').hidden = true; this.error(error); }
         }
     }
     setupNoteEditing() {

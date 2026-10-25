@@ -74,7 +74,7 @@ def run_mobile_footer_checks(*, cdp, evaluate, check, wait_for, add, shot, basel
                     return {{rows,headers:['#universe-toggle svg','#constellations-toggle svg'].map(s=>center(document.querySelector(s).getBoundingClientRect())),headerLabel:document.getElementById('universe-home').getBoundingClientRect().left}};
                 }})()""")
                 print('Navigation grid '+label+' '+str(expanded)+': '+json.dumps(grid),flush=True)
-                check(all(abs(x-grid['rows'][0]['chevron'])<.6 for x in grid['headers']),'section chevrons share the first-level CB base grid '+str(expanded)+': '+label)
+                check(all(abs(x+9-grid['rows'][0]['chevron'])<.6 for x in grid['headers']),'first-level Items sit one existing tree step inside major section chevrons '+str(expanded)+': '+label)
                 check(grid['headerLabel']<=grid['rows'][0]['nameX'] and grid['rows'][0]['iconWidth']>0 and grid['rows'][0]['nameX']>grid['rows'][0]['iconX']+grid['rows'][0]['iconWidth'],'section labels precede CB names while body icons retain their space: '+label)
                 if expanded:
                     indent=lambda level:(level-1)*9 if level<=5 else 43
@@ -84,11 +84,12 @@ def run_mobile_footer_checks(*, cdp, evaluate, check, wait_for, add, shot, basel
                     check(all(row is None for row in grid['rows'][1:]),'collapsed branch hides descendants without flattening them: '+label)
                 shot('navigation-grid-'+label+('-expanded' if expanded else '-collapsed'))
             check(layout['footer']['height']<=52,'utilities occupy one compact row: '+label)
-            check(all(layout[key]['height']>=44 and layout[key]['width']>=44 for key in ['help','backup','account']),'all utility targets remain at least 44px: '+label)
-            check(len({layout[key]['y'] for key in ['help','backup','account']})==1,'Help, Backup and Account share one row: '+label)
+            check(evaluate('(()=>{const r=document.getElementById("utility-more").getBoundingClientRect();return r.width>=44&&r.height>=44})()'),'More retains a 44px touch target: '+label)
+            check(evaluate('document.getElementById("utility-menu").hidden'),'utility actions stay behind More: '+label)
             check(layout['collections']['bottom']<=layout['footer']['y'],'footer does not overlap Constellations: '+label)
             check(evaluate("sampleUtility.hidden&&!sampleUtility.checkVisibility()"),'normal footer exposes no development disclosure: '+label)
             for selector,dialog,close in [('#help-button','help-dialog','#close-help-button'),('#backup-button','backup-dialog','#cancel-backup'),('#account-button','account-dialog','#account-close')]:
+                tap('#utility-more')
                 tap(selector);wait_for(f"document.getElementById('{dialog}').open")
                 check(evaluate(f"document.getElementById('{dialog}').open"),'existing utility dialog opens via touch '+selector+': '+label)
                 tap(close);wait_for(f"!document.getElementById('{dialog}').open")
@@ -101,7 +102,7 @@ def run_mobile_footer_checks(*, cdp, evaluate, check, wait_for, add, shot, basel
         else:
             evaluate(f"{json.dumps(branch)}.forEach(id=>hierarchySidebar.expanded.add(id));hierarchySidebar.render()")
             marker_scale(label,False)
-            check(layout['help']['y']<layout['backup']['y']<layout['account']['y'],'desktop keeps its stacked utilities')
+            check(evaluate('document.getElementById("utility-menu").hidden&&document.getElementById("utility-more").checkVisibility()'),'desktop uses the same compact More control')
             check(evaluate("sampleUtility.hidden&&!sampleUtility.checkVisibility()"),'desktop normal footer also hides development controls')
     if not baseline:
         personal=evaluate("localStorage.getItem('galaxy:user-data')")

@@ -15,7 +15,8 @@ class CosmifoldAccountUI {
             this.epoch++;this.password.value=this.confirm.value='';
             if(!doc.querySelector('dialog[open]')){
                 const bounds=this.button.getBoundingClientRect();
-                (bounds.width&&bounds.right>0&&bounds.left<globalThis.innerWidth?this.button:doc.getElementById('sidebar-toggle')).focus({preventScroll:true});
+                const more=doc.getElementById('utility-more');
+                (bounds.width&&bounds.right>0&&bounds.left<globalThis.innerWidth?this.button:more?.getClientRects?.().length?more:doc.getElementById('sidebar-toggle')).focus({preventScroll:true});
             }
         });
         bind(this.dialog,'keydown',event=>{

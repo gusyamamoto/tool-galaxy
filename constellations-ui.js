@@ -5,9 +5,9 @@ class ConstellationWorkspace {
         this.list=document.getElementById('constellation-list');this.nameDialog=document.getElementById('constellation-name-dialog');
         this.sectionToggle=document.getElementById('constellations-toggle');
         const preference=preferences.load();
-        this.collapsed=typeof preference.constellationsCollapsed==='boolean'?preference.constellationsCollapsed:true;
+        this.section=new NavigationSection({root:document.getElementById('constellations-section'),toggle:this.sectionToggle,list:this.list,name:'Constellations',key:'constellationsCollapsed',preferences,collapsed:true});
         this.hasHadCollections=preference.constellationsSeen===true;this.initialized=false;
-        this.sectionToggle.addEventListener('click',()=>{this.collapsed=!this.collapsed;this.applySectionState();this.saveSectionPreference();this.onLayout();});
+        this.section.onDisclosure=()=>this.onLayout();
         document.addEventListener('pointerdown',event=>{document.querySelectorAll('#constellation-content .content-item-menu[open]').forEach(menu=>{if(!menu.contains(event.target))menu.open=false;});});
         this.picker=document.getElementById('constellation-picker-dialog');this.deleteDialog=document.getElementById('delete-constellation-dialog');
         document.getElementById('new-constellation-button').addEventListener('click',()=>this.openName());
@@ -39,6 +39,7 @@ class ConstellationWorkspace {
         }
     }
     isDialogOpen(){return this.nameDialog.open||this.picker.open||this.deleteDialog.open;}
+    get collapsed(){return this.section.mobileCollapsed??this.section.collapsed;}
     error(id,error){const field=document.getElementById(id);field.textContent=error.message||error;field.hidden=false;}
     modal(dialog){if(this.isDialogOpen())return false;this.returnFocus=document.activeElement;
         if(this.returnFocus.closest('#entry-actions'))this.returnFocus=document.getElementById('entry-more-button');
@@ -50,13 +51,10 @@ class ConstellationWorkspace {
         if(!element.getBoundingClientRect().width)element=document.getElementById('sidebar-toggle');element.focus({preventScroll:true});}
     button(text,action,label=text){const button=document.createElement('button');button.type='button';button.textContent=text;button.ariaLabel=label;button.addEventListener('click',action);return button;}
     saveSectionPreference(){
-        Promise.resolve(this.preferences.update({constellationsCollapsed:this.collapsed,constellationsSeen:this.hasHadCollections})).catch(error=>{this.preferenceError=error;});
+        Promise.resolve(this.preferences.update({constellationsSeen:this.hasHadCollections})).catch(error=>{this.preferenceError=error;});
     }
     applySectionState(){
-        if(this.collapsed&&this.list.contains(document.activeElement))this.sectionToggle.focus({preventScroll:true});
-        document.getElementById('constellations-section').classList.toggle('section-collapsed',this.collapsed);
-        this.list.hidden=this.collapsed;this.sectionToggle.setAttribute('aria-expanded',String(!this.collapsed));
-        this.sectionToggle.ariaLabel=this.sectionToggle.title=`${this.collapsed?'Expand':'Collapse'} Constellations`;
+        this.section.apply();
     }
     renderSidebar(){
         if(!this.initialized){this.initialized=true;this.hasHadCollections=this.hasHadCollections||this.collections.size>0;}
@@ -64,6 +62,12 @@ class ConstellationWorkspace {
         this.applySectionState();
         const scroll=this.list.scrollTop,focused=document.activeElement?.closest('[data-constellation-id]'),action=document.activeElement?.dataset.collectionAction;
         const focusId=focused?.dataset.constellationId;this.list.replaceChildren();
+        if(!this.collections.size){
+            const empty=document.createElement('li');empty.className='constellation-empty';
+            const explanation=document.createElement('p');explanation.textContent='Connect related items from anywhere in your Universe.';
+            const create=this.button('Create Constellation',()=>this.openName());
+            empty.append(explanation,create);this.list.append(empty);
+        }
         this.collections.forEach(collection=>{
             const row=document.createElement('li');row.className='constellation-row';row.dataset.constellationId=collection.id;
             row.classList.toggle('is-active',collection.id===this.getActive());
