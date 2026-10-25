@@ -26,6 +26,7 @@ class TasksSecondaryView {
         this.dismissals=new CompletedTaskDismissals(preferences);
         this.root=document.getElementById('tasks-section');this.view=document.getElementById('tasks-view');
         this.active=document.getElementById('tasks-active');this.completed=document.getElementById('tasks-completed');
+        this.empty=document.getElementById('tasks-empty');this.activeGroup=document.getElementById('tasks-active-group');
         this.completedGroup=document.getElementById('tasks-completed-group');this.completedToggle=document.getElementById('tasks-completed-toggle');
         this.section=new NavigationSection({root:this.root,toggle:document.getElementById('tasks-toggle'),list:this.view,name:'Tasks',key:'tasksCollapsed',preferences});
         this.section.onDisclosure=onLayout;
@@ -71,7 +72,8 @@ class TasksSecondaryView {
         const lists=cosmosTasks.lists(entries,states),liveLists=new Set(),liveTasks=new Set();
         this.dismissals.reconcile(lists);
         const focus=document.activeElement,scroll=document.getElementById('sidebar-secondary-views').scrollTop;
-        const wasHidden=this.root.hidden;this.root.hidden=!lists.length;
+        const wasHidden=this.root.hidden,wasEmptyHidden=this.empty.hidden;this.root.hidden=false;
+        this.empty.hidden=lists.length>0;this.activeGroup.hidden=this.completedGroup.hidden=!lists.length;
         const active=document.createDocumentFragment(),completed=document.createDocumentFragment();
         for(const {entry,tasks,state} of lists) {
             if(state.complete&&this.dismissals.ids.has(entry.id))continue;
@@ -101,7 +103,7 @@ class TasksSecondaryView {
         else if(this.view.contains(focus)&&focus.closest('[hidden]'))
             (this.completed.contains(focus)?this.completedToggle:this.activeToggle).focus({preventScroll:true});
         document.getElementById('sidebar-secondary-views').scrollTop=scroll;
-        if(wasHidden!==this.root.hidden)this.onLayout();
+        if(wasHidden||wasEmptyHidden!==this.empty.hidden)this.onLayout();
     }
     hideCompleted(id) {
         if(!this.dismissals.dismiss(id,this.states.get(id)))return false;

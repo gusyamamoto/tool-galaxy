@@ -14,7 +14,7 @@ python -B tests/staging_package_test.py
 python -B tests/browser-check.py --staging-only --site-root staging-site
 ```
 
-The current artifact contains 59 declared static files, including the existing
+The current artifact contains 61 declared static files, including the existing
 404 page, headers and vendor notices; the preparation command reports the actual
 discovered inventory. Scripts, styles and their existing relative locations are
 preserved. There is no compilation, framework, package installation, migration or

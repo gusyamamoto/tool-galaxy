@@ -36,7 +36,7 @@
                 </div>
                 <figure class="first-use-example">
                     <figcaption>What you can build <span>&middot; Example Universe</span></figcaption>
-                    <div id="first-use-preview" aria-hidden="true" inert></div>
+                    <picture id="first-use-preview" aria-hidden="true" inert><source media="(max-width: 1120px)" srcset="assets/introduction-example-compact.png"><img id="introduction-example" src="assets/introduction-example.png" width="1336" height="699" alt="" fetchpriority="high"></picture>
                 </figure>
                 <div class="first-use-actions">
                     <button id="first-use-create" type="button">+ Create your first Item</button>
@@ -45,7 +45,7 @@
             </div>
         </section>
         <aside id="first-use-hint" aria-label="Getting started" hidden>
-            <p role="status" aria-live="polite"></p>
+            <div role="status" aria-live="polite"><strong>Add your first item here</strong><p></p></div>
             <button type="button" aria-label="Dismiss getting started hint">&times;</button>
         </aside>
 
@@ -67,7 +67,7 @@
             <button id="canvas-fit" type="button" aria-label="Fit Galaxy" title="Fit Galaxy">Fit</button>
         </div>
         <aside id="hierarchy-sidebar" aria-label="Navigation">
-            <header class="sidebar-brand"><h1>Cosmifold</h1><span id="sample-indicator" hidden>Sample</span></header>
+            <header class="sidebar-brand"><h1><svg class="brand-mark" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 16a8 8 0 1 1 14 0l-2 3H7z"/><rect x="7" y="6" width="11" height="9" rx="4"/><path d="M8 19v2h8v-2"/></svg>Cosmifold</h1><span id="sample-indicator" hidden>Sample</span></header>
             <div class="sidebar-controls">
                 <div class="sidebar-actions">
             <div class="entry-search">
@@ -88,14 +88,15 @@
             </section>
             <div id="sidebar-pane-splitter" role="separator" aria-orientation="horizontal" aria-label="Resize Universe and secondary sidebar sections" aria-controls="universe-section sidebar-secondary-views" tabindex="-1" hidden></div>
             <div id="sidebar-secondary-views">
-            <section id="tasks-section" aria-labelledby="tasks-heading" hidden>
+            <section id="tasks-section" aria-labelledby="tasks-heading">
                 <header class="sidebar-section-header"><h2 id="tasks-heading" class="sidebar-section-title"><button id="tasks-toggle" class="sidebar-section-toggle" type="button" aria-controls="tasks-view" aria-expanded="true"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m6 4 4 4-4 4"/></svg><span>Tasks</span></button></h2></header>
                 <div id="tasks-view">
-                    <div id="tasks-active-group">
+                    <p id="tasks-empty" class="tasks-empty">No tasks yet.</p>
+                    <div id="tasks-active-group" hidden>
                         <button id="tasks-active-toggle" class="sidebar-section-toggle tasks-group-toggle" type="button" aria-expanded="true" aria-controls="tasks-active"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m6 4 4 4-4 4"/></svg><span>Active</span></button>
                         <ul id="tasks-active" aria-label="Active Task Lists"></ul>
                     </div>
-                    <div id="tasks-completed-group">
+                    <div id="tasks-completed-group" hidden>
                         <button id="tasks-completed-toggle" class="sidebar-section-toggle tasks-group-toggle" type="button" aria-expanded="false" aria-controls="tasks-completed"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m6 4 4 4-4 4"/></svg><span>Completed</span></button>
                         <ul id="tasks-completed" aria-label="Completed Task Lists" hidden></ul>
                     </div>
@@ -112,9 +113,12 @@
                 <ul id="archived-galaxy-list" aria-label="Archived Galaxies" hidden></ul>
             </section>
             <div id="sidebar-utilities">
+            <button id="utility-more" type="button" aria-label="More" title="More" aria-haspopup="menu" aria-controls="utility-menu" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 15c0-5 4-10 11-11 0 7-5 11-10 11zM9 9H5l-2 5 6-1M15 15v4l-5 2 1-6M7 17l-3 3"/><circle cx="15" cy="9" r="2"/></svg><span>More</span></button>
+            <div id="utility-menu" class="cosmos-menu" role="menu" aria-label="More" hidden>
             <button id="help-button" type="button" aria-label="Help" title="Help" aria-haspopup="dialog" aria-controls="help-dialog"><span aria-hidden="true">?</span> Help</button>
             <button id="backup-button" type="button" title="Back up Cosmifold" aria-haspopup="dialog" aria-controls="backup-dialog">Backup</button>
             <button id="account-button" type="button" aria-haspopup="dialog" aria-controls="account-dialog">Sign in</button>
+            </div>
             <details id="sample-utility" hidden>
                 <summary><span class="sample-utility-label">Sample data</span><span class="sample-utility-overflow"><span aria-hidden="true">⋯</span><span class="visually-hidden">Development tools</span></span></summary>
                 <aside id="sample-controls" aria-label="Sample controls">
@@ -165,6 +169,8 @@
                     <header class="content-heading"><h3 id="files-heading">Files</h3></header>
                     <button id="content-browse-add-file" class="contents-page-add" type="button" hidden>Add file…</button>
                     <input id="content-files" type="file" multiple hidden aria-label="Choose files">
+                    <input id="content-photos" type="file" accept="image/*" multiple hidden aria-label="Choose photos">
+                    <input id="content-camera" type="file" accept="image/*" capture="environment" hidden aria-label="Take a photo">
                     <ul id="content-attachments"></ul>
                     <p id="content-files-empty" class="content-empty"><button id="content-add-files" class="contents-page-add content-inline-entry" type="button">Add file…</button></p>
                     <small id="content-file-limit" hidden></small>
@@ -228,18 +234,20 @@
             <p id="entry-action-status" role="status" hidden></p>
         </aside>
 
-        <div id="add-menu" role="menu" aria-label="Add" hidden>
-            <button type="button" role="menuitem" data-add="camera" hidden>Take Photo</button>
-            <button type="button" role="menuitem" data-add="gallery" hidden>Photo Gallery</button>
+        <div id="add-menu" class="cosmos-menu" role="menu" aria-label="Add" hidden>
+            <button type="button" role="menuitem" data-add="camera" hidden>Take a photo</button>
+            <button type="button" role="menuitem" data-add="photo" hidden>Add photo</button>
+            <button type="button" role="menuitem" data-add="capture-files" hidden>Add files</button>
             <button id="add-child-button" type="button" role="menuitem">Add item</button>
             <button type="button" role="menuitem" data-add="task-list">Add task list</button>
             <button type="button" role="menuitem" data-add="paste">Paste</button>
             <button type="button" role="menuitem" data-add="files">Add files</button>
             <button type="button" role="menuitem" data-add="note">Add note</button>
             <button type="button" role="menuitem" data-add="bookmark">Add link</button>
+            <button type="button" role="menuitem" data-add="location">Add location</button>
         </div>
 
-        <div id="entry-context-menu" role="menu" aria-label="Item actions" hidden>
+        <div id="entry-context-menu" class="cosmos-menu" role="menu" aria-label="Item actions" hidden>
             <span id="context-entry-name" class="context-entry-name" aria-hidden="true"></span>
             <button type="button" role="menuitem" data-action="add-child" data-desktop-only hidden>Add item</button>
             <button type="button" role="menuitem" data-action="add-task-list" data-desktop-only hidden>Add task list</button>
@@ -299,7 +307,7 @@
                 <textarea id="task-list-tasks" rows="5" placeholder="Buy flight&#10;Book hotel&#10;Rent car&#10;Buy eSIM" aria-describedby="task-list-help"></textarea>
                 <p id="task-list-help">One task per line. You can add more later.</p>
             </div>
-            <div id="galaxy-starter-field" hidden><label for="galaxy-starter">Start with</label><select id="galaxy-starter" name="starter"></select></div>
+            <div id="galaxy-starter-field" hidden><label for="galaxy-starter">Choose a starting point</label><select id="galaxy-starter" name="starter"></select></div>
             <div id="entry-info-fields" hidden>
             <label for="entry-description">Description (optional)</label>
             <textarea id="entry-description" name="description" rows="4" maxlength="1000"></textarea>

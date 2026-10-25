@@ -25,8 +25,8 @@ def run_auth_checks(*, cdp, evaluate, check, wait_for, load, origin, root, scree
     click('#account-button')
     check(evaluate("cosmifoldAccountUI.dialog.open&&cosmifoldAccountUI.mode==='unavailable'&&cosmifoldAccountUI.description.textContent.includes('local Cosmos')"), 'unconfigured Account surface explains that local use continues')
     click('#account-cancel')
-    wait_for("!cosmifoldAccountUI.dialog.open&&document.activeElement.id==='account-button'")
-    check(evaluate("!cosmifoldAccountUI.dialog.open&&document.activeElement.id==='account-button'"), 'Close returns keyboard focus to the account entry')
+    wait_for("!cosmifoldAccountUI.dialog.open&&document.activeElement.id==='utility-more'")
+    check(evaluate("!cosmifoldAccountUI.dialog.open&&document.activeElement.id==='utility-more'"), 'Close returns keyboard focus to More')
     check(not any('cdn.jsdelivr.net' in r['url'] or '.supabase.co' in r['url'] for r in cdp.requests), 'blank configuration makes no SDK or Auth network request')
 
     # Replace the provider at the classic script boundary in the test profile only.

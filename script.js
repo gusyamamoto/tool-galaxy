@@ -195,7 +195,15 @@ const firstUse = new FirstUseOnboarding({
     root:document.getElementById('first-use'), hint:document.getElementById('first-use-hint'),
     preferences:persistence.preferences, create:()=>openEntryForm(),
     help:()=>document.getElementById('help-button').click(),
-    obscured:()=>hierarchySidebar.narrow&&!hierarchySidebar.collapsed
+    obscured:()=>hierarchySidebar.narrow&&!hierarchySidebar.collapsed,
+    coachTarget:()=>{
+        const id=firstUse.state.phase==='child'?firstUse.state.rootId:selectedNode?.dataset.entryId;
+        if(selectedNode?.dataset.entryId!==id||constellationOverview)return null;
+        const buttons=hierarchySidebar.narrow?[panel.hidden?'mobile-body-add':'entry-add-button']:['entry-add-button'];
+        let button=buttons.map(id=>document.getElementById(id)).find(button=>button.getClientRects().length);
+        if(!button&&!hierarchySidebar.narrow)button=hierarchySidebar.rows.get(id)?.querySelector('.tree-add');
+        return button?{button,name:entries.get(id)?.name,side:hierarchySidebar.narrow?'above':button.closest('#entry-panel')?'left':'right',edge:button.closest('#entry-panel')?panel.getBoundingClientRect().left:button.getBoundingClientRect().right}:null;
+    }
 });
 function syncFirstUse() {
     firstUse.sync({empty:entries.size===0&&archivedEntries.size===0,
@@ -407,7 +415,7 @@ function openContextMenu(id, x, y, {surface='canvas'}={}) {
 
     const entry = entries.get(id);
     contextReturnFocus = nodes.get(id);
-    contextEntryId = id; contextMenu.dataset.entryId = id;
+    contextEntryId = id; contextMenu.dataset.entryId = id; contextMenu.dataset.surface = surface;
     contextPortalId = null;
     contextMenu.removeAttribute("data-portal-id");
     document.getElementById('constellation-memberships').hidden = true;
@@ -430,10 +438,12 @@ function renderBodyActions() {
             (button.hasAttribute('data-desktop-only')&&hierarchySidebar.narrow)||
             (button.hasAttribute('data-galaxy-only')&&entry.depth!==0)||
             (action==='paste'&&(!hierarchySidebar.narrow||!canPasteHierarchy(contextEntryId)))||
+            (action==='constellation'&&constellations.size===0)||
+            (contextMenu.dataset.surface==='contents'&&['add-child','add-task-list'].includes(action))||
             (action==='add-child'&&taskStates.get(entry.id)?.task)||
             (action==='add-task-list'&&(taskStates.get(entry.id)?.task||entry.taskList===true));
     });
-    contextMenu.querySelectorAll(':scope > [role="separator"]').forEach(item=>item.hidden=item.hasAttribute('data-mobile-only')&&!hierarchySidebar.narrow);
+    contextMenu.querySelectorAll(':scope > [role="separator"]').forEach(item=>item.hidden=item.hasAttribute('data-mobile-only')&&(!hierarchySidebar.narrow||constellations.size===0));
     contextMenu.querySelector('[data-action="add-child"]').textContent=entry.taskList===true?'Add task':'Add item';
 }
 function toggleBodyActions(button,id,surface='canvas') {
@@ -575,7 +585,10 @@ function fitCurrentView(){
 }
 
 document.getElementById('canvas-fit').addEventListener('click',fitCurrentView);
-document.getElementById('universe-home').addEventListener('click',fitCurrentView);
+document.getElementById('universe-home').addEventListener('click',()=>{
+    if(hierarchySidebar.narrow)mobileSidebarSections.select(hierarchySidebar.universeSection);
+    else fitCurrentView();
+});
 for(const [id,factor] of [['canvas-zoom-in',1.35],['canvas-zoom-out',1/1.35]])document.getElementById(id).addEventListener('click',()=>{
     cancelPendingBodyFocus();cancelCanvasTouches();lastBodyTap=null;autoFitPending=false;closeContextMenu();
     const b=physics.bounds;camera.zoomAt((b.left+b.right)/2,(b.top+b.bottom)/2,factor,{source:'user-zoom'});
@@ -830,6 +843,10 @@ const constellationWorkspace = new ConstellationWorkspace({ entries, portals, co
     commit: commitConstellations, showMembershipMenu: showConstellationMemberships, overview: showConstellationOverview, onCollectionMenu:openCollectionContextMenu, preferences: persistence.preferences,
     onModal() { closeContextMenu(); closeContentMenus(); beginCrudOperation(); }, onModalClose: finishCrudOperation,
     onLayout() { if (cameraViewReady) updateGraphViewport(); } });
+
+const mobileSidebarSections=new MobileSidebarSections(hierarchySidebar.mobileQuery,
+    [hierarchySidebar.universeSection,tasksView.section,constellationWorkspace.section],
+    ()=>{if(cameraViewReady)updateGraphViewport();});
 
 function openCollectionContextMenu(id,x,y,trigger){
     cancelPendingBodyFocus();lastBodyTap=null;
@@ -2076,15 +2093,19 @@ const addMenu = document.getElementById("add-menu"), moreButton = document.getEl
 let addMenuTargetId = null, addMenuTrigger = null;
 function renderAddMenu() {
     const mobile = hierarchySidebar.narrow;
+    const contents=!mobile&&addMenuTrigger?.id==='entry-add-button';
+    const sidebar=mobile&&!!addMenuTrigger?.closest('#hierarchy-tree');
     addMenu.dataset.view = mobile ? 'quick' : 'desktop';
     addMenu.classList.toggle('capture-menu', mobile);
     addMenu.querySelectorAll('button').forEach(item => {
         const action = item.dataset.add;
-        if (['camera','gallery'].includes(action)) item.hidden = !mobile;
-        else item.hidden = mobile && item !== addChildButton && action !== 'task-list';
+        if(['camera','photo','capture-files'].includes(action))item.hidden=!mobile;
+        else item.hidden=mobile&&(!sidebar||action==='files')&&item!==addChildButton&&action!=='task-list';
+        if(action==='location')item.hidden=!sidebar;
+        if(contents)item.hidden=item!==addChildButton&&action!=='task-list';
         if(item===addChildButton){item.hidden=taskStates.get(addMenuTargetId)?.task===true;item.textContent=entries.get(addMenuTargetId)?.taskList===true?'Add task':'Add item';}
         if(action==='task-list')item.hidden=taskStates.get(addMenuTargetId)?.enabled===true;
-        if (action === 'paste') item.hidden=mobile||!canPasteHierarchy(addMenuTargetId);
+        if (action === 'paste') item.hidden=contents||mobile||!canPasteHierarchy(addMenuTargetId);
     });
     addMenu.setAttribute('aria-label', `Add to ${entries.get(addMenuTargetId).name}`);
     const rect = addMenuTrigger.getBoundingClientRect();
@@ -2116,7 +2137,7 @@ function toggleContentMenu(menu, button, targetId = null) {
 addEntryButton.addEventListener("click", () => openEntryForm());
 moreButton.addEventListener("click", () => {
     if(constellationOverview){moreButton.setAttribute('aria-controls','entry-actions');toggleContentMenu(entryActions,moreButton);}
-    else {moreButton.setAttribute('aria-controls','entry-context-menu');toggleBodyActions(moreButton,contentInspector.entryId);}
+    else {moreButton.setAttribute('aria-controls','entry-context-menu');toggleBodyActions(moreButton,contentInspector.entryId,'contents');}
 });
 document.getElementById('mobile-body-add').addEventListener('click', event => toggleContentMenu(addMenu, event.currentTarget, selectedNode?.dataset.entryId));
 document.getElementById('entry-add-button').addEventListener('click', event => {
@@ -2162,10 +2183,11 @@ addMenu.addEventListener("click", event => {
 function openEntryContentAction(id, action) {
     if (!entries.has(id)) return;
     closeContentMenus();
-    if (['gallery','camera','capture-files'].includes(action)) {
+    if (['photo','gallery','camera','capture-files'].includes(action)) {
         // Keep the system picker in the tap's activation and retain its destination.
         // Cancelling does not open Contents or change the selected body.
         contentInspector.chooseFiles({source:action,entryId:id,onSelect() {
+            if(hierarchySidebar.narrow)hierarchySidebar.setCollapsed(true);
             const alreadyInspecting=!panel.hidden&&contentInspector.entryId===id&&!constellationOverview;
             selectEntry(entries.get(id),nodes.get(id),{reframe:false,openInspector:true});
             if(!alreadyInspecting)mobileContents.setPage('files');
@@ -2173,6 +2195,7 @@ function openEntryContentAction(id, action) {
         return;
     }
     autoFitPending = false; keyboardNavigation = false; camera.stopAnimation();
+    if(hierarchySidebar.narrow)hierarchySidebar.setCollapsed(true);
     // The lens and selection coexist. Even the already-selected entry must
     // leave the overview panel before its content editor can be shown.
     if (selectedNode?.dataset.entryId !== id || constellationOverview) selectEntry(entries.get(id), nodes.get(id), { reframe: false });
@@ -2180,6 +2203,7 @@ function openEntryContentAction(id, action) {
     if (action === "files") {mobileContents.setPage("files");contentInspector.chooseFiles();}
     else if (action === "note") {mobileContents.setPage('notes');contentInspector.editNotes();}
     else if (action === "bookmark") {mobileContents.setPage('links');contentInspector.editLink();}
+    else if (action === "location") {mobileContents.setPage('location');contentInspector.editLocation();}
 }
 document.getElementById("move-entry-button").addEventListener("click", () => {
     const entry = entries.get(selectedNode?.dataset.entryId);

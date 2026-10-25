@@ -96,12 +96,12 @@ def run_storage_capacity_checks(*, cdp, e, check, wait_for, add):
 
     # Actual mobile picker routing feeds the same advisory check.
     cdp.call('Emulation.setDeviceMetricsOverride',width=390,height=844,deviceScaleFactor=1,mobile=True)
-    select();reset();e('f7result={usage:950*1024**2,quota:1000*1024**2};window.f7click=contentInspector.files.click;contentInspector.files.click=()=>{}')
+    select();reset();e('f7result={usage:950*1024**2,quota:1000*1024**2};window.f7clicks=[contentInspector.files,contentInspector.photoFiles,contentInspector.cameraFiles].map(input=>{const click=input.click;input.click=()=>{};return [input,click]})')
     for source in ['camera','gallery','files']:
         e(f'contentInspector.chooseFiles({{source:{q(source)}}})')
-        e("(()=>{const dt=new DataTransfer();dt.items.add(new File(['mobile'],'mobile-"+source+".txt',{type:'text/plain'}));contentInspector.files.files=dt.files;contentInspector.files.dispatchEvent(new Event('change'));})()")
+        e("(()=>{const dt=new DataTransfer();dt.items.add(new File(['mobile'],'mobile-"+source+".txt',{type:'text/plain'}));contentInspector.fileSelection.input.files=dt.files;contentInspector.fileSelection.input.dispatchEvent(new Event('change'));})()")
         wait_for('contentInspector.jobs.size===0')
         check('mobile-'+source+'.txt' in filenames(),'mobile '+source+' selection uses shared upload and continues despite advisory')
     check(shown() and e("(()=>{const r=capacityWarning.getBoundingClientRect();return r.left>=0&&r.right<=innerWidth&&r.bottom<=innerHeight})()"),'visible capacity notice fits mobile viewport')
-    e("contentInspector.files.click=f7click;if(f7estimate)Object.defineProperty(f7storage,'estimate',f7estimate);else delete f7storage.estimate;storageCapacity.cancel()")
+    e("f7clicks.forEach(([input,click])=>input.click=click);if(f7estimate)Object.defineProperty(f7storage,'estimate',f7estimate);else delete f7storage.estimate;storageCapacity.cancel()")
     check(not cdp.errors,'no unhandled exceptions from estimate failure or stale results')

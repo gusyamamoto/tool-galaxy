@@ -7,9 +7,9 @@ def run_body_actions_checks(*, cdp, evaluate, check, wait_for, add, shot):
     owner=add('Managed body',source);child=add('Descendant',owner);other=add('Copied body',source)
     wait_for('physics.settled');evaluate('physics.pause()')
     q=json.dumps
-    full=['Rename','Move to…','Add to Constellation','Copy','Duplicate structure','Delete item']
-    check(evaluate("!/(Add existing item|Link existing item|Portal|Your Passport|Pick:)/i.test(document.getElementById('help-dialog').textContent)&&document.getElementById('help-dialog').textContent.includes('Choose Copy, then Paste where you want an independent copy.')"), 'Help teaches independent Paste without linked-item creation or mode choices')
-    check(evaluate("(()=>{const text=[...document.querySelectorAll('#help-dialog details')].find(d=>d.querySelector('summary').textContent==='Constellations').textContent;return ['Universe = where something lives','Constellation = things you want to see together','recipe from Food','workout from Fitness','city from Travel','playlist from Music','original hierarchy location','one or more Constellations','same item'].every(s=>text.includes(s));})()"), 'approved cross-category Constellation Help and shared-original mental model remain intact')
+    full=['Rename','Move to…','Copy','Duplicate structure','Delete item']
+    check(evaluate("!/(Add existing item|Link existing item|Portal|Your Passport|Pick:)/i.test(document.getElementById('help-dialog').textContent)&&document.getElementById('help-dialog').textContent.includes('Copy / Paste creates an independent copy.')"), 'current Help describes independent Paste without linked-item creation or mode choices')
+    check(evaluate("(()=>{const text=document.getElementById('help-constellations').textContent;return ['Constellations are optional','Items from different parts of your Universe','Original Items are not moved or copied'].every(s=>text.includes(s));})()"), 'current compact Constellation Help preserves shared-original meaning')
 
     def labels():
         return evaluate("[...contextMenu.querySelectorAll(':scope > button:not([hidden])')].map(b=>b.textContent)")
@@ -39,7 +39,7 @@ def run_body_actions_checks(*, cdp, evaluate, check, wait_for, add, shot):
         check(labels()==full,'CB View opens full management directly: '+tag)
         check(evaluate("!contextMenu.querySelector('[data-action=more]')&&!contextMenu.querySelector('[data-action=create]')&&!contextMenu.querySelector('[data-action=files]')&&contextMenu.querySelector('[data-action=paste]').hidden"),'no More, add/file duplicates or empty-clipboard Paste: '+tag)
         check(evaluate(f'contextEntryId==={q(owner)}&&contextReturnFocus.id==="mobile-body-more"'),'preview management is bound to the selected body: '+tag)
-        check(evaluate("contextMenu.querySelectorAll(':scope > [role=separator]:not([hidden])').length===3&&(()=>{const r=contextMenu.getBoundingClientRect();return r.left>=0&&r.right<=innerWidth&&r.bottom<=innerHeight;})()"),'full management uses three shared separators and stays within the viewport: '+tag)
+        check(evaluate("contextMenu.querySelectorAll(':scope > [role=separator]:not([hidden])').length===2&&(()=>{const r=contextMenu.getBoundingClientRect();return r.left>=0&&r.right<=innerWidth&&r.bottom<=innerHeight;})()"),'zero-Constellation management avoids adjacent separators and stays within the viewport: '+tag)
         evaluate("window.managementSurface=['backgroundColor','borderRadius','padding','boxShadow','borderColor'].map(k=>getComputedStyle(contextMenu)[k]);window.managementRow=['fontSize','padding','minHeight','color'].map(k=>getComputedStyle(contextMenu.querySelector('[data-action=edit]'))[k])")
         shot('body-actions-full-'+tag)
         key_escape()
@@ -65,7 +65,8 @@ def run_body_actions_checks(*, cdp, evaluate, check, wait_for, add, shot):
         check(evaluate(f'contextEntryId==={q(owner)}'),'management never substitutes another selected body for its retained target: '+tag)
         evaluate('closeContextMenu()')
         evaluate(f'copyHierarchyItems([{q(other)}])');preview()
-        check(labels()==full[:4]+['Paste']+full[4:] and evaluate("(()=>{const r=contextMenu.getBoundingClientRect(),b=contextReturnFocus.getBoundingClientRect();return r.top>=0&&r.bottom<=innerHeight&&(r.bottom<=b.top||r.top>=b.bottom);})()"), 'conditional Paste stays edge-safe without covering its trigger: '+tag)
+        copy_index=full.index('Copy')+1
+        check(labels()==full[:copy_index]+['Paste']+full[copy_index:] and evaluate("(()=>{const r=contextMenu.getBoundingClientRect(),b=contextReturnFocus.getBoundingClientRect();return r.top>=0&&r.bottom<=innerHeight&&(r.bottom<=b.top||r.top>=b.bottom);})()"), 'conditional Paste stays edge-safe without covering its trigger: '+tag)
         shot('body-actions-paste-'+tag)
         tap('#entry-context-menu [data-action=paste]')
         check(evaluate(f'pasteDialog.open&&pasteDestination==={q(owner)}&&pasteLink.hidden'), 'conditional Paste retains its body and independent-copy-only confirmation: '+tag)
@@ -90,6 +91,9 @@ def run_body_actions_checks(*, cdp, evaluate, check, wait_for, add, shot):
     check(evaluate(f'entries.get({q(owner)}).parentId==={q(destination)}&&entries.get({q(child)}).parentId==={q(owner)}&&portals.size===0'),'confirmed Move changes the actual parent, preserves descendants and creates no link')
     check(evaluate(f'JSON.parse(localStorage.getItem("galaxy:user-data")).entries.find(e=>e.id==={q(owner)}).parentId==={q(destination)}'),'confirmed reparenting persists through the existing repository')
 
+    evaluate('constellationWorkspace.openName();document.getElementById("constellation-name").value="Management collection";constellationWorkspace.saveName()')
+    wait_for('constellations.size===1&&!constellationWorkspace.nameDialog.open')
+    full.insert(2,'Add to Constellation')
     preview();tap('#entry-context-menu [data-action=constellation]')
     check(evaluate(f'!document.getElementById("constellation-memberships").hidden&&contextEntryId==={q(owner)}'),'quick Add to Constellation reuses existing membership management')
     key_escape();check(evaluate("document.activeElement.id==='mobile-body-more'"),'membership submenu retains the original body trigger')
@@ -110,8 +114,8 @@ def run_body_actions_checks(*, cdp, evaluate, check, wait_for, add, shot):
     check(evaluate(f'hierarchyClipboard.roots(entries)[0]==={q(owner)}'), 'management Copy uses the exact menu body')
     evaluate(f'copyHierarchyItems([{q(other)}])')
     preview();evaluate('closeContextMenu()');tap('#mobile-body-add')
-    check(evaluate("[...addMenu.querySelectorAll('button:not([hidden])')].map(b=>b.textContent).join('|')==='Take Photo|Photo Gallery|Add item|Add task list'"),'+ still has four quick actions with a populated clipboard')
-    check(evaluate("JSON.stringify(managementSurface)===JSON.stringify(['backgroundColor','borderRadius','padding','boxShadow','borderColor'].map(k=>getComputedStyle(addMenu)[k]))&&JSON.stringify(managementRow)===JSON.stringify(['fontSize','padding','minHeight','color'].map(k=>getComputedStyle(addMenu.querySelector('[data-add=gallery]'))[k]))"),'management and Add use identical surface, typography and row treatment')
+    check(evaluate("[...addMenu.querySelectorAll('button:not([hidden])')].map(b=>b.textContent).join('|')==='Take a photo|Add photo|Add files|Add item|Add task list'"),'+ keeps compact native-picker actions with a populated clipboard')
+    check(evaluate("JSON.stringify(managementSurface)===JSON.stringify(['backgroundColor','borderRadius','padding','boxShadow','borderColor'].map(k=>getComputedStyle(addMenu)[k]))&&JSON.stringify(managementRow)===JSON.stringify(['fontSize','padding','minHeight','color'].map(k=>getComputedStyle(addMenu.querySelector('[data-add=capture-files]'))[k]))"),'management and Add use identical surface, typography and row treatment')
     evaluate('closeContentMenus()');preview()
     check(labels()==full[:4]+['Paste']+full[4:], 'valid clipboard exposes contextual Paste beside Copy in mobile management')
     tap('#entry-context-menu [data-action=paste]')
@@ -131,10 +135,10 @@ def run_body_actions_checks(*, cdp, evaluate, check, wait_for, add, shot):
     cdp.call('Emulation.setTouchEmulationEnabled',enabled=False,maxTouchPoints=1)
     cdp.call('Emulation.setDeviceMetricsOverride',width=1440,height=1000,deviceScaleFactor=1,mobile=False)
     wait_for('!hierarchySidebar.narrow');select();evaluate('setInspectorOpen(true);moreButton.click()')
-    check(labels()==['Add item','Add task list']+full and evaluate(f'contextEntryId==={q(owner)}'),'desktop Contents exposes child creation and the full canonical management menu')
+    check(labels()==full and evaluate(f'contextEntryId==={q(owner)}'),'desktop Contents management omits structural creation')
     evaluate(f'openContextMenu({q(root)},300,150)')
     check(labels()==['Add item','Add task list']+full[:-1]+['Archive Galaxy','Delete item'],'full Galaxy management preserves Archive Galaxy')
-    evaluate(f'copyHierarchyItems([{q(other)}]);closeContextMenu();toggleContentMenu(addMenu,moreButton,{q(owner)})')
+    evaluate(f'copyHierarchyItems([{q(other)}]);closeContextMenu();hierarchySidebar.setCollapsed(false);toggleContentMenu(addMenu,hierarchySidebar.rows.get({q(owner)}).querySelector(".tree-add"),{q(owner)})')
     check(evaluate("[...addMenu.querySelectorAll('button:not([hidden])')].map(b=>b.textContent).join('|')==='Add item|Add task list|Paste|Add files|Add note|Add link'"),'desktop Add retains independent-copy Paste without linked-item creation')
     shot('desktop-add-mvp')
     evaluate("addMenu.querySelector('[data-add=paste]').click()")

@@ -75,13 +75,14 @@ class NavigationSection {
         Object.assign(this,{root,toggle,list,name,key,preferences});this.scroll={top:0,left:0};
         const preference=preferences.load();
         this.collapsed=typeof preference[key]==='boolean'?preference[key]:collapsed;
-        toggle.addEventListener('click',()=>this.setCollapsed(!this.collapsed));this.apply();
+        toggle.addEventListener('click',()=>this.mobileGroup?.query.matches?this.mobileGroup.select(this):this.setCollapsed(!this.collapsed));this.apply();
     }
     apply() {
-        if(this.collapsed&&this.list.contains(document.activeElement))this.toggle.focus({preventScroll:true});
-        this.list.hidden=this.collapsed;this.toggle.setAttribute('aria-expanded',String(!this.collapsed));
-        this.toggle.ariaLabel=this.toggle.title=`${this.collapsed?'Expand':'Collapse'} ${this.name}`;
-        this.root.classList.toggle('section-collapsed',this.collapsed);
+        const collapsed=this.mobileCollapsed??this.collapsed;
+        if(collapsed&&this.list.contains(document.activeElement))this.toggle.focus({preventScroll:true});
+        this.list.hidden=collapsed;this.toggle.setAttribute('aria-expanded',String(!collapsed));
+        this.toggle.ariaLabel=this.toggle.title=`${collapsed?'Expand':'Collapse'} ${this.name}`;
+        this.root.classList.toggle('section-collapsed',collapsed);
     }
     setCollapsed(value) {
         if(this.collapsed===value)return;
@@ -90,6 +91,20 @@ class NavigationSection {
         if(!value){this.list.scrollTop=this.scroll.top;this.list.scrollLeft=this.scroll.left;}
         Promise.resolve(this.preferences.update({[this.key]:value})).catch(error=>{this.preferenceError=error;});
         this.onDisclosure?.(value);
+    }
+}
+
+// Mobile disclosure is transient; desktop preferences and nested branches survive it.
+class MobileSidebarSections {
+    constructor(query,sections,onLayout){
+        Object.assign(this,{query,sections,onLayout});this.selected=sections[0];
+        sections.forEach(section=>section.mobileGroup=this);
+        query.addEventListener('change',()=>this.apply());this.apply();
+    }
+    select(section){this.selected=section;this.apply();}
+    apply(){
+        for(const section of this.sections){section.mobileCollapsed=this.query.matches?section!==this.selected:null;section.apply();}
+        this.onLayout();
     }
 }
 
@@ -117,7 +132,7 @@ class HierarchySidebar {
             this.setCollapsed(true);event.preventDefault();event.stopPropagation();
         },true);
         document.addEventListener('keydown',event=>{
-            if(event.key!=='Escape'||!this.narrow||this.collapsed||document.querySelector('dialog[open],#add-menu:not([hidden]),#entry-context-menu:not([hidden]),#search-results:not([hidden])'))return;
+            if(event.key!=='Escape'||!this.narrow||this.collapsed||document.querySelector('dialog[open],#add-menu:not([hidden]),#entry-context-menu:not([hidden]),#search-results:not([hidden]),#utility-menu:not([hidden])'))return;
             this.setCollapsed(true);event.preventDefault();event.stopPropagation();
         },true);
         this.tree.addEventListener("keydown", event => this.onKey(event));
@@ -187,7 +202,12 @@ class HierarchySidebar {
         const narrow = this.mobileQuery.matches;
         if (narrow !== this.narrow) { this.narrow = narrow; if (narrow) {this.collapsed = true;this.selection.single(this.selectedId);this.paintSelection();} }
         this.applyLayout();
-        this.rows.forEach((row,id)=>{row.draggable=this.entries.has(id)&&!this.narrow&&this.rename?.id!==id;});
+        this.rows.forEach((row,id)=>{
+            row.draggable=this.entries.has(id)&&!this.narrow&&this.rename?.id!==id;
+            const add=row.querySelector('.tree-add');
+            if(add){const focused=document.activeElement===add;add.hidden=this.narrow;if(focused&&this.narrow)row.querySelector('.tree-more')?.focus({preventScroll:true});}
+        });
+        this.updateTabStops();
     }
     setEntries(entries) {
         const scroll = { top: this.tree.scrollTop, left: this.tree.scrollLeft };
@@ -351,6 +371,7 @@ class HierarchySidebar {
             if (!portal) {
                 this.syncTaskControl(entry, row);
                 const add = row.querySelector(".tree-add"); add.ariaLabel = add.title = `Add to ${entry.name}`;
+                add.hidden=this.narrow;
                 if (this.entries.get(entry.parentId)?.taskList === true) add.ariaLabel = add.title = `Add content to ${entry.name}`;
                 const more = row.querySelector('.tree-more'); more.ariaLabel = more.title = `Actions for ${entry.name}`;
             }
@@ -359,7 +380,7 @@ class HierarchySidebar {
         this.tree.replaceChildren(fragment); this.updateTabStops();
         if (focused && this.tree.contains(this.rows.get(focused))) {
             const row=this.rows.get(focused),action=focusedAction?row.querySelector(`.${focusedAction}`):null;
-            (this.rename?.id === focused ? this.rename.input : action&&!action.disabled?action:row).focus({ preventScroll: true });
+            (this.rename?.id === focused ? this.rename.input : action&&!action.disabled&&!action.hidden?action:row).focus({ preventScroll: true });
         }
         this.tree.scrollTop = scroll.top; this.tree.scrollLeft = scroll.left;
         this.rendering = false;
@@ -368,7 +389,7 @@ class HierarchySidebar {
     updateTabStops() {
         this.visibleRows?.forEach(({ id }) => {
             const row = this.rows.get(id); row.tabIndex = id === this.activeId ? 0 : -1;
-            row.querySelectorAll('.tree-add,.tree-more,.tree-portal-actions,.tree-task-toggle').forEach(button => { button.tabIndex = id === this.activeId ? 0 : -1; });
+            row.querySelectorAll('.tree-add,.tree-more,.tree-portal-actions,.tree-task-toggle').forEach(button => { button.tabIndex = id === this.activeId&&!button.hidden ? 0 : -1; });
         });
     }
     syncTaskControl(entry, row) {

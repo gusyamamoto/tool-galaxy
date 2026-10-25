@@ -4,7 +4,7 @@ import json
 
 def run_task_view_checks(*,cdp,e,check,wait_for,add,shot):
     q=json.dumps
-    check(e('document.getElementById("tasks-section").hidden'),'no empty Tasks block before first checklist')
+    check(e('!document.getElementById("tasks-section").hidden&&!tasksView.empty.hidden&&tasksView.empty.textContent==="No tasks yet."'),'empty Tasks stays visible before the first checklist')
     check(e('constellationWorkspace.collapsed&&document.getElementById("constellation-list").hidden'),'empty Constellations stays compact and collapsed by default')
     travel=add('Travel');japan=add('Japan',travel)
     home=add('Home');kitchen=add('Kitchen',home)
@@ -23,6 +23,7 @@ def run_task_view_checks(*,cdp,e,check,wait_for,add,shot):
     def marker(id):return taskrow(id)+' .task-view-check'
     def universe(id):return f'.hierarchy-row[data-entry-id="{id}"] .tree-task-toggle'
     def click(selector,touch=False):
+        e(f'(()=>{{if(!hierarchySidebar.narrow)return;const root=document.querySelector({q(selector)})?.closest("#universe-section,#tasks-section,#constellations-section");const section=mobileSidebarSections.sections.find(s=>s.root===root);if(section)mobileSidebarSections.select(section)}})()')
         e(f'document.querySelector({q(selector)}).scrollIntoView({{block:"nearest"}});new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))')
         p=e(f'(()=>{{const r=document.querySelector({q(selector)}).getBoundingClientRect();return {{x:r.x+r.width/2,y:r.y+r.height/2}}}})()')
         if touch:
@@ -153,7 +154,7 @@ def run_task_view_checks(*,cdp,e,check,wait_for,add,shot):
         check(e(f'entries.get({q(car)}).name==="Rental car"&&document.getElementById("mobile-task-done").checked&&panel.hidden'),'task title Cancel preserves name and Done state: '+str(width))
         shot('task-compact-done-'+str(width))
         click('#mobile-body-add',True)
-        check(e('[...addMenu.querySelectorAll("button:not([hidden])")].map(b=>b.textContent).join("|")==="Take Photo|Photo Gallery"'),'task Compact + retains capture menu: '+str(width))
+        check(e('[...addMenu.querySelectorAll("button:not([hidden])")].map(b=>b.textContent).join("|")==="Take a photo|Add photo|Add files"'),'task Compact + retains capture menu: '+str(width))
         e('closeContentMenus()');click('#mobile-body-more',True)
         check(e(f'!contextMenu.hidden&&contextEntryId==={q(car)}'),'Compact More retains canonical task target: '+str(width));e('closeContextMenu()')
         if width==390:
@@ -170,7 +171,7 @@ def run_task_view_checks(*,cdp,e,check,wait_for,add,shot):
         click(marker(car),True)
         check(sync(car,True) and e('hierarchySidebar.collapsed'),'mobile secondary completion reveals the focused task: '+str(width))
         e('hierarchySidebar.setCollapsed(false)')
-        check(e('(()=>{const r=document.getElementById("sidebar-secondary-views").getBoundingClientRect(),u=hierarchySidebar.tree.getBoundingClientRect();return r.bottom<=innerHeight&&u.height>80})()'),'secondary views leave primary Universe usable: '+str(width))
+        check(e('(()=>{const r=document.getElementById("sidebar-secondary-views").getBoundingClientRect();return r.bottom<=innerHeight&&hierarchySidebar.tree.hidden&&!tasksView.view.hidden})()'),'selected mobile Tasks fits while Universe is collapsed: '+str(width))
         shot('task-views-mobile-'+str(width))
         wait_for('camera.frame===null')
         before=e('({...camera.view})');click(marker(car),True)
@@ -192,6 +193,9 @@ def run_task_view_checks(*,cdp,e,check,wait_for,add,shot):
     check(sync(car,True) and e('camera.frame===null&&motion.animations.size===0'),'reduced motion still focuses completion with immediate camera and no pulse animation')
     e('hierarchySidebar.setCollapsed(false)')
     check(e('document.getElementById("sidebar-secondary-views").scrollHeight>document.getElementById("sidebar-secondary-views").clientHeight'),'secondary views retain their own scrolling without crowding the Universe')
+    cdp.call('Emulation.setDeviceMetricsOverride',width=1440,height=1000,deviceScaleFactor=1,mobile=False)
+    cdp.call('Emulation.setTouchEmulationEnabled',enabled=False)
+    e('new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))')
     click('#tasks-toggle',True)
     check(e('tasksView.section.collapsed&&document.getElementById("tasks-view").hidden'),'Tasks heading collapses independently')
     e('(async()=>{await applicationCommandTail;if(graphNeedsSave)await saveGalaxy();const backup=await cosmifoldBackup.create(universeRepository);await cosmifoldRestore.restore(await cosmifoldRestore.inspect(backup.blob),universeRepository)})()')

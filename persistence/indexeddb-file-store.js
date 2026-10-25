@@ -1,3 +1,60 @@
+// Storage-only compatibility format. Callers and Backup always receive Blobs.
+const cosmifoldAttachmentBinary = (() => {
+    const format='cosmifold-bytes-v1';
+    const own=(value,key)=>Object.prototype.hasOwnProperty.call(value,key);
+    function info(value) {
+        if(value instanceof Blob)return {size:value.size,type:value.type};
+        if(!value||value.format!==format||!['[object ArrayBuffer]','[object Uint8Array]'].includes(Object.prototype.toString.call(value.bytes))||
+            !Number.isSafeInteger(value.size)||value.size<0||value.bytes.byteLength!==value.size||typeof value.type!=='string'||
+            value.type!==value.type.toLowerCase()||/[^\x20-\x7e]/.test(value.type)||
+            Object.keys(value).some(key=>!['format','bytes','size','type','name','lastModified'].includes(key))||
+            (own(value,'name')!==own(value,'lastModified'))||
+            (own(value,'name')&&(typeof value.name!=='string'||!Number.isSafeInteger(value.lastModified))))return null;
+        return {size:value.size,type:value.type};
+    }
+    async function encodeBlob(blob) {
+        const bytes=await blob.arrayBuffer();
+        if(bytes.byteLength!==blob.size)throw new Error('This file could not be read completely.');
+        const value={format,bytes,size:blob.size,type:blob.type};
+        if(typeof File!=='undefined'&&blob instanceof File){value.name=blob.name;value.lastModified=blob.lastModified;}
+        return value;
+    }
+    async function encode(record) {
+        return {...record,blob:await encodeBlob(record.blob),
+            ...(record.thumbnail instanceof Blob?{thumbnail:await encodeBlob(record.thumbnail)}:{})};
+    }
+    function decodeBlob(value,strict) {
+        if(value?.format!==format)return value;
+        if(!info(value)){
+            if(strict)throw new Error('Stored attachment bytes are unreadable.');
+            return value;
+        }
+        return own(value,'name')&&typeof File!=='undefined'
+            ?new File([value.bytes],value.name,{type:value.type,lastModified:value.lastModified})
+            :new Blob([value.bytes],{type:value.type});
+    }
+    function decode(record,{strict=true}={}) {
+        if(!record)return record;
+        return {...record,blob:decodeBlob(record.blob,strict),
+            ...(own(record,'thumbnail')?{thumbnail:decodeBlob(record.thumbnail,strict)}:{})};
+    }
+    function preparationError(error) {
+        return ['UnknownError','DataCloneError','Error'].includes(error?.name)&&
+            /error preparing blob\/file data to be stored in object store/i.test(error?.message||'');
+    }
+    async function write(records,persist,canRetry=()=>true) {
+        try{return await persist(records);}
+        catch(error){
+            if(!preparationError(error)||!canRetry())throw error;
+            // The failed transaction has fully aborted. Materialize bytes BEFORE
+            // starting a fresh one; awaiting Blob reads in a live IDB tx is unsafe.
+            const encoded=[];for(const record of records)encoded.push(await encode(record));
+            return persist(encoded);
+        }
+    }
+    return {info,encode,decode,preparationError,write};
+})();
+
 // Replaceable binary storage boundary. The inspector never uses IndexedDB APIs.
 // Ordinary mutations bridge durable file transactions and synchronous metadata
 // commits with a small journal. Restore retains its separate replacement contract.
@@ -58,6 +115,7 @@ function createIndexedDbFileStore({indexedDB = globalThis.indexedDB, scope = nul
         return new Promise((resolve,reject)=>{
             const tx=db.transaction(stores,'readwrite',{durability:'strict'});let failure;
             tx.oncomplete=resolve;tx.onabort=()=>reject(failure||tx.error||new Error('File storage could not complete the action.'));
+            tx.onerror=event=>{failure ||= event.target?.error||tx.error;};
             const fail=error=>{failure=error;tx.abort();};
             try{operation(tx,fail);}catch(error){fail(error);}
         });
@@ -83,10 +141,10 @@ function createIndexedDbFileStore({indexedDB = globalThis.indexedDB, scope = nul
         const operation=journal(type,records.map(({key,entryId})=>({key,entryId})));
         await begin(operation);let written=false;
         try{
-            await durable(['files','fileOperations'],tx=>{
-                records.forEach(record=>tx.objectStore('files').add(record));
+            await cosmifoldAttachmentBinary.write(records,values=>durable(['files','fileOperations'],tx=>{
+                values.forEach(record=>tx.objectStore('files').add(record));
                 tx.objectStore('fileOperations').put({...operation,stage:'files-written'});
-            });
+            }));
             written=true;records.forEach(record=>ownership.set(record.key,record.entryId));
             // Explicit DevTools/test hook: no open IDB tx or file bytes cross it.
             if(operationStageHook)await operationStageHook({stage:'files-written',operation:{...operation,stage:'files-written'}});
@@ -238,22 +296,24 @@ function createIndexedDbFileStore({indexedDB = globalThis.indexedDB, scope = nul
         },
         async replaceAll(records,id,commit,rollback) {
             const db=await open();
-            await new Promise((resolve,reject)=>{
+            let attempted=false;
+            await cosmifoldAttachmentBinary.write(records,values=>new Promise((resolve,reject)=>{
                 // All old rows, including orphans, remain intact until this transaction completes.
                 const tx=db.transaction(['files','restoreState','fileOperations'],'readwrite',{durability:'strict'}),store=tx.objectStore('files');
-                let failure,attempted=false;
+                let failure;
                 tx.oncomplete=resolve;
+                tx.onerror=event=>{failure ||= event.target?.error||tx.error;};
                 tx.onabort=()=>{
                     if(attempted)try{rollback();}catch(error){failure=new Error('Restore recovery needs a reload before continuing.',{cause:error});failure.recoveryRequired=true;}
                     reject(failure||tx.error||new Error('Could not prepare restored files.'));
                 };
                 try {
-                    store.clear();records.forEach(record=>store.add(record));
+                    store.clear();values.forEach(record=>store.add(record));
                     tx.objectStore('fileOperations').clear();
                     const marker=tx.objectStore('restoreState').put(id,'committed');
                     marker.onsuccess=()=>{try{attempted=true;if(commit()?.then)throw new Error('Restore metadata must commit synchronously.');}catch(error){failure=error;tx.abort();}};
                 }catch(error){failure=error;tx.abort();}
-            });
+            }),()=>!attempted);
             // Cache maintenance must not reject an already committed replacement.
             ownership.clear();
             recoveryBlocked=false;
@@ -266,10 +326,13 @@ function createIndexedDbFileStore({indexedDB = globalThis.indexedDB, scope = nul
             return saveRecords([record],'add',commit,rollback);
         },
         async get(key) {
-            return readFiles((store, finish) => { const request = store.get(key); request.onsuccess = () => finish(request.result || null); });
+            return cosmifoldAttachmentBinary.decode(await readFiles((store, finish) => { const request = store.get(key); request.onsuccess = () => finish(request.result || null); }));
         },
         async readAll() {
-            return readFiles((store, finish) => { const request = store.getAll(); request.onsuccess = () => finish(request.result); });
+            // Keep unrecognized orphan rows intact for Backup's reference filter
+            // and F8's conservative classification. Referenced bad rows still fail
+            // Backup validation; get() rejects malformed known byte descriptors.
+            return (await readFiles((store, finish) => { const request = store.getAll(); request.onsuccess = () => finish(request.result); })).map(record=>cosmifoldAttachmentBinary.decode(record,{strict:false}));
         },
         async saveBatch(records,commit,rollback) {
             return saveRecords(records,'copy',commit,rollback);

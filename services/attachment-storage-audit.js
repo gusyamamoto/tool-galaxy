@@ -4,8 +4,8 @@ const cosmifoldAttachmentAudit = (() => {
     const bytes=value=>Number.isSafeInteger(value)&&value>=0;
     const only=(value,names)=>Object.keys(value).every(name=>names.includes(name));
     function describe(record,primaryKey){
-        const size=record?.blob instanceof Blob?record.blob.size:null;
-        const thumbnailBytes=record?.thumbnail==null?0:record.thumbnail instanceof Blob?record.thumbnail.size:null;
+        const size=cosmifoldAttachmentBinary.info(record?.blob)?.size??null;
+        const thumbnailBytes=record?.thumbnail==null?0:cosmifoldAttachmentBinary.info(record.thumbnail)?.size??null;
         return {key:primaryKey,entryId:record?.entryId,size,thumbnailBytes,
             recognizable:Object.prototype.toString.call(record)==='[object Object]'&&key(primaryKey)&&record.key===primaryKey&&key(record.entryId)&&record.entryId.length<=150&&
                 bytes(size)&&bytes(thumbnailBytes)&&only(record,['key','entryId','blob','thumbnail'])};

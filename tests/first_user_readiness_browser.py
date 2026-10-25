@@ -52,7 +52,7 @@ def run_readiness_checks(*, cdp, evaluate, check, wait_for, load, add, shot):
     shot('readiness-desktop-empty')
     e('constellationWorkspace.openName();document.getElementById("constellation-name").value="Favorites";document.getElementById("constellation-name-form").requestSubmit()')
     wait_for('!constellationWorkspace.nameDialog.open');collection=e('[...constellations.keys()][0]')
-    viewport(390);e('closeInspector();hierarchySidebar.setCollapsed(false);constellationWorkspace.collapsed=false;constellationWorkspace.applySectionState()')
+    viewport(390);e('closeInspector();hierarchySidebar.setCollapsed(false);mobileSidebarSections.select(constellationWorkspace.section)')
     e(f'document.querySelector("[data-constellation-id="+CSS.escape({q(collection)})+"] .collection-add").click()')
     check(e(f'constellationWorkspace.picker.open&&constellationWorkspace.pickerId==={q(collection)}'), 'row + directly opens existing membership picker')
     e('document.getElementById("close-constellation-picker").click()')

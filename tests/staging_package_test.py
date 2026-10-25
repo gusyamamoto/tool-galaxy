@@ -19,7 +19,8 @@ class StagingPackageTests(unittest.TestCase):
             self.assertEqual(sorted(p.relative_to(output).as_posix() for p in output.rglob('*') if p.is_file()), files)
             self.assertTrue({'index.html', 'startup.js', 'script.js', 'body-renderer.js', 'first-use.js', 'task-views.js', 'sidebar-split.js', 'task-lists.js', 'ids.js', 'vendor/LICENSES.txt',
                              'persistence/local-metadata-store.js', 'persistence/indexeddb-file-store.js', 'services/local-restore-session.js',
-                             'services/local-restore.js', 'object-urls.js', 'storage-capacity.js', 'services/attachment-storage-audit.js', 'backup-ui.js'} <= set(files))
+                             'services/local-restore.js', 'object-urls.js', 'storage-capacity.js', 'services/attachment-storage-audit.js', 'backup-ui.js',
+                             'assets/introduction-example.png', 'assets/introduction-example-compact.png'} <= set(files))
             for probe in ['tests/restore_model_fixture.py', 'tests/object_url_probe.js', 'tests/storage_capacity_browser.py',
                           'tests/attachment_orphan_probe.js', 'tests/persistence_integration_browser.py']:
                 self.assertNotIn(probe, files)
@@ -44,6 +45,20 @@ class StagingPackageTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 staging.prepare(output)
             self.assertEqual(sentinel.read_text(), 'retain')
+
+    def test_responsive_sources_are_copied_and_validated(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / 'vendor').mkdir()
+            for name in ['404.html', '_headers', 'vendor/LICENSES.txt', 'vendor/README.md', 'desktop.png', 'compact.png']:
+                (root / name).write_text('fixture')
+            (root / 'index.html').write_text('<picture><source srcset="compact.png 1x, desktop.png 2x"><img src="desktop.png"></picture>')
+            self.assertTrue({'compact.png', 'desktop.png'} <= set(staging.runtime_assets(root)))
+            for value in ['missing.png', '../outside.png', 'https://example.com/remote.png', 'dev/private.png']:
+                with self.subTest(srcset=value):
+                    (root / 'index.html').write_text(f'<picture><source srcset="{value}"><img src="desktop.png"></picture>')
+                    with self.assertRaises(ValueError):
+                        staging.runtime_assets(root)
 
     def test_source_and_ancestors_are_rejected(self):
         for output in [ROOT, ROOT.parent]:

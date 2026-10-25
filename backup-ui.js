@@ -28,7 +28,7 @@ class CosmifoldBackupUI {
                 if(target){event.preventDefault();target.focus({preventScroll:true});}
             }
         });
-        this.dialog.addEventListener('close',()=>{this.controller?.abort();this.handle=null;this.preview.hidden=true;(this.trigger.getClientRects().length?this.trigger:document.getElementById('sidebar-toggle')).focus({preventScroll:true});});
+        this.dialog.addEventListener('close',()=>{this.controller?.abort();this.handle=null;this.preview.hidden=true;const more=document.getElementById('utility-more');(this.trigger.getClientRects().length?this.trigger:more?.getClientRects?.().length?more:document.getElementById('sidebar-toggle')).focus({preventScroll:true});});
         window.addEventListener('pagehide',()=>{this.controller?.abort();});
         this.setupStorageMaintenance();
     }

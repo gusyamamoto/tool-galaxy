@@ -10,6 +10,66 @@ function environment(extra = {}) {
     return context;
 }
 
+test('Add photo requests images and HEIF without capture; Add files clears image restrictions', () => {
+    const attributes={},limit={hidden:true},clicks=[];
+    const input={setAttribute(k,v){attributes[k]=v;},removeAttribute(k){delete attributes[k];},click(){clicks.push({...attributes,multiple:this.multiple});}};
+    Object.defineProperty(input,'accept',{set(value){attributes.accept=value;}});
+    const ctx=environment({document:{getElementById:()=>limit}}),choose=vm.runInContext('EntryContentInspector.prototype.chooseFiles',ctx);
+    const inspector={files:input,entryId:'selected',jobs:new Map(),getEntry:()=>true,onAction(){},onLayout(){}};
+    const onSelect=()=>{};
+    choose.call(inspector,{source:'photo',entryId:'original-owner',onSelect});
+    assert.equal(clicks[0].accept,'image/*');assert.equal(clicks[0].capture,undefined);assert.equal(clicks[0].multiple,true);
+    assert.equal(clicks[0]['aria-label'],'Choose photos');assert.equal(inspector.fileSelection.entryId,'original-owner');assert.equal(inspector.fileSelection.onSelect,onSelect);
+    choose.call(inspector,{source:'capture-files',entryId:'document-owner'});
+    assert.equal(clicks[1].accept,undefined);assert.equal(clicks[1].capture,undefined);assert.equal(clicks[1].multiple,true);
+    assert.equal(inspector.fileSelection.entryId,'document-owner');assert.equal(clicks[1]['aria-label'],'Choose files');
+});
+
+function pickerInput() {
+    const attributes={},listeners=new Map();
+    return {
+        files:[],value:'',multiple:false,
+        set accept(value){attributes.accept=value;},get accept(){return attributes.accept;},
+        setAttribute(key,value){attributes[key]=value;},removeAttribute(key){delete attributes[key];},
+        getAttribute(key){return attributes[key];},click(){},
+        addEventListener(type,listener){listeners.set(type,listener);},
+        emit(type){listeners.get(type)();}
+    };
+}
+
+test('separate camera, library and general inputs retain independent attributes and destinations', () => {
+    const limit={hidden:true},context=environment({document:{getElementById:()=>limit}});
+    const setup=vm.runInContext('EntryContentInspector.prototype.setupFilePickers',context);
+    const choose=vm.runInContext('EntryContentInspector.prototype.chooseFiles',context);
+    const uploads=[],selected=[];
+    const inspector={files:pickerInput(),photoFiles:pickerInput(),cameraFiles:pickerInput(),entryId:'current',jobs:new Map(),getEntry:id=>id!=='deleted',onAction(){},onLayout(){},upload(files,id){uploads.push({files,id});}};
+    setup.call(inspector);
+    choose.call(inspector,{source:'camera',entryId:'camera-owner',onSelect:()=>selected.push('camera')});
+    choose.call(inspector,{source:'photo',entryId:'photo-owner',onSelect:()=>selected.push('photo')});
+    choose.call(inspector,{source:'capture-files',entryId:'file-owner'});
+    assert.equal(inspector.fileSelection.input,inspector.files);
+    assert.equal(inspector.cameraFiles.accept,'image/*');
+    assert.equal(inspector.cameraFiles.getAttribute('capture'),'environment');
+    assert.equal(inspector.cameraFiles.multiple,false);
+    assert.equal(inspector.photoFiles.accept,'image/*');
+    assert.equal(inspector.photoFiles.getAttribute('capture'),undefined);
+    assert.equal(inspector.files.accept,undefined);
+    assert.equal(inspector.files.getAttribute('capture'),undefined);
+    inspector.photoFiles.emit('cancel');
+    assert.equal(inspector.fileSelection.entryId,'file-owner');assert.equal(limit.hidden,false);
+    inspector.entryId='different-body';
+    const original=new File(['original'],'camera.heic',{type:'image/heic'});
+    inspector.cameraFiles.files=[original];inspector.cameraFiles.emit('change');
+    assert.equal(uploads[0].id,'camera-owner');assert.equal(uploads[0].files[0],original);
+    assert.deepEqual(selected,['camera']);assert.equal(inspector.fileSelection.entryId,'file-owner');
+    inspector.files.emit('cancel');
+    assert.equal(inspector.fileSelection,null);assert.equal(inspector.fileSelections.size,0);assert.equal(limit.hidden,true);
+    choose.call(inspector,{source:'photo',entryId:'photo-owner'});
+    inspector.photoFiles.files=[original];inspector.getEntry=()=>false;
+    inspector.photoFiles.emit('change');assert.equal(uploads.length,1);
+    assert.equal(inspector.fileSelections.size,0);assert.equal(inspector.photoFiles.value,'');
+});
+
 test('capture picker routes gallery, camera and files without leaking capture attributes', () => {
     const attributes = {}, limit = {hidden:true}, clicks = [];
     const input = {disabled:true,setAttribute(key,value){attributes[key]=value;},removeAttribute(key){delete attributes[key];},click(){clicks.push({...attributes,accept:this.accept,multiple:this.multiple});}};

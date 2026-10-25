@@ -17,6 +17,7 @@ def run_sidebar_refinement_checks(*,cdp,e,check,wait_for,add,shot):
     e(f'physics.pause();camera.stopAnimation();hierarchySidebar.expanded.add({q(root)});hierarchySidebar.render();hierarchySidebar.setCollapsed(false);tasksView.rows.get({q(task_list)}).expand.click()')
     e(frame)
     def rect(selector):
+        e(f'(()=>{{if(!hierarchySidebar.narrow)return;const root=document.querySelector({q(selector)})?.closest("#universe-section,#tasks-section,#constellations-section");const section=mobileSidebarSections.sections.find(s=>s.root===root);if(section)mobileSidebarSections.select(section)}})()');e(frame)
         return e(f'(()=>{{const r=document.querySelector({q(selector)}).getBoundingClientRect();return {{x:r.x,y:r.y,width:r.width,height:r.height,bottom:r.bottom}}}})()')
     def drag(dy):
         r=rect('#sidebar-pane-splitter');x=r['x']+r['width']/2;y=r['y']+r['height']/2
