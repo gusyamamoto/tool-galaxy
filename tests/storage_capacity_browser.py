@@ -86,12 +86,12 @@ def run_storage_capacity_checks(*, cdp, e, check, wait_for, add):
 
     # Copy warning uses already loaded original + thumbnail blobs before saveBatch.
     reset();e('f7result={usage:0,quota:2*1024**2}');before=e('f7calls')
-    e(f'copyHierarchyItems([{q(owner)}]);openHierarchyPaste({q(destination)});confirmHierarchyPaste("copy")')
-    wait_for('!pasteBusy&&!pasteDialog.open')
+    e(f'copyHierarchyItems([{q(owner)}]);pasteHierarchy({q(destination)})')
+    wait_for('!pasteBusy')
     check(e('f7calls')==before+1 and shown() and e("document.getElementById('storage-capacity-message').textContent.includes('copies')"),'copy estimates one batch of existing durable bytes and still succeeds')
     check(e(f'[...entries.values()].some(x=>x.parentId==={q(destination)}&&x.content?.attachments.length>0)'),'independent copied attachments are published normally')
     reset();before=e('f7calls')
-    e(f'copyHierarchyItems([{q(owner)}]);openHierarchyPaste({q(destination)});confirmHierarchyPaste("link")')
+    e(f"commitPortalReferences(new Map([...portals,['fixture:capacity-link',{{id:'fixture:capacity-link',targetEntryId:{q(owner)},parentEntryId:{q(destination)},createdAt:new Date().toISOString()}}]]))")
     check(e('f7calls')==before and not shown(),'linked metadata-only placement does not estimate storage')
 
     # Actual mobile picker routing feeds the same advisory check.

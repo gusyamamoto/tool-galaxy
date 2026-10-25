@@ -75,8 +75,8 @@ def run_attachment_binary_checks(*, cdp, e, check, wait_for, add, select):
     check(e("[...document.querySelectorAll('#content-media img')].some(i=>i.complete&&i.naturalWidth)"),'decoded thumbnails render through the unchanged object URL preview path')
 
     # Copy is exercised without changing clipboard or destination behavior.
-    e(f"binarySetMode('sync');copyHierarchyItems([{q(owner)}]);openHierarchyPaste({q(destination)});confirmHierarchyPaste('copy')")
-    check(e('!pasteDialog.open'),'existing copy transaction accepts decoded originals and thumbnails')
+    e(f"binarySetMode('sync');copyHierarchyItems([{q(owner)}]);pasteHierarchy({q(destination)})")
+    check(e("!pasteBusy&&!document.querySelector('dialog[open]')"),'immediate copy transaction accepts decoded originals and thumbnails without a modal')
     copied=e(f'[...entries.values()].find(x=>x.parentId==={q(destination)})?.id')
     check(bool(copied),'copy creates its existing independent destination owner')
     check(e(f"""(async()=>{{const source=entries.get({q(owner)}).content.attachments,target=entries.get({q(copied)}).content.attachments,raw=(await binaryRawState()).files;

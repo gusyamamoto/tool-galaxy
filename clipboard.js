@@ -7,18 +7,35 @@ class HierarchyClipboard {
         this.copiedAt=Date.now();return this.copiedRootIds.length;
     }
     roots(entries){return galaxyModel.effectiveRoots(entries,this.copiedRootIds.filter(id=>entries.has(id)));}
-    linkError(entries,portals,destination,roots=this.roots(entries)){
-        if(!roots.length)return 'The copied items are no longer available.';
-        for(const id of roots){
-            const error=galaxyPortals.placementError(entries,portals,id,destination);
-            if(error)return error;
-            if(id===destination||entries.get(id).parentId===destination)return 'This item is already here.';
-        }
-        return '';
-    }
+    copyError(entries,destination){return hierarchyCopies.destinationValidator(entries,this.roots(entries))(destination);}
 }
 
 const hierarchyCopies = {
+    // Validate independent projected IDs, not a Move of the original. Copying
+    // inside the source/its descendants is finite and may be valid. No content,
+    // attachment bytes or production IDs are allocated by this read-only index.
+    destinationValidator(entries,roots,{structure=false,archivedGalaxies=[]}={}) {
+        if(!roots.length||roots.some(id=>!entries.has(id)))return ()=> 'The copied items are no longer available.';
+        roots=galaxyModel.effectiveRoots(entries,roots);
+        const included=new Set();roots.forEach(id=>galaxyModel.subtreeIds(entries,id).forEach(child=>included.add(child)));
+        const used=new Set(entries.keys()),remap=new Map();let next=0;
+        for(const id of included){let fresh;do{fresh=`destination-check:${next++}`;}while(used.has(fresh));used.add(fresh);remap.set(id,fresh);}
+        const rootSet=new Set(roots),copies=[...included].map(id=>{
+            const source=entries.get(id);
+            return {...source,id:remap.get(id),parentId:rootSet.has(id)?null:remap.get(source.parentId),
+                description:structure?'':source.description,category:structure?'':source.category||''};
+        });
+        const combined=new Map([...entries,...copies.map(entry=>[entry.id,entry])]);
+        const projectedRoots=roots.map(id=>combined.get(remap.get(id))),archived=new Set(archivedGalaxies.map(record=>record.galaxyId));
+        return destination=>{
+            if((destination!==null||!structure)&&!entries.has(destination))return 'Choose an available location.';
+            if(structure&&roots.some(id=>entries.get(id).parentId==null)&&destination!==null)return 'A Galaxy structure belongs at Universe level.';
+            if(destination!==null&&[entries.get(destination),...galaxyModel.ancestors(entries,destination)].some(entry=>archived.has(entry.id)))return 'Choose a location in an active Galaxy.';
+            projectedRoots.forEach(entry=>entry.parentId=destination);
+            for(const entry of copies){const error=galaxyModel.validateChange(entry,combined);if(error)return error;}
+            return '';
+        };
+    },
     prepare(snapshot,roots,destination,newId,{topLevel=false}={}) {
         const entries=new Map(snapshot.entries.map(entry=>[entry.id,entry]));
         if((!entries.has(destination)&&!(topLevel&&destination===null))||!roots.length||roots.some(id=>!entries.has(id)))throw new Error('The copied items or destination are no longer available.');
@@ -30,17 +47,19 @@ const hierarchyCopies = {
         const parentId=id=>rootSet.has(id)?destination:remap.get(entries.get(id).parentId);
         return {entries,roots,included,fresh,remap,now,parentId};
     },
-    structure(snapshot,rootId,name,newId,{x=0,y=0}={}) {
+    structure(snapshot,rootId,name,newId,{x=0,y=0,destination}={}) {
         if(typeof rootId!=='string'||typeof name!=='string')throw new Error('Choose one item and enter a name.');
         const source=snapshot.entries.find(entry=>entry.id===rootId);
         if(!source)throw new Error('This item no longer exists.');
-        const destination=source.parentId??null;
+        if(destination===undefined)destination=source.parentId??null;
+        const error=this.destinationValidator(new Map(snapshot.entries.map(entry=>[entry.id,entry])),[rootId],{structure:true,archivedGalaxies:snapshot.archivedGalaxies})(destination);
+        if(error)throw new Error(error);
         const {entries,included,remap,now,parentId}=this.prepare(snapshot,[rootId],destination,newId,{topLevel:true});
         // An allowlist keeps future content/metadata fields out of this operation.
         const copies=[...included].map(id=>({id:remap.get(id),name:id===rootId?name.trim():entries.get(id).name,
             parentId:parentId(id),description:'',category:'',x,y,createdAt:now,updatedAt:now,
             ...(entries.get(id).taskList === true ? {taskList:true} : {}),
-            ...(entries.get(entries.get(id).parentId)?.taskList === true ? {completed:false} : {})}));
+            ...(entries.get(id===rootId?destination:entries.get(id).parentId)?.taskList === true ? {completed:false} : {})}));
         const combined=new Map([...entries,...copies.map(entry=>[entry.id,entry])]);
         for(const entry of copies){
             const error=galaxyModel.validateChange(entry,combined);
@@ -49,6 +68,8 @@ const hierarchyCopies = {
         return {copies,links:[],files:[],rootIds:[remap.get(rootId)],sourceIds:[...included],remap};
     },
     plan(snapshot,roots,destination,newId) {
+        const error=this.destinationValidator(new Map(snapshot.entries.map(entry=>[entry.id,entry])),roots,{archivedGalaxies:snapshot.archivedGalaxies})(destination);
+        if(error)throw new Error(error);
         const {entries,included,fresh,remap,now,parentId,roots:normalizedRoots}=this.prepare(snapshot,roots,destination,newId);
         const files=[];
         const copies=[...included].map(id=>{

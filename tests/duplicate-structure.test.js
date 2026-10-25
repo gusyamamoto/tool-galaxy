@@ -13,7 +13,7 @@ function fixture(){return {entries:[
  {id:'other',name:'Elsewhere',parentId:null,x:600,y:700}
  ],portals:[{id:'internal',parentEntryId:'a',targetEntryId:'b',createdAt:'2026-01-01T00:00:00Z'},{id:'external',parentEntryId:'a',targetEntryId:'other',createdAt:'2026-01-01T00:00:00Z'}],
  constellations:[{id:'favorites',name:'Favorites',memberEntryIds:['g','b'],createdAt:'2026-01-01T00:00:00Z'}],layout:[{id:'a',parentId:'g',angle:2,radius:70}],
- archivedGalaxies:[{galaxyId:'g',archivedAt:'2026-01-01T00:00:00Z'}]};}
+ archivedGalaxies:[{galaxyId:'other',archivedAt:'2026-01-01T00:00:00Z'}]};}
 function repository(source){const meta=metaFactory(source);return {meta,repo:repoFactory({persistence:{metadata:meta,files:forbiddenFiles}})};}
 
 test('a Galaxy structure receives fresh IDs, correct parents and stable canonical sibling order',async ()=>{
@@ -94,7 +94,7 @@ test('invalid names, multiple targets, missing parents and ID collisions cannot 
  await assert.rejects(()=>repo.duplicateStructure(source,['g','a'],'Japan',ids()),/one item/);
  await assert.rejects(()=>repo.duplicateStructure(source,'gone','Japan',ids()),/no longer/);
  for(const id of ['g','internal','same'])await assert.rejects(()=>repo.duplicateStructure(source,'g','Japan',()=>id),/IDs/);
- const broken=structuredClone(source);broken.entries[1].parentId='gone';await assert.rejects(()=>repo.duplicateStructure(broken,'a','Japan',ids()),/destination/);
+ const broken=structuredClone(source);broken.entries[1].parentId='gone';await assert.rejects(()=>repo.duplicateStructure(broken,'a','Japan',ids()),/location/);
  assert.deepEqual(plain(meta.load()),source);
 });
 

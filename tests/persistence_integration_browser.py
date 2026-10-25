@@ -75,10 +75,10 @@ def _run(*,cdp,cdp_class,e,check,wait_for,add,origin,files):
     check(e("contentInspector.content().attachments.length===2&&contentInspector.content().notes.text==='F9 saved note'&&contentInspector.content().links.length===1"),'real file input and forms commit image/document, Note, Bookmark and Location')
     e(f"contentInspector.upload([new File(['archived original'],'archived.txt',{{type:'text/plain'}})],{q(archived)})")
     e(f'requestGalaxyArchive({q(archived)});document.getElementById("archive-galaxy-form").requestSubmit()');wait_for('!archiveBusy&&!archiveDialog.open')
-    e(f'copyHierarchyItems([{q(owner)}]);openHierarchyPaste({q(destination)});pasteCopy.click()');wait_for('!pasteBusy&&!pasteDialog.open')
+    e(f'copyHierarchyItems([{q(owner)}]);pasteHierarchy({q(destination)})');wait_for('!pasteBusy')
     copied=e(f'[...entries.values()].find(x=>x.parentId==={q(destination)}).id')
     check(e(f'entries.get({q(copied)}).content.attachments.length===2&&archivedEntries.has({q(archived)})&&entries.get({q(tasks[0])}).completed&&!entries.get({q(tasks[1])}).completed'),'golden workspace includes independent copies, archived bytes and mixed task completion')
-    e(f'copyHierarchyItems([{q(task_list)}]);openHierarchyPaste({q(destination)});pasteCopy.click()');wait_for('!pasteBusy&&!pasteDialog.open')
+    e(f'copyHierarchyItems([{q(task_list)}]);pasteHierarchy({q(destination)})');wait_for('!pasteBusy')
     check(e(f"(()=>{{const list=[...entries.values()].find(x=>x.parentId==={q(destination)}&&x.taskList),children=list&&[...entries.values()].filter(x=>x.parentId===list.id);return list&&children.length===2&&children.some(x=>x.completed===true)&&children.some(x=>x.completed===false)&&children.every(x=>!x.taskList&&![...entries.values()].some(y=>y.parentId===x.id))}})()"),'real Task List copy preserves direct task children and mixed completion without illegal nesting')
     seed([{'key':'f9-historical','owner':owner},{'key':'f9-unknown','owner':None}])
     e('backupUI.trigger.click();backupUI.storageSection.open=true;backupUI.auditButton.click()');wait_for('!backupUI.busy')
@@ -168,7 +168,7 @@ def _run(*,cdp,cdp_class,e,check,wait_for,add,origin,files):
 
     # Actual copy pause at the shared F4 hook, with advisory low capacity.
     e("Object.defineProperty(navigator.storage,'estimate',{configurable:true,value:async()=>({usage:950*1024**2,quota:1000*1024**2})});attachmentStore.setOperationStageHook(({operation})=>{if(operation.type==='copy'){window.f9copyKeys=operation.files.map(f=>f.key);return new Promise(()=>{})}})")
-    e(f'copyHierarchyItems([{q(owner)}]);openHierarchyPaste({q(destination)});pasteCopy.click()');wait_for("Array.isArray(window.f9copyKeys)")
+    e(f'copyHierarchyItems([{q(owner)}]);void pasteHierarchy({q(destination)})');wait_for("Array.isArray(window.f9copyKeys)")
     interrupted=e('f9copyKeys');check(e('!capacityWarning.hidden&&pasteBusy'),'F7 low advice coexists with an actual F4 copy paused after durable bytes')
     check(e("(async()=>{const ops=await attachmentStore.listOperations(),queue=[...ops];while(queue.length){const v=queue.pop();if(v instanceof Blob||v instanceof ArrayBuffer||ArrayBuffer.isView(v))return false;if(v&&typeof v==='object')queue.push(...Object.values(v))}return ops.length===1&&ops[0].type==='copy'&&ops[0].files.length===f9copyKeys.length})()"),'actual interrupted copy journal contains ownership metadata and no duplicated file bytes')
     e('backupUI.trigger.click();backupUI.storageSection.open=true;backupUI.auditButton.click()')

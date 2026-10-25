@@ -140,8 +140,8 @@ def run_task_checks(*, cdp, evaluate, check, wait_for, add, shot, origin):
     wait_for('!structureBusy')
     duplicate=e('selectedNode.dataset.entryId')
     check(e(f'entries.get({q(duplicate)}).taskList&&galaxyModel.childrenOf(entries,{q(duplicate)}).length===4&&galaxyModel.childrenOf(entries,{q(duplicate)}).every(x=>x.completed===false)'), 'Duplicate structure keeps list/tasks and resets completion')
-    select(hotel);e(f'copyHierarchyItems([{q(hotel)}]);openHierarchyPaste({q(photos)})')
-    click('#hierarchy-paste-copy');wait_for('!pasteBusy')
+    select(hotel);e(f'copyHierarchyItems([{q(hotel)}]);pasteHierarchy({q(photos)})')
+    wait_for('!pasteBusy')
     pasted=e('selectedNode.dataset.entryId')
     check(e(f'!taskStates.get({q(pasted)}).enabled&&!entries.get({q(pasted)}).taskList'), 'independent task paste outside a list becomes regular CB')
     # Every creative role remains available without adding descendants below tasks.

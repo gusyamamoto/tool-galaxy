@@ -227,6 +227,8 @@ function createUniverseRepository({persistence, canWrite = () => true}) {
             const prepare=()=>{
                 validate();previous=readSnapshot();
                 const current=new Map(previous.entries.map(e=>[e.id,e])),original=new Map(snapshot.entries.map(e=>[e.id,e]));
+                const destinationError=hierarchyCopies.destinationValidator(current,roots,{archivedGalaxies:previous.archivedGalaxies})(destination);
+                if(destinationError)throw new Error(destinationError);
                 const liveIds=new Set(roots.flatMap(id=>[...galaxyModel.subtreeIds(current,id)]));
                 const internal=state=>(state.portals||[]).filter(p=>plan.sourceIds.includes(p.parentEntryId)&&plan.sourceIds.includes(p.targetEntryId));
                 if(!current.has(destination)||liveIds.size!==plan.sourceIds.length||plan.sourceIds.some(id=>!liveIds.has(id)||JSON.stringify(current.get(id))!==JSON.stringify(original.get(id)))||JSON.stringify(internal(previous))!==JSON.stringify(internal(snapshot)))throw new Error('The copied items changed. Try Paste again.');
