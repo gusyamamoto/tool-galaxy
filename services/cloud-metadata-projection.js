@@ -13,7 +13,21 @@ const cosmifoldCloudProjection = (()=>{
         if(result.some((row,index)=>!object(row)||!Number.isSafeInteger(row.ordinal)||row.ordinal!==index))fail(path);
         return result;
     }
-    const entryFields=['id','name','parentId','description','category','appearance','content','location','createdAt','updatedAt','x','y'];
+    // This experimental cloud projection is intentionally independent of the UI
+    // model. Parity tests cover the same strict calendar contract at both gates.
+    function temporal(kind,value){
+        if(value===null)return true;
+        const keys=kind==='when'?['startDate','endDate','time']:['date','time'];
+        if(!object(value)||Object.keys(value).length!==keys.length||!keys.every(key=>has(value,key)))return false;
+        const date=text=>{
+            if(typeof text!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(text))return false;
+            const [y,m,d]=text.split('-').map(Number),days=[31,y%4===0&&(y%100!==0||y%400===0)?29:28,31,30,31,30,31,31,30,31,30,31];
+            return y>=1&&m>=1&&m<=12&&d>=1&&d<=days[m-1];
+        };
+        if(value.time!==null&&(typeof value.time!=='string'||!/^([01]\d|2[0-3]):[0-5]\d$/.test(value.time)))return false;
+        return kind==='due'?date(value.date):date(value.startDate)&&(value.endDate===null||date(value.endDate)&&value.endDate>=value.startDate&&value.time===null);
+    }
+    const entryFields=['id','name','parentId','description','category','appearance','content','location','when','due','taskList','completed','createdAt','updatedAt','x','y'];
     const attributeFields=entryFields.filter(key=>!['id','name','parentId','x','y'].includes(key));
     function validateStorageV5(input){
         const data=contract.json(input);
@@ -31,6 +45,9 @@ const cosmifoldCloudProjection = (()=>{
             for(const key of ['x','y'])if(has(entry,key)&&!Number.isFinite(entry[key]))fail(path+'.'+key);
             for(const key of ['createdAt','updatedAt'])if(has(entry,key)&&!timestamp(entry[key]))fail(path+'.'+key);
             if(has(entry,'appearance')&&!object(entry.appearance))fail(path+'.appearance');
+            for(const key of ['when','due'])if(has(entry,key)&&!temporal(key,entry[key]))fail(path+'.'+key);
+            for(const key of ['taskList','completed'])if(has(entry,key)&&typeof entry[key]!=='boolean')fail(path+'.'+key);
+            if(entry.taskList===true&&(entry.when!=null||entry.due!=null))fail(path+'.taskList');
             if(has(entry,'location')){
                 fields(entry.location,['text'],path+'.location');const text=entry.location.text;
                 if(typeof text!=='string'||!text||text!==text.trim()||text.length>1000||/[\u0000-\u001f\u007f]/.test(text))fail(path+'.location');

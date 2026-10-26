@@ -155,6 +155,13 @@
             <p id="constellation-count" hidden></p>
             </div>
             <section id="panel-rich-content" aria-label="Contents">
+            <div id="content-time-row" class="time-metadata-row" hidden>
+                <span id="content-time-label" class="time-metadata-label">WHEN</span>
+                <button id="content-time-value" class="time-metadata-value" type="button" aria-haspopup="dialog" aria-controls="time-editor">Add date…</button>
+                <button id="content-time-edit" class="time-metadata-icon" type="button" aria-label="Edit date" title="Edit date" hidden><svg viewBox="0 0 20 20" aria-hidden="true"><path d="m12 4 4 4M4 12l9-9a2 2 0 0 1 3 3l-9 9-4 1z"/></svg></button>
+                <button id="content-time-remove" class="time-metadata-icon" type="button" aria-label="Remove date" title="Remove date" hidden><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 5h12M8 3h4M6 5l1 12h6l1-12M9 8v6M11 8v6"/></svg></button>
+                <p id="content-time-error" role="status" hidden></p>
+            </div>
                 <section id="content-task-section" aria-labelledby="task-heading" hidden>
                     <h3 id="task-heading">Task</h3>
                     <label id="content-task-control"><input id="content-task-done" type="checkbox"> <span>Done</span></label>
@@ -308,6 +315,7 @@
                 <p id="task-list-help">One task per line. You can add more later.</p>
             </div>
             <div id="galaxy-starter-field" hidden><label for="galaxy-starter">Choose a starting point</label><select id="galaxy-starter" name="starter"></select></div>
+            <div id="entry-due-draft" class="time-metadata-row" hidden><span class="time-metadata-label">DUE</span><button id="entry-due-value" class="time-metadata-value" type="button" aria-haspopup="dialog" aria-controls="time-editor">Add due date…</button><button id="entry-due-remove" type="button" hidden>Remove</button></div>
             <div id="entry-info-fields" hidden>
             <label for="entry-description">Description (optional)</label>
             <textarea id="entry-description" name="description" rows="4" maxlength="1000"></textarea>
@@ -622,6 +630,21 @@
     <script src="clipboard.js"></script>
     <script src="mobile-contents.js"></script>
     <script src="inline-editing.js"></script>
+    <dialog id="time-editor" class="collection-dialog" aria-labelledby="time-editor-title">
+        <form id="time-editor-form">
+            <h2 id="time-editor-title">When</h2>
+            <fieldset id="time-editor-mode"><legend class="visually-hidden">Date mode</legend><label><input type="radio" name="dateMode" value="single" checked>Single date</label><label><input type="radio" name="dateMode" value="range">Date range</label></fieldset>
+            <div class="time-editor-fields">
+                <label id="time-start-label" for="time-start">Date</label><input id="time-start" type="date" min="0001-01-01" max="9999-12-31" required>
+                <div id="time-end-field" hidden><label for="time-end">Ends</label><input id="time-end" type="date" min="0001-01-01" max="9999-12-31"></div>
+                <div id="time-clock-field"><label for="time-clock">Time (optional)</label><input id="time-clock" type="time" step="60"></div>
+                <p id="time-range-help" hidden>Date ranges are date-only.</p>
+                <p id="time-editor-error" role="status" hidden></p>
+            </div>
+            <div class="form-actions"><button id="time-editor-cancel" type="button">Cancel</button><button id="time-editor-save" type="submit">Save</button></div>
+        </form>
+    </dialog>
+    <script src="time-metadata.js"></script>
     <script src="startup.js"></script>
 </body>
 </html>

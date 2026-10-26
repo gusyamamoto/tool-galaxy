@@ -202,6 +202,7 @@ function createCloudUniverseRepository({scope,gateway,isCurrent=()=>true,newOper
                 return planner.updateLocation(snapshot,id,value);
             });
         },
+        updateTime:(input,id,kind,value)=>semantic('updateTime',input,[id,kind,value]),
         replaceConstellations:(input,records)=>semantic('replaceConstellations',input,[records]),
         replacePlacements:(input,records)=>semantic('replacePlacements',input,[records]),
         moveEntries:(input,ids,destination)=>semantic('moveEntries',input,[ids,destination]),

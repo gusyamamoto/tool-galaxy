@@ -648,6 +648,7 @@ function renderTaskContents() {
     tasksView.render(entries,taskStates,selectedNode?.dataset.entryId);
     renderCompactTask();
     const id=selectedNode?.dataset.entryId, entry=entries.get(id), task=taskStates.get(id);
+    timeEditor.render(constellationOverview?null:entry,entry?.taskList===true?null:task?.task?'due':'when');
     const section=document.getElementById('content-task-section'), control=document.getElementById('content-task-control');
     section.hidden=!entry||!task?.enabled||constellationOverview;
     if(section.hidden)return;
@@ -729,6 +730,22 @@ function removeEntryAttachment(id,key){return orderedCommand(async()=>{
 const motion = new CosmosMotion();
 const imageViewer = new CosmifoldImageViewer({store:attachmentStore,getEntry:id=>entries.get(id),
     openExternal:(metadata,blob)=>contentInspector.openNativeFile(metadata,'application/pdf',blob)});
+function saveEntryTime(id,kind,value){return orderedCommand(async()=>{
+    const entry=entries.get(id);if(!entry||deletingContentIds.has(id))throw new Error('This item is being deleted or no longer exists.');
+    const updated=await universeRepository.updateTime(getGalaxySnapshot,id,kind,value);
+    if(updated[kind])entry[kind]=updated[kind];else delete entry[kind];
+    entry.updatedAt=updated.updatedAt;graphNeedsSave=false;
+    timeEditor.render(entries.get(selectedNode?.dataset.entryId),entries.get(selectedNode?.dataset.entryId)?.taskList===true?null:taskStates.get(selectedNode?.dataset.entryId)?.task?'due':'when');
+    updateGraphViewport();return updated;
+});}
+const timeEditor=new TimeMetadataEditor({save:saveEntryTime,onAction:()=>{cancelPendingBodyFocus();autoFitPending=false;keyboardNavigation=false;camera.stopAnimation();},canEdit:()=>!localSessionStale&&!localRestoreInProgress&&(sampleMode||storageAvailable)});
+let taskDueDraft=null;
+function renderTaskDueDraft(){
+    document.getElementById('entry-due-value').textContent=taskDueDraft?galaxyModel.temporal.format('due',taskDueDraft):'Add due date…';
+    document.getElementById('entry-due-remove').hidden=!taskDueDraft;
+}
+document.getElementById('entry-due-value').addEventListener('click',()=>timeEditor.open({kind:'due',value:taskDueDraft,save:value=>{taskDueDraft=value;renderTaskDueDraft();}}));
+document.getElementById('entry-due-remove').addEventListener('click',()=>{taskDueDraft=null;renderTaskDueDraft();});
 const contentInspector = new EntryContentInspector({ store: attachmentStore, motion, getEntry: id => entries.get(id),
     imageViewer,
     notifyFileFailure,isSessionStale:()=>localSessionStale,
@@ -913,7 +930,7 @@ function updateConstellationIndicator() {
 }
 function showConstellationOverview() {
     if (!activeConstellationId || activeNodeDrags) return;
-    closeContextMenu(); closeContentMenus(); constellationOverview = true; contentInspector.hide();
+    closeContextMenu(); closeContentMenus(); constellationOverview = true; contentInspector.hide();timeEditor.render(null,null);
     updateConstellationIndicator(); setInspectorOpen(true);
 }
 document.getElementById('active-constellation-name').addEventListener('click', showConstellationOverview);
@@ -946,7 +963,7 @@ function activateConstellation(id) {
     closeContextMenu(); closeContentMenus(); autoFitPending = false; keyboardNavigation = false; camera.stopAnimation();
     activeConstellationId = id;
     constellationOverview = true;
-    contentInspector.hide(); refreshConstellation({animate:true}); setInspectorOpen(true);
+    contentInspector.hide();timeEditor.render(null,null); refreshConstellation({animate:true}); setInspectorOpen(true);
     const members = [...activeConstellationMembers];
     if (!members.length) return;
     const bounds = { left: Infinity, right: -Infinity, top: Infinity, bottom: -Infinity };
@@ -1145,9 +1162,16 @@ function refreshPanelHierarchy(entry) {
     panelAncestry.hidden=!entries.get(entry.parentId);
 }
 
+function contentsCreationActions(entry) {
+    const child=!!entry&&!!cosmosHierarchy.childContext(entries,entry.id);
+    return {child,taskList:child&&entry.taskList!==true};
+}
 function syncEntryAddControl(entry=entries.get(selectedNode?.dataset.entryId)) {
-    if(!entry||constellationOverview)return;
     const add=document.getElementById('entry-add-button');
+    if(constellationOverview){add.hidden=false;return;}
+    const actions=contentsCreationActions(entry);
+    add.hidden=!entry||(!hierarchySidebar.narrow&&!actions.child&&!actions.taskList);
+    if(!entry)return;
     add.setAttribute('aria-label',add.title=`Add to ${entry.name}`);
     add.setAttribute('aria-haspopup','menu');
     add.setAttribute('aria-controls','add-menu');
@@ -1789,6 +1813,7 @@ function updateFormRole() {
     const role = context?.role || galaxyModel.roleAtDepth(parent ? parent.depth+1 : 0);
     roleField.dataset.role = role;
     roleField.textContent = entryRoles[roleField.dataset.role].name;
+    document.getElementById('entry-due-draft').hidden=!!editingId||creatingTaskList||parent?.taskList!==true;
     document.getElementById("parent-help").textContent = parent ? `Child of ${parent.name}. Its descendants move with this branch.` : "A top-level Galaxy in the Universe.";
     if (!editingId) {
         document.getElementById("add-entry-title").textContent = creatingTaskList ? 'Task List' : context?.action || 'Add item';
@@ -2054,6 +2079,7 @@ function openEntryForm(entry = null, parentId = null, contextual = false, mode =
     document.getElementById("entry-info-fields").hidden = true;
     document.getElementById("entry-name-field").hidden = !!entry && mode === "move";
     form.reset();
+    taskDueDraft=null;renderTaskDueDraft();
     fields.forEach((field) => field.setCustomValidity(""));
     clearFormError();
     document.getElementById("add-entry-title").textContent = entry ? mode === "move" ? "Move to…" : "Rename item" : "Add item";
@@ -2093,6 +2119,7 @@ function renderAddMenu() {
     const mobile = hierarchySidebar.narrow;
     const contents=!mobile&&addMenuTrigger?.id==='entry-add-button';
     const sidebar=mobile&&!!addMenuTrigger?.closest('#hierarchy-tree');
+    const structural=contentsCreationActions(entries.get(addMenuTargetId));
     addMenu.dataset.view = mobile ? 'quick' : 'desktop';
     addMenu.classList.toggle('capture-menu', mobile);
     addMenu.querySelectorAll('button').forEach(item => {
@@ -2101,14 +2128,17 @@ function renderAddMenu() {
         else item.hidden=mobile&&(!sidebar||action==='files')&&item!==addChildButton&&action!=='task-list';
         if(action==='location')item.hidden=!sidebar;
         if(contents)item.hidden=item!==addChildButton&&action!=='task-list';
-        if(item===addChildButton){item.hidden=taskStates.get(addMenuTargetId)?.task===true;item.textContent=entries.get(addMenuTargetId)?.taskList===true?'Add task':'Add item';}
-        if(action==='task-list')item.hidden=taskStates.get(addMenuTargetId)?.enabled===true;
+        if(item===addChildButton){item.hidden=!structural.child;item.textContent=entries.get(addMenuTargetId)?.taskList===true?'Add task':'Add item';}
+        if(action==='task-list')item.hidden=!structural.taskList;
         if (action === 'paste') item.hidden=contents||mobile||!canPasteHierarchy(addMenuTargetId);
     });
+    const first=addMenu.querySelector('button:not([hidden]):not(:disabled)');
+    if(!first)return false;
     addMenu.setAttribute('aria-label', `Add to ${entries.get(addMenuTargetId).name}`);
+    addMenu.hidden=false;addMenuTrigger.setAttribute('aria-expanded','true');
     const rect = addMenuTrigger.getBoundingClientRect();
     positionCosmosMenu(addMenu,rect.left,rect.bottom+6,{above:rect.top-6});
-    addMenu.querySelector('button:not([hidden]):not(:disabled)')?.focus({preventScroll:true});
+    first.focus({preventScroll:true});return true;
 }
 function closeContentMenus() {
     addMenu.hidden = entryActions.hidden = true;
@@ -2123,11 +2153,11 @@ function toggleContentMenu(menu, button, targetId = null) {
     const opening = menu.hidden || (menu === addMenu && addMenuTrigger !== button);
     closeContentMenus();
     if (!opening) return;
-    menu.hidden = false; button.setAttribute("aria-expanded", "true");
     if (menu === addMenu) {
         addMenuTargetId = targetId; addMenuTrigger = button;
-        renderAddMenu();
+        if(!renderAddMenu()){closeContentMenus();return;}
     } else {
+        menu.hidden = false; button.setAttribute("aria-expanded", "true");
         const rect=button.getBoundingClientRect();positionCosmosMenu(menu,rect.right-menu.offsetWidth,rect.bottom+5,{above:rect.top-5});
     }
     menu.querySelector("button:not([hidden]):not(:disabled)")?.focus({ preventScroll: true });
@@ -2288,6 +2318,7 @@ form.addEventListener("submit", async (event) => {
         category: editingId ? entries.get(editingId).category : fields[2].value.trim(),
         parentId: contextualParentId || parentField.value || null
     };
+    if(!editingId&&!creatingTaskList&&entries.get(data.parentId)?.taskList===true&&taskDueDraft)data.due={...taskDueDraft};
     const error = galaxyModel.validateChange(editingId?{...data,description:'',category:''}:data, entries);
     if (error) {
         formError.textContent = error;
