@@ -70,7 +70,10 @@ def run_contents_swipe_checks(*,cdp,evaluate,check,wait_for,add,shot):
                 page_heights[populated,page]=metrics['panelHeight']
                 check(metrics['rootBottom']<=metrics['dockTop']+1 and metrics['dockHeight']==45 and all(h>=44 for h in metrics['tabHeights']) and metrics['fontSize']>=12 and metrics['activeSurface']==32 and metrics['differentActiveColor'],'light dock preserves 44px targets, readable labels and content clearance: '+label)
                 if not populated:
-                    check(not metrics['overflow'] and metrics['above']>=-1 and metrics['below']<=12 and metrics['panelHeight']<=min(200,cap)+1,'empty page shrinks without a large blank area: '+label+' '+json.dumps(metrics))
+                    metadata=e("(()=>{const row=document.getElementById('content-time-row'),s=getComputedStyle(row);return row.getBoundingClientRect().height+(row.hidden?0:parseFloat(s.marginTop)+parseFloat(s.marginBottom))})()")
+                    # Short landscape can reach the existing cap before the
+                    # metadata and empty action fit; scrolling must remain native.
+                    check((not metrics['overflow'] or metrics['panelHeight']>=cap-1) and metrics['above']>=-1 and metrics['below']<=12 and metrics['panelHeight']<=min(200+metadata,cap)+1,'empty page shrinks without a large blank area beyond the metadata row: '+label+' '+json.dumps(metrics))
                     empty_metrics.append(metrics)
                 elif page in ['files','notes','links']:
                     check(metrics['overflow'] and metrics['above']>=-1,'overflow starts at the top without clipping first content: '+label)
@@ -79,12 +82,13 @@ def run_contents_swipe_checks(*,cdp,evaluate,check,wait_for,add,shot):
                     e('mobileContents.root.scrollTop=0')
                 shot('contents-rhythm-'+('populated-' if populated else 'empty-')+page+'-'+tag)
         check(all(abs(m['titleTop']-empty_metrics[0]['titleTop'])<1 for m in empty_metrics),'all empty page headings share the same header distance: '+tag)
-        check(all(page_heights[True,page]>page_heights[False,page]+5 for page in ['files','notes','links']),'populated pages grow from their actual content: '+tag)
+        check(all(page_heights[True,page]>page_heights[False,page]+5 or page_heights[False,page]>=cap-1 for page in ['files','notes','links']),'populated pages grow from their actual content until the existing cap: '+tag)
         # Content changes on the same CB/page shrink and grow without navigation.
         e("mobileContents.setPage('notes');contentInspector.status.hidden=true")
         before=e('panel.offsetHeight')
         e("(async()=>{window.adaptiveSavedNote=contentInspector.content().notes.text;await saveEntryContent(browseIds[0],c=>({...c,notes:{format:'plain',text:''}}));contentInspector.renderNotes();contentInspector.onLayout()})()")
-        wait_for(f'panel.offsetHeight<{before}-5&&Math.abs(usableCanvasBounds.bottom-panel.getBoundingClientRect().top)<1')
+        empty_limit=max(page_heights[False,'notes'],before-5)+1
+        wait_for(f'contentInspector.content().notes.text===""&&contentInspector.notesView.hidden&&panel.offsetHeight<={empty_limit}&&Math.abs(usableCanvasBounds.bottom-panel.getBoundingClientRect().top)<1')
         e("(async()=>{await saveEntryContent(browseIds[0],c=>({...c,notes:{format:'plain',text:adaptiveSavedNote}}));contentInspector.renderNotes();contentInspector.onLayout()})()")
         wait_for(f'panel.offsetHeight>={before}-1')
         # No resize-driven auto-framing or continuous geometry loop at rest.
@@ -201,7 +205,7 @@ def run_contents_swipe_checks(*,cdp,evaluate,check,wait_for,add,shot):
         # A form left on another page must not promote or redirect later file layouts.
         e("window.adaptiveFilesHeight=panel.offsetHeight;mobileContents.setPage('notes');document.getElementById('content-notes-view').click();mobileContents.setPage('files')")
         check(e('panel.offsetHeight===adaptiveFilesHeight'),'an editor on an inactive page does not inflate Files: '+tag)
-        tap('#content-browse-add-file')
+        tap('#content-browse-add-file',scroll=True)
         check(e('browsePickerCount===1&&contentInspector.fileSelection.entryId===browseIds[0]'),'Files add row routes through the existing picker for the same CB: '+tag)
         e("contentInspector.files.click=browsePickerClick;contentInspector.files.dispatchEvent(new Event('cancel'));contentInspector.upload([new File(['saved from Contents'],'added.txt',{type:'text/plain'})])")
         wait_for('contentInspector.jobs.size===0')

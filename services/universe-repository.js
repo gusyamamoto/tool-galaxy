@@ -123,10 +123,11 @@ function createUniverseRepository({persistence, canWrite = () => true}) {
         },
         snapshot({entries, portals, constellations, layout, archivedGalaxies}) {
             return {
-                entries: [...entries.values()].map(({id,name,description,category,parentId,x,y,appearance,content,location,createdAt,updatedAt,taskList,completed}) =>
+                entries: [...entries.values()].map(({id,name,description,category,parentId,x,y,appearance,content,location,when,due,createdAt,updatedAt,taskList,completed}) =>
                     ({id,name,description,category,parentId,x,y, ...(appearance ? {appearance} : {}), ...(content ? {content} : {}),
                         ...(location ? {location} : {}),
                         ...(taskList === true ? {taskList:true} : {}),
+                        ...(when!==undefined?{when}:{}),...(due!==undefined?{due}:{}),
                         ...(typeof completed === 'boolean' ? {completed} : {}),
                         ...(createdAt ? {createdAt} : {}), ...(updatedAt ? {updatedAt} : {})})),
                 portals: [...portals.values()].map(record => ({...record})),
@@ -171,6 +172,19 @@ function createUniverseRepository({persistence, canWrite = () => true}) {
             if(location)updated.location=location;else delete updated.location;
             await commit({...snapshot,entries:snapshot.entries.map(record=>record.id===id?updated:record)},
                 {type:'location.changed',ids:[id]});
+            return updated;
+        },
+        async updateTime(snapshot,id,kind,value) {
+            snapshot=read(snapshot);
+            const entries=new Map(snapshot.entries.map(entry=>[entry.id,entry])),entry=entries.get(id);
+            if(!entry)throw new Error('This item no longer exists.');
+            const task=entries.get(entry.parentId)?.taskList===true;
+            if(entry.taskList===true||!['when','due'].includes(kind)||(kind==='due')!==task)throw new Error('Choose When for an item or Due for an individual task.');
+            if(!galaxyModel.temporal.valid(kind,value))throw new Error('Enter a valid date and optional time. Date ranges must end on or after they start and cannot include a time.');
+            const updated={...entry,updatedAt:new Date().toISOString()};
+            if(value===null)delete updated[kind];else updated[kind]={...value};
+            await commit({...snapshot,entries:snapshot.entries.map(record=>record.id===id?updated:record)},
+                {type:'content.changed',ids:[id]});
             return updated;
         },
         async updateTask(snapshot,id,field,value) {
@@ -304,7 +318,7 @@ function createUniverseRepository({persistence, canWrite = () => true}) {
         },()=>{if(previous)write(previous,{type:'attachment.recovered',ids:[id]});}));
         publish({type:'attachment.removed',ids:[id]});return updated;
     };
-    for(const name of ['save','saveLayout','updateContent','updateLocation','updateTask','replaceConstellations','replacePlacements','moveEntries','duplicateStructure','archive','restore','copyEntries','deleteSubtree','addAttachment','removeAttachment','replaceLocalBackup','recoverPendingRestore','recoverAttachmentOperations','auditAttachmentStorage','removeOrphanedAttachments']){
+    for(const name of ['save','saveLayout','updateContent','updateLocation','updateTime','updateTask','replaceConstellations','replacePlacements','moveEntries','duplicateStructure','archive','restore','copyEntries','deleteSubtree','addAttachment','removeAttachment','replaceLocalBackup','recoverPendingRestore','recoverAttachmentOperations','auditAttachmentStorage','removeOrphanedAttachments']){
         const operation=repository[name];repository[name]=(...args)=>enqueue(()=>{
             const action=()=>operation.apply(repository,args);
             // Keep file callbacks and abort compensation under the SAME write

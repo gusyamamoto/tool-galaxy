@@ -191,6 +191,7 @@ def main():
     args.add_argument('--mobile-add-baseline', type=Path, help='Mobile screenshot baseline for desktop-add review; --capture-baseline records it')
     args.add_argument("--first-use-only", action="store_true", help="Empty-Universe onboarding, isolated live preview, hints, motion, mobile and keyboard")
     args.add_argument('--prerelease-ux-only', action='store_true', help='Contextual coach, mobile sections, add flows, Constellation disclosure and global More')
+    args.add_argument('--time-data-only', action='store_true', help='Canonical When/Due editors, operations, mobile sizing and cross-tab safety')
     args.add_argument("--first-user-readiness-only", action="store_true", help="Check empty startup, stable hierarchy gutters, Constellation add/sizing, shared editors and keyboard viewport")
     args.add_argument("--auth-only", action="store_true", help="Check independent account flows, pending/error/recovery, local data and Backup/Restore isolation")
     args.add_argument("--cloud-boundary-only", action="store_true", help="Mocked development-only identity/Universe/REST/GraphQL privacy boundary")
@@ -524,6 +525,13 @@ def main():
 
         cdp.call("Page.navigate", url=page_url)
         load()
+        if options.time_data_only:
+            from time_data_browser import run_time_data_checks
+            def shot(name):
+                if screenshot_dir:
+                    (screenshot_dir/(name+'.png')).write_bytes(base64.b64decode(cdp.call('Page.captureScreenshot',format='png')['data']))
+            run_time_data_checks(cdp=cdp,cdp_class=CDP,e=evaluate,check=check,wait_for=wait_for,add=add,click=click_selector,shot=shot,origin=origin)
+            print(f'{count} time data browser checks passed; screenshots: {screenshot_dir}',flush=True);return
         if options.item_destinations_only:
             from item_destinations_browser import run_item_destination_checks
             def shot(name):
@@ -3552,12 +3560,15 @@ def main():
             cdp.call('Emulation.setDeviceMetricsOverride',width=1440,height=1000,deviceScaleFactor=1,mobile=False)
             cdp.call('Page.navigate',url=origin);load();wait_camera();evaluate('physics.pause()')
             evaluate("constellationWorkspace.openName();document.getElementById('constellation-name').value='Persistent UX';document.getElementById('constellation-name-form').requestSubmit();physics.pause()")
+            evaluate('applicationCommandTail');wait_for('!constellationWorkspace.savingName&&!constellationWorkspace.nameDialog.open')
             persistent=evaluate('[...constellations.keys()].at(-1)');target=evaluate("[...entries.values()].find(e=>e.role==='sun').id")
             evaluate(f"constellationWorkspace.openPicker({json.dumps(persistent)})");search(evaluate(f"entries.get({json.dumps(target)}).name"));choice(target);click_selector('#confirm-constellation-entries');evaluate('physics.pause()')
+            evaluate('applicationCommandTail');wait_for('!constellationWorkspace.savingPicker&&!constellationWorkspace.picker.open')
             cdp.call('Page.reload');load();wait_camera();evaluate('physics.pause()')
             check(evaluate(f"constellations.get({json.dumps(persistent)}).memberEntryIds.includes({json.dumps(target)})&&JSON.parse(localStorage.getItem('galaxy:user-data')).version===5"),'confirmed picker selection survives refresh with schema 5')
             evaluate(f"activateConstellation({json.dumps(persistent)})");wait_camera();evaluate('physics.pause()')
             click_selector('#entry-more-button');click_selector('#delete-constellation-button');shot('delete-constellation-desktop');click_selector('#confirm-delete-constellation')
+            evaluate('applicationCommandTail')
             cdp.call('Page.reload');load();wait_camera();evaluate('physics.pause()')
             check(evaluate(f"!constellations.has({json.dumps(persistent)})&&entries.has({json.dumps(target)})"),'collection deletion persists after refresh while canonical entries survive')
             check(not cdp.errors,f'no constellation-UX browser exceptions: {cdp.errors}')

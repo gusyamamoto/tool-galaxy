@@ -47,8 +47,8 @@ def run_inline_checks(*,cdp,e,check,wait_for,add,shot):
     for width,height in [(360,800),(390,844),(430,932),(844,390)]:
         viewport(width,height);inspect(other,'files')
         check(e("!document.getElementById('contents-expand-button')&&!('expanded' in mobileContents)&&!('setExpanded' in mobileContents)&&!panel.hasAttribute('data-contents-expanded')"),f'{width}: no Expanded state, control or method remains')
-        empty=e('panel.getBoundingClientRect().height')
-        check(empty<=200,f'{width}: empty Contents stays small')
+        empty=e("(()=>{const row=document.getElementById('content-time-row'),s=getComputedStyle(row);return panel.getBoundingClientRect().height-row.getBoundingClientRect().height-(row.hidden?0:parseFloat(s.marginTop)+parseFloat(s.marginBottom))})()")
+        check(empty<=200,f'{width}: empty Contents stays small apart from its optional metadata row')
         e(f"saveEntryContent({q(other)},c=>({{...c,notes:{{format:'plain',text:''}}}}))")
         inspect(body);inspect(other,'notes')
         check(e('!mobileContents.noteAdd.hidden&&contentInspector.notesView.hidden'),f'{width}: empty Notes exposes Add note')
@@ -71,8 +71,12 @@ def run_inline_checks(*,cdp,e,check,wait_for,add,shot):
         check(e('panel.getBoundingClientRect().height<=Math.min(Math.max(280,cosmosVisibleViewport().height*.38),cosmosVisibleViewport().height*.60)+1&&mobileContents.root.scrollHeight>mobileContents.root.clientHeight'),f'{width}: long Note caps at normal medium height and scrolls')
         for page,selector in [('notes','#content-notes-view'),('links','#content-links'),('files','#content-attachments')]:
             e(f'mobileContents.setPage({q(page)})');settle();before=e('panel.getBoundingClientRect().height')
+            # Optional metadata precedes the page; expose the list before
+            # dispatching a native swipe into its actual visible area.
+            e(f'document.querySelector({q(selector)}).scrollIntoView({{block:"start"}})');settle()
+            previous_scroll=e('mobileContents.root.scrollTop')
             swipe(selector,-90)
-            check(e('mobileContents.root.scrollTop>0&&!panel.hidden&&contentInspector.notesForm.hidden&&selectedTitleEditors.every(editor=>!editor.edit)') and abs(e('panel.getBoundingClientRect().height')-before)<1,f'{width}/{page}: list scroll cannot grow/collapse the sheet or rename')
+            check(e('mobileContents.root.scrollTop')>previous_scroll and e('!panel.hidden&&contentInspector.notesForm.hidden&&selectedTitleEditors.every(editor=>!editor.edit)') and abs(e('panel.getBoundingClientRect().height')-before)<1,f'{width}/{page}: list scroll cannot grow/collapse the sheet or rename')
         e("mobileContents.setPage('notes');mobileContents.root.scrollTop=0");settle()
         swipe('#close-inspector-button',-90)
         check(e('mobileContents.state==="browse"&&!panel.hidden'),f'{width}: upward Contents handle has no extra level')

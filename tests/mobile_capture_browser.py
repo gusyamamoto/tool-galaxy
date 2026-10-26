@@ -182,4 +182,45 @@ def run_mobile_capture_checks(*, cdp, evaluate, check, wait_for, load, add, sele
     check(evaluate('imageViewer.originalUrl===null&&imageViewer.url===null'), 'closing preview releases original and preview object URLs')
     click_selector('#mobile-body-contents')
     check(evaluate('!panel.hidden'), 'Contents remains explicitly accessible after mobile navigation')
+    # The quick-capture menu is independent of role, page and sheet disclosure.
+    evaluate(f'createChildEntry({json.dumps(galaxy)},true);fields[0].value="Capture tasks";document.getElementById("task-list-tasks").value="Individual capture task";form.requestSubmit();applicationCommandTail')
+    wait_for('!formSaveBusy&&!dialog.open')
+    task=evaluate('galaxyModel.childrenOf(entries,selectedNode.dataset.entryId)[0].id')
+    task_labels='Take a photo|Add photo|Add files'
+    for width,height in [(390,844),(844,390)]:
+        mobile(width,height)
+        for target,expected in [(owner,quick_labels),(task,task_labels)]:
+            evaluate(f'selectEntry(entries.get({json.dumps(target)}),nodes.get({json.dumps(target)}),{{openInspector:false,reframe:false}});closeInspector();hierarchySidebar.setCollapsed(true);physics.pause()')
+            tap('#mobile-body-add')
+            check(labels()==expected,f'{width}: compact quick menu preserves exact normal/Task actions for {target}')
+            evaluate('closeContentMenus();setInspectorOpen(true)')
+            for page in ['files','notes','links','location']:
+                evaluate(f'mobileContents.setPage({json.dumps(page)})')
+                tap('#entry-add-button')
+                check(labels()==expected,f'{width}: expanded {page} keeps Add files and the correct structural actions for {target}')
+                check(evaluate("!addMenu.querySelector('[data-add=capture-files]').hidden"),f'{width}: Add files remains a predictable quick action on {page}')
+                evaluate('closeContentMenus()')
+            if target==task:
+                evaluate('mobileContents.setPage("files")')
+                check(evaluate('!document.getElementById("entry-add-button").hidden&&document.getElementById("content-browse-add-file").getClientRects().length>0'),'Task keeps header quick add and direct Files control together')
+    mobile(390,844)
+    for expanded,trigger in [(False,'#mobile-body-add'),(True,'#entry-add-button')]:
+        for action,input_id in [('camera','content-camera'),('photo','content-photos'),('capture-files','content-files')]:
+            evaluate(f'selectEntry(entries.get({json.dumps(task)}),nodes.get({json.dumps(task)}),{{openInspector:true,reframe:false}});hierarchySidebar.setCollapsed(true);'+('mobileContents.setPage("files")' if expanded else 'closeInspector()'))
+            saved=evaluate('localStorage.getItem("galaxy:user-data")')
+            tap(trigger);tap(f'#add-menu [data-add={action}]')
+            check(evaluate(f'contentInspector.fileSelection.entryId==={json.dumps(task)}&&contentInspector.fileSelection.input.id==={json.dumps(input_id)}'),'Task capture reuses original picker and destination: '+action+' / '+str(expanded))
+            cancel()
+            check(evaluate('contentInspector.fileSelection===null') and evaluate('localStorage.getItem("galaxy:user-data")')==saved,'Task picker cancellation leaves persistence unchanged: '+action+' / '+str(expanded))
+    for width in [900,1440]:
+        cdp.call('Emulation.setDeviceMetricsOverride',width=width,height=1000,deviceScaleFactor=1,mobile=False)
+        cdp.call('Emulation.setTouchEmulationEnabled',enabled=False)
+        wait_for('!hierarchySidebar.narrow')
+        evaluate(f'selectEntry(entries.get({json.dumps(task)}),nodes.get({json.dumps(task)}),{{openInspector:true,reframe:false}});physics.pause()')
+        check(evaluate("document.getElementById('entry-add-button').hidden&&moreButton.getClientRects().length>0"),f'{width}: desktop/tablet Task hides structural + and retains management')
+        evaluate("document.getElementById('entry-add-button').click()")
+        check(evaluate("addMenu.hidden&&document.getElementById('entry-add-button').getAttribute('aria-expanded')==='false'"),f'{width}: empty Task menu cannot open after mobile-to-desktop resize')
+        evaluate(f'selectEntry(entries.get({json.dumps(owner)}),nodes.get({json.dumps(owner)}),{{openInspector:true,reframe:false}});document.getElementById("entry-add-button").click()')
+        check(labels()=='Add item|Add task list' and evaluate("!document.getElementById('entry-add-button').hidden"),f'{width}: normal CB restores desktop structural +')
+        evaluate('closeContentMenus()')
     check(not cdp.errors, f'no capture browser exceptions: {cdp.errors}')

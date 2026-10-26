@@ -17,7 +17,7 @@ class StagingPackageTests(unittest.TestCase):
             output = Path(directory) / 'site'
             files = staging.prepare(output)
             self.assertEqual(sorted(p.relative_to(output).as_posix() for p in output.rglob('*') if p.is_file()), files)
-            self.assertTrue({'index.html', 'startup.js', 'script.js', 'body-renderer.js', 'first-use.js', 'task-views.js', 'sidebar-split.js', 'task-lists.js', 'ids.js', 'vendor/LICENSES.txt',
+            self.assertTrue({'index.html', 'startup.js', 'script.js', 'time-metadata.js', 'body-renderer.js', 'first-use.js', 'task-views.js', 'sidebar-split.js', 'task-lists.js', 'ids.js', 'vendor/LICENSES.txt',
                              'persistence/local-metadata-store.js', 'persistence/indexeddb-file-store.js', 'services/local-restore-session.js',
                              'services/local-restore.js', 'object-urls.js', 'storage-capacity.js', 'services/attachment-storage-audit.js', 'backup-ui.js',
                              'assets/introduction-example.png', 'assets/introduction-example-compact.png'} <= set(files))

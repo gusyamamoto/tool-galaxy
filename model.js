@@ -191,6 +191,36 @@ const galaxyModel = {
         url.searchParams.set('api','1');url.searchParams.set('query',location.text);
         return url.href;
     },
+    // Calendar values are literal local dates/clocks, never instants.
+    temporal: {
+        date(value) {
+            if(typeof value!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(value))return false;
+            const [year,month,day]=value.split('-').map(Number);
+            const days=[31,year%4===0&&(year%100!==0||year%400===0)?29:28,31,30,31,30,31,31,30,31,30,31];
+            return year>=1&&month>=1&&month<=12&&day>=1&&day<=days[month-1];
+        },
+        clock(value) {return value===null||typeof value==='string'&&/^([01]\d|2[0-3]):[0-5]\d$/.test(value);},
+        valid(kind,value) {
+            if(value===null)return true;
+            const keys=kind==='when'?['startDate','endDate','time']:kind==='due'?['date','time']:[];
+            if(!keys.length||!value||typeof value!=='object'||Array.isArray(value)||Object.keys(value).length!==keys.length||!keys.every(key=>Object.hasOwn(value,key)))return false;
+            if(!this.clock(value.time))return false;
+            return kind==='due'?this.date(value.date):this.date(value.startDate)&&
+                (value.endDate===null||this.date(value.endDate)&&value.endDate>=value.startDate&&value.time===null);
+        },
+        // Display-only local numeric dates; never parse ISO dates as UTC.
+        format(kind,value,locale) {
+            if(!value)return '';
+            const local=date=>{const [y,m,d]=date.split('-').map(Number),result=new Date(2000,m-1,d,12);result.setFullYear(y);return result;};
+            const formatter=new Intl.DateTimeFormat(locale,{year:'numeric',month:'short',day:'numeric'});
+            const first=local(kind==='when'?value.startDate:value.date);
+            let text=kind==='when'&&value.endDate!==null?formatter.formatRange(first,local(value.endDate)):formatter.format(first);
+            // Format a clock independently of the calendar day: a local DST
+            // gap must not turn a selected 02:30 into a displayed 03:30.
+            if(value.time!==null){const [h,m]=value.time.split(':').map(Number);text+=' · '+new Intl.DateTimeFormat(locale,{hour:'numeric',minute:'2-digit',timeZone:'UTC'}).format(new Date(Date.UTC(2000,0,1,h,m)));}
+            return text;
+        }
+    },
     normalizeEntry(record) {
         // Canonical entries are user-owned. This allowlist intentionally drops
         // legacy protected/isProtected/builtIn flags while preserving content.
@@ -200,10 +230,13 @@ const galaxyModel = {
             typeof record.name !== "string" || !record.name.trim() || record.name.length > 60 ||
             (record.description != null && (typeof record.description !== "string" || record.description.length > 1000))) return null;
         if (['taskList','completed'].some(key => record[key] != null && typeof record[key] !== 'boolean')) return null;
+        if(['when','due'].some(key=>Object.hasOwn(record,key)&&!this.temporal.valid(key,record[key])))return null;
+        if(record.taskList===true&&(record.when!=null||record.due!=null))return null;
         const location=this.normalizeLocation(record.location);
         return {
             id: record.id, name: record.name, description: record.description ?? "", ...(content ? { content } : {}),
             ...(location?{location}:{}),
+            ...Object.fromEntries(['when','due'].filter(key=>Object.hasOwn(record,key)).map(key=>[key,record[key]===null?null:{...record[key]}])),
             ...(record.taskList === true ? {taskList:true} : {}),
             ...(typeof record.completed === 'boolean' ? {completed:record.completed} : {}),
             category: typeof record.category === "string" ? record.category : "",
@@ -331,6 +364,8 @@ const galaxyModel = {
         return {roots,error:''};
     },
     validateChange(entry, entries) {
+        if(['when','due'].some(key=>Object.hasOwn(entry,key)&&!this.temporal.valid(key,entry[key])))return 'Enter a valid date and optional time. Date ranges must be date-only and end on or after they start.';
+        if(entry.taskList===true&&(entry.when!=null||entry.due!=null))return 'Dates belong to individual items or tasks, not Task Lists.';
         if (!entry.name.trim()) return "Enter a name.";
         if (entry.description != null && typeof entry.description !== "string") return "Description must be text.";
         if (entry.name.length > 60 || (entry.description?.length ?? 0) > 1000 || (entry.category?.length ?? 0) > 60) return "Please shorten the name, description or category.";
