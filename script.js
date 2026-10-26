@@ -585,7 +585,7 @@ function fitCurrentView(){
 
 document.getElementById('canvas-fit').addEventListener('click',fitCurrentView);
 document.getElementById('universe-home').addEventListener('click',()=>{
-    if(hierarchySidebar.narrow)mobileSidebarSections.select(hierarchySidebar.universeSection);
+    if(hierarchySidebar.narrow)mobileSidebarSections.toggle(hierarchySidebar.universeSection);
     else fitCurrentView();
 });
 for(const [id,factor] of [['canvas-zoom-in',1.35],['canvas-zoom-out',1/1.35]])document.getElementById(id).addEventListener('click',()=>{

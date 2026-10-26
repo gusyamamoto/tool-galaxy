@@ -67,7 +67,7 @@
             <button id="canvas-fit" type="button" aria-label="Fit Galaxy" title="Fit Galaxy">Fit</button>
         </div>
         <aside id="hierarchy-sidebar" aria-label="Navigation">
-            <header class="sidebar-brand"><h1><svg class="brand-mark" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 16a8 8 0 1 1 14 0l-2 3H7z"/><rect x="7" y="6" width="11" height="9" rx="4"/><path d="M8 19v2h8v-2"/></svg>Cosmifold</h1><span id="sample-indicator" hidden>Sample</span></header>
+            <header class="sidebar-brand"><h1><svg class="brand-mark" viewBox="0 0 24 24" aria-hidden="true"><g stroke-width="1.8"><path d="M2 12a10 3.8 0 0 1 4.7-3.22M17.3 8.78A10 3.8 0 0 1 22 12" transform="rotate(-28 12 12)" opacity=".75"/><circle cx="12" cy="12" r="6.2" fill="currentColor" fill-opacity=".55"/><path d="M2 12a10 3.8 0 0 0 20 0" transform="rotate(-28 12 12)" stroke-width="2"/></g></svg>Cosmifold</h1><span id="sample-indicator" hidden>Sample</span></header>
             <div class="sidebar-controls">
                 <div class="sidebar-actions">
             <div class="entry-search">
@@ -82,14 +82,14 @@
                 </div>
             </div>
             <div id="sidebar-panes">
-            <section id="universe-section" aria-labelledby="universe-heading">
-                <header class="sidebar-section-header"><h2 id="universe-heading" class="sidebar-section-title universe-heading-controls"><button id="universe-toggle" class="sidebar-section-toggle" type="button" aria-controls="hierarchy-tree" aria-expanded="true" aria-label="Collapse Universe"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m6 4 4 4-4 4"/></svg></button><button id="universe-home" class="sidebar-section-toggle" type="button" aria-label="Return to Universe overview">Universe</button></h2><button id="add-entry-button" type="button" class="collection-add" aria-label="New Galaxy" title="New Galaxy">+</button></header>
+            <section class="nav-major-section" id="universe-section" aria-labelledby="universe-heading">
+                <header class="sidebar-section-header nav-major-header"><h2 id="universe-heading" class="sidebar-section-title universe-heading-controls"><button id="universe-toggle" class="sidebar-section-toggle" type="button" aria-controls="hierarchy-tree" aria-expanded="true" aria-label="Collapse Universe"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m6 4 4 4-4 4"/></svg></button><button id="universe-home" class="sidebar-section-toggle" type="button" aria-label="Return to Universe overview"><svg class="nav-section-icon" viewBox="0 0 24 24" aria-hidden="true"><g stroke-width="1.8"><path d="M12 3a9 9 0 0 1 8.9 7.7M19.8 16.5a9 9 0 0 1-16.6-6.3" opacity=".8"/><path d="M7.4 8.6a5.7 5.7 0 0 1 10 5.5M15.1 16.8a5.7 5.7 0 0 1-8.4-5.1" opacity=".85"/><circle cx="12" cy="12" r="2.6" fill="currentColor" stroke="none"/><circle cx="6.7" cy="10.2" r="1.5" fill="currentColor" stroke="none"/><circle cx="18.4" cy="18.4" r="2.1" fill="currentColor" stroke="none"/></g></svg><span>Universe</span></button></h2><button id="add-entry-button" type="button" class="collection-add" aria-label="New Galaxy" title="New Galaxy">+</button></header>
                 <div id="hierarchy-tree" role="tree" aria-label="Cosmos Universe navigation"></div>
             </section>
             <div id="sidebar-pane-splitter" role="separator" aria-orientation="horizontal" aria-label="Resize Universe and secondary sidebar sections" aria-controls="universe-section sidebar-secondary-views" tabindex="-1" hidden></div>
             <div id="sidebar-secondary-views">
-            <section id="tasks-section" aria-labelledby="tasks-heading">
-                <header class="sidebar-section-header"><h2 id="tasks-heading" class="sidebar-section-title"><button id="tasks-toggle" class="sidebar-section-toggle" type="button" aria-controls="tasks-view" aria-expanded="true"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m6 4 4 4-4 4"/></svg><span>Tasks</span></button></h2></header>
+            <section class="nav-major-section" id="tasks-section" aria-labelledby="tasks-heading">
+                <header class="sidebar-section-header nav-major-header"><h2 id="tasks-heading" class="sidebar-section-title"><button id="tasks-toggle" class="sidebar-section-toggle" type="button" aria-controls="tasks-view" aria-expanded="true"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m6 4 4 4-4 4"/></svg><svg class="nav-section-icon" viewBox="0 0 24 24" aria-hidden="true"><g stroke-width="1.8"><rect x="3.5" y="3.5" width="17" height="17" rx="3.2" fill="currentColor" fill-opacity=".08"/><path d="m7.8 12 3 3.1 5.6-6.2" stroke-width="2"/></g></svg><span>Tasks</span></button></h2></header>
                 <div id="tasks-view">
                     <p id="tasks-empty" class="tasks-empty">No tasks yet.</p>
                     <div id="tasks-active-group" hidden>
@@ -102,8 +102,8 @@
                     </div>
                 </div>
             </section>
-            <section id="constellations-section" aria-labelledby="constellations-heading">
-                <header class="sidebar-section-header"><h2 id="constellations-heading" class="sidebar-section-title"><button id="constellations-toggle" class="sidebar-section-toggle" type="button" aria-label="Collapse Constellations" aria-controls="constellation-list" aria-expanded="true"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m6 4 4 4-4 4"/></svg><span>Constellations</span></button></h2><button id="new-constellation-button" type="button" class="collection-add" aria-label="Create Constellation" title="Create Constellation">+</button></header>
+            <section class="nav-major-section" id="constellations-section" aria-labelledby="constellations-heading">
+                <header class="sidebar-section-header nav-major-header"><h2 id="constellations-heading" class="sidebar-section-title"><button id="constellations-toggle" class="sidebar-section-toggle" type="button" aria-label="Collapse Constellations" aria-controls="constellation-list" aria-expanded="true"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m6 4 4 4-4 4"/></svg><svg class="nav-section-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m4.8 14.2 2.6-6.2m3-.2 2.6 2.9m3.4-.2 2.3-4" stroke-width="1.2" opacity=".65"/><path d="M4 14c0.66 2.34 1.11 1.89 3 3-2.34 0.66-1.89 1.11-3 3-0.66-2.34-1.11-1.89-3-3 2.34-0.66 1.89-1.11 3-3ZM8.5 2.3c0.704 2.496 1.184 2.016 3.2 3.2-2.496 0.704-2.016 1.184-3.2 3.2-0.704-2.496-1.184-2.016-3.2-3.2 2.496-0.704 2.016-1.184 3.2-3.2ZM15 10.2c0.616 2.184 1.036 1.764 2.8 2.8-2.184 0.616-1.764 1.036-2.8 2.8-0.616-2.184-1.036-1.764-2.8-2.8 2.184-0.616 1.764-1.036 2.8-2.8ZM20 1.2000000000000002c0.616 2.184 1.036 1.764 2.8 2.8-2.184 0.616-1.764 1.036-2.8 2.8-0.616-2.184-1.036-1.764-2.8-2.8 2.184-0.616 1.764-1.036 2.8-2.8Z" fill="currentColor" stroke="none"/></svg><span>Constellations</span></button></h2><button id="new-constellation-button" type="button" class="collection-add" aria-label="Create Constellation" title="Create Constellation">+</button></header>
                 <ul id="constellation-list" aria-label="Constellations"></ul>
             </section>
             </div>
@@ -113,7 +113,7 @@
                 <ul id="archived-galaxy-list" aria-label="Archived Galaxies" hidden></ul>
             </section>
             <div id="sidebar-utilities">
-            <button id="utility-more" type="button" aria-label="More" title="More" aria-haspopup="menu" aria-controls="utility-menu" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 15c0-5 4-10 11-11 0 7-5 11-10 11zM9 9H5l-2 5 6-1M15 15v4l-5 2 1-6M7 17l-3 3"/><circle cx="15" cy="9" r="2"/></svg><span>More</span></button>
+            <button id="utility-more" type="button" aria-label="More" title="More" aria-haspopup="menu" aria-controls="utility-menu" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><g fill="currentColor" stroke="none" fill-opacity=".8"><path d="M11 6c.8 3.8 1.5 4.5 5.3 5.3-3.8.8-4.5 1.5-5.3 5.3-.8-3.8-1.5-4.5-5.3-5.3 3.8-.8 4.5-1.5 5.3-5.3Z"/><path d="m19.5 2 .7 2.2 2.2.7-2.2.7-.7 2.2-.7-2.2-2.2-.7 2.2-.7ZM6 1.8l.4 1.3 1.3.4-1.3.4L6 5.2l-.4-1.3-1.3-.4 1.3-.4ZM3 6l.4 1.2L4.6 7.6l-1.2.4L3 9.2l-.4-1.2L1.4 7.6l1.2-.4ZM4 15.5l.6 1.9 1.9.6-1.9.6L4 20.5l-.6-1.9-1.9-.6 1.9-.6ZM19 15.7l.5 1.8 1.8.5-1.8.5-.5 1.8-.5-1.8-1.8-.5 1.8-.5Z"/></g></svg><span>More</span></button>
             <div id="utility-menu" class="cosmos-menu" role="menu" aria-label="More" hidden>
             <button id="help-button" type="button" aria-label="Help" title="Help" aria-haspopup="dialog" aria-controls="help-dialog"><span aria-hidden="true">?</span> Help</button>
             <button id="backup-button" type="button" title="Back up Cosmifold" aria-haspopup="dialog" aria-controls="backup-dialog">Backup</button>

@@ -38,7 +38,7 @@ def run_sidebar_refinement_checks(*,cdp,e,check,wait_for,add,shot):
     check(e('!sidebarPaneSplit.handle.hidden&&sidebarPaneSplit.enabled'),'desktop exposes focusable pane separator')
     check(e('sidebarPaneSplit.handle.role==="separator"&&sidebarPaneSplit.handle.tabIndex===0&&sidebarPaneSplit.handle.hasAttribute("aria-valuenow")'),'splitter has adjustable separator semantics')
     check(rect('#universe-section')['height']>rect('#sidebar-secondary-views')['height'],'default layout favors Universe')
-    check(e('["universe-heading","tasks-heading","constellations-heading"].every(id=>{const s=getComputedStyle(document.getElementById(id));return s.fontSize==="10px"&&s.textTransform==="uppercase"})'),'all three headings share typography')
+    check(e('["universe-heading","tasks-heading","constellations-heading"].every(id=>{const s=getComputedStyle(document.getElementById(id));return s.fontSize==="12px"&&s.textTransform==="none"})'),'all three major headings share compact navigation typography')
     for a,b,label in [(parent,listrow,'parent'),(universe_child,taskrow,'child')]:
         check(e(f'(()=>{{const a=getComputedStyle(document.querySelector({q(a)})),b=getComputedStyle(document.querySelector({q(b)}));return a.fontSize===b.fontSize&&a.lineHeight===b.lineHeight&&a.height===b.height}})()'),label+' rows share type, line height and row height')
         check(abs(rect(b+(' .tasks-list-name' if label=='parent' else ' .tasks-task-name'))['x']-rect(a+' .tree-name')['x']-14)<1,label+' names follow the shared Universe staircase after the subgroup')
@@ -48,7 +48,7 @@ def run_sidebar_refinement_checks(*,cdp,e,check,wait_for,add,shot):
     def hierarchy_alignment(label,step):
         positions=e('(()=>{const x=s=>document.querySelector(s).getBoundingClientRect().x;return {roots:["#universe-home","#tasks-toggle span","#constellations-toggle span"].map(s=>x(s)+(s==="#universe-home"?parseFloat(getComputedStyle(document.querySelector(s)).paddingLeft):0)),chevrons:["#universe-toggle svg","#tasks-toggle svg","#constellations-toggle svg"].map(s=>{const r=document.querySelector(s).getBoundingClientRect();return r.x+r.width/2})}})()')
         check(max(positions['roots'])-min(positions['roots'])<1,'root section text shares one left edge: '+label)
-        check(e('(()=>{const values=["#universe-home","#tasks-toggle span","#constellations-toggle span"].map(s=>{const c=getComputedStyle(document.querySelector(s));return [c.fontSize,c.fontWeight,c.textTransform,c.color].join("|")});return new Set(values).size===1})()'),'root headings share typography and color: '+label)
+        check(e('(()=>{const values=["#universe-home","#tasks-toggle span","#constellations-toggle span"].map(s=>{const c=getComputedStyle(document.querySelector(s));return [c.fontSize,c.fontWeight,c.textTransform].join("|")});return new Set(values).size===1})()'),'root headings share typography while open state controls color: '+label)
         check(max(positions['chevrons'])-min(positions['chevrons'])<1,'root section disclosures share one gutter: '+label+' '+str(positions))
         check(abs(rect(parent+' .tree-name')['x']-positions['roots'][0]-step)<1,'Universe root CB is one shared step beneath its section: '+label)
         group_x=rect('#tasks-active-toggle span')['x'];list_x=rect(listrow+' .tasks-list-name')['x'];task_x=rect(taskrow+' .tasks-task-name')['x']

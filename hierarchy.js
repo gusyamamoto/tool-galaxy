@@ -75,7 +75,7 @@ class NavigationSection {
         Object.assign(this,{root,toggle,list,name,key,preferences});this.scroll={top:0,left:0};
         const preference=preferences.load();
         this.collapsed=typeof preference[key]==='boolean'?preference[key]:collapsed;
-        toggle.addEventListener('click',()=>this.mobileGroup?.query.matches?this.mobileGroup.select(this):this.setCollapsed(!this.collapsed));this.apply();
+        toggle.addEventListener('click',()=>this.mobileGroup?.query.matches?this.mobileGroup.toggle(this):this.setCollapsed(!this.collapsed));this.apply();
     }
     apply() {
         const collapsed=this.mobileCollapsed??this.collapsed;
@@ -102,6 +102,7 @@ class MobileSidebarSections {
         query.addEventListener('change',()=>this.apply());this.apply();
     }
     select(section){this.selected=section;this.apply();}
+    toggle(section){this.select(this.selected===section?null:section);}
     apply(){
         for(const section of this.sections){section.mobileCollapsed=this.query.matches?section!==this.selected:null;section.apply();}
         this.onLayout();
