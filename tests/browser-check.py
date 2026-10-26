@@ -182,6 +182,9 @@ def main():
     args.add_argument("--task-lists-only", action="store_true", help="Branch tasks, progress, dormant/alive art, persistence and desktop/mobile controls")
     args.add_argument('--sidebar-tasks-only', action='store_true', help='Task completion in the existing sidebar disclosure gutter')
     args.add_argument('--sidebar-refinement-only', action='store_true', help='Shared sidebar row grammar and desktop-only persisted pane splitter')
+    args.add_argument('--navigation-visual-only', action='store_true', help='Global section visuals, responsive controls and before/after navigation timings')
+    args.add_argument('--navigation-style-audit-only', action='store_true', help='Compare effective body/SVG styles against HEAD and the original Phase 1 CSS')
+    args.add_argument('--navigation-style-phase1', type=Path, help='Saved pre-refinement Phase 1 style.css for the effective-style audit')
     args.add_argument('--task-dismissals-only', action='store_true', help='Hide completed Task Lists from the secondary view and restore them on new work')
     args.add_argument('--task-views-only', action='store_true', help='Global Task Lists, completion focus and mobile Compact Preview Done')
     args.add_argument('--desktop-add-only', action='store_true', help='Desktop context/header child creation and unchanged mobile presentation')
@@ -570,6 +573,20 @@ def main():
             from local_stale_browser import run_local_stale_checks
             run_local_stale_checks(cdp=cdp,cdp_class=CDP,e=evaluate,check=check,origin=origin)
             print(f'{count} local stale-write browser checks passed',flush=True);return
+        if options.navigation_style_audit_only:
+            from navigation_style_audit_browser import run_navigation_style_audit
+            assert options.navigation_style_phase1 and options.navigation_style_phase1.is_file(), 'Supply the saved original Phase 1 CSS'
+            baseline_css=subprocess.check_output(['git','-c','safe.directory='+ROOT.as_posix(),'show','HEAD:style.css'],cwd=ROOT,text=True,encoding='utf-8')
+            run_navigation_style_audit(cdp=cdp,e=evaluate,check=check,wait_for=wait_for,baseline_css=baseline_css,
+                phase1_css=options.navigation_style_phase1.read_text(encoding='utf-8'),current_css=(options.site_root/'style.css').read_text(encoding='utf-8'))
+            print(f'{count} effective celestial-style audit checks passed',flush=True);return
+        if options.navigation_visual_only:
+            from navigation_visual_browser import run_navigation_visual_checks
+            def shot(name):
+                if screenshot_dir:
+                    (screenshot_dir/(name+'.png')).write_bytes(base64.b64decode(cdp.call('Page.captureScreenshot',format='png')['data']))
+            run_navigation_visual_checks(cdp=cdp,e=evaluate,check=check,wait_for=wait_for,shot=shot,baseline=options.capture_baseline,drag=drag_to,wait_camera=wait_camera,mouse=mouse)
+            print(f'{count} global navigation checks passed; screenshots: {screenshot_dir}',flush=True);return
         if options.sidebar_refinement_only:
             from sidebar_refinement_browser import run_sidebar_refinement_checks
             def shot(name):

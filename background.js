@@ -2,9 +2,9 @@
 function createUniverseBackground(galaxy) {
     const layers = [...galaxy.querySelectorAll(".star-layer")];
     const settings = [
-        { area: 15000, minimum: 35, maximum: 125, opacity: 0.28 },
-        { area: 45000, minimum: 12, maximum: 40, opacity: 0.4 },
-        { area: 140000, minimum: 4, maximum: 12, opacity: 0.58 }
+        { area: 15000, minimum: 35, maximum: 125, opacity: 0.32 },
+        { area: 45000, minimum: 12, maximum: 40, opacity: 0.45 },
+        { area: 140000, minimum: 4, maximum: 12, opacity: 0.64 }
     ];
 
     function render() {
