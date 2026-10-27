@@ -29,7 +29,7 @@ const nodesLayer = document.getElementById("nodes-layer");
 const zoomLevel = document.getElementById("zoom-level");
 const hierarchyLayer = document.getElementById("hierarchy-paths");
 const panel = document.getElementById("entry-panel");
-let mobileContents=null, usableCanvasBounds=null;
+let mobileContents=null, usableCanvasBounds=null, timeWorkspace=null;
 const selectedTitleEditors=[];
 const panelName = document.getElementById("panel-name");
 const entryActions = document.getElementById("entry-actions");
@@ -146,7 +146,7 @@ persistence.metadata.subscribeStale?.(() => {
     document.querySelectorAll('dialog[open]').forEach(dialog=>{
         if(!['backup-dialog','help-dialog','account-dialog'].includes(dialog.id))dialog.close();
     });
-    document.querySelectorAll('#graph-viewport,#entry-panel,#mobile-body-actions,#universe-section,#tasks-section,#constellations-section,#archived-galaxies,#add-menu,#entry-context-menu,#first-use').forEach(element=>element.inert=true);
+    document.querySelectorAll('#graph-viewport,#entry-panel,#mobile-body-actions,#universe-section,#tasks-section,#time-section,#time-workspace,#constellations-section,#archived-galaxies,#add-menu,#entry-context-menu,#first-use').forEach(element=>element.inert=true);
     document.getElementById('add-entry-button').disabled=true;
     reportStorageFailure(staleSessionMessage);
     hierarchySidebar.setCollapsed(false);
@@ -585,6 +585,7 @@ function fitCurrentView(){
 
 document.getElementById('canvas-fit').addEventListener('click',fitCurrentView);
 document.getElementById('universe-home').addEventListener('click',()=>{
+    if(timeWorkspace?.active){if(hierarchySidebar.narrow)hierarchySidebar.setCollapsed(true);timeWorkspace.close();return;}
     if(hierarchySidebar.narrow)mobileSidebarSections.toggle(hierarchySidebar.universeSection);
     else fitCurrentView();
 });
@@ -642,6 +643,7 @@ function refreshTaskMetadata() {
     taskStates=cosmosTasks.index(entries);
     entries.forEach(entry=>cosmosTasks.decorate(entry,nodes.get(entry.id),taskStates.get(entry.id)));
     renderTaskContents();
+    timeWorkspace?.refresh();
 }
 function renderTaskContents() {
     hierarchySidebar.refreshTaskControls();
@@ -679,6 +681,7 @@ function playTaskCompletionPulses() {
     pending.ids.filter(id=>taskStates.get(id)?.complete).forEach((id,index)=>motion.taskComplete(nodes.get(id),index*65));
 }
 function focusCompletedTask(id, ids) {
+    if(timeWorkspace?.active)return;
     const entry=entries.get(id),b=physics.bounds,p=camera.worldToScreen(entry.x,entry.y),scale=camera.view.scale;
     const minimum=entry.depth>=5?1.7:entry.depth===4?1.5:entry.depth===3?1.2:.9;
     const framed=selectedNode?.dataset.entryId===id&&scale>=minimum&&scale<=3&&p.x>b.left+20&&p.x<b.right-20&&p.y>b.top+20&&p.y<b.bottom-20;
@@ -735,10 +738,30 @@ function saveEntryTime(id,kind,value){return orderedCommand(async()=>{
     const updated=await universeRepository.updateTime(getGalaxySnapshot,id,kind,value);
     if(updated[kind])entry[kind]=updated[kind];else delete entry[kind];
     entry.updatedAt=updated.updatedAt;graphNeedsSave=false;
+    timeWorkspace?.refresh();
     timeEditor.render(entries.get(selectedNode?.dataset.entryId),entries.get(selectedNode?.dataset.entryId)?.taskList===true?null:taskStates.get(selectedNode?.dataset.entryId)?.task?'due':'when');
     updateGraphViewport();return updated;
 });}
 const timeEditor=new TimeMetadataEditor({save:saveEntryTime,onAction:()=>{cancelPendingBodyFocus();autoFitPending=false;keyboardNavigation=false;camera.stopAnimation();},canEdit:()=>!localSessionStale&&!localRestoreInProgress&&(sampleMode||storageAvailable)});
+timeWorkspace=new TimeWorkspace({getEntries:()=>entries,getSelection:()=>selectedNode?.dataset.entryId,
+    inspect(id){const entry=entries.get(id);if(entry)selectEntry(entry,nodes.get(id),{openInspector:true,reframe:false,fromTime:true});},
+    onExit(id){
+        if(id&&entries.has(id)){focusEntry(id,{openInspector:!panel.hidden});restoreCrudFocus();}
+        else timeWorkspace.nav.focus({preventScroll:true});
+    },
+    isDetailsOpen:()=>!panel.hidden&&!localSessionStale&&!galaxy.inert&&!document.querySelector('dialog[open]'),
+    dismissDetails(){
+        // Outside input owns focus and scrolling; do not focus an old entry or replay a tap.
+        mobileContents?.cancelAnimation();if(mobileContents)mobileContents.gesture=null;
+        setInspectorOpen(false);
+    },
+    onOpen(){
+        cancelPendingBodyFocus();cancelCanvasTouches();camera.stopAnimation();autoFitPending=false;closeContextMenu();closeContentMenus();
+        galaxy.classList.add('time-active');graphViewport.inert=true;
+        if(hierarchySidebar.narrow){hierarchySidebar.setCollapsed(true);setInspectorOpen(false);}
+    },
+    onClose(){galaxy.classList.remove('time-active');graphViewport.inert=localSessionStale;updateGraphViewport();}
+});
 let taskDueDraft=null;
 function renderTaskDueDraft(){
     document.getElementById('entry-due-value').textContent=taskDueDraft?galaxyModel.temporal.format('due',taskDueDraft):'Add due date…';
@@ -929,6 +952,7 @@ function updateConstellationIndicator() {
     document.getElementById('active-constellation-name').title = collection ? `Open ${collection.name} overview` : '';
 }
 function showConstellationOverview() {
+    timeWorkspace?.close();
     if (!activeConstellationId || activeNodeDrags) return;
     closeContextMenu(); closeContentMenus(); constellationOverview = true; contentInspector.hide();timeEditor.render(null,null);
     updateConstellationIndicator(); setInspectorOpen(true);
@@ -959,6 +983,7 @@ function activateConstellation(id) {
     cancelPendingBodyFocus();lastBodyTap=null;
     if(pinch)cancelCanvasTouches();
     if (activeNodeDrags || deletionBusy || !constellations.has(id)) return;
+    timeWorkspace?.close();
     if (activeConstellationId === id) { exitConstellation(); return; }
     closeContextMenu(); closeContentMenus(); autoFitPending = false; keyboardNavigation = false; camera.stopAnimation();
     activeConstellationId = id;
@@ -1117,7 +1142,8 @@ removeSampleButton.addEventListener("click", () => {
     if (sampleMode) window.location.reload();
 });
 
-function selectEntry(entry, node, { openInspector = true, reframe = false, scroll = true, preserveSidebarSelection = false } = {}) {
+function selectEntry(entry, node, { openInspector = true, reframe = false, scroll = true, preserveSidebarSelection = false, fromTime = false } = {}) {
+    if(!fromTime)timeWorkspace?.close();
     entityPanelMode();
     closeContentMenus();
     const changingEntry = selectedNode?.dataset.entryId !== entry.id;
@@ -1128,6 +1154,7 @@ function selectEntry(entry, node, { openInspector = true, reframe = false, scrol
     }
 
     selectedNode = node;
+    timeWorkspace?.setSelection(entry.id);
     updateCameraInspectionLimit();
     document.getElementById('archive-galaxy-button').hidden=entry.depth!==0;
     node.classList.add("selected");
@@ -1200,6 +1227,7 @@ function closeInspector(restoreFocus = false) {
     if (panel.hidden) return;
     const hadFocus = panel.contains(document.activeElement);
     setInspectorOpen(false);
+    if(timeWorkspace?.active){timeWorkspace.focusEvent();return;}
     if (restoreFocus || hadFocus) {
         keyboardNavigation = false;
         const row = hierarchySidebar.rows.get(selectedNode?.dataset.entryId);
@@ -1209,6 +1237,7 @@ function closeInspector(restoreFocus = false) {
     }
 }
 document.getElementById("close-inspector-button").addEventListener("click", () => {
+    if(timeWorkspace?.active){closeInspector(true);return;}
     const wasOverview=constellationOverview;
     if (wasOverview) exitConstellation({ restorePanel: false });
     if(!wasOverview&&mobileContents?.mobile&&hierarchySidebar.collapsed)mobileContents.collapse();
@@ -1434,6 +1463,7 @@ function syncPhysicsGraph({ updateUI = true, reheat = .55 } = {}) {
 }
 
 function updateGraphViewport() {
+    if(timeWorkspace)timeWorkspace.root.inert=localSessionStale;
     syncEntryAddControl();
     document.getElementById('mobile-body-contents').setAttribute('aria-expanded', String(!panel.hidden));
     document.getElementById('entry-more-button').setAttribute('aria-controls',constellationOverview?'entry-actions':'entry-context-menu');
@@ -1462,6 +1492,7 @@ function updateGraphViewport() {
 }
 
 function navigationViewportChanged(animate = true, { keepSelectedVisible = false, previous = physics.bounds } = {}) {
+    if(timeWorkspace?.active){updateGraphViewport();return;}
     cancelPendingBodyFocus();lastBodyTap=null;
     autoFitPending = false;
     const menuHadFocus=!!document.activeElement?.closest('#add-menu,#entry-context-menu');
@@ -1911,7 +1942,7 @@ function commitCrudMutation(mutate, { selectionId, topologyChanged = true, revea
         if(preserveSidebarSelection)refreshPanelHierarchy(entry);
         updateHierarchyEmphasis();updateGraphViewport();
     }
-    else if (entry) selectEntry(entry, nodes.get(entry.id), { reframe: false, openInspector: inspectorOpen, scroll: !preserveScroll, preserveSidebarSelection });
+    else if (entry) selectEntry(entry, nodes.get(entry.id), { reframe: false, openInspector: inspectorOpen, scroll: !preserveScroll, preserveSidebarSelection, fromTime:!!timeWorkspace?.active });
     else clearSelection({ reframe: false });
     rebuildOrbitGuides(); refreshSearchResults(); renderGraph();
     refreshConstellation();
@@ -2696,6 +2727,7 @@ document.getElementById("portal-form").addEventListener("submit", async event =>
 });
 
 function focusEntry(id, { travel = false, closeFocus=false, sourceId = selectedNode?.dataset.entryId, preserveSidebarSelection = false, openInspector = true, keepSidebarOpen=false, keepFraming=false } = {}) {
+    timeWorkspace?.close();
     cancelPendingBodyFocus();
     const entry = entries.get(id);
     if(pinch)cancelCanvasTouches();

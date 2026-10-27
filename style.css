@@ -1,10 +1,11 @@
+@font-face { font-family: "Manrope"; src: url("assets/fonts/Manrope-Variable.ttf") format("truetype"); font-style: normal; font-weight: 200 800; font-display: swap; }
 * {
     box-sizing: border-box;
 }
 
 body {
     margin: 0;
-    font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+    font-family: "Manrope", system-ui, -apple-system, "Segoe UI", sans-serif;
     background: #02040a;
     color: #e6edf5;
     overflow: hidden;
@@ -1970,7 +1971,7 @@ summary:focus-visible { outline: 1px solid #b9d0e9; outline-offset: 3px; }
 }
 
 /* Compact global utilities and quiet brand detail share the existing line icons. */
-#hierarchy-sidebar h1 { display: flex; align-items: center; gap: 7px; }
+#hierarchy-sidebar h1 { display: flex; align-items: center; min-height: 20px; }
 .brand-mark { width: 20px; height: 20px; flex: 0 0 20px; color: #8297b0; pointer-events: none; }
 .brand-mark,#utility-more svg { fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linejoin: round; stroke-linecap: round; }
 #sidebar-utilities { position: relative; display: flex; align-items: center; gap: 8px; }
@@ -1981,7 +1982,7 @@ summary:focus-visible { outline: 1px solid #b9d0e9; outline-offset: 3px; }
 #utility-menu[hidden] { display: none; }
 /* One row contract for the Add, Item actions and global More menus. */
 :is(#add-menu,#entry-context-menu,#utility-menu).cosmos-menu > button,
-#sidebar-utilities #utility-menu > button { display: block; width: 100%; margin: 0; height: auto; min-height: 0; padding: 7px 9px; border: 0; border-radius: 4px; background: transparent; box-shadow: none; color: #b6c9dd; font: 12px "Segoe UI",system-ui,-apple-system,sans-serif; text-align: left; letter-spacing: normal; }
+#sidebar-utilities #utility-menu > button { display: block; width: 100%; margin: 0; height: auto; min-height: 0; padding: 7px 9px; border: 0; border-radius: 4px; background: transparent; box-shadow: none; color: #b6c9dd; font: 12px "Manrope",system-ui,-apple-system,"Segoe UI",sans-serif; text-align: left; letter-spacing: normal; }
 :is(#add-menu,#entry-context-menu,#utility-menu).cosmos-menu > button:is(:hover,:focus-visible),
 #sidebar-utilities #utility-menu > button:is(:hover,:focus-visible) { background: #30435b55; outline: none; }
 :is(#add-menu,#entry-context-menu,#utility-menu).cosmos-menu > button:focus-visible { outline: 1px solid #91adc966; outline-offset: -1px; }
@@ -2001,7 +2002,7 @@ summary:focus-visible { outline: 1px solid #b9d0e9; outline-offset: 3px; }
 /* Empty Tasks remains a quiet, discoverable top-level section. */
 .tasks-empty { margin: 4px 12px 12px; color: #8fa3bc; font-size: 12px; line-height: 1.5; }
 
-/* Global navigation foundation: static atmosphere, compact peer sections.
+/* Global navigation foundation: plain dark surface, compact peer sections.
    All tokens are sidebar-local; the world/camera and its artwork are untouched. */
 #hierarchy-sidebar {
     --nav-base: #080f1b;
@@ -2011,21 +2012,8 @@ summary:focus-visible { outline: 1px solid #b9d0e9; outline-offset: 3px; }
     --nav-focus: #b4d6ff;
     --nav-glow-hover: 0 0 8px #6c9fd414;
     --nav-glow-open: inset 0 1px 0 #d4e7ff0a, 0 0 10px #77aaff24;
-    --nav-atmosphere: #384d874c; --nav-horizon: #8cb7e54d; --nav-star: #c7dcf090;
-    --nav-planet-x: -12%; --nav-planet-y: 129%;
     background-color: var(--nav-base);
-    background-image:
-        radial-gradient(circle at 93% 14%, var(--nav-star) 0 .6px, transparent 1.2px),
-        radial-gradient(circle at 5% 10%, var(--nav-star) 0 .5px, transparent 1px),
-        radial-gradient(circle at 86% 35%, var(--nav-star) 0 .5px, transparent 1px),
-        radial-gradient(circle at 9% 28%, var(--nav-star) 0 .5px, transparent 1px),
-        radial-gradient(circle at 96% 56%, var(--nav-star) 0 .6px, transparent 1.2px),
-        radial-gradient(circle at 95% 45%, var(--nav-star) 0 .5px, transparent 1px),
-        radial-gradient(circle at 12% 83%, var(--nav-star) 0 .5px, transparent 1px),
-        radial-gradient(circle at 92% 73%, var(--nav-star) 0 .5px, transparent 1px),
-        radial-gradient(circle at 82% 92%, var(--nav-star) 0 .7px, transparent 1.3px),
-        radial-gradient(ellipse 165% 48% at var(--nav-planet-x) var(--nav-planet-y), #091423f2 94%, #2943609c 96.5%, var(--nav-horizon) 97.8%, #547da326 98.7%, transparent 100%),
-        radial-gradient(ellipse 160% 55% at 15% 100%, var(--nav-atmosphere), transparent 80%);
+    background-image: none;
 }
 #hierarchy-sidebar .nav-major-header {
     margin: 2px 8px 5px;
@@ -2063,6 +2051,21 @@ summary:focus-visible { outline: 1px solid #b9d0e9; outline-offset: 3px; }
 #hierarchy-sidebar #universe-home .nav-section-icon { position: absolute; left: 0; top: calc(50% - 8px); }
 #hierarchy-sidebar #sidebar-utilities { background: none; }
 @media (max-width:760px), (pointer:coarse) and (max-width:1024px) and (max-height:500px) {
-    #hierarchy-sidebar { --nav-atmosphere: #384d8747; --nav-horizon: #8cb7e566; --nav-star: #c7dcf066; --nav-planet-x: -10%; --nav-planet-y: 121%; }
     #hierarchy-sidebar .nav-major-header { min-height: 44px; }
 }
+
+/* Approved primary UI font and plain, text-first navigation. Action SVGs/chevrons stay. */
+button,input,select,textarea { font-family: inherit; }
+#hierarchy-sidebar #time-section .nav-major-header { padding: 0 4px 0 calc(var(--sidebar-tree-gutter) + var(--sidebar-row-inset) - 8px); }
+#time-open { display: grid; grid-template-columns: var(--sidebar-disclosure) var(--sidebar-icon-column) minmax(0,1fr); gap: var(--sidebar-row-gap); }
+#time-open > span { grid-column: 3; }
+#hierarchy-sidebar #time-open { color: var(--nav-text); }
+#hierarchy-sidebar #time-open[aria-current='page'] { color: var(--nav-text-open); }
+
+/* One font-independent functional ellipsis; button/summary hit boxes stay unchanged. */
+:is(#entry-more-button,#mobile-body-more,.tree-more,.tree-portal-actions,.tasks-list-more,.collection-more,.content-item-menu > summary) { position: relative; font-size: 0 !important; letter-spacing: 0; }
+:is(#entry-more-button,#mobile-body-more,.tree-more,.tree-portal-actions,.tasks-list-more,.collection-more,.content-item-menu > summary)::after {
+    content: ''; position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); width: 14px; height: 4px; pointer-events: none;
+    background: radial-gradient(circle at 3px 2px,currentColor 0 1px,transparent 1.1px),radial-gradient(circle at 7px 2px,currentColor 0 1px,transparent 1.1px),radial-gradient(circle at 11px 2px,currentColor 0 1px,transparent 1.1px);
+}
+:is(#entry-more-button,#mobile-body-more,.tree-more,.tree-portal-actions,.tasks-list-more,.collection-more,.content-item-menu > summary) > :is(svg,.cb-action-legacy) { visibility: hidden; }

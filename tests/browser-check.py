@@ -192,6 +192,9 @@ def main():
     args.add_argument("--first-use-only", action="store_true", help="Empty-Universe onboarding, isolated live preview, hints, motion, mobile and keyboard")
     args.add_argument('--prerelease-ux-only', action='store_true', help='Contextual coach, mobile sections, add flows, Constellation disclosure and global More')
     args.add_argument('--time-data-only', action='store_true', help='Canonical When/Due editors, operations, mobile sizing and cross-tab safety')
+    args.add_argument('--time-view-only', action='store_true', help='Global month Calendar, Upcoming, shared Contents and responsive Time navigation')
+    args.add_argument('--time-refinement-only', action='store_true', help='Time close focus, ellipsis, native scrollbar and non-modal mobile Contents gestures')
+    args.add_argument('--time-mobile-ranges-only', action='store_true', help='Canonical continuous mobile ranges, collisions, wrapping and shared close behavior')
     args.add_argument("--first-user-readiness-only", action="store_true", help="Check empty startup, stable hierarchy gutters, Constellation add/sizing, shared editors and keyboard viewport")
     args.add_argument("--auth-only", action="store_true", help="Check independent account flows, pending/error/recovery, local data and Backup/Restore isolation")
     args.add_argument("--cloud-boundary-only", action="store_true", help="Mocked development-only identity/Universe/REST/GraphQL privacy boundary")
@@ -525,6 +528,27 @@ def main():
 
         cdp.call("Page.navigate", url=page_url)
         load()
+        if options.time_mobile_ranges_only:
+            from time_mobile_ranges_browser import run_time_mobile_ranges_checks
+            def shot(name):
+                if screenshot_dir:
+                    (screenshot_dir/(name+'.png')).write_bytes(base64.b64decode(cdp.call('Page.captureScreenshot',format='png')['data']))
+            run_time_mobile_ranges_checks(cdp=cdp,e=evaluate,check=check,wait_for=wait_for,wait_camera=wait_camera,shot=shot)
+            print(f'{count} mobile Time range checks passed; screenshots: {screenshot_dir}',flush=True);return
+        if options.time_refinement_only:
+            from time_refinement_browser import run_time_refinement_checks
+            def shot(name):
+                if screenshot_dir:
+                    (screenshot_dir/(name+'.png')).write_bytes(base64.b64decode(cdp.call('Page.captureScreenshot',format='png')['data']))
+            run_time_refinement_checks(cdp=cdp,e=evaluate,check=check,wait_for=wait_for,wait_camera=wait_camera,add=add,click=click_selector,shot=shot)
+            print(f'{count} Time refinement browser checks passed; screenshots: {screenshot_dir}',flush=True);return
+        if options.time_view_only:
+            from time_view_browser import run_time_view_checks
+            def shot(name):
+                if screenshot_dir:
+                    (screenshot_dir/(name+'.png')).write_bytes(base64.b64decode(cdp.call('Page.captureScreenshot',format='png')['data']))
+            run_time_view_checks(cdp=cdp,e=evaluate,check=check,wait_for=wait_for,add=add,click=click_selector,shot=shot)
+            print(f'{count} Time view browser checks passed; screenshots: {screenshot_dir}',flush=True);return
         if options.time_data_only:
             from time_data_browser import run_time_data_checks
             def shot(name):
@@ -5463,7 +5487,8 @@ def main():
             def submit_context(name):
                 parent=evaluate('parentField.value')
                 check(evaluate("dialog.open && document.getElementById('parent-field').hidden && creationContext.hidden && document.getElementById('entry-info-fields').hidden"),'contextual form only asks for the name of the child')
-                evaluate(f"fields[0].value={json.dumps(name)};fields[1].value='Navigation test';form.requestSubmit()")
+                evaluate(f"fields[0].value={json.dumps(name)};fields[1].value='Navigation test';form.requestSubmit();applicationCommandTail")
+                wait_for('!formSaveBusy')
                 check(evaluate('!dialog.open'),'contextual child saves through the shared form')
                 child=evaluate('selectedNode.dataset.entryId')
                 check(evaluate(f"entries.get({json.dumps(child)}).parentId==={json.dumps(parent)} && entries.get({json.dumps(child)}).depth===entries.get({json.dumps(parent)}).depth+1 && hierarchySidebar.selectedId==={json.dumps(child)}"),'created entry has the correct parent, depth and synchronized selection')
