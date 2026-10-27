@@ -1,5 +1,12 @@
 # Cosmifold
 
+**Time** opens a global month Calendar and Upcoming view of canonical Item
+When and Task Due dates, with context accents, static source-CB miniatures and shared Contents.
+Desktop keeps the Calendar above a horizontal Upcoming strip; mobile uses a
+dedicated Time view, selected-day entries and vertical Upcoming.
+[Time implementation and review checklist](docs/time-view.md).
+[Approved-design production integration and device checklist](docs/time-integration.md).
+
 Add a **Task List** anywhere in your Universe. Its direct children are tasks.
 Complete them to bring the branch to life. Choose **Add task list** beside
 **Add item**, enter a name and optionally one task per line, then Create.

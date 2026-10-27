@@ -56,6 +56,11 @@ def runtime_assets(root):
                 value = next(part for part in match.groups() if part is not None).strip()
                 if not value.startswith(('data:', '#')):
                     pending.append(value if value.startswith('/') else (Path(relative).parent / value).as_posix())
+    if 'assets/fonts/Manrope-Variable.ttf' in assets:
+        license_file = root / 'assets/fonts/OFL-Manrope.txt'
+        if not license_file.is_file():
+            raise ValueError('Bundled Manrope license is missing')
+        assets.add('assets/fonts/OFL-Manrope.txt')
     return sorted(assets)
 
 

@@ -17,7 +17,7 @@ class StagingPackageTests(unittest.TestCase):
             output = Path(directory) / 'site'
             files = staging.prepare(output)
             self.assertEqual(sorted(p.relative_to(output).as_posix() for p in output.rglob('*') if p.is_file()), files)
-            self.assertTrue({'index.html', 'startup.js', 'script.js', 'time-metadata.js', 'body-renderer.js', 'first-use.js', 'task-views.js', 'sidebar-split.js', 'task-lists.js', 'ids.js', 'vendor/LICENSES.txt',
+            self.assertTrue({'index.html', 'startup.js', 'script.js', 'time-metadata.js', 'time-view-model.js', 'temporal-avatars.js', 'assets/fonts/Manrope-Variable.ttf', 'assets/fonts/OFL-Manrope.txt', 'time-view.js', 'time-view.css', 'body-renderer.js', 'first-use.js', 'task-views.js', 'sidebar-split.js', 'task-lists.js', 'ids.js', 'vendor/LICENSES.txt',
                              'persistence/local-metadata-store.js', 'persistence/indexeddb-file-store.js', 'services/local-restore-session.js',
                              'services/local-restore.js', 'object-urls.js', 'storage-capacity.js', 'services/attachment-storage-audit.js', 'backup-ui.js',
                              'assets/introduction-example.png', 'assets/introduction-example-compact.png'} <= set(files))
@@ -45,6 +45,21 @@ class StagingPackageTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 staging.prepare(output)
             self.assertEqual(sentinel.read_text(), 'retain')
+
+    def test_local_manrope_requires_and_packages_its_license(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / 'vendor').mkdir()
+            (root / 'assets/fonts').mkdir(parents=True)
+            for name in ['404.html', '_headers', 'vendor/LICENSES.txt', 'vendor/README.md']:
+                (root / name).write_text('fixture')
+            (root / 'index.html').write_text('<link rel="stylesheet" href="style.css">')
+            (root / 'style.css').write_text('@font-face { src: url("assets/fonts/Manrope-Variable.ttf"); }')
+            (root / 'assets/fonts/Manrope-Variable.ttf').write_bytes(b'font fixture')
+            with self.assertRaisesRegex(ValueError, 'license is missing'):
+                staging.runtime_assets(root)
+            (root / 'assets/fonts/OFL-Manrope.txt').write_text('license fixture')
+            self.assertIn('assets/fonts/OFL-Manrope.txt', staging.runtime_assets(root))
 
     def test_responsive_sources_are_copied_and_validated(self):
         with tempfile.TemporaryDirectory() as directory:
