@@ -277,6 +277,7 @@ def main():
     args.add_argument("--render-viewport-only", action="store_true", help="Check pass-local viewport sampling, fresh resize/UI bounds and unchanged zoom projection")
     args.add_argument("--render-visibility-only", action="store_true", help="Check offscreen rendering suppression, reveal exceptions, boundary re-entry and SVG geometry")
     args.add_argument("--real-body-overview-only", action="store_true", help="Check continuous real-body overview, root interaction, labels, simplification and actual-body Fit bounds")
+    args.add_argument('--galaxy-labels-only', action='store_true', help='Galaxy group headings, Sun-name ownership, movement and semantic label eligibility')
     args.add_argument("--semantic-handoff-only", action="store_true", help="Check user-only overview deselection and hierarchical label handoff in isolated dense mobile/desktop scenes")
     args.add_argument("--terminal-labels-only", action="store_true", help="Check branch-local terminal labels, hierarchy invalidation, density and same-scale panning")
     args.add_argument("--semantic-handoff-size", type=int, choices=[150,325], default=150, help="Disposable semantic-handoff fixture size (one native-input fixture per isolated Chrome profile)")
@@ -1217,6 +1218,15 @@ def main():
                     result=cdp.call('Page.captureScreenshot',format='png',captureBeyondViewport=False);(screenshot_dir/(name+'.png')).write_bytes(base64.b64decode(result['data']))
             run_semantic_handoff_checks(cdp=cdp,evaluate=evaluate,check=check,wait_for=wait_for,shot=shot,size=options.semantic_handoff_size)
             print(f'{count} semantic-handoff browser checks passed',flush=True);return
+
+        if options.galaxy_labels_only:
+            from galaxy_labels_browser import run_galaxy_label_checks
+            def shot(name):
+                if screenshot_dir:
+                    result=cdp.call('Page.captureScreenshot',format='png',captureBeyondViewport=False)
+                    (screenshot_dir/(name+'.png')).write_bytes(base64.b64decode(result['data']))
+            run_galaxy_label_checks(cdp=cdp,e=evaluate,check=check,wait_for=wait_for,shot=shot)
+            print(f'{count} Galaxy label browser checks passed');return
 
         if options.real_body_overview_only:
             from real_body_overview_browser import run_real_body_overview_checks

@@ -5,6 +5,18 @@ const cosmosView = {
     visualScale: { sun: 1.5, planet: 1.3 },
     overviewMinimum: { sun: 6, planet: 2.5 },
     galaxyDiameter(scale) { return 14 + 8 * this.smooth(scale, .08, .58); },
+    galaxyLabelPosition(root, suns, label, bounds) {
+        const center=(root.left+root.right)/2;
+        if(!suns)return {left:center-label.width/2,top:root.bottom+4};
+        // One continuous group envelope, never a nearby child's name anchor or
+        // alternating collision sides. Keep the title clear of its own core too.
+        const left=(suns.left+suns.right-label.width)/2;
+        const top=Math.min(root.top,suns.top)-label.height-12;
+        return {
+            left:Math.round(Math.max(bounds.left+8,Math.min(bounds.right-label.width-8,left))*4)/4,
+            top:Math.round(Math.max(bounds.top+8,top)*4)/4
+        };
+    },
     renderCap(role, scale) {
         const normal = this.bodyCaps[role] || Infinity;
         const close = this.inspectionCaps[role];
