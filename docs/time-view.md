@@ -107,6 +107,16 @@ action targets, labels and handlers. See `time-refinements.md` for validation.
 
 ## Deferred urgency contract
 
+Upcoming retains incomplete tasks whose canonical Due date is before the current
+local date. They share one leading **Overdue** group, ordered by original Due date,
+before Today and future groups. Each keeps its source miniature and concise original
+Due date/time; only the heading/detail text uses a muted warm accent. Calendar stays
+on the original date with its existing styling. Completion removes the Upcoming
+instance immediately; rescheduling restores normal chronology and removing Due
+removes the Time event. This is derived view state, with no persisted overdue field.
+Due today (including an earlier clock time) is not overdue. Past normal Items are
+not overdue tasks.
+
 Task type does not imply stronger permanent emphasis. A future Due is normal;
 Due today calls for moderate attention; overdue plus incomplete calls for clear
 attention; completed stays readable with reduced emphasis in Calendar/history.

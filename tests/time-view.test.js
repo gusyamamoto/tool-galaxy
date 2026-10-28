@@ -25,8 +25,52 @@ test('completed tasks remain on Calendar; past entries remain in their dates',()
     assert.ok(time.onDay(events,'2026-10-27').find(e=>e.id==='past-task'));
     assert.ok(time.onDay(events,'2026-10-02').find(e=>e.id==='past'));
 });
-test('Upcoming excludes completed, past and undated; includes future tasks and ongoing ranges',()=>{
-    assert.deepEqual(time.upcoming(time.aggregate(fixture()),'2026-10-28').map(e=>e.id),['item','range','task']);
+test('Upcoming excludes completed, past normal Items and undated; retains overdue tasks and ongoing ranges',()=>{
+    assert.deepEqual(time.upcoming(time.aggregate(fixture()),'2026-10-28').map(e=>e.id),['past-task','item','range','task']);
+});
+test('overdue requires an incomplete canonical task with a past Due, not a dormant normal Item Due',()=>{
+    const entries=fixture();entries.get('past').due={date:'2026-10-01',time:null};
+    entries.get('done').due.date='2026-10-01';
+    const events=time.aggregate(entries),today='2026-10-28',before=JSON.stringify(events);
+    assert.deepEqual(events.filter(e=>time.isOverdue(e,today)).map(e=>e.id),['past-task']);
+    assert.equal(time.isOverdue(events.find(e=>e.id==='item'),today),false);
+    assert.equal(time.isOverdue(events.find(e=>e.id==='task'),today),false);
+    assert.equal(time.isOverdue(events.find(e=>e.id==='done'),today),false);
+    time.upcoming(events,today);assert.equal(JSON.stringify(events),before);
+    assert.ok(events.every(e=>!Object.hasOwn(e,'overdue')));
+});
+test('Due today is never overdue, even with an early clock; the next local date makes it overdue',()=>{
+    const events=time.aggregate(fixture()),task=events.find(e=>e.id==='task');task.time='00:01';
+    assert.equal(time.isOverdue(task,'2026-10-29'),false);
+    assert.equal(time.isOverdue(task,'2026-10-30'),true);
+    assert.ok(time.upcoming(events,'2026-10-29').includes(task));
+});
+test('overdue group sorts by original Due before Today, Tomorrow and future chronology',()=>{
+    const entries=fixture();entries.set('older',{id:'older',name:'Older',parentId:'list',due:{date:'2026-09-30',time:'17:00'}});
+    entries.set('tomorrow',{id:'tomorrow',name:'Tomorrow',when:when('2026-10-29',null,'08:00')});
+    assert.deepEqual(time.upcoming(time.aggregate(entries),'2026-10-28').map(e=>e.id),['older','past-task','item','range','tomorrow','task']);
+});
+test('completion, rescheduling and removal recompute Upcoming without stale overdue state',()=>{
+    const entries=fixture(),task=entries.get('past-task'),today='2026-10-28';
+    const upcoming=()=>time.upcoming(time.aggregate(entries),today);
+    assert.equal(upcoming()[0].id,task.id);
+    task.completed=true;assert.ok(!upcoming().some(e=>e.id===task.id));
+    assert.ok(time.onDay(time.aggregate(entries),'2026-10-27').some(e=>e.id===task.id&&e.completed));
+    task.completed=false;assert.equal(upcoming()[0].id,task.id);
+    task.due={date:'2026-11-03',time:null};assert.equal(upcoming().at(-1).id,task.id);
+    assert.equal(time.isOverdue(upcoming().at(-1),today),false);
+    task.due=null;assert.ok(!time.aggregate(entries).some(e=>e.id===task.id));
+});
+test('overdue date-only comparisons retain year and leap-day boundaries across local zones',()=>{
+    const previous=process.env.TZ;
+    try{for(const zone of ['America/Vancouver','Pacific/Auckland','Asia/Tokyo','UTC']){
+        process.env.TZ=zone;
+        for(const [due,today] of [['2026-12-31','2027-01-01'],['2028-02-29','2028-03-01']]){
+            const event={task:true,completed:false,start:due};
+            assert.equal(time.isOverdue(event,time.key(time.localDate(due))),false);
+            assert.equal(time.isOverdue(event,time.key(time.localDate(today))),true);
+        }
+    }}finally{if(previous===undefined)delete process.env.TZ;else process.env.TZ=previous;}
 });
 test('timed entries precede date-only with deterministic ID ties and no input mutation',()=>{
     const entries=new Map(['z','c','b','a'].map(id=>[id,{id,name:id,parentId:null,when:when('2026-10-28',null,id==='z'?null:id==='c'?'15:00':'09:00')}]));

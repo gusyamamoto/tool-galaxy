@@ -120,6 +120,8 @@
 #time-workspace .time-upcoming-event[data-selected='true'] { color: #f2f6ff; }
 #time-workspace .time-upcoming-event[data-selected='true'] .time-clock { color: #bbcae0; }
 #time-workspace .time-upcoming-event[data-selected='true'] .temporal-avatar { filter: brightness(1.2) drop-shadow(0 0 4px #bda0ff30); }
+#time-workspace .time-date-group--overdue .time-upcoming-date,
+#time-workspace .time-upcoming-event.time-overdue .time-clock { color: #c7b29a; }
 #time-workspace .time-empty { margin: 0; padding: 8px 2px; color: #8196b1; font-size: 12px; line-height: 20px; }
 #time-workspace #time-upcoming-empty { display: flex; flex-direction: column; justify-content: center; min-height: 127px; }
 #time-workspace #time-upcoming-empty strong { color: #a7b9cf; font-weight: 400; }
