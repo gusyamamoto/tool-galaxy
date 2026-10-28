@@ -10,6 +10,10 @@ def run_first_use_checks(*, cdp, evaluate, check, wait_for, load, shot):
         cdp.call('Emulation.setTouchEmulationEnabled',enabled=width<=1120,maxTouchPoints=5)
         frame()
         wait_for('document.getElementById("introduction-example").complete&&document.getElementById("introduction-example").naturalWidth>0')
+        asset='cosmifold-astronaut-mobile.webp' if width<=1120 else 'cosmifold-astronaut-desktop.webp'
+        wait_for('(()=>{const i=firstUse.root.querySelector(".first-use-brand");return i.complete&&i.naturalWidth>0&&i.currentSrc.endsWith('+q(asset)+')})()')
+        e('firstUse.root.querySelector(".first-use-brand").decode()')
+        e('firstUse.root.scrollTop=0')
     def reload():
         e('window.firstUseReload=true');cdp.call('Page.reload')
         wait_for('typeof firstUseReload==="undefined"&&document.readyState==="complete"&&typeof firstUse!=="undefined"')
@@ -22,9 +26,12 @@ def run_first_use_checks(*, cdp, evaluate, check, wait_for, load, shot):
     check(e('entries.size===0&&nodes.size===0&&physics.particles.size===0&&!firstUse.root.hidden'),'empty Universe shows Introduction without real demo bodies')
     check(e('firstUse.root.querySelector("h2").textContent==="Cosmifold"&&firstUse.root.textContent.includes("Organize anything")'),'Introduction purpose and tone remain')
     check(e('!firstUse.root.querySelector("video,canvas,[autoplay],[controls]")&&typeof FirstUsePreview==="undefined"&&typeof firstUseScene==="undefined"'),'Introduction has no video, autoplay, live example renderer or animation data')
-    check(e('firstUse.root.querySelector("picture source")&&document.getElementById("introduction-example").fetchPriority==="high"'),'Introduction has an eager local responsive static image')
+    check(e('document.querySelector("#first-use-preview source")&&document.getElementById("introduction-example").fetchPriority==="high"'),'Introduction has an eager local responsive static image')
+    check(e('document.querySelectorAll(".first-use-brand").length===1&&firstUse.root.querySelector(".first-use-brand-scene source").getAttribute("srcset")==="assets/cosmifold-astronaut-desktop.webp"&&firstUse.root.querySelector(".first-use-brand").getAttribute("src")==="assets/cosmifold-astronaut-mobile.webp"&&firstUse.root.querySelector(".first-use-brand").alt===""&&!document.querySelector("#hierarchy-sidebar .first-use-brand")'),'one decorative picture switches the two approved backgrounds only within Introduction')
+    brand_resources=e('({src:document.querySelector(".first-use-brand").currentSrc,width:innerWidth,resources:performance.getEntriesByType("resource").filter(r=>r.name.includes("cosmifold-astronaut-")).map(r=>({name:r.name,type:r.initiatorType,size:r.transferSize}))})')
+    check(len(brand_resources['resources'])==1 and brand_resources['resources'][0]['name'].endswith('cosmifold-astronaut-mobile.webp'),'fresh mobile navigation fetches only its dedicated portrait background, not both image variants: '+q(brand_resources))
     before=e('localStorage.getItem("galaxy:user-data")')
-    for width,height in [(1440,1000),(900,1000),(360,800),(390,844),(390,667),(320,568),(430,932),(844,390)]:
+    for width,height in [(2560,1440),(1920,1080),(1440,900),(1280,800),(1200,768),(1440,1000),(900,1000),(360,800),(390,844),(390,667),(320,568),(430,932),(740,390),(844,390)]:
         viewport(width,height)
         check(e('document.documentElement.scrollWidth<=innerWidth&&firstUse.root.scrollWidth<=firstUse.root.clientWidth'),f'{width}x{height}: Introduction has no horizontal overflow')
         expected='introduction-example-compact.png' if width<=1120 else 'introduction-example.png'
@@ -32,8 +39,48 @@ def run_first_use_checks(*, cdp, evaluate, check, wait_for, load, shot):
         check(e('(()=>{const p=document.getElementById("first-use-preview"),i=document.getElementById("introduction-example"),r=p.getBoundingClientRect(),scale=Math.min(r.width/i.naturalWidth,r.height/i.naturalHeight);return scale<=.6&&getComputedStyle(i).objectFit==="contain"&&parseFloat(getComputedStyle(p).borderRadius)>0})()'),f'{width}: sharp image fits the existing rounded container without cropping')
         columns=e('getComputedStyle(document.querySelector(".first-use-card")).gridTemplateColumns.split(" ").length')
         check(columns==(1 if width<=1120 else 2),f'{width}: existing Introduction column layout remains')
+        if width>1120:
+            measure='(()=>{const b=document.querySelector(".first-use-brand"),r=b.getBoundingClientRect(),p=b.parentElement.getBoundingClientRect();return {left:r.left,top:r.top,width:r.width,height:r.height,frameLeft:p.left,frameWidth:p.width,src:b.currentSrc}})()'
+            e('hierarchySidebar.setCollapsed(false)');frame()
+            expanded=e(measure)
+            check(e('!!document.elementFromPoint(100,180)?.closest("#hierarchy-sidebar")&&Number(getComputedStyle(hierarchySidebar.sidebar).zIndex)>Number(getComputedStyle(firstUse.root).zIndex)'),f'{width}: expanded sidebar is a real foreground hit layer over the artwork')
+            check(expanded['left']==0 and expanded['top']==0 and expanded['frameLeft']==0 and expanded['frameWidth']==width and expanded['width']==min(1920,max(width,1840)) and expanded['src'].endswith('cosmifold-astronaut-desktop.webp'),f'{width}: desktop artwork begins at true viewport x=0 with a 1920px upper cap, not at the sidebar/content edge')
+            check(e('(()=>{const i=document.querySelector(".first-use-brand"),r=i.getBoundingClientRect();return i.naturalWidth===2048&&i.naturalHeight===768&&r.width<=i.naturalWidth&&Math.abs(r.height-r.width*768/2048)<.1&&getComputedStyle(i.parentElement).pointerEvents==="none"})()'),f'{width}: approved full desktop source retains its aspect ratio without enlargement or an interactive visual layer')
+            shot(f'first-use-desktop-expanded-{width}x{height}')
+            e('hierarchySidebar.setCollapsed(true)');frame()
+            check(e(measure)==expanded,f'{width}: sidebar collapse reveals the exact same background rectangle without shifting or rescaling it')
+            shot(f'first-use-desktop-collapsed-{width}x{height}')
+            e('window.introContentBefore=document.querySelector(".first-use-card").getBoundingClientRect().toJSON();document.querySelector(".first-use-brand").style.width="2100px"')
+            check(e('JSON.stringify(document.querySelector(".first-use-card").getBoundingClientRect().toJSON())===JSON.stringify(introContentBefore)'),f'{width}: background dimensions never control or push intro content')
+            e('document.querySelector(".first-use-brand").style.width=""')
+            check(e('(()=>{const c=document.querySelector(".first-use-copy").getBoundingClientRect(),p=document.getElementById("first-use-preview").getBoundingClientRect(),r=document.querySelector(".first-use-card").getBoundingClientRect();return c.left>=r.left+90&&c.right<p.left&&p.width>=r.width*.45})()'),f'{width}: independent copy remains clear of the prominent right-hand product example')
+        else:
+            check(e('(()=>{const i=firstUse.root.querySelector(".first-use-brand"),b=i.parentElement.getBoundingClientRect(),r=document.querySelector(".first-use-card").getBoundingClientRect(),s=getComputedStyle(i);return i.currentSrc.endsWith("cosmifold-astronaut-mobile.webp")&&i.naturalWidth===1024&&i.naturalHeight===1536&&Math.abs(b.left+b.width/2-r.left-r.width/2)<.1&&getComputedStyle(document.querySelector(".first-use-copy")).textAlign==="center"&&s.objectFit==="cover"&&s.objectPosition==="50% 20%"&&b.height<b.width*1.5&&getComputedStyle(i.parentElement).overflowX==="hidden"})()'),f'{width}: dedicated portrait artwork is centered and cropped through a hero window, excluding its extra lower starfield')
+            check(e('(()=>{const selectors=[".first-use-brand-scene","#first-use-title",".first-use-purpose",".first-use-examples","#first-use-create","#first-use-help",".first-use-example"],rects=selectors.map(s=>document.querySelector(s).getBoundingClientRect());return rects.every((r,i)=>!i||r.top>=rects[i-1].bottom)&&getComputedStyle(document.querySelector(".first-use-card")).gridTemplateAreas.includes("actions")})()'),f'{width}: approved mobile order keeps text/CTA/Help between brand hero and Japan Trip')
+            check(e('(()=>{const i=document.querySelector(".first-use-brand"),s=getComputedStyle(i),selectors=[".first-use-brand-scene",".first-use-brand","#first-use-title",".first-use-purpose",".first-use-examples","#first-use-create","#first-use-help",".first-use-example","#sidebar-toggle"],geometry=()=>JSON.stringify(selectors.map(q=>document.querySelector(q).getBoundingClientRect().toJSON())),before=geometry(),mask=s.maskImage;if(!mask.includes("44px")||!mask.includes("28px")||s.pointerEvents!=="none")return false;try{i.style.maskImage="none";i.style.webkitMaskImage="none";return geometry()===before;}finally{i.style.removeProperty("mask-image");i.style.removeProperty("-webkit-mask-image");}})()'),f'{width}: CSS-only 44px top fade and existing 28px bottom fade leave hero, copy, actions and navigation geometry unchanged')
+            if width in (390,320):
+                check(e('(()=>{const r=document.querySelector(".first-use-brand-scene").getBoundingClientRect();return Math.abs(r.left)<.1&&Math.abs(r.right-innerWidth)<.1&&r.height>='+str(250 if width==390 else 210)+'&&r.height<='+str(300 if width==390 else 250)+'})()'),f'{width}: cinematic hero spans viewport width with the approved compact crop height')
+            if width in (390,320,740):
+                toggle_before=e('document.getElementById("sidebar-toggle").getBoundingClientRect().toJSON()')
+                for collapsed in (False,True):
+                    target=e('(()=>{const b=document.getElementById("sidebar-toggle"),r=b.getBoundingClientRect(),x=r.left+r.width/2,y=r.top+r.height/2;return {x,y,hit:!!document.elementFromPoint(x,y)?.closest("#sidebar-toggle")}})()')
+                    check(target['hit'],f'{width}: sidebar control receives hit testing above the hero fade')
+                    cdp.call('Input.dispatchTouchEvent',type='touchStart',touchPoints=[{'x':target['x'],'y':target['y']}])
+                    cdp.call('Input.dispatchTouchEvent',type='touchEnd',touchPoints=[])
+                    wait_for('hierarchySidebar.collapsed==='+str(collapsed).lower());frame()
+                check(e('document.getElementById("sidebar-toggle").getBoundingClientRect().toJSON()')==toggle_before,f'{width}: real touch opens and closes navigation without moving the restored control')
+        check(e('(()=>{const b=firstUse.root.querySelector(".first-use-brand"),s=getComputedStyle(b),p=getComputedStyle(b.parentElement);return s.borderTopWidth==="0px"&&s.boxShadow==="none"&&s.backgroundColor==="rgba(0, 0, 0, 0)"&&p.backgroundColor==="rgba(0, 0, 0, 0)"&&b.getAnimations({subtree:true}).length===0})()'),f'{width}: astronaut has no card, frame, background panel, shadow or animation')
+        if width<=430:
+            check(e('(()=>{const c=document.getElementById("first-use-create").getBoundingClientRect(),r=firstUse.root.getBoundingClientRect();return c.top>=r.top&&c.bottom<=r.bottom})()'),f'{width}x{height}: primary CTA is initially visible before any intro scrolling')
         e('document.getElementById("first-use-create").scrollIntoView({block:"nearest"})');frame()
-        check(e('(()=>{const b=document.getElementById("first-use-create"),r=b.getBoundingClientRect();return r.top>=0&&r.bottom<=innerHeight&&b.textContent.includes("Create your first Item")})()'),f'{width}: original CTA stays reachable')
+        check(e('(()=>{const b=document.getElementById("first-use-create"),r=b.getBoundingClientRect();return r.top>=0&&r.bottom<=innerHeight&&b.textContent.includes("Create your first Item")})()'),f'{width}: original CTA stays reachable: '+q(e('({cta:document.getElementById("first-use-create").getBoundingClientRect().toJSON(),scroll:firstUse.root.scrollTop,viewport:innerHeight})')))
+        if height<500:
+            e('document.getElementById("first-use-help").scrollIntoView({block:"nearest"})');frame()
+            check(e('(()=>{const r=document.getElementById("first-use-help").getBoundingClientRect(),p=firstUse.root.getBoundingClientRect();return r.top>=p.top&&r.bottom<=p.bottom})()'),f'{width}: short-landscape Help remains reachable with native scrolling')
+            e('document.getElementById("first-use-preview").scrollIntoView({block:"end"})');frame()
+            check(e('(()=>{const r=document.getElementById("first-use-preview").getBoundingClientRect(),p=firstUse.root.getBoundingClientRect();return r.bottom<=p.bottom&&r.bottom>p.top&&firstUse.root.scrollTop>0})()'),f'{width}: short-landscape product example bottom remains reachable')
+            shot(f'first-use-landscape-example-{width}x{height}')
+            e('document.getElementById("first-use-create").scrollIntoView({block:"nearest"})');frame()
         check(e('document.getElementById("introduction-example").getAnimations({subtree:true}).length===0'),f'{width}: hero has no animation work')
         shot(f'first-use-static-{width}x{height}')
     check(e('localStorage.getItem("galaxy:user-data")')==before,'static example does not write canonical data')
@@ -57,6 +104,7 @@ def run_first_use_checks(*, cdp, evaluate, check, wait_for, load, shot):
     check(e('dialog.open&&entries.size===0&&!firstUse.root.hidden&&firstUse.hint.hidden'),'invalid creation preserves Introduction and onboarding state')
     root=submit('Travel')
     check(e('firstUse.root.hidden&&document.getElementById("introduction-example").isConnected'),'successful creation hides static Introduction without renderer teardown')
+    check(e('!document.querySelector(".first-use-brand").getClientRects().length&&[...document.querySelectorAll("img")].filter(img=>img.getAttribute("src")?.startsWith("assets/cosmifold-astronaut-")).every(img=>firstUse.root.contains(img))'),'entering the real app hides the astronaut and leaves internal UI logo-free')
     check(e(f'entries.size===1&&selectedNode.dataset.entryId==={q(root)}'),'ordinary CRUD selects the first real Item')
     check(e('!firstUse.hint.hidden&&firstUse.hint.textContent.includes("Tap + to add something inside Travel.")&&firstUse.hint.dataset.anchor==="entry-add-button"'),'first coach still names the Item and anchors to Contents +')
     e('contentInspector.editNotes()');frame()

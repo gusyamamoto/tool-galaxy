@@ -22,19 +22,40 @@ body {
 /* First use occupies the workspace canvas; ordinary navigation stays available. */
 #first-use[hidden], #first-use-hint[hidden] { display: none; }
 #first-use {
-    position: absolute; inset: 48px 22px 64px calc(var(--sidebar-space) + 22px);
-    z-index: 14; display: grid; place-items: center; overflow: auto;
-    overscroll-behavior: contain; touch-action: pan-y;
+    position: absolute; inset: 0; padding: 0 22px 0 max(var(--sidebar-space),260px);
+    z-index: 14; display: grid; align-items: safe center; justify-items: center; overflow-y: auto; overflow-x: hidden;
+    overscroll-behavior: contain; touch-action: pan-y; scroll-padding-block: 12px;
 }
 .first-use-card {
-    width: min(1080px,100%); display: grid; align-items: center;
-    grid-template-columns: minmax(260px,.85fr) minmax(0,1.4fr); column-gap: 36px;
+    width: min(1180px,100%); display: grid; align-items: center;
+    padding-left: clamp(96px,8.5vw,128px);
+    grid-template-columns: clamp(300px,calc(50vw - 330px),382px) minmax(0,1fr);
+    grid-template-areas: 'copy example' 'actions example';
+    column-gap: clamp(24px,calc(12.5vw - 120px),60px);
+}
+/* The background belongs to the full intro viewport; only the content reserves sidebar space. */
+.first-use-brand-scene { display: block; position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+#first-use .first-use-brand {
+    display: block; position: absolute; top: 0; left: 0;
+    width: clamp(1840px,100vw,1920px); max-width: none; height: auto; margin: 0;
+    -webkit-mask-image: linear-gradient(to bottom,#000 calc(100% - 96px),transparent);
+    mask-image: linear-gradient(to bottom,#000 calc(100% - 96px),transparent);
+}
+.first-use-copy { grid-area: copy; position: relative; z-index: 1; align-self: end; }
+@media (min-width: 1121px) {
+    /* Keep the visor highlight, soften the horizon behind copy, then reveal the wide starfield. */
+    #first-use .first-use-brand {
+        -webkit-mask-image: linear-gradient(to right,#000 280px,#0004 380px,#0001 680px,#000 1120px,#000 calc(100% - 160px),transparent),linear-gradient(to bottom,#000 calc(100% - 96px),transparent);
+        mask-image: linear-gradient(to right,#000 280px,#0004 380px,#0001 680px,#000 1120px,#000 calc(100% - 160px),transparent),linear-gradient(to bottom,#000 calc(100% - 96px),transparent);
+        -webkit-mask-composite: source-in; mask-composite: intersect;
+    }
+    .first-use-copy { text-shadow: 0 1px 5px #02040a; }
 }
 .first-use-copy h2 { margin: 0 0 18px; font-size: clamp(30px,3.4vw,44px); font-weight: 600; letter-spacing: -.035em; }
 .first-use-purpose { margin: 0 0 14px; max-width: 340px; font-size: clamp(20px,2vw,26px); line-height: 1.35; color: #e2ebf5; }
 .first-use-examples { margin: 0; color: #9eafc4; font-size: 14px; line-height: 1.65; }
 .first-use-break { display: none; }
-.first-use-example { margin: 0; min-width: 0; grid-column: 2; grid-row: 1 / 3; }
+.first-use-example { grid-area: example; position: relative; z-index: 1; margin: 0; min-width: 0; }
 .first-use-example figcaption { margin: 0 0 12px; color: #bdcddd; font-size: 12px; }
 .first-use-example figcaption span { color: #879bb3; }
 #first-use-preview {
@@ -44,7 +65,7 @@ body {
     pointer-events: none; --native-label-scale: 1;
 }
 #introduction-example { display: block; width: 100%; height: 100%; object-fit: contain; }
-.first-use-actions { margin-top: 26px; display: grid; gap: 8px; justify-items: start; }
+.first-use-actions { grid-area: actions; position: relative; z-index: 1; align-self: start; margin-top: 26px; display: grid; gap: 8px; justify-items: start; }
 #first-use-create { min-height: 48px; padding: 12px 20px; background: #d0e1f5; border: 1px solid #ebf4ff; border-radius: 8px; color: #102032; font-size: 15px; font-weight: 600; box-shadow: 0 3px 20px #8cb6e51a; }
 #first-use-create:hover { background: #e5effc; }
 #first-use-help { min-height: 44px; padding: 8px 0; border: 0; background: transparent; box-shadow: none; color: #aebfd4; font-size: 13px; }
@@ -63,18 +84,22 @@ body {
 /* A single first action; restore the ordinary + as soon as real content exists. */
 
 @media (max-width: 1120px) {
-    .first-use-card { max-width: 650px; grid-template-columns: minmax(0,1fr); gap: 20px; }
-    .first-use-example { grid-column: 1; grid-row: auto; }
+    #first-use { padding: 48px 22px 32px calc(var(--sidebar-space) + 22px); }
+    .first-use-card { max-width: 650px; padding: 0; grid-template-columns: minmax(0,1fr); grid-template-areas: 'brand' 'copy' 'actions' 'example'; gap: 0; justify-items: center; }
+    .first-use-brand-scene { grid-area: brand; position: relative; inset: auto; width: 100%; height: auto; aspect-ratio: 1.31; margin-bottom: 8px; }
+    #first-use .first-use-brand { top: 0; width: 100%; height: 100%; object-fit: cover; object-position: center 20%; -webkit-mask-image: linear-gradient(to bottom,transparent 0,#0009 16px,#000 44px,#000 calc(100% - 28px),transparent 100%); mask-image: linear-gradient(to bottom,transparent 0,#0009 16px,#000 44px,#000 calc(100% - 28px),transparent 100%); }
+    .first-use-copy { width: min(100%,480px); text-align: center; }
+    .first-use-example { width: 100%; margin-top: 20px; }
     .first-use-copy h2 { margin-bottom: 10px; }
-    .first-use-purpose { max-width: none; }
+    .first-use-purpose { margin-inline: auto; }
     #first-use-preview { aspect-ratio: 1236 / 690; }
-    .first-use-actions { margin-top: 0; }
+    .first-use-actions { width: min(100%,320px); margin-top: 16px; gap: 4px; justify-items: stretch; text-align: center; }
 }
 @media (max-width: 760px), (pointer: coarse) and (max-width: 1024px) and (max-height: 500px) {
-    #first-use { inset: max(62px,env(safe-area-inset-top)) max(18px,env(safe-area-inset-right)) max(18px,env(safe-area-inset-bottom)) max(18px,env(safe-area-inset-left)); place-items: center; }
-    .first-use-card { gap: 18px; }
+    #first-use { --intro-left-gutter: max(18px,env(safe-area-inset-left)); --intro-right-gutter: max(18px,env(safe-area-inset-right)); padding: max(62px,env(safe-area-inset-top)) var(--intro-right-gutter) max(18px,env(safe-area-inset-bottom)) var(--intro-left-gutter); }
+    #first-use .first-use-brand-scene { width: calc(100% + var(--intro-left-gutter) + var(--intro-right-gutter)); margin-left: calc(-1 * var(--intro-left-gutter)); margin-right: calc(-1 * var(--intro-right-gutter)); aspect-ratio: 1.44; }
     .first-use-copy h2 { font-size: 30px; margin-bottom: 10px; }
-    .first-use-purpose { font-size: 21px; line-height: 1.35; margin-bottom: 10px; max-width: 360px; }
+    .first-use-purpose { font-size: 21px; line-height: 1.35; margin-bottom: 10px; max-width: 284px; }
     .first-use-examples { font-size: 13px; line-height: 1.55; }
     .first-use-example figcaption { font-size: 11px; margin-bottom: 8px; }
     #first-use-preview { border-radius: 12px; }
@@ -84,7 +109,9 @@ body {
 }
 @media (max-height: 690px) {
     #first-use { align-items: start; }
-    .first-use-card { gap: 12px; }
+}
+@media (max-width: 1120px) and (max-height: 500px) and (orientation: landscape) {
+    #first-use .first-use-brand-scene { width: min(100%,320px); }
 }
 
 #galaxy {

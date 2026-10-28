@@ -20,7 +20,8 @@ class StagingPackageTests(unittest.TestCase):
             self.assertTrue({'index.html', 'startup.js', 'script.js', 'time-metadata.js', 'time-view-model.js', 'temporal-avatars.js', 'assets/fonts/Manrope-Variable.ttf', 'assets/fonts/OFL-Manrope.txt', 'time-view.js', 'time-view.css', 'body-renderer.js', 'first-use.js', 'task-views.js', 'sidebar-split.js', 'task-lists.js', 'ids.js', 'vendor/LICENSES.txt',
                              'persistence/local-metadata-store.js', 'persistence/indexeddb-file-store.js', 'services/local-restore-session.js',
                              'services/local-restore.js', 'object-urls.js', 'storage-capacity.js', 'services/attachment-storage-audit.js', 'backup-ui.js',
-                             'assets/introduction-example.png', 'assets/introduction-example-compact.png'} <= set(files))
+                             'assets/introduction-example.png', 'assets/introduction-example-compact.png',
+                             'assets/cosmifold-astronaut-desktop.webp', 'assets/cosmifold-astronaut-mobile.webp'} <= set(files))
             for probe in ['tests/restore_model_fixture.py', 'tests/object_url_probe.js', 'tests/storage_capacity_browser.py',
                           'tests/attachment_orphan_probe.js', 'tests/persistence_integration_browser.py']:
                 self.assertNotIn(probe, files)
