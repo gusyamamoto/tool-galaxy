@@ -81,6 +81,21 @@ class StagingPackageTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 staging.prepare(output)
 
+    def test_deferred_images_remain_packaged_with_the_same_path_validation(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / 'vendor').mkdir()
+            for name in ['404.html', '_headers', 'vendor/LICENSES.txt', 'vendor/README.md', 'desktop.webp', 'mobile.webp']:
+                (root / name).write_text('fixture')
+            (root / 'index.html').write_text('<picture><source data-srcset="desktop.webp 1x, mobile.webp 2x"><img data-src="mobile.webp"></picture>')
+            self.assertTrue({'desktop.webp', 'mobile.webp'} <= set(staging.runtime_assets(root)))
+            for attribute, tag in [('data-src', 'img'), ('data-srcset', 'source')]:
+                for value in ['missing.webp', '../outside.webp', 'https://example.com/remote.webp', 'dev/private.webp']:
+                    with self.subTest(attribute=attribute, value=value):
+                        (root / 'index.html').write_text(f'<{tag} {attribute}="{value}">')
+                        with self.assertRaises(ValueError):
+                            staging.runtime_assets(root)
+
     def test_missing_escaping_remote_and_dev_assets_refuse_preparation(self):
         for reference in ['missing.js', '../outside.js', 'https://example.com/app.js', 'dev/private.js']:
             with self.subTest(reference=reference), tempfile.TemporaryDirectory() as directory:

@@ -12,9 +12,22 @@ class FirstUseOnboarding {
     }
     sync({empty,available,entries}){
         const show=empty&&available;
+        if(show)this.setArtworkActive(true);
         this.root.hidden=!show;
+        if(!show)this.setArtworkActive(false);
         document.getElementById('galaxy').classList.toggle('first-use-visible',show);
         if(empty||!available||(this.state.rootId&&!entries.has(this.state.rootId)))this.hideHint();
+    }
+    setArtworkActive(active){
+        // Unknown/returning/recovery states never expose image URLs. Activate
+        // picture sources before fallback imgs; disarm imgs first when hiding.
+        for(const attribute of active?['srcset','src']:['src','srcset']){
+            const from=active?`data-${attribute}`:attribute,to=active?attribute:`data-${attribute}`;
+            const selector=attribute==='src'?`img[${from}]`:`source[${from}],img[${from}]`;
+            for(const node of this.root.querySelectorAll(selector)){
+                node.setAttribute(to,node.getAttribute(from));node.removeAttribute(from);
+            }
+        }
     }
     save(state){this.state=state;this.preferences.update({firstUseHints:state}).catch(()=>{});}
     created({wasEmpty,rootId,created}){
