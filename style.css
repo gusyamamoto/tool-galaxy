@@ -66,6 +66,8 @@ body {
 }
 #introduction-example { display: block; width: 100%; height: 100%; object-fit: contain; }
 .first-use-actions { grid-area: actions; position: relative; z-index: 1; align-self: start; margin-top: 26px; display: grid; gap: 8px; justify-items: start; }
+.first-use-storage { margin: 0; color: #9eafc4; font-size: 12px; line-height: 18px; }
+.first-use-storage span { display: block; }
 #first-use-create { min-height: 48px; padding: 12px 20px; background: #d0e1f5; border: 1px solid #ebf4ff; border-radius: 8px; color: #102032; font-size: 15px; font-weight: 600; box-shadow: 0 3px 20px #8cb6e51a; }
 #first-use-create:hover { background: #e5effc; }
 #first-use-help { min-height: 44px; padding: 8px 0; border: 0; background: transparent; box-shadow: none; color: #aebfd4; font-size: 13px; }

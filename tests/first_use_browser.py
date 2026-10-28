@@ -25,6 +25,8 @@ def run_first_use_checks(*, cdp, evaluate, check, wait_for, load, shot):
     e('localStorage.clear()');viewport(390,844);reload()
     check(e('entries.size===0&&nodes.size===0&&physics.particles.size===0&&!firstUse.root.hidden'),'empty Universe shows Introduction without real demo bodies')
     check(e('firstUse.root.querySelector("h2").textContent==="Cosmifold"&&firstUse.root.textContent.includes("Organize anything")'),'Introduction purpose and tone remain')
+    check(e('(()=>{const p=document.getElementById("first-use-storage");return firstUse.root.contains(p)&&[...p.children].map(s=>s.textContent).join("|")==="Saved in this browser for now.|Use Backup to keep a copy."&&p.getClientRects().length>0})()'),'first use explains browser-local saving and manual Backup in the approved plain wording')
+    check(e('(()=>{const p=document.getElementById("first-use-storage");return p.tagName==="P"&&!p.closest("dialog,[role=alert],[role=dialog]")&&!p.querySelector("a,button,svg,input")&&!document.querySelector("dialog[open]")&&document.getElementById("backup-dialog").open===false})()'),'disclosure adds no modal, acknowledgement, icon or automatic Backup workflow')
     check(e('!firstUse.root.querySelector("video,canvas,[autoplay],[controls]")&&typeof FirstUsePreview==="undefined"&&typeof firstUseScene==="undefined"'),'Introduction has no video, autoplay, live example renderer or animation data')
     check(e('document.querySelector("#first-use-preview source")&&document.getElementById("introduction-example").fetchPriority==="high"'),'Introduction has an eager local responsive static image')
     check(e('document.querySelectorAll(".first-use-brand").length===1&&firstUse.root.querySelector(".first-use-brand-scene source").getAttribute("srcset")==="assets/cosmifold-astronaut-desktop.webp"&&firstUse.root.querySelector(".first-use-brand").getAttribute("src")==="assets/cosmifold-astronaut-mobile.webp"&&firstUse.root.querySelector(".first-use-brand").alt===""&&!document.querySelector("#hierarchy-sidebar .first-use-brand")'),'one decorative picture switches the two approved backgrounds only within Introduction')
@@ -39,6 +41,9 @@ def run_first_use_checks(*, cdp, evaluate, check, wait_for, load, shot):
         check(e('(()=>{const p=document.getElementById("first-use-preview"),i=document.getElementById("introduction-example"),r=p.getBoundingClientRect(),scale=Math.min(r.width/i.naturalWidth,r.height/i.naturalHeight);return scale<=.6&&getComputedStyle(i).objectFit==="contain"&&parseFloat(getComputedStyle(p).borderRadius)>0})()'),f'{width}: sharp image fits the existing rounded container without cropping')
         columns=e('getComputedStyle(document.querySelector(".first-use-card")).gridTemplateColumns.split(" ").length')
         check(columns==(1 if width<=1120 else 2),f'{width}: existing Introduction column layout remains')
+        check(e('(()=>{const p=document.getElementById("first-use-storage"),r=p.getBoundingClientRect(),h=document.getElementById("first-use-help").getBoundingClientRect(),x=document.querySelector(".first-use-example").getBoundingClientRect(),s=getComputedStyle(p);return r.top>=h.bottom&&r.left>=0&&r.right<=innerWidth&&parseFloat(s.fontSize)>=12&&s.lineHeight==="18px"&&s.backgroundColor==="rgba(0, 0, 0, 0)"&&s.borderTopWidth==="0px"&&s.boxShadow==="none"&&[...p.children].every(line=>line.getBoundingClientRect().height===18)&&(innerWidth<=1120?r.bottom<=x.top:r.right<=x.left)})()'),f'{width}x{height}: disclosure is two readable secondary lines after Help and before/beside the product example, without a banner or wrapping')
+        if (width,height) in [(1440,900),(1280,800),(1200,768),(390,844),(320,568)]:
+            check(e('(()=>{const p=document.getElementById("first-use-storage"),parent=p.parentElement,next=p.nextSibling,selectors=[".first-use-brand-scene",".first-use-brand",...(innerWidth<=430?["#first-use-title","#first-use-create"]:[])],geometry=()=>JSON.stringify(selectors.map(s=>document.querySelector(s).getBoundingClientRect().toJSON())),before=geometry(),height=parent.getBoundingClientRect().height;p.remove();try{return geometry()===before&&Math.abs(height-parent.getBoundingClientRect().height-(innerWidth<=1120?40:44))<.1;}finally{parent.insertBefore(p,next);}})()'),f'{width}: adding disclosure preserves the approved artwork geometry and phone headline/CTA position, adding only two lines plus the existing grid gap')
         if width>1120:
             measure='(()=>{const b=document.querySelector(".first-use-brand"),r=b.getBoundingClientRect(),p=b.parentElement.getBoundingClientRect();return {left:r.left,top:r.top,width:r.width,height:r.height,frameLeft:p.left,frameWidth:p.width,src:b.currentSrc}})()'
             e('hierarchySidebar.setCollapsed(false)');frame()
@@ -72,6 +77,11 @@ def run_first_use_checks(*, cdp, evaluate, check, wait_for, load, shot):
         check(e('(()=>{const b=firstUse.root.querySelector(".first-use-brand"),s=getComputedStyle(b),p=getComputedStyle(b.parentElement);return s.borderTopWidth==="0px"&&s.boxShadow==="none"&&s.backgroundColor==="rgba(0, 0, 0, 0)"&&p.backgroundColor==="rgba(0, 0, 0, 0)"&&b.getAnimations({subtree:true}).length===0})()'),f'{width}: astronaut has no card, frame, background panel, shadow or animation')
         if width<=430:
             check(e('(()=>{const c=document.getElementById("first-use-create").getBoundingClientRect(),r=firstUse.root.getBoundingClientRect();return c.top>=r.top&&c.bottom<=r.bottom})()'),f'{width}x{height}: primary CTA is initially visible before any intro scrolling')
+        if (width,height) in [(390,844),(320,568)]:
+            e('document.getElementById("first-use-storage").scrollIntoView({block:"nearest"})');frame()
+            check(e('(()=>{const r=document.getElementById("first-use-storage").getBoundingClientRect();return r.top>=0&&r.bottom<=innerHeight})()'),f'{width}: the complete disclosure is reachable with normal intro scrolling')
+            shot(f'first-use-storage-{width}x{height}')
+            e('firstUse.root.scrollTop=0')
         e('document.getElementById("first-use-create").scrollIntoView({block:"nearest"})');frame()
         check(e('(()=>{const b=document.getElementById("first-use-create"),r=b.getBoundingClientRect();return r.top>=0&&r.bottom<=innerHeight&&b.textContent.includes("Create your first Item")})()'),f'{width}: original CTA stays reachable: '+q(e('({cta:document.getElementById("first-use-create").getBoundingClientRect().toJSON(),scroll:firstUse.root.scrollTop,viewport:innerHeight})')))
         if height<500:
@@ -104,6 +114,7 @@ def run_first_use_checks(*, cdp, evaluate, check, wait_for, load, shot):
     check(e('dialog.open&&entries.size===0&&!firstUse.root.hidden&&firstUse.hint.hidden'),'invalid creation preserves Introduction and onboarding state')
     root=submit('Travel')
     check(e('firstUse.root.hidden&&document.getElementById("introduction-example").isConnected'),'successful creation hides static Introduction without renderer teardown')
+    check(e('!document.getElementById("first-use-storage").getClientRects().length&&!document.getElementById("backup-dialog").open'),'successful creation hides the disclosure with Introduction and does not open Backup')
     check(e('!document.querySelector(".first-use-brand").getClientRects().length&&[...document.querySelectorAll("img")].filter(img=>img.getAttribute("src")?.startsWith("assets/cosmifold-astronaut-")).every(img=>firstUse.root.contains(img))'),'entering the real app hides the astronaut and leaves internal UI logo-free')
     check(e(f'entries.size===1&&selectedNode.dataset.entryId==={q(root)}'),'ordinary CRUD selects the first real Item')
     check(e('!firstUse.hint.hidden&&firstUse.hint.textContent.includes("Tap + to add something inside Travel.")&&firstUse.hint.dataset.anchor==="entry-add-button"'),'first coach still names the Item and anchors to Contents +')
@@ -119,6 +130,7 @@ def run_first_use_checks(*, cdp, evaluate, check, wait_for, load, shot):
     check(e('firstUse.hint.hidden&&firstUse.root.hidden'),'later creation does not restart hints or Introduction')
     reload()
     check(e('entries.size===3&&firstUse.root.hidden&&firstUse.hint.hidden'),'existing saved data remains ordinary after reload')
+    check(e('!document.getElementById("first-use-storage").getClientRects().length&&!document.querySelector("dialog[open]")'),'returning users receive no storage-disclosure interruption')
     e(f'requestGalaxyArchive({q(root)});document.getElementById("archive-galaxy-form").requestSubmit();applicationCommandTail');wait_for('!archiveBusy');frame()
     check(e('entries.size===0&&archivedEntries.size===3&&firstUse.root.hidden'),'archived data prevents a false empty Introduction')
     check(not cdp.errors,'no static Introduction/onboarding exceptions: '+q(cdp.errors))
