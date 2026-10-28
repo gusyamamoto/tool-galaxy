@@ -808,13 +808,29 @@ const contentDrops=new CosmosContentDrops({host:galaxy,getEntry:id=>entries.get(
 const labelDensity = new LabelDensity();
 function requestLabelLayout(force=false) {
     labelDensity.request(()=>{
-        // Reuse projected body geometry only if a Galaxy name needs clearance.
-        // Names stay attached to their roots; suppress an obscured ordinary
-        // anchor instead of moving it around neighboring systems.
-        let anchorObstacles=null;
-        const getAnchorObstacles=()=>anchorObstacles??=Array.from(nodes.values())
-            .filter(node=>node.dataset.culled!=='true'&&node.dataset.semanticHidden!=='true'&&node.dataset.renderSkipped!=='true')
-            .map(node=>{const r=node.renderDiameter/2+3;return {left:node.renderX-r,right:node.renderX+r,top:node.renderY-r,bottom:node.renderY+r};});
+        // Reuse projected geometry; only immediate, visible Suns contribute to
+        // their Galaxy's title envelope. Physics and label disclosure stay intact.
+        let anchorGeometry=null;
+        const getAnchorGeometry=()=>{
+            if(anchorGeometry)return anchorGeometry;
+            const bodies=[],groups=new Map(),b=physics.bounds;
+            nodes.forEach((node,id)=>{
+                if(node.dataset.culled==='true'||node.dataset.semanticHidden==='true'||node.dataset.renderSkipped==='true'){node.galaxyLabelVisible=false;return;}
+                const r=node.renderDiameter/2,body={left:node.renderX-r,right:node.renderX+r,top:node.renderY-r,bottom:node.renderY+r};
+                bodies.push({left:body.left-3,right:body.right+3,top:body.top-3,bottom:body.bottom+3});
+                const entry=entries.get(id);
+                if(entry.role!=='sun')return;
+                // Retain an already visible Sun for eight exit pixels, so
+                // tiny edge drift cannot toggle the entire group heading.
+                const margin=node.galaxyLabelVisible?8:0;
+                node.galaxyLabelVisible=body.right>=b.left-margin&&body.left<=b.right+margin&&body.bottom>=b.top-margin&&body.top<=b.bottom+margin;
+                if(!node.galaxyLabelVisible)return;
+                const group=groups.get(entry.parentId);
+                if(!group)groups.set(entry.parentId,body);
+                else {group.left=Math.min(group.left,body.left);group.right=Math.max(group.right,body.right);group.top=Math.min(group.top,body.top);group.bottom=Math.max(group.bottom,body.bottom);}
+            });
+            return anchorGeometry={bodies,groups};
+        };
         const candidates=[],labels=[],offsets=[],rank={galaxy:4,sun:5,planet:6,moon:7,satellite:8,astronaut:9};
         // Only normal orientation envelopes replace the old cutoff. Keep the
         // established Constellation lens disclosure/density behavior intact.
@@ -850,13 +866,14 @@ function requestLabelLayout(force=false) {
                 offsets.push({label,x,y});rect={left:base.left+x,top:base.top+y,right:base.left+x+base.width,bottom:base.top+y+base.height,width:base.width,height:base.height};
                 const visible=Math.max(0,Math.min(rect.right,b.right)-Math.max(rect.left,b.left))*Math.max(0,Math.min(rect.bottom,b.bottom)-Math.max(rect.top,b.top));
                 if(entry.role!=='galaxy'&&!protectedLabel&&visible<rect.width*rect.height*.65)return;
-            }else if(label.edgeOffset){offsets.push({label,x:0,y:0});}
+            }else if(entry.role!=='galaxy'&&label.edgeOffset){offsets.push({label,x:0,y:0});}
             if(entry.role==='galaxy'){
-                // Stable below-core anchor at every tier, including explicit
-                // reveals. No cloud offsets, cardinal flips or collision nudges.
-                rect={left:node.renderX-metrics.width/2,top:node.renderY+node.renderDiameter/2+4,...metrics};
+                const geometry=getAnchorGeometry(),r=node.renderDiameter/2;
+                const position=cosmosView.galaxyLabelPosition({left:node.renderX-r,right:node.renderX+r,top:node.renderY-r,bottom:node.renderY+r},geometry.groups.get(id),metrics,b);
+                rect={...position,...metrics};
                 rect.right=rect.left+rect.width;rect.bottom=rect.top+rect.height;
-                const obscured=!protectedLabel&&getAnchorObstacles().some(body=>
+                offsets.push({label,x:rect.left-(node.renderX-metrics.width/2),y:rect.top-(node.renderY+r+4)});
+                const obscured=!protectedLabel&&geometry.bodies.some(body=>
                     Math.max(0,Math.min(rect.right,body.right)-Math.max(rect.left,body.left))*
                     Math.max(0,Math.min(rect.bottom,body.bottom)-Math.max(rect.top,body.top))>rect.width*rect.height*.24);
                 if(obscured){labels[labels.length-1].eligible=false;return;}

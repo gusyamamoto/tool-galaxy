@@ -277,3 +277,31 @@ test('Astronauts and tethers extend detail fades without changing existing tier 
     assert.ok(view.detail(5).astronautLabel>0&&view.detail(5).astronautLabel<1);assert.equal(view.detail(8).astronautLabel,1);
     assert.deepEqual(plain(view.tiers),{galaxy:.45,system:.58,close:.78});
 });
+
+test('Galaxy title sits above its Sun group while a childless Galaxy keeps its core anchor',()=>{
+    const view=load(),root={left:190,right:210,top:290,bottom:310},label={width:100,height:20},bounds={left:0,right:390,top:0,bottom:844};
+    assert.deepEqual(plain(view.galaxyLabelPosition(root,null,label,bounds)),{left:150,top:314});
+    const suns={left:60,right:300,top:220,bottom:450};
+    const title=view.galaxyLabelPosition(root,suns,label,bounds);
+    assert.equal(title.left+label.width/2,(suns.left+suns.right)/2);
+    assert.equal(title.top+label.height,suns.top-12);
+    assert.deepEqual(suns,{left:60,right:300,top:220,bottom:450});
+});
+
+test('Galaxy title stays inside the usable viewport and clear of its core',()=>{
+    const view=load(),label={width:180,height:40},bounds={left:10,right:310,top:20,bottom:568};
+    for(const x of [-200,200,500]){
+        const title=view.galaxyLabelPosition({left:140,right:160,top:180,bottom:200},{left:x-30,right:x+30,top:260,bottom:400},label,bounds);
+        assert.ok(title.left>=bounds.left+8&&title.left+label.width<=bounds.right-8);
+        assert.equal(title.top+label.height,168,'heading clears a higher Galaxy core');
+    }
+});
+
+test('small Sun-envelope drift changes the title continuously without switching sides',()=>{
+    const view=load(),root={left:140,right:160,top:300,bottom:320},label={width:100,height:20},bounds={left:0,right:390,top:0,bottom:844};
+    const base=view.galaxyLabelPosition(root,{left:60,right:300,top:220,bottom:450},label,bounds);
+    for(const delta of [-.5,-.25,0,.25,.5]){
+        const title=view.galaxyLabelPosition(root,{left:60+delta,right:300+delta,top:220+delta,bottom:450+delta},label,bounds);
+        assert.ok(Math.abs(title.left-base.left)<=.5&&Math.abs(title.top-base.top)<=.5);
+    }
+});
