@@ -41,19 +41,23 @@
 
         <section id="first-use" aria-labelledby="first-use-title" hidden>
             <div class="first-use-card">
+                <picture class="first-use-brand-scene" aria-hidden="true">
+                    <source media="(min-width: 1121px)" srcset="assets/cosmifold-astronaut-desktop.webp" width="2048" height="768">
+                    <img class="first-use-brand" src="assets/cosmifold-astronaut-mobile.webp" width="1024" height="1536" alt="" decoding="async" fetchpriority="high">
+                </picture>
                 <div class="first-use-copy">
                     <h2 id="first-use-title">Cosmifold</h2>
                     <p class="first-use-purpose">Organize anything as your own Universe.</p>
                     <p class="first-use-examples">Plan a trip, collect recipes, organize a project,<br class="first-use-break"> save ideas, photos, notes and tasks.</p>
                 </div>
-                <figure class="first-use-example">
-                    <figcaption>What you can build <span>&middot; Example Universe</span></figcaption>
-                    <picture id="first-use-preview" aria-hidden="true" inert><source media="(max-width: 1120px)" srcset="assets/introduction-example-compact.png"><img id="introduction-example" src="assets/introduction-example.png" width="1336" height="699" alt="" fetchpriority="high"></picture>
-                </figure>
                 <div class="first-use-actions">
                     <button id="first-use-create" type="button">+ Create your first Item</button>
                     <button id="first-use-help" type="button" aria-haspopup="dialog" aria-controls="help-dialog">How does it work?</button>
                 </div>
+                <figure class="first-use-example">
+                    <figcaption>What you can build <span>&middot; Example Universe</span></figcaption>
+                    <picture id="first-use-preview" aria-hidden="true" inert><source media="(max-width: 1120px)" srcset="assets/introduction-example-compact.png"><img id="introduction-example" src="assets/introduction-example.png" width="1336" height="699" alt="" fetchpriority="high"></picture>
+                </figure>
             </div>
         </section>
         <aside id="first-use-hint" aria-label="Getting started" hidden>
