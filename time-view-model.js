@@ -46,7 +46,11 @@ const cosmosTime = (() => {
         }
         return result.sort(compare);
     }
-    function upcoming(events,today){return events.filter(event=>!event.completed&&event.end>=today).sort((a,b)=>{
+    function isOverdue(event,today){return event.task===true&&!event.completed&&event.start<today;}
+    function upcoming(events,today){return events.filter(event=>!event.completed&&(isOverdue(event,today)||event.end>=today)).sort((a,b)=>{
+        const overdue=Number(isOverdue(b,today))-Number(isOverdue(a,today));
+        if(overdue)return overdue;
+        if(isOverdue(a,today))return compare(a,b);
         const aDate=a.start<today?today:a.start,bDate=b.start<today?today:b.start;
         return lexical(aDate,bDate)||lexical(a.time||'~',b.time||'~')||lexical(a.start,b.start)||lexical(a.id,b.id);
     });}
@@ -63,6 +67,6 @@ const cosmosTime = (() => {
     function dateLabel(value,locale){return localDate(value).toLocaleDateString(locale,{month:'short',day:'numeric'});}
     function relative(value,today,locale){return value===today?'Today':value===addDays(today,1)?'Tomorrow':dateLabel(value,locale);}
     function clock(value,locale){if(!value)return '';const date=localDate('2000-01-01');date.setHours(...value.split(':').map(Number));return date.toLocaleTimeString(locale,{hour:'numeric',minute:'2-digit'});}
-    return {palette,hash,localDate,key,addDays,shiftMonth,classify,anchor,context,aggregate,upcoming,onDay,firstWeekday,month,segments,dateLabel,relative,clock};
+    return {palette,hash,localDate,key,addDays,shiftMonth,classify,anchor,context,aggregate,isOverdue,upcoming,onDay,firstWeekday,month,segments,dateLabel,relative,clock};
 })();
 if(typeof module!=='undefined')module.exports=cosmosTime;

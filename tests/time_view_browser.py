@@ -152,6 +152,9 @@ def run_time_view_checks(*,cdp,e,check,wait_for,add,click,shot):
     e('timeWorkspace.close();window.timeAggregate=cosmosTime.aggregate;window.timeAggregateCalls=0;cosmosTime.aggregate=(...args)=>{timeAggregateCalls++;return timeAggregate(...args)};refreshTaskMetadata()')
     check(e('timeAggregateCalls===0'),'hidden Time performs no aggregation on canonical task refresh')
     e('cosmosTime.aggregate=timeAggregate;timeWorkspace.open()')
+    # Exercise canonical writes before the transient, non-persisted collection below.
+    from time_overdue_browser import run_time_overdue_checks
+    run_time_overdue_checks(cdp=cdp,e=e,check=check,wait_for=wait_for,add=add,shot=shot)
     e('window.timeReviewCollection={id:"time-review-collection",name:"Time navigation collection",memberEntryIds:[timeFixture.branch]};constellations.set(timeReviewCollection.id,timeReviewCollection)')
     e('activateConstellation(timeReviewCollection.id);camera.stopAnimation()')
     check(e('!timeWorkspace.active&&activeConstellationId===timeReviewCollection.id'),'existing Constellation navigation exits Time into its normal view')

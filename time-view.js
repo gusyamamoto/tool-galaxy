@@ -84,17 +84,21 @@ class TimeWorkspace {
     }
     description(event){return `${event.task?(event.completed?'Completed task':'Task'):'Item'}: ${event.title}; ${cosmosTime.dateLabel(event.start)}${event.range?` – ${cosmosTime.dateLabel(event.end)}`:''}; ${event.time?cosmosTime.clock(event.time):'All day'}; ${event.context.label}`;}
     eventButton(event,className='time-event',rangeText=''){
+        const overdue=className.includes('time-upcoming-event')&&cosmosTime.isOverdue(event,this.today);
+        const detail=overdue?`Due ${cosmosTime.dateLabel(event.start)}${event.start.slice(0,4)!==this.today.slice(0,4)?` ${event.start.slice(0,4)}`:''}${event.time?` · ${cosmosTime.clock(event.time)}`:''}`:event.time?cosmosTime.clock(event.time):rangeText;
         const button=this.button(className,'',()=>{this.lastEventId=event.id;this.setSelection(event.id);this.inspect(event.id);});
+        button.classList.toggle('time-overdue',overdue);
         button.dataset.timeEntryId=event.id;button.dataset.family=event.context.family;button.dataset.variant=event.context.variant;
         button.style.setProperty('--time-context',event.context.color);button.classList.toggle('time-completed',event.completed);
         button.dataset.selected=String(event.id===this.getSelection());
         button.setAttribute('aria-pressed',button.dataset.selected);
-        button.setAttribute('aria-label',this.description(event));button.title=this.description(event);
+        const description=overdue?`Overdue; ${detail}; ${this.description(event)}`:this.description(event);
+        button.setAttribute('aria-label',description);button.title=description;
         const label=document.createElement('span');label.className='time-event-title';label.textContent=event.title;
         if(className.includes('time-upcoming-event'))button.append(cosmosTemporalAvatars.render(this.getEntries(),event.id));
         button.append(label);
-        button.classList.toggle('time-event--date-only',!event.time&&!rangeText);
-        if(event.time||rangeText){const clock=document.createElement('span');clock.className='time-clock';clock.textContent=event.time?cosmosTime.clock(event.time):rangeText;button.append(clock);}
+        button.classList.toggle('time-event--date-only',!detail);
+        if(detail){const clock=document.createElement('span');clock.className='time-clock';clock.textContent=detail;button.append(clock);}
         return button;
     }
     rangeLabel(event){
@@ -179,11 +183,12 @@ class TimeWorkspace {
         if(!this.calendar.querySelector('[data-time-day][tabindex="0"]'))this.calendar.querySelector(`[data-time-day="${this.month}"]`).tabIndex=0;
         this.renderDay();
         const upcoming=cosmosTime.upcoming(this.events,this.today),groups=new Map(),cards=document.createDocumentFragment();
-        for(const event of upcoming){const day=event.start<this.today?this.today:event.start;if(!groups.has(day))groups.set(day,[]);groups.get(day).push(event);}
+        for(const event of upcoming){const day=cosmosTime.isOverdue(event,this.today)?'overdue':event.start<this.today?this.today:event.start;if(!groups.has(day))groups.set(day,[]);groups.get(day).push(event);}
         for(const [day,events] of groups){
             const group=document.createElement('li');group.className='time-date-group';group.dataset.timeGroup=day;group.classList.toggle('time-date-group--multiple',events.length>1);
+            group.classList.toggle('time-date-group--overdue',day==='overdue');
             const date=document.createElement('span');date.className='time-upcoming-date';date.id=`time-group-${day}`;
-            date.textContent=events.length===1&&events[0].range?`${events[0].start<this.today?'Ongoing · ':''}${this.rangeLabel(events[0])}`:cosmosTime.relative(day,this.today);
+            date.textContent=day==='overdue'?'Overdue':events.length===1&&events[0].range?`${events[0].start<this.today?'Ongoing · ':''}${this.rangeLabel(events[0])}`:cosmosTime.relative(day,this.today);
             date.title=date.textContent;
             const stack=document.createElement('div');stack.className='time-upcoming-events';stack.setAttribute('role','group');stack.setAttribute('aria-labelledby',date.id);
             for(const event of events)stack.append(this.eventButton(event,'time-event time-upcoming-event',event.range&&events.length>1?`${event.start<this.today?'Ongoing · ':''}${this.rangeLabel(event)}`:''));
