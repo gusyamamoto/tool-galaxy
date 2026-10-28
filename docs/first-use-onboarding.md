@@ -17,6 +17,29 @@ The former `FirstUsePreview`, fictional runtime scene, camera interpolation, lab
 
 ## Existing onboarding state
 
+### Conditional artwork loading
+
+The two astronaut WebPs and the two Example Universe PNGs are first-use-only
+resources. Their picture/image URLs are declared as inert `data-srcset`/`data-src`
+attributes in `index.html`; no active intro image URL or image preload is present
+before the existing first-use decision. CSS provides the approved geometry and
+masks, not artwork URLs. Hiding an img with an active source previously still let
+the browser download it before canonical startup state was known.
+
+`FirstUseOnboarding.sync` activates those attributes only for its existing
+`empty && available` result. Picture sources activate before fallback img sources
+so the browser chooses the current responsive variant. Hiding Introduction makes
+the URLs inert again, avoiding another variant request on later resizing. Unknown,
+returning, archived-only, Sample and recovery states do not activate artwork.
+No extra saved flag, timer, observer, startup gate or persistence change is used.
+
+Both the packager and browser asset inventory recognize these deferred declarations
+and apply the same local-path validation as ordinary image sources. All four files
+remain in the runtime package for genuine first use. The first-use browser suite
+also verifies actual cold-cache requests and transfer sizes, held-startup states,
+responsive switching in both directions, and resizing after completion. Normal
+app images, fonts, renderer and initialization are not deferred.
+
 `FirstUseOnboarding` in `first-use.js` controls visibility and the existing two temporary hints. `syncFirstUse()` checks that both live and archived entries are empty. Sample mode and unavailable/unreadable storage do not show Introduction; a legitimately empty restored Universe does, independently of completed hint preferences.
 
 The first root uses the existing `child` phase and root ID. Its coach names that Item and follows its visible Contents +, compact mobile + or visible desktop sidebar +. The first child completes the existing `done` phase; starter creation with children goes directly to the existing branch hint. Dismissal and the existing 16-second timeout stop coach positioning and clear its temporary target class. Reload does not restart a dismissed child coach.

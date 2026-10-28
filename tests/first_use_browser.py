@@ -133,4 +133,6 @@ def run_first_use_checks(*, cdp, evaluate, check, wait_for, load, shot):
     check(e('!document.getElementById("first-use-storage").getClientRects().length&&!document.querySelector("dialog[open]")'),'returning users receive no storage-disclosure interruption')
     e(f'requestGalaxyArchive({q(root)});document.getElementById("archive-galaxy-form").requestSubmit();applicationCommandTail');wait_for('!archiveBusy');frame()
     check(e('entries.size===0&&archivedEntries.size===3&&firstUse.root.hidden'),'archived data prevents a false empty Introduction')
+    from first_use_network_browser import run_first_use_network_checks
+    run_first_use_network_checks(cdp=cdp,e=e,check=check,wait_for=wait_for)
     check(not cdp.errors,'no static Introduction/onboarding exceptions: '+q(cdp.errors))

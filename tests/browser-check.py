@@ -36,8 +36,10 @@ class AssetReferences(HTMLParser):
         attrs = dict(attributes)
         for key in ('src', 'poster'):
             if attrs.get(key):self.references.append(attrs[key])
-        if tag in ('img', 'source') and attrs.get('srcset'):
-            self.references.extend(candidate.strip().split()[0] for candidate in attrs['srcset'].split(',') if candidate.strip())
+        if tag == 'img' and attrs.get('data-src'):self.references.append(attrs['data-src'])
+        if tag in ('img', 'source'):
+            for key in ('srcset', 'data-srcset'):
+                if attrs.get(key):self.references.extend(candidate.strip().split()[0] for candidate in attrs[key].split(',') if candidate.strip())
         if tag == 'link' and attrs.get('href'):self.references.append(attrs['href'])
 
 
