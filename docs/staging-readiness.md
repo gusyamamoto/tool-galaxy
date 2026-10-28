@@ -14,11 +14,12 @@ python -B tests/staging_package_test.py
 python -B tests/browser-check.py --staging-only --site-root staging-site
 ```
 
-The current artifact contains 61 declared static files, including the existing
+The current artifact contains 70 runtime files, including the existing
 404 page, headers and vendor notices; the preparation command reports the actual
 discovered inventory. Scripts, styles and their existing relative locations are
 preserved. There is no compilation, framework, package installation, migration or
-duplicated source tree to maintain. The helper discovers HTML/CSS asset references;
+duplicated source tree to maintain. The helper discovers HTML/CSS asset references,
+including deferred first-use image declarations;
 `script.js`, dynamically loaded by startup, is already declared as an HTML preload.
 Any future dynamic local asset must also be declared/reviewed in that inventory.
 
@@ -97,7 +98,7 @@ Other URL categories were reviewed separately:
 | Blob/data URLs | Generated images, native file viewing/download and stored previews; existing CSP permits them |
 
 There are no local data fetches, module imports, workers, runtime filesystem paths,
-remote fonts or additional asset servers. The 51-file inventory resolves with
+remote fonts or additional asset servers. The current runtime inventory resolves with
 compatible MIME types. Console output consists of meaningful backup/restore/startup
 errors and explicit Sample failures; no routine debug spam or sensitive dumps
 were found in the staging runtime.
