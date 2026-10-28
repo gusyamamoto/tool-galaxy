@@ -1591,6 +1591,10 @@ def main():
             check(not cdp.errors,'no foundation performance browser exceptions');return
 
         if options.help_only:
+            def wait_help_closed():
+                # Native close dispatch is asynchronous; wait for the restored
+                # interaction state before checking focus or opening another UI.
+                wait_for("!document.getElementById('help-dialog').open&&document.activeElement.id==='utility-more'")
             def key(value,code,text=None,modifiers=0):
                 params=dict(key=value,code=code,modifiers=modifiers)
                 if text is not None:params['text']=text
@@ -1638,16 +1642,17 @@ def main():
             check(evaluate("(()=>{const d=document.getElementById('help-dialog'),r=d.getBoundingClientRect();return r.width<=560&&r.width>=480&&r.left>=0&&r.right<=innerWidth&&r.top>=0&&r.bottom<=innerHeight})()"),'desktop Help stays compact inside the viewport')
             shot('help-desktop')
             click_selector('#close-help-button')
-            check(evaluate("!document.getElementById('help-dialog').open&&document.activeElement.id==='utility-more'"),'close button returns focus to Help')
+            wait_help_closed()
+            check(evaluate("!document.getElementById('help-dialog').open&&document.activeElement.id==='utility-more'"),'close button returns focus to More')
             key('Enter','Enter','\r');key('Enter','Enter','\r');wait_for("document.getElementById('help-dialog').open")
             check(True,'keyboard activates the Help trigger');key('Escape','Escape')
-            wait_for("!document.getElementById('help-dialog').open")
+            wait_help_closed()
             check(evaluate("document.activeElement.id==='utility-more'") and workspace()==original,'Escape restores focus without closing Content or deactivating the Constellation')
             evaluate(f"hierarchySidebar.restoreMovedSelection([{json.dumps(item)},{json.dumps(secondary)}],{json.dumps(item)})")
             group=workspace();click_selector('#help-button')
             check(workspace()==group,'Help preserves the complete multi-selection, active item, Content draft and zoomed system')
             evaluate("document.querySelector('#help-moving summary').click()");shot('help-moving-copying')
-            key('Escape','Escape');wait_for("!document.getElementById('help-dialog').open")
+            key('Escape','Escape');wait_help_closed()
             check(workspace()==group,'closing Help restores the entire selected group without navigation')
             copy=evaluate("document.getElementById('help-dialog').textContent")
             check(not re.search(r'\b(?:CB|celestial bod(?:y|ies)|Task Mode|inherited|recursive|terminal tasks?|bookmarks?|portals?|canonical|parentId|schema|database)\b',copy,re.I),'Help uses Item and Links with no obsolete/internal task terminology')
@@ -1662,7 +1667,7 @@ def main():
             check(evaluate("!document.querySelector('#help-dialog a[href],#help-dialog iframe')"),'Help stays informational without external links or embeds')
             check(len(copy.split())<650,'deeper Help stays compact and progressive: '+str(len(copy.split()))+' words total')
             evaluate("contentInspector.editLocation();contentInspector.locationInput.value='Keep my unfinished place'")
-            location_draft=workspace();click_selector('#help-button');key('Escape','Escape');wait_for("!document.getElementById('help-dialog').open")
+            location_draft=workspace();click_selector('#help-button');key('Escape','Escape');wait_help_closed()
             check(workspace()==location_draft,'Help also preserves the inline Location editor and its unfinished text')
             for width,height in [(360,800),(390,844),(430,932),(320,568),(740,360)]:
                 cdp.call('Emulation.setDeviceMetricsOverride',width=width,height=height,deviceScaleFactor=1,mobile=True)
@@ -1697,9 +1702,11 @@ def main():
                 if width in [320,360,390,430]:shot(f'help-expanded-{width}')
                 evaluate("document.querySelectorAll('#help-dialog details').forEach(t=>t.open=t.id==='help-constellations');document.querySelector('#help-dialog .help-topics').scrollTop=0;new Promise(r=>requestAnimationFrame(r))")
                 shot(f'help-constellations-{width}x{height}')
-                click_selector('#close-help-button');check(workspace()==before,f'Help leaves mobile workspace unchanged at {width}x{height}')
+                click_selector('#close-help-button');wait_help_closed()
+                check(evaluate("document.activeElement.id==='utility-more'") and workspace()==before,f'Help restores More focus and leaves mobile workspace unchanged at {width}x{height}')
             cdp.call('Emulation.setEmulatedMedia',features=[dict(name='prefers-reduced-motion',value='reduce')])
             click_selector('#help-button');key('Escape','Escape')
+            wait_help_closed()
             check(evaluate("!document.getElementById('help-dialog').open&&matchMedia('(prefers-reduced-motion: reduce)').matches"),'reduced motion keeps Help usable without animation')
             evaluate('contentInspector.cancelLocation();document.getElementById("content-cancel-notes").click()')
             real_saved=evaluate("localStorage.getItem('galaxy:user-data')")
@@ -1708,7 +1715,7 @@ def main():
             evaluate("document.getElementById('help-button').scrollIntoView({block:'nearest'})");wait_camera()
             sample_before=workspace();click_selector('#help-button')
             check(evaluate("document.getElementById('help-dialog').open"),'Help opens from the Sample utility row before Escape is tested')
-            key('Escape','Escape');wait_for("!document.getElementById('help-dialog').open")
+            key('Escape','Escape');wait_help_closed()
             sample_after=workspace()
             sample_changes={k:[v,json.loads(sample_after).get(k)] for k,v in json.loads(sample_before).items() if v!=json.loads(sample_after).get(k)}
             check(sample_after==sample_before and evaluate("localStorage.getItem('galaxy:user-data')")==real_saved,'Help in Sample preserves the current workspace and real saved data: '+json.dumps(sample_changes))
@@ -4158,6 +4165,7 @@ def main():
             topology=evaluate('JSON.stringify([...entries].map(([id,e])=>[id,e.parentId,e.role,e.depth,e.content]))')
             view=evaluate('JSON.stringify(camera.view)');alpha=evaluate('physics.simulation.alpha()');positions=evaluate('JSON.stringify([...entries].map(([id,e])=>[id,e.x,e.y]))')
             evaluate(f"document.querySelector('[data-constellation-id=\"{c1}\"] .collection-add').focus()")
+            wait_for(f"(()=>{{const b=document.querySelector('[data-constellation-id=\"{c1}\"] .collection-add'),r=b.getBoundingClientRect();return !constellationWorkspace.savingName&&document.elementFromPoint(r.x+r.width/2,r.y+r.height/2)?.closest('.collection-add')===b}})()")
             click_selector(f'[data-constellation-id="{c1}"] .collection-add')
             check(evaluate(f"constellationWorkspace.picker.open&&constellationWorkspace.pickerId==={json.dumps(c1)}&&activeConstellationId===null"),'row + targets its collection without activating or navigating')
             evaluate("document.getElementById('constellation-member-search').value='Hotel';document.getElementById('constellation-member-search').dispatchEvent(new Event('input'))")
@@ -4366,13 +4374,15 @@ def main():
             cdp.call('Emulation.setDeviceMetricsOverride',width=390,height=844,deviceScaleFactor=1,mobile=False)
             cdp.call('Emulation.setTouchEmulationEnabled',enabled=True,maxTouchPoints=1)
             evaluate('hierarchySidebar.setCollapsed(false)');wait_camera()
-            evaluate("if(constellationWorkspace.collapsed)document.getElementById('constellations-toggle').click()")
+            evaluate("if(!constellationWorkspace.collapsed)document.getElementById('constellations-toggle').click()")
             point=evaluate("(()=>{const r=document.getElementById('constellations-toggle').getBoundingClientRect();return{x:r.x+r.width/2,y:r.y+r.height/2}})()")
             cdp.call('Input.dispatchTouchEvent',type='touchStart',touchPoints=[point]);cdp.call('Input.dispatchTouchEvent',type='touchEnd',touchPoints=[])
             check(evaluate('!constellationWorkspace.list.hidden&&hierarchySidebar.tree.hidden&&!constellationWorkspace.nameDialog.open'),'touch chevron selects Constellations exclusively without opening creation')
             point=evaluate("(()=>{const r=document.getElementById('constellations-toggle').getBoundingClientRect();return{x:r.x+r.width/2,y:r.y+r.height/2}})()")
             cdp.call('Input.dispatchTouchEvent',type='touchStart',touchPoints=[point]);cdp.call('Input.dispatchTouchEvent',type='touchEnd',touchPoints=[])
-            check(evaluate('!constellationWorkspace.list.hidden'),'touch chevron expands the section without navigation')
+            check(evaluate("constellationWorkspace.collapsed&&constellationWorkspace.list.hidden&&document.getElementById('constellations-toggle').ariaExpanded==='false'&&!constellationWorkspace.nameDialog.open"),'second touch collapses Constellations without opening creation')
+            cdp.call('Input.dispatchTouchEvent',type='touchStart',touchPoints=[point]);cdp.call('Input.dispatchTouchEvent',type='touchEnd',touchPoints=[])
+            check(evaluate("!constellationWorkspace.collapsed&&!constellationWorkspace.list.hidden&&document.getElementById('constellations-toggle').ariaExpanded==='true'&&hierarchySidebar.tree.hidden&&!constellationWorkspace.nameDialog.open"),'third touch reopens Constellations exclusively for its row controls')
             check(evaluate("getComputedStyle(document.getElementById('new-constellation-button')).opacity==='1'&&[...document.querySelectorAll('.constellation-row')].every(r=>r.querySelector('.collection-add').getBoundingClientRect().width>=44&&r.querySelector('.collection-more').getBoundingClientRect().width>=44)"),'section and row Add controls stay visible alongside management')
             evaluate("document.querySelector('[data-constellation-id=sample-constellation-trip] .collection-more').scrollIntoView({block:'nearest'})")
             point=evaluate("(()=>{const r=document.querySelector('[data-constellation-id=\"sample-constellation-trip\"] .collection-more').getBoundingClientRect();return{x:r.x+r.width/2,y:r.y+r.height/2}})()")
@@ -5567,7 +5577,9 @@ def main():
 
             leaf=chain[-1]
             menu_for(leaf)
-            check(evaluate("[...contextMenu.querySelectorAll('button:not([hidden])')].filter(b=>b.getClientRects().length).map(b=>b.dataset.action).join(',')==='edit,move,constellation,copy,duplicate-structure,delete'"),'canvas context menu exposes full management without creation or Paste')
+            menu_actions=evaluate("[...contextMenu.querySelectorAll('button:not([hidden])')].filter(b=>b.getClientRects().length).map(b=>b.dataset.action)")
+            expected_actions=['add-child','add-task-list','edit','move','copy','duplicate-structure','delete']
+            check(evaluate('constellations.size===0&&hierarchyClipboard.copiedRootIds.length===0') and menu_actions==expected_actions,f'canvas context menu exposes approved creation/management actions and hides unavailable Constellation/Paste actions: {menu_actions}')
             evaluate('closeContextMenu()')
             menu_for(leaf);evaluate("contextMenu.querySelector('[data-action=edit]').click()")
             check(evaluate(f"dialog.open && editingId==={json.dumps(leaf)} && fields[0].value===entries.get({json.dumps(leaf)}).name"),'context menu Edit opens the existing editor')
@@ -5586,14 +5598,10 @@ def main():
             check(evaluate(f'document.activeElement===nodes.get({json.dumps(leaf)})'),'Escape returns keyboard focus to the body without moving the camera')
             cdp.call('Input.dispatchKeyEvent',type='keyDown',key='F10',code='F10',modifiers=8,windowsVirtualKeyCode=121)
             check(evaluate('!contextMenu.hidden'),'Shift+F10 opens celestial actions from the keyboard')
-            cdp.call('Input.dispatchKeyEvent',type='keyDown',key='ArrowDown',code='ArrowDown',windowsVirtualKeyCode=40)
-            check(evaluate("document.activeElement.dataset.action==='move'"),'canvas menu arrow keys reach Move to')
-            cdp.call('Input.dispatchKeyEvent',type='keyDown',key='ArrowDown',code='ArrowDown',windowsVirtualKeyCode=40)
-            check(evaluate("document.activeElement.dataset.action==='constellation'"),'canvas menu arrow keys reach Add to Constellation')
-            cdp.call('Input.dispatchKeyEvent',type='keyDown',key='ArrowDown',code='ArrowDown',windowsVirtualKeyCode=40)
-            check(evaluate("document.activeElement.dataset.action==='copy'"),'canvas menu arrow keys reach Copy')
-            cdp.call('Input.dispatchKeyEvent',type='keyDown',key='ArrowDown',code='ArrowDown',windowsVirtualKeyCode=40)
-            check(evaluate("document.activeElement.dataset.action==='duplicate-structure'"),'canvas menu reaches Duplicate structure before destructive actions')
+            check(evaluate("document.activeElement.dataset.action==='add-child'"),'keyboard menu starts on Add item')
+            for action in expected_actions[1:]+expected_actions[:1]:
+                cdp.call('Input.dispatchKeyEvent',type='keyDown',key='ArrowDown',code='ArrowDown',windowsVirtualKeyCode=40)
+                check(evaluate(f'document.activeElement.dataset.action==={json.dumps(action)}'),f'canvas menu keyboard order reaches {action}, skipping unavailable actions and wrapping at the end')
             cdp.call('Input.dispatchKeyEvent',type='keyDown',key='Escape',code='Escape',windowsVirtualKeyCode=27)
             menu_for(leaf);click_selector('#sidebar-toggle')
             check(evaluate('contextMenu.hidden'),'clicking elsewhere dismisses the menu')
@@ -5609,7 +5617,9 @@ def main():
             evaluate("focusEntry('sample-deep-7')");wait_camera()
             check(evaluate("(()=>{const r=hierarchySidebar.rows.get('sample-deep-7').getBoundingClientRect(),t=hierarchySidebar.tree.getBoundingClientRect();return r.top>=t.top&&r.bottom<=t.bottom;})()"),'selected deep row scrolls into the visible tree')
             evaluate("entries.get('sample-deep-7').name='Long hierarchy name '.repeat(4).slice(0,60);hierarchySidebar.setEntries(entries)")
-            check(evaluate("document.documentElement.scrollWidth<=innerWidth && hierarchySidebar.tree.scrollWidth<=hierarchySidebar.width"),'long names truncate without breaking the sidebar layout')
+            # Deep desktop paths intentionally scroll inside the tree. Verify
+            # actual name truncation and containment, not a ban on that scroll.
+            check(evaluate("(()=>{const t=hierarchySidebar.tree,n=hierarchySidebar.rows.get('sample-deep-7').querySelector('.tree-name'),s=getComputedStyle(n),r=n.getBoundingClientRect(),b=t.getBoundingClientRect();return document.documentElement.scrollWidth<=innerWidth&&b.right<=hierarchySidebar.sidebar.getBoundingClientRect().right&&getComputedStyle(t).overflowX==='auto'&&n.scrollWidth>n.clientWidth&&s.overflow==='hidden'&&s.textOverflow==='ellipsis'&&s.whiteSpace==='nowrap'&&r.left>=b.left&&r.right<=b.right&&n.textContent===entries.get('sample-deep-7').name})()"),'long names retain their text and truncate inside the desktop tree without page overflow')
             evaluate("window.sidebarProbe=new Map([...entries].map(([id,e])=>[id,{...e}]));for(let i=0;i<30;i++)sidebarProbe.set('sidebar-probe-'+i,{id:'sidebar-probe-'+i,name:'Deep tree item '+i,parentId:i?'sidebar-probe-'+(i-1):'sample-deep-7'});galaxyModel.normalizeHierarchy(sidebarProbe);hierarchySidebar.setEntries(sidebarProbe);hierarchySidebar.select('sidebar-probe-29')")
             check(evaluate("(()=>{const r=hierarchySidebar.rows.get('sidebar-probe-29').querySelector('.tree-name').getBoundingClientRect(),t=hierarchySidebar.tree.getBoundingClientRect();return hierarchySidebar.tree.scrollLeft>0&&r.left>=t.left&&r.right<=t.right&&document.documentElement.scrollWidth<=innerWidth;})()"),'arbitrary deep indentation scrolls its name into view without page overflow')
             evaluate("hierarchySidebar.setEntries(entries);hierarchySidebar.select('sample-deep-7');delete window.sidebarProbe")

@@ -127,6 +127,14 @@ test('F1 rejects stale maintenance before reading or deleting file records',asyn
     await assert.rejects(f.repo.removeOrphanedAttachments(['old']),{code:'LOCAL_SNAPSHOT_STALE'});
     assert.equal(f.stats().scans,0);assert.equal(f.stats().deletes,0);
 });
+test('repository snapshot guard rejects a concurrent change inside deletion validation without removing files',async()=>{
+    const f=fixture();f.inventory.records=[f.describe()];await f.repo.auditAttachmentStorage();
+    const winning=JSON.stringify(withFile('old')),original=f.inventory.records[0],remove=f.files.removeOrphans;
+    f.files.removeOrphans=async(...args)=>{f.disk.set('galaxy:user-data',winning);return remove(...args);};
+    await assert.rejects(f.repo.removeOrphanedAttachments(['old']),/^Error: Saved data changed\. Check unused files again\.$/);
+    assert.equal(f.disk.get('galaxy:user-data'),winning);assert.equal(f.stats().writes,0);
+    assert.equal(f.inventory.records.length,1);assert.equal(f.inventory.records[0],original);
+});
 test('audit and final deletion serialize through the existing workspace write lock',async()=>{
     const f=fixture();f.inventory.records=[f.describe()];let release,entered=false;
     const barrier=f.locks.request('cosmifold-workspace-write:null',{mode:'exclusive'},()=>{entered=true;return new Promise(resolve=>release=resolve);});

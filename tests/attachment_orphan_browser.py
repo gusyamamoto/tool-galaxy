@@ -174,15 +174,19 @@ def run_attachment_orphan_checks(*,cdp,cdp_class,e,check,wait_for,add,origin):
         peer.evaluate('physics.pause();applicationCommandTail');peer.evaluate('graphNeedsSave=false')
         e("window.f8held=false;window.f8barrier=navigator.locks.request('cosmifold-workspace-write:null',{mode:'exclusive'},()=>{f8held=true;return new Promise(r=>window.f8release=r)});void 0")
         wait_for('f8held')
-        peer.evaluate(f"window.f8reference=saveEntryContent({q(owner)},c=>({{...c,attachments:[...c.attachments,{{id:'f8-race-reference',kind:'upload',entryId:{q(owner)},filename:'race.txt',mimeType:'text/plain',size:5,storageKey:'f8-race',createdAt:new Date().toISOString()}}]}})).then(()=>true,()=>false);void 0")
+        peer.evaluate(f"window.f8reference=saveEntryContent({q(owner)},c=>({{...c,attachments:[...c.attachments,{{id:'f8-race-reference',kind:'upload',entryId:{q(owner)},filename:'race.txt',mimeType:'text/plain',size:5,storageKey:'f8-race',createdAt:new Date().toISOString()}}]}})).then(()=>({{saved:true,raw:localStorage.getItem('galaxy:user-data')}}),()=>({{saved:false}}));void 0")
         # Observe B's request queued before A's deletion request.
         wait_for("navigator.locks.query().then(s=>s.pending.some(l=>l.name==='cosmifold-workspace-write:null'))")
         e("window.f8cleanup=universeRepository.removeOrphanedAttachments(['f8-race']).then(()=>({saved:true}),error=>({code:error.code||null,name:error.name,message:error.message,cause:error.cause?.message}));void 0")
         wait_for("navigator.locks.query().then(s=>s.pending.filter(l=>l.name==='cosmifold-workspace-write:null').length===2)")
         e('f8release();void 0')
         reference=peer.evaluate('f8reference');cleanup=e('f8cleanup')
-        check(reference and cleanup.get('code')=='LOCAL_SNAPSHOT_STALE' and exists('f8-race'),f'real cross-tab write serializes before cleanup and stale deletion is refused (reference={reference}, cleanup={cleanup})')
-        check(e("JSON.parse(localStorage.getItem('galaxy:user-data')).entries.some(x=>x.content?.attachments.some(f=>f.storageKey==='f8-race'))"),'winning tab reference and original bytes both survive')
+        # Either independent stale-snapshot guard may reject first. Both must
+        # detect the concurrent change and prevent unsafe deletion.
+        protected = cleanup.get('code')=='LOCAL_SNAPSHOT_STALE' or cleanup.get('message')=='Saved data changed. Check unused files again.'
+        check(reference.get('saved') and not cleanup.get('saved') and protected and exists('f8-race'),f'real cross-tab write serializes before cleanup and stale deletion is refused (cleanup={cleanup})')
+        check(e("localStorage.getItem('galaxy:user-data')")==reference['raw'],'rejected cleanup preserves the winning canonical snapshot byte-for-byte')
+        check(e("JSON.parse(localStorage.getItem('galaxy:user-data')).entries.some(x=>x.content?.attachments.some(f=>f.storageKey==='f8-race'))") and e("(async()=>(await attachmentStore.get('f8-race')).blob.text())()")=='bytes','winning tab reference and exact original bytes both survive')
     finally:
         cdp.call('Target.closeTarget',targetId=target);peer.sock.close()
 
