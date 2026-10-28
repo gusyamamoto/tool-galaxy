@@ -38,6 +38,18 @@ test('Introduction declares local responsive PNGs and has no animation or media 
         assert.equal(bytes.subarray(1,4).toString(),'PNG');assert.equal(bytes.readUInt32BE(16),width);assert.equal(bytes.readUInt32BE(20),height);
     }
 });
+test('local-storage disclosure is plain first-use copy after Help, with no extra workflow',()=>{
+    const html=fs.readFileSync(path.join(__dirname,'..','index.html'),'utf8');
+    const introduction=html.slice(html.indexOf('<section id="first-use"'),html.indexOf('<aside id="first-use-hint"'));
+    const disclosure=introduction.match(/<p id="first-use-storage"[^>]*>([\s\S]*?)<\/p>/);
+    assert.ok(disclosure);
+    assert.equal(disclosure[1],'<span>Saved in this browser for now.</span><span>Use Backup to keep a copy.</span>');
+    assert.ok(introduction.indexOf('id="first-use-help"')<disclosure.index);
+    assert.ok(disclosure.index<introduction.indexOf('<figure class="first-use-example"'));
+    assert.doesNotMatch(disclosure[0],/<a\b|<button\b|<dialog\b|<svg\b|\brole=|\bonclick=/);
+    assert.equal((html.match(/id="first-use-storage"/g)||[]).length,1);
+});
+
 test('first successful root offers a temporary child hint, then exactly one final branch hint',()=>{
     const s=setup(),root={id:'travel',parentId:null};
     s.controller.created({wasEmpty:true,rootId:root.id,created:[root]});
