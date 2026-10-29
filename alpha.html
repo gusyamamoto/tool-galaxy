@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en" data-application-mode="cloud-alpha">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Cosmifold Travel Alpha</title>
+    <link rel="stylesheet" href="alpha/style.css">
+</head>
+<body>
+<main>
+    <header><p class="mode">CLOUD ALPHA · FOUNDATION</p><h1>Cosmifold Travel Alpha</h1></header>
+    <p id="alpha-status" role="status">Preparing the isolated Alpha…</p>
+    <p>Your browser-local beta stays separate. This milestone selects datasets; editing, photos and cloud Backup/Restore are unavailable.</p>
+    <section aria-labelledby="alpha-account-title">
+        <h2 id="alpha-account-title">Account</h2>
+        <p id="alpha-account">Not signed in</p>
+        <form id="alpha-sign-in">
+            <label>Email<input id="alpha-email" type="email" autocomplete="email" required disabled></label>
+            <label>Password<input id="alpha-password" type="password" autocomplete="current-password" required disabled></label>
+            <button id="alpha-sign-in-button" type="submit" disabled>Sign in</button>
+        </form>
+        <button id="alpha-sign-out" type="button" hidden>Sign out</button>
+    </section>
+    <section aria-labelledby="alpha-datasets-title">
+        <h2 id="alpha-datasets-title">Travel datasets</h2>
+        <button id="alpha-refresh" type="button" disabled>Refresh account datasets</button>
+        <button id="alpha-create" type="button" disabled>Create empty test Universe</button>
+        <ul id="alpha-datasets"></ul>
+    </section>
+    <section aria-labelledby="alpha-universe-title">
+        <h2 id="alpha-universe-title">Empty test Universe · preview</h2>
+        <p id="alpha-scope">No cloud dataset selected</p>
+        <p id="alpha-count">0 Items</p>
+        <ul id="alpha-items"></ul>
+    </section>
+    <p id="alpha-error" role="alert" hidden></p>
+</main>
+<script src="alpha/config.js"></script>
+<script src="alpha/auth-config.js"></script>
+<script src="services/supabase-client.js"></script>
+<script src="services/supabase-auth.js"></script>
+<script src="services/auth-service.js"></script>
+<script src="model.js"></script>
+<script src="portals.js"></script>
+<script src="constellations.js"></script>
+<script src="clipboard.js"></script>
+<script src="services/universe-repository.js"></script>
+<script src="services/cloud-repository-contract.js"></script>
+<script src="services/cloud-metadata-projection.js"></script>
+<script src="services/cloud-metadata-changes.js"></script>
+<script src="services/supabase-metadata-gateway.js"></script>
+<script src="services/cloud-universe-repository.js"></script>
+<script src="persistence/cloud-cache-store.js"></script>
+<script src="services/cloud-workspace.js"></script>
+<script src="alpha/foundation.js"></script>
+<script src="alpha/startup.js"></script>
+</body>
+</html>

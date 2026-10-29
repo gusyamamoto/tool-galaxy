@@ -27,3 +27,4 @@
 
 # Reproducible, runtime-only public staging artifact (never the working tree).
 /staging-site/
+/alpha-build/

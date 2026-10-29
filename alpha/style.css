@@ -1,0 +1,17 @@
+@font-face { font-family: Manrope; src: url('../assets/fonts/Manrope-Variable.ttf') format('truetype'); font-display: swap; }
+:root { color-scheme: dark; font-family: Manrope, sans-serif; color: #d8e5f4; background: #080f19; }
+body { margin: 0; padding: 24px; }
+main { max-width: 720px; margin: auto; }
+h1 { font-size: 28px; } h2 { font-size: 18px; }
+p { line-height: 1.6; } .mode { color: #9aafc7; font-size: 12px; }
+section { border-top: 1px solid #2d3c50; margin-top: 24px; padding-top: 12px; }
+form { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; }
+label { display: grid; gap: 6px; flex: 1 1 180px; min-width: 0; }
+input, button { box-sizing: border-box; min-height: 44px; border: 1px solid #465d77; border-radius: 6px; padding: 10px 12px; font: inherit; }
+input { width: 100%; background: #101b29; }
+button { background: #182b40; color: inherit; cursor: pointer; }
+button:disabled { opacity: .5; cursor: default; }
+button:focus-visible, input:focus-visible { outline: 2px solid #bad7f6; outline-offset: 3px; }
+li { margin-block: 10px; overflow-wrap: anywhere; }
+#alpha-error { color: #e4baba; } #alpha-scope { overflow-wrap: anywhere; }
+@media(max-width: 480px) { body { padding: 16px; } h1 { font-size: 24px; } }

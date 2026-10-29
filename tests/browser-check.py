@@ -193,6 +193,7 @@ def main():
     args.add_argument('--mobile-add-baseline', type=Path, help='Mobile screenshot baseline for desktop-add review; --capture-baseline records it')
     args.add_argument("--first-use-only", action="store_true", help="Empty-Universe onboarding, isolated live preview, hints, motion, mobile and keyboard")
     args.add_argument('--prerelease-ux-only', action='store_true', help='Contextual coach, mobile sections, add flows, Constellation disclosure and global More')
+    args.add_argument('--travel-alpha-only', action='store_true', help='Disabled Alpha entry, beta storage isolation and mock authenticated dataset bootstrap')
     args.add_argument('--time-data-only', action='store_true', help='Canonical When/Due editors, operations, mobile sizing and cross-tab safety')
     args.add_argument('--time-view-only', action='store_true', help='Global month Calendar, Upcoming, shared Contents and responsive Time navigation')
     args.add_argument('--time-refinement-only', action='store_true', help='Time close focus, ellipsis, native scrollbar and non-modal mobile Contents gestures')
@@ -356,7 +357,7 @@ def main():
         cdp = CDP(page["webSocketDebuggerUrl"])
         cdp.call("Page.enable")
         cdp.call("Runtime.enable")
-        if options.staging_only or options.static_hosting_only or options.backup_only or options.restore_only or options.auth_only or options.cloud_boundary_only or options.cloud_concurrency_only or options.cloud_recovery_only:
+        if options.travel_alpha_only or options.staging_only or options.static_hosting_only or options.backup_only or options.restore_only or options.auth_only or options.cloud_boundary_only or options.cloud_concurrency_only or options.cloud_recovery_only:
             cdp.call('Network.enable');cdp.call('Log.enable')
         cdp.call("Emulation.setDeviceMetricsOverride", width=1440, height=1000, deviceScaleFactor=1, mobile=False)
         origin = f"http://{'localhost' if options.static_hosting_only or options.staging_only else '127.0.0.1'}:{server.server_port}"
@@ -385,7 +386,7 @@ def main():
         if not options.staging_only:
             cdp.call('Page.addScriptToEvaluateOnNewDocument', source="""
                 document.addEventListener('load', event=>{
-                    if(event.target.tagName==='SCRIPT'&&event.target.src.endsWith('/services/supabase-auth.js')&&!['/dev/cloud-boundary-diagnostic.html','/dev/cloud-concurrency-diagnostic.html','/dev/cloud-recovery-diagnostic.html'].includes(location.pathname)){
+                    if(event.target.tagName==='SCRIPT'&&event.target.src.endsWith('/services/supabase-auth.js')&&document.documentElement.dataset.applicationMode!=='cloud-alpha'&&!['/dev/cloud-boundary-diagnostic.html','/dev/cloud-concurrency-diagnostic.html','/dev/cloud-recovery-diagnostic.html'].includes(location.pathname)){
                         createSupabaseAuthAdapter=()=>({available:false,async initialize(){return {user:null}},dispose(){}});
                     }
                 },true);
@@ -531,6 +532,13 @@ def main():
 
         cdp.call("Page.navigate", url=page_url)
         load()
+        if options.travel_alpha_only:
+            from travel_alpha_browser import run_travel_alpha_checks
+            def shot(name):
+                if screenshot_dir:
+                    (screenshot_dir/(name+'.png')).write_bytes(base64.b64decode(cdp.call('Page.captureScreenshot',format='png')['data']))
+            run_travel_alpha_checks(cdp=cdp,e=evaluate,check=check,wait_for=wait_for,load=load,origin=origin,root=ROOT,shot=shot,handler=QuietHandler)
+            print(f'{count} Travel Alpha browser checks passed; screenshots: {screenshot_dir}',flush=True);return
         if options.time_mobile_ranges_only:
             from time_mobile_ranges_browser import run_time_mobile_ranges_checks
             def shot(name):

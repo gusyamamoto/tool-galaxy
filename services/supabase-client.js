@@ -29,7 +29,8 @@ function readPublicAuthConfiguration(config) {
         !/^sb_publishable_[A-Za-z0-9_-]+$/.test(config.SUPABASE_PUBLISHABLE_KEY||''))throw new Error('Invalid public Auth configuration');
     return {url:url.origin,key:config.SUPABASE_PUBLISHABLE_KEY};
 }
-function createSupabaseClientProvider({config=cosmifoldAuthConfig,loadSDK=loadSupabaseAuthSDK}={}){
+function createSupabaseClientProvider({config=cosmifoldAuthConfig,loadSDK=loadSupabaseAuthSDK,storageKey}={}){
+    if(storageKey!==undefined&&(typeof storageKey!=='string'||!/^cosmifold:travel-alpha:auth:v1$/.test(storageKey)))throw new Error('Invalid isolated Auth storage key');
     let settings,configurationError,client,loading;
     try{settings=readPublicAuthConfiguration(config);}catch(error){configurationError=error;}
     return Object.freeze({
@@ -40,7 +41,7 @@ function createSupabaseClientProvider({config=cosmifoldAuthConfig,loadSDK=loadSu
             if(!loading)loading=(async()=>{
                 const sdk=await loadSDK();
                 client=sdk.createClient(settings.url,settings.key,{auth:{persistSession:true,autoRefreshToken:true,
-                    detectSessionInUrl:true,flowType:'pkce'}});
+                    detectSessionInUrl:true,flowType:'pkce',...(storageKey?{storageKey}:{})}});
                 return client;
             })().catch(error=>{loading=null;throw error;});
             return loading;
