@@ -1,7 +1,7 @@
 // Separate entry only. Neither a URL nor saved browser data can enable cloud.
 const cosmifoldAlphaConfig = Object.freeze({
     applicationMode: 'cloud-alpha',
-    milestone: 1,
+    milestone: 2,
     cloudEnabled: false,
     allowedOrigin: '',
     localBetaOrigin: '',

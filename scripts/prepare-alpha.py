@@ -10,7 +10,7 @@ spec = importlib.util.spec_from_file_location('alpha_staging_helpers', ROOT / 's
 staging = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(staging)
 DISABLED_CONFIG = """// Generated foundation build: cloud activation requires a separately reviewed release.
-const cosmifoldAlphaConfig = Object.freeze({applicationMode:'cloud-alpha',milestone:1,
+const cosmifoldAlphaConfig = Object.freeze({applicationMode:'cloud-alpha',milestone:2,
     cloudEnabled:false,allowedOrigin:'',localBetaOrigin:'',authStorageKey:'cosmifold:travel-alpha:auth:v1'});
 """
 DISABLED_AUTH = 'const cosmifoldAuthConfig = Object.freeze({});\n'
@@ -44,14 +44,19 @@ def runtime_assets(root=ROOT):
             parser.feed(target.read_text(encoding='utf-8'))
             pending.extend((Path(name).parent / value).as_posix() for value in parser.references)
         elif target.suffix == '.css':
-            for match in re.finditer(r'url\(\s*[\'\"]?([^\'\")]+)[\'\"]?\s*\)', target.read_text(encoding='utf-8')):
-                value = match.group(1).strip()
+            for matches in re.findall(r'url\(\s*(?:"([^"]*)"|\'([^\']*)\'|([^)]*))\s*\)', target.read_text(encoding='utf-8')):
+                value = next((part for part in matches if part), '').strip()
                 pending.append(value if value.startswith('data:') else (Path(name).parent / value).as_posix())
     if 'assets/fonts/Manrope-Variable.ttf' in assets:
         if not (root / 'assets/fonts/OFL-Manrope.txt').is_file():
             raise ValueError('Manrope license missing')
         assets.add('assets/fonts/OFL-Manrope.txt')
-    required = {'alpha/config.js', 'alpha/auth-config.js', 'alpha/startup.js', 'alpha/foundation.js',
+    if any(name.startswith('vendor/') for name in assets):
+        for name in ['vendor/LICENSES.txt', 'vendor/README.md']:
+            if not (root / name).is_file():
+                raise ValueError('Vendor attribution missing')
+            assets.add(name)
+    required = {'alpha/config.js', 'alpha/auth-config.js', 'alpha/startup.js', 'alpha/foundation.js', 'alpha/editor.js',
                 'services/cloud-workspace.js', 'services/supabase-metadata-gateway.js'}
     if not required <= assets:
         raise ValueError('Alpha bootstrap is incomplete')

@@ -1,8 +1,8 @@
-# Travel Alpha foundation — Milestone 1
+# Travel Alpha foundation — Milestones 1 and 2
 
 The local beta stays at `index.html` with `applicationMode: local-beta`.
 The separate `alpha.html` entry declares `cloud-alpha` and never loads beta
-startup, the editor, local metadata/preferences, local file storage or Restore.
+startup, `script.js`, local metadata/preferences, local file storage or Restore.
 Opening `/alpha.html` is safe even at the beta's origin: the default build makes
 no Auth/metadata requests and starts with a new empty **preview**, not an account
 or a claim that a server Universe exists. It reads no local Cosmos data.
@@ -40,26 +40,52 @@ local data or writes semantic content. Unknown creation outcomes retain the exac
 identity across reload; Refresh only reads to recover it, never resends creation.
 Unreadable records, absent receipts/cache and authentication errors fail closed.
 
-Account changes immediately clear displayed data and invalidate old asynchronous
-work. Sign-out retains pending records for their original owner. All displayed
-datasets are read-only in Milestone 1, including acknowledged cached snapshots.
-No photos, editor, cloud Backup/Restore, sharing or collaboration are available.
+Account changes immediately clear displayed data, selection, editor drafts and
+navigation state and invalidate old asynchronous work. Sign-out retains pending
+records for their original owner. A selected server-confirmed dataset with a
+writable validated cache permits only creating and renaming Items in Milestone 2.
+Cached-only and unresolved datasets remain read-only.
 
-## Next milestone
+## Milestone 2 editor
 
-Connect the existing Universe presentation to the selected, fenced cloud dataset
-and route a small allowlist of semantic metadata commands through acknowledged
-repository writes. Keep file capture and local replacement Restore unavailable.
-That integration, live security/migration verification, private cloud files and
-portable cloud export remain blockers to the real-user Travel Alpha. This
-foundation is not a deployment approval or a claim of cross-device production readiness.
+The Alpha composition reuses `HierarchySidebar`, `GalaxyPhysics`, `GraphCamera`,
+`renderCelestialBody`, shared styles and the model's derived celestial hierarchy.
+It does not load the beta's locally coupled application bootstrap. Create a
+Galaxy at Universe level, create an Item inside a selected body, or rename via
+the name dialog or the shared desktop sidebar editor. IDs stay stable on rename.
+Archived bodies are not editable. Tasks, dates, notes, files, Move, Delete and
+Backup/Restore are disabled; there is no generic repository escape hatch or local
+fallback. Camera, physics and navigation preferences remain transient in Alpha.
+
+Only the existing cloud workspace/repository commits `items.created` and
+`items.renamed`, with the acknowledged revision, one original operation ID and
+durable preparation. The display changes after acknowledgement, never optimistically.
+Saving blocks duplicate writes and dataset navigation; sign-out remains available.
+Old form contexts and late responses cannot publish into another dataset/account.
+
+The save indicator distinguishes Saving, Saved, Failed and Unresolved. Failed
+retains confirmed data; conflicts require an explicit authoritative reload.
+Unresolved preserves the original pending operation and blocks editing. The
+Reload from server / check pending save control bootstraps that same scope,
+reconciles its original receipt first, then reads authoritative metadata. It
+never resends an unconfirmed write or substitutes a new operation. A missing
+receipt remains unresolved, including after page reload. Neither a cache write
+nor an uncertain response is reported as Saved.
+
+Live end-to-end editor/security verification, remaining recovery gates, private
+cloud files and portable export still precede real-user Travel Alpha readiness.
+See [the first live acceptance procedure](travel-alpha-live-acceptance.md). This
+implementation does not activate cloud or claim live/cross-device verification.
 
 ## Regression checks
 
 `node --test tests/travel-alpha.test.js` exercises owner fencing, opt-in Auth
-storage, explicit discovery/selection, empty provisioning, concurrent creation
-and uncertain outcomes. `python -B -m unittest discover -s tests -p '*package_test.py'`
+storage, explicit discovery/selection, empty provisioning, acknowledged edits,
+conflicts, interrupted writes, concurrent contexts and uncertain outcomes.
+`python -B -m unittest discover -s tests -p '*package_test.py'`
 checks both separate artifacts. `python -B tests/browser-check.py --travel-alpha-only`
 checks default-off source/build entries beside real beta storage and exercises
-the authenticated bootstrap with a test-only SDK. These are mock cloud checks,
+the shared editor, save states and reload/account-switch recovery with a test-only
+SDK. Its synthetic server state is separate from the application's cache and
+survives page reload via test-only session storage. These are mock cloud checks,
 not evidence of live Supabase security or cross-device readiness.

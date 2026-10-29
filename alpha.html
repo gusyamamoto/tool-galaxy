@@ -4,13 +4,14 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Cosmifold Travel Alpha</title>
+    <link rel="stylesheet" href="style.css">
     <link rel="stylesheet" href="alpha/style.css">
 </head>
 <body>
 <main>
     <header><p class="mode">CLOUD ALPHA · FOUNDATION</p><h1>Cosmifold Travel Alpha</h1></header>
     <p id="alpha-status" role="status">Preparing the isolated Alpha…</p>
-    <p>Your browser-local beta stays separate. This milestone selects datasets; editing, photos and cloud Backup/Restore are unavailable.</p>
+    <p>Your browser-local beta stays separate. Alpha supports creating and renaming Items. Photos and cloud Backup/Restore are unavailable.</p>
     <section aria-labelledby="alpha-account-title">
         <h2 id="alpha-account-title">Account</h2>
         <p id="alpha-account">Not signed in</p>
@@ -31,10 +32,40 @@
         <h2 id="alpha-universe-title">Empty test Universe · preview</h2>
         <p id="alpha-scope">No cloud dataset selected</p>
         <p id="alpha-count">0 Items</p>
-        <ul id="alpha-items"></ul>
+        <p id="alpha-save-state" role="status" aria-live="polite">No cloud dataset selected</p>
+        <button id="alpha-reload" type="button" disabled>Reload from server / check pending save</button>
+        <div class="alpha-editor-tools" aria-label="Universe editing">
+            <button id="alpha-new-galaxy" type="button" disabled>New Galaxy</button>
+            <button id="alpha-add-item" type="button" disabled>Add Item inside selection</button>
+            <button id="alpha-rename-item" type="button" disabled>Rename selection</button>
+        </div>
+        <h3 id="alpha-selected-name">Select an Item</h3>
+        <div id="galaxy" aria-label="Cloud Universe editor">
+            <div id="graph-viewport"><div id="nodes-layer"></div></div>
+            <button id="sidebar-toggle" type="button" aria-label="Toggle navigation">☰</button>
+            <aside id="hierarchy-sidebar" aria-label="Universe navigation">
+                <div class="sidebar-brand"><h1>Cosmifold</h1></div>
+                <section class="nav-major-section" id="universe-section" aria-labelledby="universe-heading">
+                    <header class="sidebar-section-header nav-major-header"><h2 id="universe-heading" class="sidebar-section-title universe-heading-controls"><button id="universe-toggle" class="sidebar-section-toggle" type="button" aria-controls="hierarchy-tree" aria-expanded="true" aria-label="Collapse Universe"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m6 4 4 4-4 4"/></svg></button><button id="universe-home" class="sidebar-section-toggle" type="button" aria-label="Return to Universe overview"><span>Universe</span></button></h2><button id="add-entry-button" class="collection-add" type="button" aria-label="New Galaxy" disabled>+</button></header>
+                    <span id="hierarchy-count">0 items</span><div id="hierarchy-tree" role="tree" aria-label="Items"></div>
+                </section>
+                <div id="sidebar-resize" role="separator" aria-label="Sidebar width" aria-orientation="vertical" tabindex="0"></div>
+            </aside>
+            <div class="alpha-camera-tools"><button id="alpha-fit" type="button">Fit</button><button id="alpha-zoom-in" type="button" aria-label="Zoom in">+</button><button id="alpha-zoom-out" type="button" aria-label="Zoom out">−</button></div>
+        </div>
+        <details><summary>Unavailable in this Alpha</summary><fieldset disabled aria-label="Unsupported editing actions"><button type="button">Move</button><button type="button">Delete</button><button type="button">Tasks</button><button type="button">Dates</button><button type="button">Notes</button><button type="button">Photos</button><button type="button">Backup / Restore</button></fieldset></details>
     </section>
     <p id="alpha-error" role="alert" hidden></p>
 </main>
+<dialog id="add-entry-dialog" aria-labelledby="add-entry-title">
+    <form id="add-entry-form">
+        <h2 id="add-entry-title">New Galaxy</h2>
+        <p id="alpha-entry-location"></p>
+        <label for="entry-name">Name</label><input id="entry-name" type="text" required maxlength="60" autocomplete="off">
+        <p id="entry-form-error" role="alert" hidden></p>
+        <div class="form-actions"><button id="alpha-entry-cancel" type="button">Cancel</button><button id="entry-submit" type="submit">Save</button></div>
+    </form>
+</dialog>
 <script src="alpha/config.js"></script>
 <script src="alpha/auth-config.js"></script>
 <script src="services/supabase-client.js"></script>
@@ -53,6 +84,14 @@
 <script src="persistence/cloud-cache-store.js"></script>
 <script src="services/cloud-workspace.js"></script>
 <script src="alpha/foundation.js"></script>
+<script src="vendor/d3-force.bundle.min.js"></script>
+<script src="appearance.js"></script>
+<script src="cosmos-view.js"></script>
+<script src="body-renderer.js"></script>
+<script src="physics.js"></script>
+<script src="camera.js"></script>
+<script src="hierarchy.js"></script>
+<script src="alpha/editor.js"></script>
 <script src="alpha/startup.js"></script>
 </body>
 </html>

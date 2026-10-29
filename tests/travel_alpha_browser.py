@@ -82,61 +82,32 @@ def run_travel_alpha_checks(*, cdp, e, check, wait_for, load, origin, root, shot
             # to shipped config, real Supabase, or any deployment destination.
             (output/'alpha/config.js').write_text("const cosmifoldAlphaConfig=Object.freeze({applicationMode:'cloud-alpha',cloudEnabled:true,allowedOrigin:"+q(alpha_origin)+",localBetaOrigin:"+q(origin)+",authStorageKey:'cosmifold:travel-alpha:auth:v1'});", encoding='utf-8')
             (output/'alpha/auth-config.js').write_text("const cosmifoldAuthConfig=Object.freeze({SUPABASE_URL:'https://alpha-fixture.invalid/',SUPABASE_PUBLISHABLE_KEY:'sb_publishable_TEST_ONLY'});", encoding='utf-8')
-            fixture = cdp.call('Page.addScriptToEvaluateOnNewDocument', source="""
-                if(location.origin===ALPHA_ORIGIN){
-                    const A='00000000-0000-4000-8000-000000000001',B='00000000-0000-4000-8000-000000000002';
-                    const listeners=new Set(),rows=new Map();let current=null;
-                    const session=()=>current?{user:current,access_token:'TEST_ONLY_TOKEN'}:null;
-                    window.alphaFixture={calls:[],clients:0,A,B};
-                    window.alphaFakeSDK={createClient(url,key,options){
-                        alphaFixture.clients++;alphaFixture.authKey=options.auth.storageKey;
-                        return {auth:{
-                            onAuthStateChange(fn){listeners.add(fn);return {data:{subscription:{unsubscribe(){listeners.delete(fn)}}}}},
-                            async getSession(){return {data:{session:session()},error:null}},
-                            async signInWithPassword({email}){current={id:email.startsWith('b@')?B:A,email};localStorage.setItem(options.auth.storageKey,'SYNTHETIC_SESSION');for(const fn of listeners)fn('SIGNED_IN',session());return {data:{session:session()},error:null}},
-                            async signOut(){current=null;localStorage.removeItem(options.auth.storageKey);for(const fn of listeners)fn('SIGNED_OUT',null);return {data:{},error:null}},
-                            stopAutoRefresh(){}
-                        },schema(schema){if(schema!=='public')throw Error('Wrong RPC schema');return {rpc(name,params){
-                            alphaFixture.calls.push(name);return {async retry(retry){if(retry!==false)throw Error('Unexpected retry');let data;
-                                if(!current)return {status:401,error:{code:'28000'}};
-                                if(name==='cosmifold_list_universes')data=[...rows.values()].filter(r=>r.universe.owner_id===current.id).map(r=>({id:r.universe.id,owner_id:current.id,revision:r.universe.revision}));
-                                else if(name==='cosmifold_create_universe'){
-                                    if(rows.has(params.p_universe_id))throw Error('Duplicate create');
-                                    const snapshot={version:5,entries:[],connections:[],layout:[],portals:[],constellations:[],archivedGalaxies:[]};
-                                    data=cosmifoldCloudProjection.toRelational(snapshot,{ownerUserId:current.id,universeId:params.p_universe_id,revision:'0'}).metadata;rows.set(params.p_universe_id,data);
-                                }else if(name==='cosmifold_read_universe'){
-                                    if(params.p_scope.ownerUserId!==current.id)return {status:403,error:{code:'42501'}};
-                                    const value=rows.get(params.p_scope.universeId);data=value?{status:'found',metadata:value}:{status:'absent',metadata:null};
-                                }else throw Error('Unexpected metadata write');
-                                return {status:200,error:null,data};
-                            }};
-                        }}}};
-                    }};
-                    document.addEventListener('load',event=>{if(event.target.src?.endsWith('/services/supabase-client.js'))loadSupabaseAuthSDK=async()=>alphaFakeSDK},true);
-                }
-            """.replace('ALPHA_ORIGIN', q(alpha_origin)))['identifier']
+            fixture_source = (root/'tests/travel-alpha-browser-fixture.js').read_text(encoding='utf-8')
+            fixture = cdp.call('Page.addScriptToEvaluateOnNewDocument', source="if(location.origin==="+q(alpha_origin)+"){"+fixture_source+"\ndocument.addEventListener('load',event=>{if(event.target.src?.endsWith('/services/supabase-client.js'))installTravelAlphaBrowserFixture()},true);}")['identifier']
             cdp.call('Page.reload', ignoreCache=True)
             wait_for('document.readyState==="complete"&&typeof alphaFixture!=="undefined"&&alphaAuth.getState().ready')
             check(e('alphaFixture.clients===1&&alphaFixture.calls.length===0&&alphaFixture.authKey==="cosmifold:travel-alpha:auth:v1"&&travelAlpha.getState().dataset.kind==="preview"'), 'mock enabled startup uses one isolated SDK client and does not auto-discover or create')
             e('document.getElementById("alpha-email").value="a@example.invalid";document.getElementById("alpha-password").value="TEST_ONLY";document.getElementById("alpha-sign-in").requestSubmit()')
             wait_for('travelAlpha.getState().status==="no-cloud-universe"')
-            check(e('travelAlpha.getState().dataset.kind==="preview"&&alphaFixture.calls.join(",")==="cosmifold_list_universes"&&document.getElementById("alpha-password").value===""'), 'sign-in discovers owned datasets without migration, creation or automatic selection')
+            check(e('travelAlpha.getState().dataset.kind==="preview"&&alphaFixture.calls.map(c=>c.name).join(",")==="cosmifold_list_universes"&&document.getElementById("alpha-password").value===""'), 'sign-in discovers owned datasets without migration, creation or automatic selection')
             e('document.getElementById("alpha-create").click()')
             wait_for('travelAlpha.getState().status==="loaded"&&!travelAlpha.getState().creating')
-            check(e('travelAlpha.getState().dataset.kind==="cloud"&&travelAlpha.getState().dataset.scope.ownerUserId===alphaFixture.A&&travelAlpha.getState().dataset.revision==="0"&&travelAlpha.getState().dataset.snapshot.entries.length===0&&travelAlpha.getState().readOnly'), 'explicit create confirms a fresh empty owned dataset through the existing gateway/workspace')
+            check(e('travelAlpha.getState().dataset.kind==="cloud"&&travelAlpha.getState().dataset.scope.ownerUserId===alphaFixture.A&&travelAlpha.getState().dataset.revision==="0"&&travelAlpha.getState().dataset.snapshot.entries.length===0&&!travelAlpha.getState().readOnly'), 'explicit create confirms a fresh empty owned dataset through the existing gateway/workspace')
             e('window.alphaCreatedId=travelAlpha.getState().dataset.scope.universeId;document.getElementById("alpha-refresh").click()')
             wait_for('travelAlpha.getState().status==="universes-available"')
             check(e('travelAlpha.getState().dataset.kind==="preview"&&document.querySelectorAll("#alpha-datasets button").length===1'), 'refresh lists the owned Universe without silently selecting it')
             e('document.querySelector("#alpha-datasets button").click()')
             wait_for('travelAlpha.getState().status==="loaded"')
-            check(e('travelAlpha.getState().dataset.scope.universeId===alphaCreatedId&&alphaFixture.calls.filter(n=>n==="cosmifold_create_universe").length===1'), 'explicit selection reopens the same dataset without recreating it')
+            check(e('travelAlpha.getState().dataset.scope.universeId===alphaCreatedId&&alphaFixture.calls.filter(c=>c.name==="cosmifold_create_universe").length===1'), 'explicit selection reopens the same dataset without recreating it')
+            from travel_alpha_editor_browser import run_alpha_editor_checks
+            run_alpha_editor_checks(cdp=cdp,e=e,check=check,wait_for=wait_for,shot=shot)
             e('document.getElementById("alpha-sign-out").click()')
             wait_for('!travelAlpha.getState().user&&!alphaAuth.getState().busy')
             check(e('travelAlpha.getState().dataset.kind==="preview"&&document.getElementById("alpha-count").textContent==="0 Items"&&document.querySelectorAll("#alpha-datasets button").length===0'), 'sign-out clears the selected dataset and controls')
             e('document.getElementById("alpha-email").value="b@example.invalid";document.getElementById("alpha-password").value="TEST_ONLY";document.getElementById("alpha-sign-in").requestSubmit()')
-            wait_for('travelAlpha.getState().status==="no-cloud-universe"')
-            check(e('travelAlpha.getState().user.id===alphaFixture.B&&travelAlpha.getState().dataset.kind==="preview"&&travelAlpha.getState().universes.length===0'), 'second account never sees the first account\'s dataset or list')
-            check(e('Object.keys(localStorage).every(k=>k.startsWith("cosmifold:travel-alpha:"))&&typeof travelAlpha.save==="undefined"&&!document.body.textContent.includes("TEST_ONLY_TOKEN")'), 'Alpha writes only its own namespace and exposes neither semantic writes nor session tokens')
+            wait_for('travelAlpha.getState().status==="universes-available"')
+            check(e('travelAlpha.getState().user.id===alphaFixture.B&&travelAlpha.getState().dataset.kind==="preview"&&travelAlpha.getState().universes.length===1&&travelAlpha.getState().universes.every(r=>r.owner_id===alphaFixture.B)'), 'second account lists only its own Universe without displaying the first account\'s data')
+            check(e('Object.keys(localStorage).every(k=>k.startsWith("cosmifold:travel-alpha:"))&&typeof travelAlpha.save==="undefined"&&!document.body.textContent.includes("TEST_ONLY_TOKEN")'), 'Alpha writes only its own namespace and exposes only allowlisted edits, without session tokens')
             check(not [r for r in cdp.requests if urlsplit(r['url']).scheme in ('http','https') and not r['url'].startswith(alpha_origin+'/')], 'packaged and mocked Alpha flows attempted no external requests')
             check(not cdp.errors, 'no Alpha runtime exceptions: '+q(cdp.errors))
         finally:

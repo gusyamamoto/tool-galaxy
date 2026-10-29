@@ -17,6 +17,9 @@ class AlphaPackageTests(unittest.TestCase):
             self.assertIn('index.html', files)
             self.assertIn('services/cloud-workspace.js', files)
             self.assertIn('services/supabase-metadata-gateway.js', files)
+            self.assertIn('alpha/editor.js', files)
+            self.assertIn('body-renderer.js', files)
+            self.assertIn('vendor/LICENSES.txt', files)
             self.assertTrue(alpha.FORBIDDEN.isdisjoint(set(files) - {'index.html'}))
             self.assertEqual((output / 'index.html').read_bytes(), (ROOT / 'alpha.html').read_bytes())
             self.assertEqual((output / 'alpha/config.js').read_text(), alpha.DISABLED_CONFIG)
@@ -45,7 +48,7 @@ class AlphaPackageTests(unittest.TestCase):
             root = Path(directory) / 'source'
             root.mkdir()
             scripts = ['alpha/config.js', 'alpha/auth-config.js', 'alpha/startup.js',
-                       'alpha/foundation.js', 'services/cloud-workspace.js',
+                       'alpha/foundation.js', 'alpha/editor.js', 'services/cloud-workspace.js',
                        'services/supabase-metadata-gateway.js']
             for name in scripts:
                 path = root / name
