@@ -42,6 +42,11 @@ or clear pending storage merely to turn the stopped controller run into PASS.
 The procedure below is the repeatable reference, not an instruction to recreate
 this existing Universe or rerun completed steps.
 
+Milestone 3A adds plain-text notes using the existing metadata contract. Its live
+acceptance is still pending; use the separate
+[notes procedure](travel-alpha-notes.md). The Milestone 2 results above do not
+establish live notes behavior or close the remaining recovery qualifications.
+
 ## Focused local checkpoint validation
 
 On October 30, 2026, the following checks passed independently of the live

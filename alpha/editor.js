@@ -1,8 +1,10 @@
 // Alpha-only composition of the existing Universe editor's shared components.
-// Physics/navigation are disposable. Only foundation.createItem/renameItem write.
+// Physics/navigation are disposable. Only the allowlisted foundation edits write.
 function createTravelAlphaEditor({foundation}){
     const element=id=>document.getElementById(id),host=element('galaxy'),viewport=element('graph-viewport'),layer=element('nodes-layer');
     const dialog=element('add-entry-dialog'),form=element('add-entry-form'),input=element('entry-name'),error=element('entry-form-error');
+    const notesDialog=element('alpha-notes-dialog'),notesInput=element('alpha-notes-input'),notesError=element('alpha-notes-error');
+    let notesEdit=null;
     let state=foundation.getState(),context=null,selected=null,edit=null,sidebar,disposed=false,lastSnapshot=null,pan=null;
     const entries=new Map(),nodes=new Map();
     // Navigation preferences are ephemeral, never the beta's preference store.
@@ -42,6 +44,13 @@ function createTravelAlphaEditor({foundation}){
         element('alpha-add-item').disabled=!canEdit()||!entry||entry.taskList===true||parent?.taskList===true;
         element('alpha-rename-item').disabled=!canEdit()||!entry;
         element('alpha-selected-name').textContent=entry?.name||'Select an Item';
+        element('alpha-notes').hidden=!entry;
+        element('alpha-notes-title').textContent=entry?'Notes · '+entry.name:'Notes';
+        const notes=entry?.content?.notes.text||'';
+        element('alpha-notes-text').textContent=entry?(notes||'No notes yet.'):'';
+        element('alpha-edit-notes').textContent=notes?'Edit notes':'Add notes';
+        element('alpha-edit-notes').disabled=!canEdit()||!entry;
+        if(notesDialog.open){notesInput.disabled=!canEdit();element('alpha-notes-save').disabled=!canEdit();element('alpha-notes-cancel').disabled=state.writing;}
         for(const [id,row] of sidebar.rows){row.draggable=false;row.querySelector('.tree-add').disabled=!canEdit()||entries.get(id)?.taskList===true||entries.get(entries.get(id)?.parentId)?.taskList===true;
             const task=row.querySelector('.tree-task-toggle');if(task)task.disabled=true;}
     }
@@ -67,6 +76,7 @@ function createTravelAlphaEditor({foundation}){
         if(disposed)return;state=next;
         if(context!==state.dataset.context){
             context=state.dataset.context;selected=null;edit=null;pan=null;lastSnapshot=null;
+            notesEdit=null;if(notesDialog.open)notesDialog.close();notesInput.value='';notesError.textContent='';notesError.hidden=true;element('alpha-notes-item').textContent='';
             if(dialog.open)dialog.close();input.value='';error.textContent='';error.hidden=true;
             sidebar.rename=null;sidebar.rows.clear();sidebar.expanded.clear();sidebar.selection.single(null);sidebar.selectedId=null;sidebar.activeId=null;sidebar.index={roots:[],children:new Map()};sidebar.tree.replaceChildren();
             entries.clear();nodes.clear();layer.replaceChildren();physics.pause();physics.setGraph(new Map());physics.galaxies.clear();physics.origin=null;camera.stopAnimation();preferences={};
@@ -98,6 +108,34 @@ function createTravelAlphaEditor({foundation}){
     element('universe-home').addEventListener('click',()=>{selected=null;sidebar.select(null);controls();fit();paint();});
     element('alpha-add-item').addEventListener('click',()=>open({parentId:selected}));
     element('alpha-rename-item').addEventListener('click',()=>open({id:selected}));
+    element('alpha-edit-notes').addEventListener('click',()=>{
+        const entry=entries.get(selected);if(!canEdit()||!entry)return;
+        notesEdit={id:entry.id,context};element('alpha-notes-item').textContent=entry.name;
+        notesInput.value=entry.content?.notes.text||'';notesInput.disabled=false;notesInput.setCustomValidity('');
+        element('alpha-notes-save').disabled=false;element('alpha-notes-cancel').disabled=false;
+        notesError.textContent='';notesError.hidden=true;notesDialog.showModal();notesInput.focus();
+    });
+    element('alpha-notes-cancel').addEventListener('click',()=>{if(!state.writing)notesDialog.close();});
+    notesDialog.addEventListener('cancel',event=>{if(state.writing)event.preventDefault();});
+    notesDialog.addEventListener('close',()=>{if(notesDialog.open)return;notesEdit=null;notesInput.value='';notesError.textContent='';notesError.hidden=true;element('alpha-notes-item').textContent='';});
+    notesInput.addEventListener('input',()=>notesInput.setCustomValidity(''));
+    element('alpha-notes-form').addEventListener('submit',async event=>{
+        event.preventDefault();const attempt=notesEdit;if(!attempt||!canEdit())return;
+        notesInput.setCustomValidity(notesInput.value.length<=galaxyModel.contentLimits.notes?'':'Notes exceed the text limit.');
+        if(!event.currentTarget.reportValidity())return;
+        notesInput.disabled=true;element('alpha-notes-save').disabled=true;element('alpha-notes-cancel').disabled=true;notesError.hidden=true;
+        try{
+            await foundation.saveNotes({id:attempt.id,text:notesInput.value,context:attempt.context});
+            if(notesEdit!==attempt||context!==attempt.context)return;
+            notesDialog.close();select(attempt.id);
+        }catch{
+            if(notesEdit!==attempt||context!==attempt.context)return;
+            notesError.textContent=state.writeStatus==='unresolved'?
+                'Unresolved: the server may have saved these notes. Cancel, then check the pending save with Reload from server. Do not submit again.':
+                'Failed: these notes were not saved. Reload from the server if editing is unavailable.';
+            notesError.hidden=false;
+        }finally{if(notesEdit===attempt){notesInput.disabled=!canEdit();element('alpha-notes-save').disabled=!canEdit();element('alpha-notes-cancel').disabled=false;}}
+    });
     element('alpha-entry-cancel').addEventListener('click',()=>dialog.close());
     // Native close events are queued. An earlier close must not erase a form
     // that was reopened before that event is delivered.
@@ -125,5 +163,5 @@ function createTravelAlphaEditor({foundation}){
     for(const type of ['pointerup','pointercancel'])viewport.addEventListener(type,event=>{if(pan?.id===event.pointerId)pan=null;});
     const resize=new ResizeObserver(()=>{sidebar.onWindowResize();controls();fit();});resize.observe(host);
     const unsubscribe=foundation.subscribe(sync);
-    return Object.freeze({dispose(){disposed=true;unsubscribe();resize.disconnect();physics.pause();camera.stopAnimation();entries.clear();nodes.clear();layer.replaceChildren();if(dialog.open)dialog.close();input.value='';sidebar.tree.replaceChildren();}});
+    return Object.freeze({dispose(){disposed=true;unsubscribe();resize.disconnect();physics.pause();camera.stopAnimation();entries.clear();nodes.clear();layer.replaceChildren();if(dialog.open)dialog.close();input.value='';notesEdit=null;if(notesDialog.open)notesDialog.close();notesInput.value='';notesError.textContent='';element('alpha-notes-item').textContent='';element('alpha-notes-text').textContent='';element('alpha-notes-title').textContent='Notes';element('alpha-notes').hidden=true;sidebar.tree.replaceChildren();}});
 }

@@ -11,7 +11,7 @@
 <main>
     <header><p class="mode">CLOUD ALPHA · FOUNDATION</p><h1>Cosmifold Travel Alpha</h1></header>
     <p id="alpha-status" role="status">Preparing the isolated Alpha…</p>
-    <p>Your browser-local beta stays separate. Alpha supports creating and renaming Items. Photos and cloud Backup/Restore are unavailable.</p>
+    <p>Your browser-local beta stays separate. Alpha supports creating and renaming Items and saving plain-text notes. Photos and cloud Backup/Restore are unavailable.</p>
     <section aria-labelledby="alpha-account-title">
         <h2 id="alpha-account-title">Account</h2>
         <p id="alpha-account">Not signed in</p>
@@ -53,7 +53,12 @@
             </aside>
             <div class="alpha-camera-tools"><button id="alpha-fit" type="button">Fit</button><button id="alpha-zoom-in" type="button" aria-label="Zoom in">+</button><button id="alpha-zoom-out" type="button" aria-label="Zoom out">−</button></div>
         </div>
-        <details><summary>Unavailable in this Alpha</summary><fieldset disabled aria-label="Unsupported editing actions"><button type="button">Move</button><button type="button">Delete</button><button type="button">Tasks</button><button type="button">Dates</button><button type="button">Notes</button><button type="button">Photos</button><button type="button">Backup / Restore</button></fieldset></details>
+        <section id="alpha-notes" aria-labelledby="alpha-notes-title" hidden>
+            <h3 id="alpha-notes-title">Notes</h3>
+            <p id="alpha-notes-text"></p>
+            <button id="alpha-edit-notes" type="button" disabled>Add notes</button>
+        </section>
+        <details><summary>Unavailable in this Alpha</summary><fieldset disabled aria-label="Unsupported editing actions"><button type="button">Move</button><button type="button">Delete</button><button type="button">Tasks</button><button type="button">Dates</button><button type="button">Photos</button><button type="button">Backup / Restore</button></fieldset></details>
     </section>
     <p id="alpha-error" role="alert" hidden></p>
 </main>
@@ -64,6 +69,17 @@
         <label for="entry-name">Name</label><input id="entry-name" type="text" required maxlength="60" autocomplete="off">
         <p id="entry-form-error" role="alert" hidden></p>
         <div class="form-actions"><button id="alpha-entry-cancel" type="button">Cancel</button><button id="entry-submit" type="submit">Save</button></div>
+    </form>
+</dialog>
+<dialog id="alpha-notes-dialog" aria-labelledby="alpha-notes-dialog-title">
+    <form id="alpha-notes-form">
+        <h2 id="alpha-notes-dialog-title">Edit notes</h2>
+        <p id="alpha-notes-item"></p>
+        <label for="alpha-notes-input">Plain-text notes</label>
+        <textarea id="alpha-notes-input" rows="8" maxlength="100000" aria-describedby="alpha-notes-help"></textarea>
+        <p id="alpha-notes-help">Up to 100,000 characters. Save sends these notes to your private cloud Item. Cancel discards unsaved edits.</p>
+        <p id="alpha-notes-error" role="alert" hidden></p>
+        <div class="form-actions"><button id="alpha-notes-cancel" type="button">Cancel</button><button id="alpha-notes-save" type="submit">Save notes</button></div>
     </form>
 </dialog>
 <script src="alpha/config.js"></script>

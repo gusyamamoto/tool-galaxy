@@ -151,10 +151,18 @@ function createTravelAlphaFoundation({config,auth,gateway,origin=globalThis.loca
         const nextName=name(value);if(entry.name===nextName)return null;
         return {id,snapshot:{...snapshot,entries:snapshot.entries.map(record=>record.id===id?{...record,name:nextName,updatedAt:new Date().toISOString()}:record)},intent:{type:'items.renamed',ids:[id]}};
     });}
+    function saveNotes({id,text,context}={}){return change(context,snapshot=>{
+        const entry=activeEntries(snapshot).get(id);if(!entry)throw fail('ALPHA_ITEM_UNAVAILABLE');
+        if(typeof text!=='string'||text.length>galaxyModel.contentLimits.notes)throw fail('ALPHA_INVALID_NOTES');
+        if((entry.content?.notes.text||'')===text)return null;
+        const content={...(entry.content||galaxyModel.emptyContent()),notes:{format:'plain',text}};
+        return {id,snapshot:{...snapshot,entries:snapshot.entries.map(record=>record.id===id?
+            {...record,content,updatedAt:new Date().toISOString()}:record)},intent:{type:'content.changed',ids:[id]}};
+    });}
     return Object.freeze({
         getState:()=>copy(state),
         subscribe(listener){listeners.add(listener);listener(copy(state));return ()=>listeners.delete(listener);},
-        refresh,select,createEmpty,reload,createItem,renameItem,
+        refresh,select,createEmpty,reload,createItem,renameItem,saveNotes,
         close(){generation++;workspace?.close();clear({universes:[],creating:false,status:enabled?'universe-not-selected':'disabled',error:null});},
         dispose(){generation++;workspace?.dispose();unsubscribeWorkspace?.();unsubscribeAuth();clear({universes:[],user:null,status:'disposed'});disposed=true;listeners.clear();}
     });

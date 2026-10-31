@@ -10,7 +10,7 @@ const alphaEditor=createTravelAlphaEditor({foundation:travelAlpha});
 const alphaElement=id=>document.getElementById(id);
 const alphaMessages={disabled:'Cloud access is off in this build. This is an empty, isolated test Universe preview.',
     'auth-unavailable':'Alpha sign-in is unavailable. No dataset was opened.',
-    'signed-out':'Sign in to select a private cloud dataset.',loaded:'Cloud dataset selected. Create and rename Items in this Universe.',
+    'signed-out':'Sign in to select a private cloud dataset.',loaded:'Cloud dataset selected. Create and rename Items, and save plain-text notes.',
     'cached-degraded':'Showing an acknowledged cache. Server refresh is required; editing is unavailable.',
     'creation-uncertain':'Creation is unconfirmed. Refresh to check the same Universe; no creation will be resent.',
     'pending-reconciliation':'An earlier operation needs reconciliation. Editing is unavailable.'};

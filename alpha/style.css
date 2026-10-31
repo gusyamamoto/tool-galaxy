@@ -33,3 +33,15 @@ li { margin-block: 10px; overflow-wrap: anywhere; }
 fieldset[disabled] { border: 0; padding: 8px 0; }
 details { margin-top: 12px; }
 #alpha-selected-name { overflow-wrap: anywhere; }
+#alpha-notes { margin-top: 16px; border-top: 1px solid #2d3c50; padding-top: 12px; }
+#alpha-notes-title, #alpha-notes-item { overflow-wrap: anywhere; }
+#alpha-notes-text { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 20rem; overflow: auto; }
+#alpha-notes-dialog { box-sizing: border-box; width: min(560px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); overflow: auto; padding: 20px; color: #d8e5f4; background: #101b29; border: 1px solid #465d77; border-radius: 8px; }
+#alpha-notes-dialog::backdrop { background: #070c14ae; }
+#alpha-notes-form { display: grid; gap: 12px; }
+#alpha-notes-form h2, #alpha-notes-form p { margin: 0; }
+#alpha-notes-input { box-sizing: border-box; width: 100%; min-height: 160px; max-height: 50dvh; resize: vertical; padding: 12px; border: 1px solid #465d77; border-radius: 6px; background: #080f19; color: inherit; font: inherit; font-size: 16px; }
+#alpha-notes-input:focus-visible { outline: 2px solid #bad7f6; outline-offset: 2px; }
+#alpha-notes-help { color: #9aafc7; font-size: 12px; }
+#alpha-notes-error { color: #e4baba; }
+#alpha-notes-form .form-actions { display: flex; flex-wrap: wrap; justify-content: end; gap: 8px; }

@@ -249,3 +249,115 @@ test('a second context cannot edit over a new acknowledged cache revision',async
     assert.equal(peer.getState().readOnly,true);assert.equal(peer.getState().writeStatus,'failed');assert.equal(commits(e).length,1);
     await peer.reload();assert.equal(peer.getState().dataset.snapshot.entries.find(r=>r.id==='tokyo').name,'First tab');
 });
+
+const notes=(alpha,id='tokyo')=>alpha.getState().dataset.snapshot.entries.find(row=>row.id===id)?.content?.notes.text;
+test('plain notes use the existing content.changed contract, preserve metadata/links, and reach a separate cache',async()=>{
+    const e=await opened(),before=e.alpha.getState().dataset.snapshot,entry=before.entries.find(row=>row.id==='tokyo');
+    const text='  Oaxaca checklist\nCheck in at 15:00 🧳\n<script>plain text</script>  ';
+    await e.alpha.saveNotes({id:'tokyo',text,context:edit(e)});
+    assert.equal(notes(e.alpha),text);assert.equal(e.alpha.getState().dataset.revision,'1');
+    const after=e.alpha.getState().dataset.snapshot,updated=after.entries.find(row=>row.id==='tokyo');
+    assert.deepEqual(updated.content.links,entry.content.links);assert.deepEqual(plain(updated.content.attachments),[]);
+    for(const key of Object.keys(entry))if(!['content','updatedAt'].includes(key))assert.deepEqual(updated[key],entry[key]);
+    assert.deepEqual(after.entries.filter(row=>row.id!=='tokyo'),before.entries.filter(row=>row.id!=='tokyo'));
+    assert.equal(commits(e).length,1);assert.equal(commits(e)[0].command.type,'content.changed');
+    assert.deepEqual(Object.keys(commits(e)[0].command.payload),['upsert']);
+    assert.equal(commits(e)[0].command.payload.upsert.entries.length,1);
+    await e.alpha.reload();assert.equal(notes(e.alpha),text);
+    const freshDisk=require('./fake-cloud-workspace').disk();
+    const peer=e.create({...e.options,storage:()=>freshDisk});await peer.refresh();await peer.select(U);
+    assert.equal(notes(peer),text);assert.equal(commits(e).length,1);peer.dispose();
+});
+
+test('notes can be added and cleared without removing links or exposing a generic content writer',async()=>{
+    const e=await opened();
+    await e.alpha.saveNotes({id:'sushi',text:'First note',context:edit(e)});
+    assert.deepEqual(plain(e.alpha.getState().dataset.snapshot.entries.find(row=>row.id==='sushi').content),
+        {version:1,notes:{format:'plain',text:'First note'},links:[],attachments:[]});
+    const links=e.alpha.getState().dataset.snapshot.entries.find(row=>row.id==='tokyo').content.links;
+    await e.alpha.saveNotes({id:'tokyo',text:'',context:edit(e)});
+    assert.equal(notes(e.alpha),'');assert.deepEqual(e.alpha.getState().dataset.snapshot.entries.find(row=>row.id==='tokyo').content.links,links);
+    assert.equal(e.alpha.updateContent,undefined);assert.equal(e.alpha.save,undefined);
+});
+
+test('notes enforce the existing UTF-16 limit, preserve whitespace, and avoid unchanged writes',async()=>{
+    const e=await opened();
+    for(const text of [null,42,'x'.repeat(100001),'🧳'.repeat(50001)])await assert.rejects(
+        ()=>e.alpha.saveNotes({id:'tokyo',text,context:edit(e)}),{code:'ALPHA_INVALID_NOTES'});
+    assert.equal(commits(e).length,0);
+    await e.alpha.saveNotes({id:'tokyo',text:'Original',context:edit(e)});
+    await e.alpha.saveNotes({id:'sushi',text:'',context:edit(e)});assert.equal(commits(e).length,0);
+    await e.alpha.saveNotes({id:'tokyo',text:'🧳'.repeat(50000),context:edit(e)});
+    assert.equal(notes(e.alpha).length,100000);
+    await e.alpha.saveNotes({id:'tokyo',text:' \n ',context:edit(e)});assert.equal(notes(e.alpha),' \n ');
+});
+
+test('notes keep confirmed content while Saving and reject duplicate/dependent edits',async()=>{
+    const e=await opened(),held=deferred(),original=e.gateway.commitMetadata,context=edit(e);
+    e.gateway.commitMetadata=async command=>{await held.promise;return original(command);};
+    const writing=e.alpha.saveNotes({id:'tokyo',text:'New confirmed note',context});await new Promise(r=>setImmediate(r));
+    assert.equal(e.alpha.getState().writeStatus,'saving');assert.equal(notes(e.alpha),'Original');
+    await assert.rejects(()=>e.alpha.saveNotes({id:'tokyo',text:'Duplicate',context}),{code:'ALPHA_WRITE_BUSY'});
+    await assert.rejects(()=>e.alpha.renameItem({id:'tokyo',name:'Dependent',context}),{code:'ALPHA_WRITE_BUSY'});
+    held.resolve();await writing;assert.equal(notes(e.alpha),'New confirmed note');assert.equal(commits(e).length,1);
+});
+
+test('stale notes cannot overwrite another writer and recover only through explicit server reload',async()=>{
+    const e=await opened(),remote=e.remote();remote.universe.revision='1';
+    remote.entries.find(row=>row.id==='tokyo').attributes_json.content.notes.text='Other browser note';e.setRemote(remote);
+    await assert.rejects(()=>e.alpha.saveNotes({id:'tokyo',text:'Stale note',context:edit(e)}),{code:'REVISION_CONFLICT'});
+    assert.equal(notes(e.alpha),'Original');assert.equal(e.alpha.getState().writeStatus,'failed');assert.equal(e.alpha.getState().readOnly,true);
+    await assert.rejects(()=>e.alpha.saveNotes({id:'tokyo',text:'Retry',context:edit(e)}),{code:'ALPHA_READ_ONLY'});
+    await e.alpha.reload();assert.equal(notes(e.alpha),'Other browser note');
+    await e.alpha.saveNotes({id:'tokyo',text:'Reviewed note',context:edit(e)});assert.equal(e.alpha.getState().dataset.revision,'2');
+});
+
+test('interrupted notes retain the original journal across reload and recover its receipt without resubmission',async()=>{
+    const e=await opened(),commit=e.gateway.commitMetadata,receipt=e.gateway.getOperationReceipt;
+    e.gateway.commitMetadata=async command=>{await commit(command);throw failure('OUTCOME_UNKNOWN','unknown');};
+    e.gateway.getOperationReceipt=async()=>{throw failure('NETWORK_UNAVAILABLE');};
+    await assert.rejects(()=>e.alpha.saveNotes({id:'tokyo',text:'Recovered note',context:edit(e)}),{code:'OUTCOME_UNKNOWN'});
+    const command=commits(e)[0].command,key=`cosmifold:travel-alpha:cache:cosmifold:cloud-cache:v1:${A}:${U}`;
+    assert.equal(JSON.parse(e.storage.getItem(key)).pending.command.operationId,command.operationId);
+    assert.equal(notes(e.alpha),'Original');assert.equal(e.alpha.getState().writeStatus,'unresolved');
+    e.alpha.dispose();const next=e.create(e.options);await next.refresh();await next.select(U);
+    assert.equal(next.getState().writeStatus,'unresolved');assert.equal(notes(next),'Original');
+    await assert.rejects(()=>next.saveNotes({id:'tokyo',text:'Blind retry',context:next.getState().dataset.context}),{code:'ALPHA_READ_ONLY'});
+    e.gateway.getOperationReceipt=receipt;await next.reload();assert.equal(notes(next),'Recovered note');
+    assert.equal(next.getState().writeStatus,'saved');assert.equal(next.getState().dataset.revision,'1');
+    assert.equal(JSON.parse(e.storage.getItem(key)).pending,null);
+    await next.reload();assert.equal(next.getState().dataset.revision,'1');assert.equal(commits(e).length,1);
+    assert.ok(e.calls.filter(call=>call.method==='receipt').every(call=>call.id===command.operationId));
+});
+
+test('a missing note receipt preserves Unresolved and never retries or publishes the draft',async()=>{
+    const e=await opened();let attempts=0;
+    e.gateway.commitMetadata=async()=>{attempts++;throw failure('OUTCOME_UNKNOWN','unknown');};
+    await assert.rejects(()=>e.alpha.saveNotes({id:'tokyo',text:'Not confirmed',context:edit(e)}),{code:'OUTCOME_UNKNOWN'});
+    await e.alpha.reload();await e.alpha.reload();
+    assert.equal(e.alpha.getState().writeStatus,'unresolved');assert.equal(e.alpha.getState().readOnly,true);
+    assert.equal(notes(e.alpha),'Original');assert.equal(attempts,1);
+});
+
+test('account changes fence an in-flight note and remove A content from B before a late response',async()=>{
+    const e=await opened(),held=deferred(),original=e.gateway.commitMetadata,context=edit(e);
+    e.gateway.commitMetadata=async command=>{await held.promise;return original(command);};
+    const writing=e.alpha.saveNotes({id:'tokyo',text:'A private notes',context});await new Promise(r=>setImmediate(r));e.auth.emit(B);
+    assert.equal(e.alpha.getState().dataset.snapshot.entries.length,0);assert.equal(e.alpha.getState().writeStatus,'idle');
+    held.resolve();await assert.rejects(writing,{code:'ALPHA_CONTEXT_CHANGED'});
+    assert.equal(e.alpha.getState().user.id,B);assert.equal(e.alpha.getState().dataset.snapshot.entries.length,0);
+    await assert.rejects(()=>e.alpha.saveNotes({id:'tokyo',text:'Old form',context}),{code:'ALPHA_CONTEXT_CHANGED'});
+    e.auth.emit(A);await e.alpha.refresh();await e.alpha.select(U);assert.equal(notes(e.alpha),'A private notes');
+    assert.equal(commits(e).length,1);
+});
+
+test('notes reject archived/absent/stale selections and touch only the isolated Alpha cache',async()=>{
+    const e=await opened(),context=edit(e),protectedKeys=['galaxy:user-data','galaxy:navigation-ui','sb-project-auth-token'];
+    protectedKeys.forEach(key=>e.storage.map.set(key,'PRESERVE'));
+    for(const id of ['missing','archived-note','archive'])await assert.rejects(()=>e.alpha.saveNotes({id,text:'No',context}),{code:'ALPHA_ITEM_UNAVAILABLE'});
+    await e.alpha.reload();await assert.rejects(()=>e.alpha.saveNotes({id:'tokyo',text:'Old form',context}),{code:'ALPHA_CONTEXT_CHANGED'});
+    assert.equal(commits(e).length,0);
+    await e.alpha.saveNotes({id:'tokyo',text:'Safe note',context:edit(e)});
+    protectedKeys.forEach(key=>assert.equal(e.storage.map.get(key),'PRESERVE'));
+    assert.ok(e.storage.writes.every(row=>row.key.startsWith('cosmifold:travel-alpha:')));
+});
