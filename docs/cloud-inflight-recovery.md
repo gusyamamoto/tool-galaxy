@@ -1,5 +1,13 @@
 # Server-committed / native response interruption
 
+For the isolated Travel Alpha M2 editor, use the separate
+[Alpha interrupted-save controller and procedure](travel-alpha-interrupted-save.md).
+The Phase C controller below still targets only its own diagnostic and fixture;
+it cannot target Alpha's editor, revision or namespaced pending cache.
+Alpha's first live original-receipt recovery reached RECOVERED at revision 6,
+but final automated/request-count verification remains unverified after timeout;
+see its separate record. This does not change the completed Phase C result below.
+
 This is a development-only continuation of the existing Phase C diagnostic.
 Normal cloud mode remains inactive. No real local Cosmos, files, Auth behavior,
 storage v5, Backup v1, hierarchy, physics or product UI changes are involved.

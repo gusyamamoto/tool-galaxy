@@ -72,10 +72,19 @@ never resends an unconfirmed write or substitutes a new operation. A missing
 receipt remains unresolved, including after page reload. Neither a cache write
 nor an uncertain response is reported as Saved.
 
-Live end-to-end editor/security verification, remaining recovery gates, private
-cloud files and portable export still precede real-user Travel Alpha readiness.
-See [the first live acceptance procedure](travel-alpha-live-acceptance.md). This
-implementation does not activate cloud or claim live/cross-device verification.
+The operator has now completed the first isolated live metadata-editor checkpoint:
+authentication, creation/rename, persistence, independent-browser retrieval,
+ordinary A/B ownership isolation and stale-revision recovery passed. Interrupted
+save recovery reached Saved at revision 6 through the original receipt; a manual
+reload confirmed the state. Its final automated checkpoint timed out, so the
+exact duplicate-request count remains unverified. Account switching during an
+in-flight save also remains live-unverified. See the
+[qualified live acceptance record](travel-alpha-live-acceptance.md).
+
+This operator-run evidence is separate from automated/mock tests and does not
+activate the default-off source/build or establish every live recovery case.
+Remaining recovery gates, private cloud files, portable export and separately
+reviewed activation still precede real-user Travel Alpha readiness.
 
 ## Regression checks
 

@@ -1,9 +1,65 @@
 # First live Travel Alpha editor acceptance
 
-This is an operator procedure, not an activation already performed. Milestone 2
-tests use synthetic Auth/RPCs. Existing live diagnostic history in
-[activation gates](cloud-activation-gates.md) does not prove this editor path.
-Do not repurpose the browser-local beta or an existing deployment folder.
+The first bounded live metadata-editor checkpoint is operator-reported below.
+It used the isolated local Alpha, not a production activation. Automated tests
+use synthetic Auth/RPCs and are separate evidence. Existing diagnostic history in
+[activation gates](cloud-activation-gates.md) does not independently prove this
+editor path. Do not repurpose the browser-local beta or a deployment folder.
+
+## Operator-reported live checkpoint: October 30, 2026
+
+Test scope: disposable Universe `9941eb73-0273-4b9c-a1af-43b010f4f8da` in the
+already configured isolated Alpha. Codex did not perform the live requests.
+
+| Acceptance boundary | Recorded result |
+| --- | --- |
+| Supabase authentication and owned Universe creation | PASSED live |
+| Galaxy/child creation and rename | PASSED live: `Mexico Alpha`, child `Hotel` renamed to `Oaxaca stay`, initial revision 3 |
+| Persistence and authoritative reload | PASSED live across browser refreshes |
+| Independent-browser retrieval | PASSED live |
+| Account A/B ownership isolation | PASSED live: B could not list A's Universe; direct read RPC isolation passed |
+| Stale-revision rename | PASSED live: rejection preserved the winning metadata; explicit server reload recovered |
+| Interrupted-save original-receipt recovery | PASSED for the bounded recovery behavior: independent commit proof, Unresolved, blocked editing, original operation/receipt recovery to Saved at revision 6 |
+| Repeat reload after interruption | Manual reload confirmed Saved, revision 6 and correct metadata |
+| Final automated interruption verification / exact duplicate-request count | UNVERIFIED: controller reached RECOVERED, then STOPPED with BOUNDED_PHASE_TIMEOUT; no final automated PASS |
+| Account switching during an in-flight save | UNVERIFIED live; ordinary A/B isolation is a separate passed case |
+
+The interruption stages were ARMED -> PROVED -> UNRESOLVED VERIFIED -> RESTORED
+-> RECOVERED. Transport-only restoration subsequently succeeded. The later
+manual reload confirms stable recovered state; it does not establish the exact
+historical commit-request count or convert the controller timeout into PASS.
+The timeout's precise runtime cause is not established. See the
+[qualified interruption record](travel-alpha-interrupted-save.md#first-live-result-october-30-2026).
+
+This is a reviewable metadata-editor checkpoint, not completion of every
+Milestone 2 live acceptance case or permission to activate/deploy cloud mode.
+Remaining live evidence includes the final interruption request-count check,
+account switching during an in-flight save, and any other cases below not
+explicitly recorded as passed. No fixture cleanup or deletion is claimed;
+retain the disposable Universe and correlation records. Do not repeat a write
+or clear pending storage merely to turn the stopped controller run into PASS.
+
+The procedure below is the repeatable reference, not an instruction to recreate
+this existing Universe or rerun completed steps.
+
+## Focused local checkpoint validation
+
+On October 30, 2026, the following checks passed independently of the live
+operator evidence:
+
+| Check | Passed | External timeout |
+| --- | --- | --- |
+| Travel Alpha and cloud recovery Node tests | 59 | 30 seconds for both files; 15-second per-test bound |
+| Alpha interruption controller guards | 9 | 10 seconds |
+| Existing Phase C harness guards | 17 | 10 seconds |
+| Alpha artifact packaging | 4 | 15 seconds |
+| Native synthetic Alpha response-loss/recovery browser case | 1 | 60 seconds |
+| Native synthetic missing-receipt/pending-preservation browser case | 1 | 60 seconds |
+
+The two browser cases ran individually against loopback synthetic HTTP services
+in new temporary artifacts/profiles with HTTPS blocked. Neither timed out; no
+timeout process termination was needed. These checks made no live Supabase
+requests and do not close the live qualifications above.
 
 ## Prepare one disposable local Alpha
 
@@ -66,9 +122,10 @@ Do not repurpose the browser-local beta or an existing deployment folder.
    when late responses arrive. B must not list A's Universe. Verify the live read
    RPC rejects A's exact scope under B's session, following the existing boundary
    diagnostic procedure. Return to A and recover only A's original pending state.
-6. Run controlled rejection and response-interruption cases using the reviewed
-   [in-flight recovery procedure](cloud-inflight-recovery.md), scoped to this
-   disposable Universe. A proven rejection must show Failed; an uncertain outcome
+6. Run controlled rejection and response-interruption cases using the
+   [Alpha-specific interrupted-save procedure](travel-alpha-interrupted-save.md),
+   scoped to this disposable Universe. The older Phase C harness does not target
+   the Alpha editor. A proven rejection must show Failed; an uncertain outcome
    must show Unresolved and retain its original operation ID. Once its real
    receipt is available, explicit reload must reconcile it once and read the
    server, without another commit request. Test a page refresh while Saving too.
